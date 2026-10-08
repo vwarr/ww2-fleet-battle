@@ -21,6 +21,7 @@ This document tells you how the code is organized. Read it before you change a m
 ```
 vendor/three.min.js     Three.js r149 (UMD build, global THREE)
 js/core.js              WW.cfg, data tables, helpers, event bus
+js/daylight.js          WW.dayNight, WW.daylight: the round's clock (day / dusk / night), no flying after dusk, night landings
 js/audio.js             WW.audio: synthesized sound engine (buses, voices, spatial model, loops)
 js/audio_synth.js       WW.audio.syn: noise buffers, envelopes, bursts, booms, crackle
 js/audio_base.js        (empty: its example patches moved into the families)
@@ -31,6 +32,8 @@ js/audio_naval_wire.js  plays the naval patches from sim events; polls engines, 
 js/audio_air.js         aircraft sounds: engines, wing guns, hits, ordnance release, deaths, carrier deck
 js/sky.js               WW.sky: sky dome, clouds, lights, fog
 js/water.js             WW.water: water shader, foam, contact shadows
+js/sky_time.js          WW.skyTime: the look of the time of day and the rain (palettes, sun / moon light, fog, water, bloom)
+js/weather_fx.js        WW.weatherFx: rain curtains and cloud decks over the squalls (visual)
 js/terrain.js           WW.terrain: sea floor, islands, depth grid
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
@@ -39,12 +42,14 @@ js/models_scout.js      WW.models.buildScout: scout floatplanes
 js/models_crew.js       WW.crew: tiny sailors on every ship (instanced), deck stations, idle / fire / abandon-ship motion
 js/effects.js           WW.fx: pooled particle effects
 js/damage.js            WW.damage: fires and smoke at hit points, WW.wind
+js/weather.js           WW.weather: rain squalls drifting with WW.wind, cover(x, z), along(a, b), shelter()
 js/combat.js            WW.combat: projectile pool, shells, anti-aircraft fire
 js/combat_weapons.js    torpedoes, bombs, depth charges
 js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts, plane jinking
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
+js/night_ops.js         WW.nightOps: sight in the dark and rain, USN ship radar, star shells, searchlights, night doctrine factors
 js/ai_threat.js         WW.threat: per-side danger field (grid), danger(), bestHeading()
 js/ai_threat_view.js    WW.threatView: debug overlay (key G): danger field + contact picture
 js/fleet_groups.js      WW.fleetGroups: doctrine tables, group assignment, formation stations
@@ -74,6 +79,7 @@ js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulde
 js/camera_story_shots.js WW.storyShots: story-mode shot goals (chase, wingman, over-the-shoulder, side, water, high, deck, fall)
 js/camera_story.js      WW.camStory: story mode: follow one squadron / division through its mission (key F)
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
+js/night_fx.js          WW.nightFx: night lights (pooled), star shell flares, searchlight cones, night camera candidates (visual)
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
@@ -100,7 +106,7 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 Each animation frame (`main.js`, `frame`):
 
 1. Advance the simulation. For each step (`step`):
-   1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
+   1. `WW.terrain.update`, then `WW.dayNight.update` (`WW.daylight`), `WW.weather.update` and `WW.nightOps.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
    2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
@@ -126,12 +132,15 @@ Each animation frame (`main.js`, `frame`):
 Serve the folder (`python3 -m http.server PORT`, or `bash tests/run.sh <script> [args]` on port 8000), set `BASE_URL=http://localhost:PORT/` and `CHROMIUM=<headless shell>`. `tests/headless.js` holds the shared launch settings: sim-only by default, `--render` (or `RENDER=1`) for the full game on software GL (swiftshader).
 
 ```
-node tests/sim_behaviour.js                          # behaviour suite, 11 scenarios x 8 seeds, 6 pages (~15 s)
+node tests/sim_behaviour.js                          # behaviour suite, 14 scenarios x 8 seeds, 6 pages (~15 s)
 node tests/sim_behaviour.js --only balance --seeds 100   # balance gate (~25 s; --seeds 400 for tuning)
 node tests/sim_rounds.js [rounds=8] [firstSeed=1]    # per-round report, seeds across 6 pages (--pages K)
 node tests/determinism.js [seed] [seconds]           # same seed, same round: one page, after another seed, fresh page
 node tests/determinism.js --cross 1,2,3 300          # rendered page vs sim-only page (always launches both)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
+node tests/sim_behaviour.js --only night,dusk,weather   # night and weather scenarios and metrics
+TOD=night WX=line node tests/determinism.js --cross 3,4 250   # force the time of day / the weather
+node tests/night_shots.js [seed] [seq,duel,squall]   # dusk / night / squall screenshots (render mode)
 ```
 
 `--pages` (sim_behaviour, sim_rounds) defaults to 6, measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier), so 6 is the compromise. The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game.
@@ -182,6 +191,25 @@ Each map has 3 to 6 islands, 4 to 8 islets, 2 to 4 sandbars and 3 to 6 reefs, sp
 - `WW.sky`: a sky dome with a golden-hour gradient (peach near the sun, blue away from the sun), smooth toon clouds, a warm low sun (approximately 21°) with soft shadows, a strong cool sky fill light, and fog. It gives `HORIZON`, `SUN_DIR` and `sunColor()`.
 - `WW.water`: one large water plane to the horizon. A small depth texture controls the depth colours, the foam lines around islands and shoals, the clear shallows, the sun glitter and the fog. It also has a pool of soft dark contact-shadow blobs under ship hulls.
 - `WW.post`: renders the scene into a half-float target with MSAA, adds a soft bloom (bright pass and blur at quarter resolution), then applies a soft tone curve and 10% desaturation. `WW.post.toggle()` turns it off. Three.js ACES tone mapping is not used, because it made the pastel colours grey.
+
+### Time of day and weather: daylight.js, weather.js, night_ops.js, sky_time.js, night_fx.js, weather_fx.js
+
+```js
+WW.daylight                          // 1 day .. 0 night, sim state (main.js step), the same in sim-only mode
+WW.dayNight = { kind: 'day' | 'dusk' | 'night', startHour, duskAt, hourAt(roundTime), level(t), canFly(), landRisk(),
+                force,                // test hook: 'day' | 'dusk' | 'night' | n (dusk begins n s in), set before startRound
+                pin, stats };         // pin: a fixed daylight (screenshots)
+WW.weather  = { kind: 'clear' | 'scatter' | 'line', cells: [{ x, z, r, dens, vx, vz }], cover(x, z) -> 0..1,
+                along(ax, az, bx, bz) -> worst cover on the line, shelter(x, z, maxD, lead) -> { x, z } | null, force, stats };
+WW.nightOps = { seeR(s, o, size, glow), visK(s, o), radarR(s, o), airK(o), lit(o),        // intel.js hooks
+                torpK(B, k), rangeK(B), pressK(B), cvFleeK(), subUp(),                      // doctrine hooks
+                shells: [{ x, y, z, r, lit, nation, by, lightAt, until }], lights: [{ ship, target, until }], stats };
+```
+
+- The clock: `hourAt(t) = startHour + t / 120` (1 sim s = half a game minute). Daylight falls from 1 at 17:45 to 0 at 19:00. `roundStart` rolls the start (two `WW.rand` calls, also when forced) and the weather (fixed count of `WW.rand` calls; it reads the round's `WW.wind`, which damage.js rolls in `clearAll` before `roundStart`).
+- Sim hooks elsewhere are one or two lines each: intel.js (sight ranges, radar pass, planes' sight), fleet_cmd.js (press threshold), ai_surface.js (preferred range, torpedo distance, cripples shelter in rain), ai_carrier.js (flee radius, shelter in rain), ai_light.js (night surface attacks), air_cag.js (low cloud spoils the dive, strikes route round rain), air_deck.js (night landing risk), air_scouts.js (no catapult launches after dusk); daylight.js wraps `WW.air.launch`. The doctrine fields `night`, `nightEye`, `radar` and `searchlight` are in fleet_groups.js. Ships carry `searchOn` / `searchTgt` (their own searchlight) and `searchLit` (lit by an enemy beam until that sim time).
+- Visual (render mode only, `Math.random`): `sky.update` calls `WW.skyTime.update`, which keys every colour on daylight (1 golden hour, 0.7, 0.45 sunset, 0.25 blue hour, 0 night: the golden-hour look is unchanged at 1), sets the sun's dome height, the light direction (the sun, kept 10° up for the shadows, then the moon from the blue hour on; the shadow basis follows), the stars and moon in the dome, the water tint, horizon colours, glitter direction and the moon's path, the rain on the water, and post.js `setNight` (lower bloom threshold, stronger bloom). Under rain near the camera it greys and closes in the fog and dims the lights. It then calls `WW.nightFx.update` and `WW.weatherFx.update`.
+- `night_fx.js` keeps a fixed pool of 5 PointLights (never added or removed: the light count is compiled into the materials; idle ones have intensity 0), handed each frame to the best sources near the camera (star shells, searchlight spots, burning ships, big-gun flashes, secondary explosions). It draws pooled star-shell flares, searchlight cones and light pools on the sea, brightens the tracers, adds night camera candidates (`WW.camHooks`: a lit target 9.5, a searchlight ship 8.5, a burning ship 7.5), calls `WW.camAction.slowmo()` when a star shell bursts over the director's subject, and wraps `WW.camStory` so air stories end and do not start after dusk.
 
 ### models.js, models_detail.js, models_planes.js
 
@@ -455,7 +483,10 @@ Order = { ship, group, role, slot, sx, sz, t };
 | rangeFrac | 0.84 | 0.78 | battleship / cruiser preferred range (× main battery range); USN 0.84: its battleships were sunk more often (42% vs 34% of those fielded, torpedoes and shells), see AI_DESIGN §4 |
 | torpedo | 0.35 | 0.8 | launch distance (× torpedo range: 0.6 + 0.3 × torpedo) |
 | carrier | 0.8 | 0.55 | strike tempo (interval × (1.25 − 0.5 × carrier)) |
-| night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.72 + 0.15 × (1 − night))) |
+| night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.72 + 0.15 × (1 − night))); after dark: closer range, longer torpedo reach, readier to press, star shell tempo (night_ops.js) |
+| nightEye | 0.3 | 0.5 | visual range in full dark, × the day range (IJN night optics and lookouts) |
+| radar | 1 | 0 | surface search radar on BB / CA / DD when > 0.5 (USN SG radar, late 1942) |
+| searchlight | 0.15 | 0.8 | share of BB / CA / DD that light their targets at night |
 | cvStandoff | 230 | 200 | carrier station behind the main body |
 | screenAhead | 70 | 60 | ASW screen station |
 | flotilla | 1 | 2 | destroyers in the torpedo flotilla |
