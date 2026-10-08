@@ -6,6 +6,7 @@ window.WW = window.WW || {};
   const BASE_SPEED = 0.5;     // calm pace: the UI's 1x runs the simulation at half speed
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
+  const SUB_SEARCH = 240;     // a subs-only side that never made contact: the stall ends the round after this long
   // start zones hug the west / east edges; the open sea between them is the approach
   const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: W - 115, x1: W - 15, cx: W - 65, heading: Math.PI } };
 
@@ -124,7 +125,8 @@ window.WW = window.WW || {};
   // ---------- round logic ----------
   const game = {
     mode: 'setup', state: 'setup', composition: null, winner: null, custom: false,
-    roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
+    roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, contactT: null, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
+    hadMajor: { USN: true, IJN: true },
     // opts.keepMap: start on the current map (used by "Start battle" in setup mode)
     startRound(opts) {
       opts = opts || {};
@@ -134,13 +136,14 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.endReason = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0;
+      game.winner = null; game.endReason = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
       } else comp = randomComposition();
       game.state = 'battle';  // set before spawn so ships know a battle is live
       spawnComposition(comp);
+      game.hadMajor = { USN: afloat('USN', true) > 0, IJN: afloat('IJN', true) > 0 };
       WW.emit('roundStart', { round: WW.stats.round, seed: game.seed });
     },
     // setup mode: fleets placed and waiting for Start (ships do not act in 'setup').
@@ -164,7 +167,7 @@ window.WW = window.WW || {};
     randomComposition, minSpacing,
     spawnComposition,
     tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0); },
-    // reason: 'kill' (a side annihilated) | 'retire' (loser broke off: see retiring) | 'time' | 'stall'
+    // reason: 'kill' (a side's surface fleet sunk) | 'retire' (the loser's survivors left the map) | 'time' | 'stall'
     endRound(winner, reason, loser) {
       game.state = 'victory'; game.winner = winner; game.victoryTime = 0; game.endReason = reason || 'time';
       WW.emit('victory', { winner, round: WW.stats.round, reason: game.endReason, loser: loser || null });
@@ -172,46 +175,48 @@ window.WW = window.WW || {};
   };
   WW.game = game;
   WW.on('shipSunk', () => { game.lastSink = game.roundTime; });
+  WW.on('contact', () => { if (game.state === 'battle' && game.contactT === null) game.contactT = game.roundTime; }); // the sides first met
 
-  // A side "retires" (the other side wins) when its commander has broken off (posture 'withdraw' with no battleship,
-  // cruiser or destroyer left in fighting shape, for RETIRE_HOLD s) and every ship it has left (subs aside) has got
-  // clear: out of the enemy's sight for RETIRE_LOST s, or back in its own start band at its home map edge.
-  // Returns the retiring nation or null (both sides at once: neither; the time limit decides).
-  const RETIRE_HOLD = 30, RETIRE_LOST = 45, RETIRE_MIN = 120, HOME_BAND = W * 0.18; // the carrier's withdraw station is 0.08-0.1 W from its edge (fleet_groups.js)
-  function retiring() {
-    if (game.noRetire || !WW.fleetCmd || !WW.intel || game.roundTime < RETIRE_MIN) return null; // noRetire: test hook
-    let out = null;
-    for (const n of ['USN', 'IJN']) {
-      const B = WW.fleetCmd.side(n);
-      if (!B || B.posture !== 'withdraw' || !B.brokenAt || WW.time.now - B.brokenAt < RETIRE_HOLD) continue;
-      const foe = WW.enemyOf(n), home = SIDE[n].heading === 0 ? 0 : W;
-      let clear = true, left = 0;
-      for (const s of WW.world.ships) {
-        if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
-        left++;
-        if (Math.abs(s.x - home) < HOME_BAND) continue;
-        const c = WW.intel.known(foe, s);
-        if (c && WW.time.now - c.seenAt < RETIRE_LOST) { clear = false; break; }
-      }
-      if (!clear || !left) continue; // only submarines left: the SUB_STALL rule decides
-      if (out) return null;
-      out = n;
-    }
-    return out;
+  // How a round ends (updateGame):
+  //  - a side is out when it has no carrier, battleship, cruiser or destroyer left afloat (its submarines and PT boats
+  //    scatter; a side that started without such ships, a PT or submarine raid, is out when all its ships are gone).
+  //    The way its last ship went decides the reason: over its home edge (a broken side running home, endgame.js):
+  //    'retire'; sunk: 'kill' (the winner ran down the last of them; ships that got away earlier are counted in
+  //    WW.endgame.stats.escaped). Both out at once: tonnage.
+  //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
+  //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
+  const PURSUE_T = 150, EXT_MAX = 150;
+  const MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
+  const afloat = (n, major) => WW.world.ships.reduce((k, s) => k + (s.alive && s.nation === n && (!major || MAJOR[s.type]) ? 1 : 0), 0);
+  function out(n) {
+    if (game.noRetire || !game.hadMajor[n]) return afloat(n, false) === 0; // noRetire: tests (the ASW hunt runs on)
+    return afloat(n, true) === 0;
   }
+  function deadline() {
+    let T = WW.cfg.ROUND_TIMEOUT;
+    if (WW.fleetCmd) for (const n of ['USN', 'IJN']) {
+      const B = WW.fleetCmd.side(n);
+      if (B && B.brokenAt && afloat(n, true)) T = Math.max(T, Math.min(WW.cfg.ROUND_TIMEOUT + EXT_MAX, B.brokenAt + PURSUE_T));
+    }
+    return T;
+  }
+  game.deadline = deadline;
+  const lastEscaped = n => !!(WW.endgame && WW.endgame.lastOut && WW.endgame.lastOut(n) === 'escaped');
 
   function updateGame(dt) {
     if (game.state === 'battle') {
       game.roundTime += dt;
-      const u = (call('ships', 'alive', 'USN') || []).length, j = (call('ships', 'alive', 'IJN') || []).length;
-      // A side left with only submarines, and no sinking for SUB_STALL s, ends the round (no sub hide-and-seek).
+      // A side left with only submarines, and no sinking for SUB_STALL s since the sides met, ends the round (no sub
+      // hide-and-seek). The clock starts at first contact (the big map takes longer than SUB_STALL to cross); with no
+      // contact at all, the round ends after SUB_SEARCH s.
       const subOnly = n => (call('ships', 'alive', n) || []).every(s => s.type === 'submarine');
-      const stalled = game.roundTime - game.lastSink > SUB_STALL && (subOnly('USN') || subOnly('IJN'));
-      let ret = null;
-      try { ret = retiring(); } catch (e) { ret = null; }
-      if (u === 0 || j === 0) game.endRound(u > 0 ? 'USN' : j > 0 ? 'IJN' : null, 'kill');
-      else if (ret) game.endRound(WW.enemyOf(ret), 'retire', ret);
-      else if (game.roundTime >= WW.cfg.ROUND_TIMEOUT || stalled) {
+      const stalled = (subOnly('USN') || subOnly('IJN')) && (game.contactT === null ? game.roundTime > SUB_SEARCH
+        : game.roundTime - Math.max(game.lastSink, game.contactT) > SUB_STALL);
+      const oU = out('USN'), oJ = out('IJN');
+      if (oU || oJ) {
+        if (oU && oJ) { const tu = game.tonnage('USN'), tj = game.tonnage('IJN'); game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'kill'); }
+        else { const loser = oU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), lastEscaped(loser) ? 'retire' : 'kill', loser); }
+      } else if (game.roundTime >= deadline() || stalled) {
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
         game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, stalled ? 'stall' : 'time');
       }
@@ -232,6 +237,9 @@ window.WW = window.WW || {};
     call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
     call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
+    call('endgame', 'update', dt);  // escapes off the map, survivor pickups, scuttling (endgame.js)
+    call('shipFires', 'update', dt); // fires, flooding, damage control (ship_fires.js)
+    call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)
     call('air', 'update', dt);
     call('combat', 'update', dt);
     if (!WW.simOnly) { call('fx', 'update', dt); call('lifeboats', 'update', dt); } // visual only

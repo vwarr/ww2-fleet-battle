@@ -182,7 +182,7 @@ window.WW = window.WW || {};
       if (this.removed) return;
       this.removed = true; this.alive = false;
       var sc = this.carrier && this.carrier._scout;
-      if (sc && sc.plane === this) { sc.plane = null; sc.nextT = (WW.game ? WW.game.roundTime : 0) + RELAUNCH; if (!this.recovered) sc.sorties = MAX_SORTIES; }
+      if (sc && sc.plane === this) { sc.plane = null; sc.nextT = (WW.game ? WW.game.roundTime : 0) + RELAUNCH; if (!this.recovered) sc.sorties = 99; } // lost: no more sorties
       release(this.model);
     }
   }
@@ -201,9 +201,11 @@ window.WW = window.WW || {};
       var s = WW.world.ships[i];
       if (!SHIPS[s.type] || !s.alive || s.sinking) continue;
       var sc = s._scout || (s._scout = { sorties: 0, nextT: WW.randRange(5, 25), plane: null });
-      if (sc.plane || sc.sorties >= MAX_SORTIES || g.roundTime < sc.nextT) continue;
+      // a pursuing side (fleet_cmd posture 'pursue') flies one more sortie to find the enemy's escape route
+      var pur = WW.fleetCmd && WW.fleetCmd.side(s.nation) && WW.fleetCmd.side(s.nation).posture === 'pursue';
+      if (sc.plane || sc.sorties >= MAX_SORTIES + (pur ? 1 : 0) || g.roundTime < sc.nextT) continue;
       if (WW.dayNight && !WW.dayNight.canFly()) continue; // no flying after dusk (daylight.js)
-      if (!enemyAlive(s.nation) || g.roundTime > WW.cfg.ROUND_TIMEOUT - SEARCH_T) { sc.sorties = MAX_SORTIES; continue; }
+      if (!enemyAlive(s.nation) || g.roundTime > (g.deadline ? g.deadline() : WW.cfg.ROUND_TIMEOUT) - SEARCH_T) { sc.sorties = 99; continue; }
       sc.plane = launch(s); sc.sorties++;
     }
   }
