@@ -218,9 +218,13 @@ window.WW = window.WW || {};
       if (tgt) { L.state = 'run'; L.tgt = tgt; L.t0 = T; L.hp0 = ship.hp; ship.target = tgt; return; }
     }
     // inside known gun reach with no run worth making: break off
-    if (decide && nb && (nb.margin < 25 || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
+    if (decide && nb && (nb.margin < (L.hot ? 60 : 25) || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
+    // A heavy ship we lost sight of may have closed into gun reach (its ghost): no patrol legs, full speed to the
+    // spot (lurkSpot keeps it out of ghost reach), so a PT never idles where an unseen battleship can range it.
+    if (decide) L.hot = ghostNear(ship, ship.x, ship.z) || danger(n, ship.x, ship.z) > 0.3;
     // At the spot: a patrol leg stern-on to the enemy (a break-off then needs no turn), and a slower leg back.
     const d = WW.dist(ship.x, ship.z, L.lx, L.lz);
+    if (L.hot && d > 8) { L.leg = 'fwd'; L.legT = T; }
     if (L.leg === 'back' && (d > PT.IDLE_R || T - L.legT > 8)) { L.leg = 'fwd'; L.legT = T; } // (land astern: the timer turns it back)
     else if (L.leg !== 'back' && (d < 8 || (d < 25 && T - L.legT > 25))) { L.leg = 'back'; L.legT = T; }
     if (L.leg === 'back') {
@@ -230,8 +234,11 @@ window.WW = window.WW || {};
     } else {
       const want = Math.atan2(L.lz - ship.z, L.lx - ship.x);
       ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0.1) : want;
-      ship.throttle = d > 60 ? 0.85 : 0.5;
+      ship.throttle = L.hot ? 1 : 0.85;
     }
+    // keep way on: come about in a sweeping turn (a > 1.2 rad helm order halves the speed, ships.js), so a heavy
+    // ship that closes unseen finds the boat already moving, ready to bolt
+    ship.desiredHeading = ship.heading + WW.clamp(WW.angleDiff(ship.heading, ship.desiredHeading), -1.1, 1.1);
   }
 
   WW.shipAI.roles.pt = ptAI;
