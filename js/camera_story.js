@@ -208,7 +208,7 @@ window.WW = window.WW || {};
       log.push({ handoff: n.kind + ' ' + (rank(n) || ''), at: now });
       S.title = [(rank(n) || 'The wingman') + ' takes the lead', n.squadron ? n.squadron.short : '']; S.titleUntil = now + CAPS;
     }
-    if (S.cutaway && now - S.cutaway.at < 8 && S.cutaway.s && !S.cutaway.s.removed) { // a ship going down elsewhere
+    if (S.cutaway && now - S.cutaway.at < 8 && S.cutaway.s && !S.cutaway.s.removed && phaseOf(S.lead) !== 'attack') { // a ship going down elsewhere
       const s = S.cutaway.s; S.cutaway = null; S.lastCutaway = now; ST.cutaways++;
       log.push({ sk: 'cutaway', kind: 'orbit', phase: S.phase, at: now, dur: CUTAWAY, hard: false });
       S.last = 'cutaway';
@@ -281,11 +281,11 @@ window.WW = window.WW || {};
       if (ph !== S.phase && (ph === 'attack' || ph === 'bandits' || ph === 'after' || S.phase === 'launch')) shot.dur = Math.min(shot.dur, shot.t);
     }
     // an automatic story gives way to a better attack about to happen elsewhere (a CAP circle must not hide a strike)
-    if (!S.user && shot && shot.story && !shot.stage && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 12 && (S.swT = (S.swT || 0) - rdt) <= 0) {
+    if (!S.user && shot && shot.story && !shot.stage && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 20 && (S.swT = (S.swT || 0) - rdt) <= 0) {
       S.swT = 2;
       const mine = WW.camFinder && WW.camFinder.about(S.lead), my = mine && mine.etaReal >= 0 && mine.etaReal < 60 ? imm(mine) : 0;
       const b = bestImminent(p => p === S.lead || S.group.indexOf(p) >= 0 || (p.wave && p.wave === S.lead.wave));
-      if (b && imm(b) > my + 1.5) {
+      if (b && (my ? imm(b) > my + 4 : imm(b) > 12)) { // hysteresis: no flapping between two strikes
         log.push({ switch: (b.subj.squadron ? b.subj.squadron.short : b.subj.kind) + ' ' + b.kind, at: now });
         start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false);
         S.begun = false; if (shot.t > 2) shot.dur = Math.min(shot.dur, shot.t);

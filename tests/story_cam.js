@@ -235,7 +235,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
         for (const w of [...since.keys()]) if (!on.has(w)) since.delete(w);
         for (const w of on) if (!since.has(w)) since.set(w, __fakeT / 1000);
         if (i % 150 === 0 && window.__trace) { const st = WW.camStory.story(), sh = WW.cam._shot(), t = WW.camFinder.list()[0];
-          __trace.push(`sim ${WW.time.now.toFixed(0)} shot ${sh ? sh.kind + '/' + (sh.sk || '') + ' t' + sh.t.toFixed(0) + '/' + sh.dur.toFixed(0) : '-'} story ${st ? st.lead.kind + (st.begun ? '' : ' (waiting)') + (st.item ? ' imm' : '') : '-'} top ${t ? t.kind + ' ' + t.etaReal.toFixed(0) + 's ' + t.score.toFixed(1) : '-'}`); }
+          __trace.push(`sim ${WW.time.now.toFixed(0)} shot ${sh ? sh.kind + '/' + (sh.sk || '') + ' t' + sh.t.toFixed(0) + '/' + sh.dur.toFixed(0) : '-'} story ${st ? (st.lead.squadron ? st.lead.squadron.short : '') + ' ' + st.lead.kind + ' w' + (st.lead.wave ? 1 : 0) + ' ' + st.lead.state + '/' + (st.lead.phase || st.lead.sk || '') + (st.begun ? '' : ' (waiting)') + (st.item ? ' imm' : '') : '-'} top ${t ? t.kind + ' ' + (t.subj.squadron ? t.subj.squadron.short : '') + ' ' + t.etaReal.toFixed(0) + 's ' + t.score.toFixed(1) : '-'}`); }
       }
       __render = true;
       return { trace: window.__trace || [], drops, rate: WW.camFinder.rate(), stories: WW.camStory.stats };
