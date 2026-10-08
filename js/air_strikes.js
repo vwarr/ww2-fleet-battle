@@ -10,6 +10,9 @@ window.WW = window.WW || {};
   const CLEAR = 3.5;                           // plane half-extent at PLANE_SCALE 1.7 (~1) + 2.5 margin
   const DIVE_V = 32, DIVE_V0 = 24;             // dive brakes: the dive accelerates from ~24 to 32
   const Q = 3.5, Q_MAX = 6;                    // pull-out pitch rate (rad/s); raised if the bottom would be low
+  // Anvil spread: the n-th torpedo bomber on a side sets up AV[n] x AV_DA rad round from the 54-degree point (~23 u
+  // apart at R 82, so their setup orbits never stack) and runs in from its own bearing, a clear gap between wingtips.
+  const AV = [0, 1, -1, 2, -2], AV_DA = 0.28;
   const WHEEL_ALT = 39, WHEEL_R = 20;          // dive bombers circle over the target (inside 3D AA range) before peeling off
   const FORM_R = 55, GUIDE_V = 20, FORM_WAIT = 20;
   let waves = [], grps = new Map();
@@ -91,15 +94,16 @@ window.WW = window.WW || {};
     const brk = pl.kind === 'dive' ? 35 : pl.kind === 'torpedo' ? 115 : 60;
     if (w.done || (w.go && w.dT < brk)) { pl.sk = 'atk'; return false; }
     pl.state = 'transit';
-    const i = pl.fi || 0, k = Math.floor(i / 3), j = i % 3, wing = j === 1 ? -1 : j === 2 ? 1 : 0, nd = Math.ceil((w.nDive || 0) / 3) * 14;
+    // vic: wingmen 11 abeam (~2 spans: a span of clear air between wingtips), 6 back; vics 18 apart in trail
+    const i = pl.fi || 0, k = Math.floor(i / 3), j = i % 3, wing = j === 1 ? -1 : j === 2 ? 1 : 0, nd = Math.ceil((w.nDive || 0) / 3) * 18;
     if (pl.kind === 'fighter') { // escorts weave (S-turns): close cover just above the bombers, top cover higher and ahead
       const ph = WW.time.now * 0.8 + (pl.element ? pl.element.id : i) * 1.9, top = pl.cover === 'top', wg = pl.wing || 0;
-      const side = top ? 1 : -1, ws = wg === 2 ? -6 : wg ? 6 : 0;
+      const side = top ? 1 : -1, ws = wg === 2 ? -10 : wg ? 10 : 0;
       keep(pl, w, (top ? 6 : -10) - (wg ? 5 : 0) + Math.cos(ph) * 3, side * (top ? 18 : 12) + ws + Math.sin(ph) * 8, (top ? 54 : 44) + wg, dt);
     } else if (pl.kind === 'dive') {
-      if (w.go && w.dT < 90) keep(pl, w, -i * 5, i * 6.5, 36 + i * 0.8, dt);                       // echelon right
-      else keep(pl, w, -k * 14 - Math.abs(wing) * 5, wing * 6.5, 34 + k * 1.5, dt);              // vic
-    } else keep(pl, w, -nd - 8 - k * 14 - Math.abs(wing) * 5, wing * 6.5, 24 - k, dt);       // torpedo vics trail below
+      if (w.go && w.dT < 90) keep(pl, w, -i * 6, i * 11, 36 + i * 0.8, dt);                        // echelon right
+      else keep(pl, w, -k * 18 - Math.abs(wing) * 6, wing * 11, 34 + k * 1.5, dt);               // vic
+    } else keep(pl, w, -nd - 8 - k * 18 - Math.abs(wing) * 6, wing * 11, 24 - k, dt);        // torpedo vics trail below
     return true;
   }
 
@@ -219,13 +223,13 @@ window.WW = window.WW || {};
     if (pl.sk !== 'anvil') { // approach at cruise height, then split for the anvil
       pl.state = 'transit';
       pl.fly(t.x, t.z, 22, dt, pl.pt.speed);
-      if (dh < 115) { pl.sk = 'anvil'; pl.side = g.side++ % 2 ? 1 : -1; pl.anT = now; }
+      if (dh < 115) { pl.sk = 'anvil'; pl.side = g.side++ % 2 ? 1 : -1; pl.av = AV[((g.side - 1) >> 1) % AV.length]; pl.anT = now; }
       return;
     }
     // Anvil setup: work round the target at R to a point ~54 deg off its bow on our side, then hold low.
     pl.state = 'attack';
     const R = 82, ts = 3, px = t.x + Math.cos(t.heading) * t.speed * ts, pz = t.z + Math.sin(t.heading) * t.speed * ts;
-    const want = t.heading + pl.side * 0.95, cur = Math.atan2(pl.z - pz, pl.x - px), da = WW.angleDiff(cur, want);
+    const want = t.heading + pl.side * (0.95 + (pl.av || 0) * AV_DA), cur = Math.atan2(pl.z - pz, pl.x - px), da = WW.angleDiff(cur, want);
     const a = Math.abs(da) > 0.5 ? cur + Math.sign(da) * 0.5 : want;   // circle round rather than cross the target
     const sx = WW.clamp(px + Math.cos(a) * R, 10, WW.cfg.MAP_W - 10), sz = WW.clamp(pz + Math.sin(a) * R, 10, WW.cfg.MAP_H - 10); // torpedoes die off-map
     const ds = WW.dist(pl.x, pl.z, sx, sz);
