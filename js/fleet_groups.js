@@ -182,7 +182,7 @@ window.WW = window.WW || {};
         cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
-      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q; set(q, at(g.x, g.z, r[0], r[1])); }
+      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
     });
     if (WW.formation) { WW.formation.ringStations(B, set, at); WW.formation.zigzag(B); }
     G.screen.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });

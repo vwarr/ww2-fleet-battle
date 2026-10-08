@@ -157,7 +157,7 @@ window.WW = window.WW || {};
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit;
         if (!u || !u.alive || now - c.seenAt > FRESH || (u.submerged && g !== 'screen')) continue;
-        var sc = (W[u.type] || 0) * VALUE[u.type] * (1.8 - u.hp / u.maxHp) / (1 + WW.dist(gd.x, gd.z, c.x, c.z) / 150);
+        var sc = (W[u.type] || 0) * VALUE[u.type] * (1.8 - u.hp / u.maxHp) / (1 + WW.dist(gd.x, gd.z, c.x, c.z) / 150) * (WW.admirals ? WW.admirals.targetK(u) : 1); // the enemy flagship: a modest bump
         if (sc > as) { b = a; bs = as; a = u; as = sc; } else if (sc > bs) { b = u; bs = sc; }
       }
       if (g === 'carrier' && B.defend.length) { F.push(B.defend[0].enemy); continue; }
@@ -170,7 +170,7 @@ window.WW = window.WW || {};
   var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 1, pt: 0.5 }; // a surfaced sub is worth a strike
   function strikes(B, cs, now) {
     B.strikes.clear();
-    var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R;
+    var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R * (B.doctrine.strikeRange || 1); // strikeRange: the admiral (admirals.js)
     for (var k = 0; k < cvs.length; k++) {
       var cv = cvs[k]; if (cv.type !== 'carrier') continue;
       var best = null, bc = null, bs = 0;
@@ -183,6 +183,7 @@ window.WW = window.WW || {};
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sc = dfd * Math.max(STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
         if (pur) sc *= runaway(B, u, c);
+        if (WW.admirals) sc *= WW.admirals.targetK(u);
         if (sc > bs) { bs = sc; best = u; bc = c; }
       }
       if (best) B.strikes.set(cv.id, { target: best, contact: bc, score: bs, hold: !!(B.airRaid && B.airRaid.carrier === cv) });
@@ -232,7 +233,10 @@ window.WW = window.WW || {};
       B.tickT -= dt;
       if (B.tickT > 0) continue;
       B.tickT += TICK; if (B.tickT <= 0) B.tickT = TICK;
+      var Adm = WW.admirals;
+      try { if (Adm && Adm.before(B)) continue; } catch (e) { console.error('admirals', e); } // flagship lost: confusion, no tick
       try { tick(B); stats.ticks++; } catch (e) { console.error('fleetCmd', e); }
+      try { if (Adm) Adm.after(B); } catch (e) { console.error('admirals', e); }
     }
     stats.ms += performance.now() - t0;
   }

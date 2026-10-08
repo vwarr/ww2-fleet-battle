@@ -53,6 +53,7 @@ js/ai_threat.js         WW.threat: per-side danger field (grid), danger(), bestH
 js/ai_threat_view.js    WW.threatView: debug overlay (key G): danger field + contact picture
 js/fleet_groups.js      WW.fleetGroups: doctrine tables, group assignment, formation stations
 js/fleet_cmd.js         WW.fleetCmd: per-side commander and blackboard (posture, groups, focus, strikes, sectors)
+js/admirals.js          WW.admirals: the admiral per side (personality -> doctrine), flagship, chain of command, admiralOrder events
 js/ships_ai.js          WW.shipAI core: setup, retarget, guns / turrets, dispatch to the role files, shared helpers (WW.shipAI.h)
 js/ai_surface.js        WW.shipAI.roles.surface: battleship / cruiser / destroyer behaviour, destroyer sub hunt
 js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (CAP queue, strikes, launches), pickStrikeTarget
@@ -82,6 +83,7 @@ js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulde
 js/camera_story_shots.js WW.storyShots: story-mode shot goals (chase, wingman, over-the-shoulder, side, water, high, deck, fall)
 js/camera_story.js      WW.camStory: story mode: follow one squadron / division through its mission (key F)
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
+js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
@@ -511,6 +513,8 @@ Order = { ship, group, role, slot, sx, sz, t };
 | avgas | 0.8 | 1 | chance factor that a bomb on a loaded flight deck sets off the fuel and ordnance (ship_fires.js) |
 | escortCharge | 1 | 0.6 | escort charge trigger: an enemy gun ship within (0.6 + 0.6 × it) × its gun range of an own carrier, or (≥ 0.8) closing on it inside 300 (ai_charge.js) |
 
+After the roll, the admiral of the round (`admirals.js`) changes the doctrine by his personality (multipliers and modes; see "Admirals" below) and adds `strikeRange` (× `STRIKE_R`) and `admiral` (his key).
+
 #### WW.threat (ai_threat.js)
 
 ```js
@@ -681,3 +685,102 @@ All sim code (`WW.rand` only; the rescue and scuttle rules are deterministic apa
 `endRound` emits `victory` `{ winner, round, reason, loser }`. The caption shows "<winner> victory" for 9 s, with "<loser> fleet retires" as the subtitle after a retire, else the ships each side lost.
 
 `ui.js` shows the panels only in setup mode. In battle, `H` shows the panel. It also controls the captions, the tilt-shift bands (`T`) and fullscreen. There is no letterbox.
+
+### Admirals: admirals.js, admirals_flags.js
+
+Each round, each side is commanded by a named admiral whose personality bends the side's doctrine. He flies his flag in a flagship. When the flagship is lost, the side is confused until the flag passes to another ship. `admirals.js` is sim code: `WW.rand` only, and no visuals. `admirals_flags.js` is visual only: `Math.random` and the wall clock. It does nothing in sim-only mode.
+
+```js
+WW.admirals = {
+  of(nation) -> Admiral | null,   // null before the first roundStart and in setup mode
+  list() -> Admiral[],
+  preview(nation) -> rosterEntry, reroll(), startFromPreview(),   // setup panel (ui.js)
+  before(B) -> bool, after(B),     // fleet_cmd.js hooks around each commander tick (true: confusion, skip the tick)
+  isFlag(ship), targetK(ship) -> 1 | FLAG_K, ringK(carrier) -> 1 | RING_K, confused(nation),
+  force(nation),                   // test hook: cripples the flagship (the next tick starts the confusion)
+  stats: { flagLost, transfers, leaderless, confusionSec, orders: { kind: n } },   // per round
+  ROSTER, FLAG_K: 1.15
+};
+Admiral = { nation, key: 'nagumo', name: 'Nagumo', title: 'Adm. Nagumo', full: 'Vice Adm. Chūichi Nagumo', style, blurb,
+            flagship: Ship | null, flagName: 'Akagi', posture, confusedAt, confusedUntil /* 0: in command */, transfers };
+```
+
+**The roll.** `admirals.js` loads right after `fleet_cmd.js`, so its `roundStart` handler runs after `fleetCmd.reset()` has rolled the doctrine. It picks one admiral per side with `WW.rand`. A carrier admiral needs a carrier on his side; if the side has none, he is not picked, unless the whole roster is carrier admirals. In setup mode the panel shows a preview pair picked with `Math.random`. Setup rounds are not replayable anyway. A click on the panel picks another pair, and **Start** uses the pair the panel shows (`startFromPreview`). Ships without a name get one at round start (`ship.name`: Washington, Portland, Hammann, ...; Kirishima, Nagara, Nowaki, ...). Carriers keep their squadron group's name.
+
+**Personality.** Each roster entry changes the rolled doctrine in four ways:
+
+- `mul` multiplies a value;
+- `risk` multiplies every type's risk, except the carrier's;
+- `riskT` multiplies one type's risk;
+- `add` adds to a value, and `set` sets a mode (a flag or a string).
+
+An entry changes only keys that the doctrine already has, with the same type. Then the `rollDoctrine` clamps run again. The multipliers stay between 0.85 and 1.2. `reserveFrac` is the exception (0.4–1.5): it is the personality. `strikeRange` belongs to the admirals: `fleet_cmd.js` `strikes()` searches its first pass within `STRIKE_R × strikeRange`.
+
+| admiral | flag | style | effects |
+|---|---|---|---|
+| Spruance (USN) | carrier | calculating | strikeRange 1.15, reserveFrac ×1.5, aggression 0.95, rangeFrac 1.03, escortCharge 1.1 |
+| Halsey (USN) | carrier | aggressive | aggression 1.2, pressRatio 0.93, withdrawRatio 0.9, carrier 1.12, rangeFrac 0.97, reserveFrac ×0.5, cvStandoff 0.95, risk ×1.1, followUp 'deckload' |
+| Fletcher (USN) | carrier | cautious | aggression 0.88, pressRatio 1.06, withdrawRatio 1.12, cvStandoff 1.12, carrier 0.95, escortCharge 1.15, reserveFrac ×1.3, ringR 0.9, risk ×0.88 |
+| Nagumo (IJN) | carrier | cautious, by the book | aggression 0.9, carrier 0.9, reserveFrac ×1.4, cvStandoff 1.08, withdrawRatio 1.08, pressRatio 1.05, vanguard 1.1, jointStrike |
+| Yamaguchi (IJN) | carrier | aggressive | carrier 1.15, aggression 1.12, strikeRange 1.08, reserveFrac ×0.4, pressRatio 0.95, risk ×1.08, followUp 'deckload' |
+| Kondo (IJN) | battleship | gunnery | aggression 1.15, rangeFrac 0.96, pressRatio 0.93, screenAhead 1.2, vanguard 1.2, carrier 0.92, escortCharge 0.9, BB / CA risk ×1.15 |
+| Tanaka (IJN) | cruiser | destroyers, night torpedoes | torpedo 1.15, night 1.1, searchlight 1.1, aggression 1.05, carrier 0.92, flotilla +1, DD risk ×1.2 |
+
+**The flagship and the chain of command.**
+
+- **The flagship.** A carrier admiral flies his flag in the side's first carrier, Kondo in a battleship and Tanaka in a cruiser. The fallbacks are battleship, then cruiser, then carrier, then destroyer.
+- **Flag lost.** The flagship is lost when it is sunk or sinking, or when it is crippled (hp < `CRIP`, if it was fit when the flag went up). It is not lost when it has left the map. At the side's next commander tick, the admiral emits `flagLost`, and the side is in *confusion* for 30–60 s (`WW.randRange`).
+- **Confusion.** `fleet_cmd.js update()` asks `WW.admirals.before(B)`, and while it returns true, the side's tick is skipped:
+  - the danger field is still rebuilt;
+  - `B.strikes` is cleared, so `air_ops.pickTarget` launches no new strike;
+  - posture, groups, stations and focus stay as they were;
+  - the broken / pursuit checks also wait.
+- **Transfer.** After the confusion, the flag passes to the best ship left: BB 4, CA 3.6, CV 3, DD 1.5, +5 if it is fit, minus distance / 400. The admiral emits `transfer` ("Flagship lost — Adm. Nagumo transfers his flag to Nagara"). With no ship left, he emits `leaderless`.
+- **The flagship as a target.** The enemy's focus and strike scores of the flagship are ×`FLAG_K` = 1.15 (`targetK`), except while its side is in confusion.
+- **The escorts.** When the flagship is the ringed carrier, its escorts in the loose ring (IJN, `ringR` 0) stand at ×0.9 of the normal distance (`ringK`, in `fleet_groups.js` / `fleet_formation.js`). The USN AA ring is already tight. A surface flagship's escorts do not change.
+- **Order events.** After each tick, `WW.admirals.after(B)` turns a change of posture into an order.
+
+**Events** (sim code, same in both modes; for the war diary and the captions):
+
+```js
+'admiralOrder' { nation, admiral: 'Nagumo', title: 'Adm. Nagumo', order, text, t /* WW.time.now */, roundTime, ship /* flagship */, x, z,
+                 sub?, posture?, from?, to? /* ship names */, carrier?, target?, first? }
+// order: 'command'    round start ("Adm. Spruance commands", sub "flag in Enterprise · calculating: ...")
+//        'strike'     a strike away (air_cag.js strikeAway): the first of the round in the admiral's words
+//                     ("Adm. Yamaguchi: launch everything"), then "another strike away"; first: true / false
+//        'reserve'    that carrier holds back an air_ops reserve ("Adm. Nagumo holds his reserve")
+//        'posture'    search / approach / engage (posture)
+//        'press', 'retire' (withdraw), 'pursue'   in the admiral's words ("Adm. Halsey: attack — repeat — attack!")
+//        'flagLost'   (from), 'transfer' (from, to), 'leaderless'
+// Throttle per side in sim time: posture 20 s, strike 90 s, press / retire / pursue / reserve 60 s.
+'flagship' { nation, ship, admiral }   // each time a flag goes up (round start, transfer); admirals_flags.js listens
+'admiralsPreview' { USN: key, IJN: key }   // setup panel
+```
+
+**What you see** (`admirals_flags.js`):
+
+- **The pennant.** The admiral's pennant flies at the masthead. The USN pennant is blue with white stars. The IJN pennant is white, with a red sun and a red band.
+- **The signal hoist.** A hoist of 1 to 3 toy signal flags hangs on the yardarm, and it changes with the posture:
+
+  | posture | flags |
+  |---|---|
+  | search | P N |
+  | approach | G H N |
+  | engage | B O H |
+  | press | B V B (IJN: the Z flag) |
+  | withdraw | E P |
+  | pursue | O B G |
+  | strike launch (20 s) | G G B |
+
+- **Where the rig goes.** The masthead is the model's highest vertex, cached per type and nation. The rig is parented to the flagship's group, so it goes down with a sinking flagship, and it moves to the new flagship at a transfer.
+- **Pooling.** There are 2 rigs, 4 escort lamps, shared geometry and shared canvas-texture materials.
+- **Blinker lamps.** When `WW.daylight` (a number, or `{ level }`) is below 0.35, the flagship's lamp flashes, and then its two nearest escorts answer.
+- **Captions.**
+  - Through `WW.airCaptions.say` (throttled): "Adm. Halsey vs Adm. Yamaguchi" at the start, the first strike, press, retire, pursue, the reserve, and the flag lost.
+  - The flag transfer goes straight to `WW.ui.caption` as soon as no caption is showing, and the director gets the new flagship as a camera candidate for 25 s.
+- **The panels.** `ui.js` shows the two admirals on the setup panel and puts the winner's admiral in the victory caption ("Adm. Spruance's task force victorious", sub "USN victory · ...").
+
+**Tests:**
+
+- `tests/sim_behaviour.js` round records carry `adm: { USN, IJN, st }`. Balance scenarios print the wins per matchup, the win rate per admiral, and the command metrics (flags lost, transfers, confusion s, orders per round).
+- `tests/admirals_shots.js [seed] [outdir]` takes render-mode screenshots: the ready panel, each flagship's pennant and hoist, a forced flag transfer with its caption, and the lamps.
