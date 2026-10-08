@@ -122,7 +122,13 @@ window.WW = window.WW || {};
     var all = 0, fitT = 0, crip = WW.fleetGroups.CRIP;
     B.foeSeen.forEach(function (u) { all += u.stats.tons; if (u.alive && !u.sinking && !u.escaped && u.hp >= crip * u.maxHp) fitT += u.stats.tons; });
     B.foeTons = all; B.foeFit = fitT;
-    return all > 0 && fitT < BREAK * all && cs.length > 0 && WW.game && WW.game.roundTime > 60;
+    if (!WW.game || WW.game.roundTime <= 60 || !cs.length) return false;
+    if (all === 0) { // an enemy with no gun ships at all (carriers only): its carriers are unescorted, fit gun ships hunt them
+      if (!B.fit) return false;
+      for (var k = 0; k < cs.length; k++) if (cs[k].unit && cs[k].unit.type === 'carrier' && cs[k].unit.alive) return true;
+      return false;
+    }
+    return fitT < BREAK * all;
   }
   // Carrier defence: each own carrier's nearest known enemy gun ship inside DEFEND_R (seen in the last 30 s).
   function defend(B, cs, now) {
