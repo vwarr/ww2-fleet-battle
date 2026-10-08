@@ -395,11 +395,8 @@ window.WW = window.WW || {};
     return { group: g, prop: prop, payload: payload, wingL: wings[0], wingR: wings[1], brakes: brakes,
       blades: blades, disc: disc, fx: t.fx, name: t.name };
   }
-  if (WW.models) {
-    WW.models.buildPlane = buildPlane; WW.models.PLANE_TYPES = TYPES;
-    // the lofting kit, for the land-based multi-engine planes (models_landplanes.js)
-    WW.models._planeKit = { use: function () { M = WW.models; soft = M._soft; }, tube: tube, bodyRings: bodyRings, smooth: smooth,
-      surface: surface, chordAt: chordAt, bake: bake, mark: mark, twoTone: twoTone, meshOf: meshOf, discMat: discMat };
-  }
+  if (WW.models) { WW.models.buildPlane = buildPlane; WW.models.PLANE_TYPES = TYPES;   // _planeKit: the lofting kit (models_flyingboats.js)
+    WW.models._planeKit = { tube: tube, bodyRings: bodyRings, smooth: smooth, surface: surface, chordAt: chordAt, bake: bake, mark: mark, meshOf: meshOf, twoTone: twoTone, discMat: discMat, init: function () { M = WW.models; soft = M._soft; } };
+    WW.models._planeKit.use = WW.models._planeKit.init; }  // use: models_landplanes.js
   else console.error('models_planes.js must load after models.js');
 })();

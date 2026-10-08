@@ -82,6 +82,8 @@ window.WW = window.WW || {};
   function pickGoal(b) {
     // a destroyer sent to pick up survivors here (endgame.js rescue task; read only): row to it; survivors still
     // waiting for one (an open task near): stay by the sinking position, where the rescuer will come
+    var fb = WW.flyingBoats && WW.flyingBoats.landedNear(b.nation, b.x, b.z, 140);   // a Catalina down on the water for them
+    if (fb) { b.goal = { ship: fb }; return; }
     var E = WW.endgame, r = E && E.rescuerNear ? E.rescuerNear(b.nation, b.x, b.z, 110) : null;
     if (r && !r.sinking && !r.removed) { b.goal = { ship: r }; return; }
     var t = E && E.taskNear ? E.taskNear(b.nation, b.x, b.z, 90) : null;
@@ -133,8 +135,10 @@ window.WW = window.WW || {};
         gx = gs.x; gz = gs.z;
         var dx = b.x - gs.x, dz = b.z - gs.z, ch = Math.cos(gs.heading), sh = Math.sin(gs.heading);
         var lx = dx * ch + dz * sh, lz = -dx * sh + dz * ch;
-        if (Math.abs(lx) < gs.stats.length / 2 + 2.5 && Math.abs(lz) < (gs.beam || 3) / 2 + 2.5) { // alongside: picked up
-          if (WW.crew && WW.crew.adopt) WW.crew.adopt(gs, b.fig.length);
+        var gl = gs.stats ? gs.stats.length : 7;   // a flying boat (no stats): alongside its hull, under the wing
+        if (Math.abs(lx) < gl / 2 + 2.5 && Math.abs(lz) < (gs.beam || 3) / 2 + 2.5) { // alongside: picked up
+          if (!gs.stats) { if (WW.flyingBoats) WW.flyingBoats.boarded(gs, b.fig.length); }
+          else if (WW.crew && WW.crew.adopt) WW.crew.adopt(gs, b.fig.length);
           b.state = 'fade'; b.fT = 0; picked++; return;
         }
       }
@@ -144,7 +148,7 @@ window.WW = window.WW || {};
       b.noGoal = 0;
       var ax = gx - b.x, az = gz - b.z, al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
       for (i = 0; i < ships.length; i++) {        // stay clear of other hulls (and the sinking one)
-        var o = ships[i]; if (o.removed || o.wreck || (b.goal.ship === o) || o.submerged) continue;
+        var o = ships[i]; if (o.removed || o.wreck || (b.goal && b.goal.ship === o) || o.submerged) continue;
         var r = o.stats.length * 0.5 + 5, ex = b.x - o.x, ez = b.z - o.z, d2 = ex * ex + ez * ez;
         if (d2 < r * r) { var d = Math.sqrt(d2) || 0.1, w = (r - d) / r * 2.2; ax += ex / d * w; az += ez / d * w; if (d < r - 2 && o.speed > 1) slow = 0.4; }
       }

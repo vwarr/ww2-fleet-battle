@@ -55,6 +55,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const HL = require('./headless');
+const FZ = require('./fuzz');   // composition fuzz (--only fuzz): odd and lopsided fleets
 
 // ======================= THRESHOLDS (tune here) =======================
 // op: '<=' | '>=' | 'in' (thr = [lo, hi]) | '=='.  level: FAIL (hard) | WARN (fuzzy).
@@ -124,6 +125,8 @@ const CHECKS = [
   // WARN: at 100 rounds the 95% interval is about +-10 points (kill 40-48% across the two 100-round seed sets).
   { id: 'end_kill',      desc: 'rounds ending in a kill (last ship sunk)', op: '>=', thr: 0.5, level: 'WARN', only: ['standard', 'mirror', 'balance', 'balance_mirror'] },
   { id: 'end_time',      desc: 'rounds ending on time',                 op: '<=', thr: 0.15, level: 'WARN', only: ['standard', 'mirror', 'balance', 'balance_mirror'] },
+  { id: 'form_later_max', desc: 'later strikes: median form-up orbit per nation (s)', op: '<=', thr: 10, level: 'WARN' },
+  { id: 'pt_nn_p10',     desc: 'PT nearest same-side PT (not its pair-mate), 10th pct', op: '>=', thr: 25, level: 'WARN', levelIn: { fuzz: 'FAIL' } },
   { id: 'stuck',         desc: 'stuck ships',  op: '==', thr: 0, level: 'FAIL' },
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
@@ -131,7 +134,7 @@ const CHECKS = [
 const DOCTRINE_INFO = ['deck_hits', 'deck_safe', 'deck_planes', 'deck_chain', 'fires', 'fires_out_usn', 'fires_out_ijn', 'fire_kills', 'usn_repaired', 'magazines',
   'charges', 'charge_dds', 'charge_lost', 'charge_torp', 'charge_turned', 'charge_cv_sunk'];
 const BASE_INFO = ['base_neut', 'base_t_neut', 'base_raids', 'rw_closures', 'batteries_out', 'land_strikes', 'land_sorties', 'land_hits', 'bombard_runs', 'bombard_shells'];
-const INFO = [...BASE_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = [...BASE_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'srch_sect', 'srch_lost', 'form_first', 'form_later', 'sync_usn', 'sync_ijn', 'reserve', 'strafe_hits', 'pt_nn_p10', 'first_dmg', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -152,7 +155,9 @@ const SCEN = [
   { name: 'midway', A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
   // Balance gate: run only on request (--only balance --seeds 100 [--pages 4]). Light rounds: no behaviour sampling.
   { name: 'balance', random: true, light: true, optIn: true },
-  { name: 'balance_mirror', random: true, mirror: true, light: true, optIn: true } // same fleet twice, sides swapped
+  { name: 'balance_mirror', random: true, mirror: true, light: true, optIn: true }, // same fleet twice, sides swapped
+  // Composition fuzz: run only on request (--only fuzz --seeds N). Per seed one named odd fleet + one random one.
+  { name: 'fuzz', fuzz: true, optIn: true }
 ];
 const BAL_MIN_ROUNDS = 100;
 
@@ -231,6 +236,8 @@ function install(P) {
     }
     if (B.sees) { R.intel.checked++; try { if (!B.sees(s.nation, tg)) R.intel.unseen++; } catch (err) { R.intel.err++; } }
   });
+  WW.on('waveGo', e => { if (R && e) R.forms.push({ n: e.nation, f: !!e.first, m: e.mode, t: +(+e.formT).toFixed(1), r: !!e.reserve, tt: e.target ? e.target.type : null }); });
+  WW.on('shipHit', e => { if (R && e && e.ship && e.amount > 0) { if (R.firstDmg === null) R.firstDmg = now(); R.dmgSum += +e.amount || 0; } });
   WW.on('shipHit', e => { if (R && e && e.ship) { R.lastHit[e.ship.id] = e.kind; const k = e.ship.nation + ':' + e.ship.type + ':' + e.kind; R.dmg[k] = (R.dmg[k] || 0) + (+e.amount || 0); } });
   WW.on('shipSunk', s => {
     if (!R || !s) return;
@@ -255,7 +262,7 @@ function install(P) {
         let a = R.sync[k]; if (!a || t - a.t0 > 90) a = R.sync[k] = { t0: t, vt: null, vb: null, done: false };
         const f = o.kind === 'torpedo' ? 'vt' : o.kind === 'dive' ? 'vb' : null;
         if (f && a[f] === null) a[f] = t;
-        if (!a.done && a.vt !== null && a.vb !== null) { a.done = true; R.air.sync.push(+Math.abs(a.vt - a.vb).toFixed(1)); }
+        if (!a.done && a.vt !== null && a.vb !== null) { a.done = true; R.air.sync.push(+Math.abs(a.vt - a.vb).toFixed(1)); (R.syncN[o.nation] = R.syncN[o.nation] || []).push(+Math.abs(a.vt - a.vb).toFixed(1)); }
       }
     }
     if (e.kind !== 'torpedo' || !e.proj) return;
@@ -294,6 +301,7 @@ function install(P) {
   function sample(dt) {
     const t = now(), all = WW.world.ships, L = all.filter(live), W = WW.cfg.MAP_W;
     const enemies = s => L.filter(o => o.nation !== s.nation);
+    for (const p of WW.world.planes) if (p.alive && (!isFinite(p.x) || !isFinite(p.z) || !isFinite(p.heading))) R.nan++; // planes too
     for (const s of L) {
       if (!isFinite(s.x) || !isFinite(s.z)) R.nan++;
       const m = R.moved[s.id] || (R.moved[s.id] = { x: s.x, z: s.z, t });
@@ -372,21 +380,34 @@ function install(P) {
         if (th) { R.lc.n++; if (sp > 0.2 && Math.cos(WW.angleDiff(s.heading, brg(s, th))) < 0) R.lc.away++; }
       }
     }
+    // ---- PT spacing: nearest same-side PT that is not its pair-mate (the commander's PT group pairs by slot) ----
+    if (t - R.nnT >= 2) {
+      R.nnT = t;
+      for (const n of ['USN', 'IJN']) {
+        const pts = L.filter(s => s.type === 'pt' && s.nation === n); if (pts.length < 2) continue;
+        const Bk = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(n) : null, M = Bk && Bk.groups && Bk.groups.pt ? Bk.groups.pt.members : pts;
+        for (const p of pts) {
+          const i = M.indexOf(p), mate = i >= 0 ? M[i ^ 1] : null;
+          let nn = 1e9; for (const q of pts) if (q !== p && q !== mate) nn = Math.min(nn, WW.dist(p.x, p.z, q.x, q.z));
+          if (nn < 1e9) R.ptNN.push(Math.round(nn));
+        }
+      }
+    }
     // ---- fighters on CAP ----
     for (const p of WW.world.planes) {
-      if (!p.alive || p.kind !== 'fighter' || p.target || !live(p.carrier) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
+      if (!p.alive || p.kind !== 'fighter' || p.target || p.search || !live(p.carrier) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
       R.ftr.t += dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.inLeash += dt;
     }
     // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
     const PL = WW.world.planes, up = p => p.alive && (p.state === 'transit' || p.state === 'attack') && !p.deckPh;
     if (t > 60) for (const cv of L) {
       if (cv.type !== 'carrier' || !cv.hangar) continue;
-      const cap = PL.filter(p => p.carrier === cv && p.kind === 'fighter' && !p.target && up(p)).length;
+      const cap = PL.filter(p => p.carrier === cv && p.kind === 'fighter' && !p.target && !p.search && up(p)).length;
       if (cap + cv.hangar.fighter < 2) continue;                // the air boss could have two up
       R.air.capN++; if (cap < 2) R.air.capGap++;
     }
     for (const p of PL) { // CAP during a raid on its carrier: is its foe a bomber?
-      if (p.kind !== 'fighter' || p.target || !up(p) || p.state !== 'attack' || !p.foe || !live(p.carrier)) continue;
+      if (p.kind !== 'fighter' || p.target || p.search || !up(p) || p.state !== 'attack' || !p.foe || !live(p.carrier)) continue;
       const cv = p.carrier; if (!PL.some(b => b.alive && b.nation !== p.nation && (b.kind === 'dive' || b.kind === 'torpedo') && b.ordnance && WW.dist(b.x, b.z, cv.x, cv.z) < P.RAID_R)) continue;
       R.air.capF++; if (p.foe.kind === 'dive' || p.foe.kind === 'torpedo') R.air.capB++;
     }
@@ -437,7 +458,7 @@ function install(P) {
     G.baseChoice = spec.base || null; // the island base's owner (island_base.js); null: the round's WW.rand roll
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { forms: [], firstDmg: null, dmgSum: 0, ptNN: [], nnT: -99, syncN: {}, th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9, brkN: 0, brkGun: 0, brkMin: 1e9 }, spd: [0, 0, 0, 0], spdN: [0, 0, 0, 0], pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
@@ -467,6 +488,12 @@ function install(P) {
       cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
     if (out.cv.brkMin === 1e9) out.cv.brkMin = null;
+    out.label = spec.label || null; out.endReason = G.endReason || null; out.firstDmg = R.firstDmg; out.dmgSum = Math.round(R.dmgSum);
+    out.forms = R.forms; out.syncN = R.syncN; out.ptNN = R.ptNN;
+    const SS = WW.search && WW.search.stats;
+    out.search = SS ? { sect: { USN: SS.searched.USN.size, IJN: SS.searched.IJN.size }, lost: Object.assign({}, SS.lost), sorties: SS.sorties + SS.flown, breaks: SS.breaks, shadows: SS.shadows } : null;
+    out.reserve = WW.airOps && WW.airOps.reserve ? JSON.parse(JSON.stringify(WW.airOps.reserve)) : null;
+    out.strafe = WW.strafe ? Object.assign({}, WW.strafe.stats) : null;
     out.dmg = R.dmg; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
@@ -549,14 +576,36 @@ function aggregate(rounds) {
     first_fire: firsts('firstFire'), first_contact: firsts('firstContact'), first_sight: firsts('firstSight'),
     sub_killed_by: (() => { const k = {}; for (const r of rounds) for (const n in r.dd.kinds) k[n] = (k[n] || 0) + r.dd.kinds[n]; return Object.entries(k).map(e => e.join(':')).join(',') || null; })(),
     stuck_who: C(r => r.stuckWho.map(w => 's' + r.seed + ':' + w)).join(' ') || null,
-    stuck: S(r => r.stuck), nan: S(r => r.nan)
+    stuck: S(r => r.stuck), nan: S(r => r.nan),
+    ...searchAgg(rounds)
   };
 }
+// search, form-up, reserve, strafing and PT spacing metrics (new air / light-force doctrine)
+function searchAgg(rounds) {
+  const R = rounds.filter(r => r.search), S = f => R.reduce((s, r) => s + f(r), 0), out = {};
+  const sorties = S(r => r.search.sorties), lost = k => S(r => r.search.lost[k] || 0);
+  out.srch_sect = R.length ? +(S(r => r.search.sect.USN + r.search.sect.IJN) / (2 * R.length)).toFixed(1) : null;
+  out.srch_lost = sorties ? `${lost('out')}/${lost('station')}/${lost('home')} of ${sorties}` : null;
+  const F = rounds.flatMap(r => r.forms || []), fm = (n, f) => med(F.filter(q => q.n === n && q.f === f).map(q => q.t));
+  out.form_first = F.length ? `U${fmtv(fm('USN', true))} J${fmtv(fm('IJN', true))}` : null;
+  out.form_later = F.length ? `U${fmtv(fm('USN', false))} J${fmtv(fm('IJN', false))}` : null;
+  const lm = [fm('USN', false), fm('IJN', false)].filter(v => v !== null); out.form_later_max = lm.length ? Math.max(...lm) : null;
+  out.sync_usn = med(rounds.flatMap(r => (r.syncN && r.syncN.USN) || [])); out.sync_ijn = med(rounds.flatMap(r => (r.syncN && r.syncN.IJN) || []));
+  const rs = rounds.filter(r => r.reserve), tg = {};
+  rs.forEach(r => { for (const k in r.reserve.targets) tg[k] = (tg[k] || 0) + r.reserve.targets[k]; });
+  out.reserve = rs.length ? `held ${rs.reduce((s, r) => s + r.reserve.held, 0)} cvLaunch ${rs.reduce((s, r) => s + r.reserve.launches, 0)} rearmed ${rs.reduce((s, r) => s + r.reserve.rearmed, 0)} ${Object.entries(tg).map(e => e.join(':')).join(',')}` : null;
+  out.strafe_hits = rounds.some(r => r.strafe) ? rounds.reduce((s, r) => s + (r.strafe ? r.strafe.hits : 0), 0) : null;
+  const nn = rounds.flatMap(r => r.ptNN || []).sort((a, b) => a - b); out.pt_nn_p10 = nn.length ? nn[Math.floor(nn.length * 0.1)] : null;
+  out.first_dmg = med(rounds.map(r => r.firstDmg).filter(v => v !== null && v !== undefined));
+  return out;
+}
+const fmtv = v => (v === null || v === undefined ? '-' : v);
 const LIGHT_CHECKS = ['bal_usn', 'bal_ijn', 'len_med', 'end_kill', 'end_time', 'nan', 'errors']; // light (balance) rounds sample nothing else
 function judge(c, v, scen, nRounds) {
   if (c.only && !c.only.includes(scen)) return null;
   if (SCEN.find(s => s.name === scen && s.light) && !LIGHT_CHECKS.includes(c.id)) return null;
   let level = (c.levelIn && c.levelIn[scen]) || c.level;
+  if (scen === 'fuzz' && !FZ.CHECKS.includes(c.id)) level = 'WARN'; // odd fleets: only the fuzz checks are hard
   if (c.balance && nRounds < BAL_MIN_ROUNDS) level = 'WARN'; // too few rounds for a hard balance verdict
   if (v === null || v === undefined || Number.isNaN(v)) return { level, res: 'SKIP' };
   const ok = c.op === '<=' ? v <= c.thr : c.op === '>=' ? v >= c.thr : c.op === '==' ? v === c.thr : v >= c.thr[0] && v <= c.thr[1];
@@ -597,6 +646,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     const t0 = Date.now(), e0 = errs.length, specs = [];
     for (let i = 0; i < SEEDS; i++) {
       const seed = SEED0 + i, light = !!sc.light;
+      if (sc.fuzz) { specs.push(...FZ.specs(seed)); continue; }
       if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light }, { seed, random: true, swap: true, light }] : [{ seed, random: true, light }]));
       else specs.push({ seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall, base: sc.base || null });
     }
@@ -634,6 +684,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     }
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
     else console.log('  info: ' + [...BASE_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
+    if (sc.fuzz) { const fz = FZ.report(rounds, l => console.log(l)); hardFails += fz.fails; totals.FAIL += fz.fails; totals.WARN += fz.warns; }
   }
   console.log('\n=== SUMMARY ===');
   console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);

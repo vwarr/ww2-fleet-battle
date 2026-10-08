@@ -182,7 +182,7 @@ window.WW = window.WW || {};
   // (fireSpread holds fire when an ally is in the fan). A destroyer then turns away (torpedoRun).
   function torpedoes(ship, t, B) {
     const st = ship.stats, a = ship.ai;
-    if (!st.torpedoes || a.torpReload > 0 || t.submerged) return;
+    if (!st.torpedoes || a.torpReload > 0 || t.submerged || t.type === 'submarine') return; // a sub is depth-charged or shot, not torpedoed
     const d = WW.dist(ship.x, ship.z, t.x, t.z), k = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8;
     if (d < st.torpedoes.range * k && d > 12 && seen(ship, t) && H.fireSpread(ship, t) && ship.type === 'destroyer') a.runOut = WW.time.now + RUN_OUT;
   }
