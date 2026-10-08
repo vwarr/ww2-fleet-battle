@@ -154,9 +154,10 @@ window.WW = window.WW || {};
     for (const c of contacts(ship, 30)) {
       const u = c.unit;
       if (u.submerged || u.type === 'pt' || !u.stats.guns.length) continue;
-      const d = WW.dist(ship.x, ship.z, c.x, c.z), r = u.stats.guns[0].range;
-      if (d - r < bd) { bd = d - r; b = c; }
-      if (d < nd && d < r + 40) { nd = d; near = c; } // the closest gun ship we are inside (or near) the reach of
+      const dr = Math.min(age(c), 20), x = c.x + Math.cos(c.heading) * c.speed * dr, z = c.z + Math.sin(c.heading) * c.speed * dr; // where it may be now
+      const d = WW.dist(ship.x, ship.z, x, z), r = u.stats.guns[0].range, q = { x, z, unit: u };
+      if (d - r < bd) { bd = d - r; b = q; }
+      if (d < nd && d < r + 40) { nd = d; near = q; } // the closest gun ship we are inside (or near) the reach of
     }
     return b ? { c: b, margin: bd, near } : null;
   }
@@ -172,9 +173,11 @@ window.WW = window.WW || {};
     for (const k in ct) ct[k] = t;
   }
 
+  const L0state = a => (a.lt ? a.lt.state : 'lurk');
   function ptAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now();
     const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, pair: { p: null, lead: true } });
+    a.ownComb = L0state(a) !== 'lurk'; // combing a torpedo track would break a dash; at the lurk spot, comb
     a.ownWithdraw = true; // a crippled PT lurks at home and makes no runs (below) rather than the core's withdrawal
     mgTarget(ship);
     const jink = Math.sin(T * 1.7 + ship.id) * 0.45;
@@ -219,9 +222,11 @@ window.WW = window.WW || {};
       h += WW.clamp(WW.angleDiff(h, home), -0.35, 0.35) + jink * 0.6;
       // a hard reversal bleeds speed: take the nearest heading still well clear of the threat's bearing first
       if (Math.abs(WW.angleDiff(ship.heading, h)) > 1.2) h = aw + WW.clamp(WW.angleDiff(aw, ship.heading), -0.85, 0.85);
+      const deep = pen(ship, ship.x) > -0.02; // past the midline: home first, whatever the threat bearing
+      if (deep) h = home + WW.clamp(WW.angleDiff(home, aw), -0.6, 0.6) + jink * 0.5;
       ship.desiredHeading = h; ship.throttle = 1;
       const el = T - L.t0, clear = (!nb || nb.margin > 35) && danger(n, ship.x, ship.z) < 1;
-      if ((el > PT.OUT_MIN && clear) || el > PT.OUT_MAX) { L.state = 'lurk'; L.from = null; L.spotT = 0; }
+      if (!deep && ((el > PT.OUT_MIN && clear) || el > PT.OUT_MAX)) { L.state = 'lurk'; L.from = null; L.spotT = 0; }
       return;
     }
     // ---- lurk ----
@@ -251,7 +256,7 @@ window.WW = window.WW || {};
   }
 
   // ---------------- submarines ----------------
-  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 26, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3 };
+  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 26, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3, DD_FIRE: 38, AIM_T: 6 }; // DD_FIRE: a destroyer is a narrow, fast target: only close shots hit
   // The best ambush: { c, ax, az, score } — a point beside the target's predicted track (from its last-known
   // heading and speed) that the sub can reach before the target passes. Never a destroyer (that is cornered fire).
   function ambush(ship) {
@@ -297,7 +302,7 @@ window.WW = window.WW || {};
 
   function subAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now(), st = ship.stats;
-    const L = a.ls || (a.ls = { decT: 0, amb: null, dds: [], dd: null, ddD: 1e9, air: false, near: false });
+    const L = a.ls || (a.ls = { decT: 0, amb: null, dds: [], dd: null, ddTgt: null, ddD: 1e9, air: false, near: false });
     L.decT -= dt;
     if (L.decT <= 0) {
       L.decT = 0.5;
@@ -326,17 +331,21 @@ window.WW = window.WW || {};
     else ship.wantSurface = !hard && (!soft || a.diveT > SUB.REFRESH);
     a.evadeT -= dt;
     const away = (o) => Math.atan2(ship.z - o.z, ship.x - o.x);
-    // ---- cornered: a destroyer bearing down, or one sitting on the boat while its air runs out, gets a shot ----
-    if (L.dd && L.ddD < SUB.CORNER && L.ddD > 10 && a.torpReload <= 0 && seen(ship, L.dd.unit)) {
-      const u = L.dd.unit, p = lead(ship, u, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
-      const bowOn = Math.abs(WW.angleDiff(u.heading, away(u))) < 0.6;
-      if ((bowOn && L.ddD < SUB.CORNER) || (L.ddD < 70 && (a.diveT > 15 || a.forcedT > 0))) {
-        ship.desiredHeading = lb; ship.throttle = 0.6;
-        if (Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && fanClear(ship, lb, L.ddD + 10)) { if (H.fireSpread(ship, u) !== false) a.evadeT = SUB.EVADE; }
-        return;
-      }
+    // ---- cornered: a destroyer hunting the boat (inside sonar range) or bearing down on it is the one exception
+    // to "never a destroyer". The boat stays deep and slow with its bow on that one destroyer, so a spread is ready
+    // the moment the tubes are, and keeps on the same one (it takes three hits).
+    if (L.ddTgt && (!L.ddTgt.alive || L.ddTgt.sinking || WW.dist(ship.x, ship.z, L.ddTgt.x, L.ddTgt.z) > SUB.CORNER + 30)) L.ddTgt = null;
+    if (!L.ddTgt && L.dd) {
+      const u = L.dd.unit, bowOn = Math.abs(WW.angleDiff(u.heading, away(L.dd))) < 0.6;
+      if (L.ddD < SUB.SILENT || (bowOn && L.ddD < SUB.CORNER)) L.ddTgt = u;
     }
-    // Hunted (a destroyer inside sonar range): deep, slow and quiet, turning away from its track.
+    if (L.ddTgt && (ship.submerged || a.forcedT > 0) && a.torpReload < SUB.AIM_T) { // tubes (nearly) ready: bow on
+      const u = L.ddTgt, du = WW.dist(ship.x, ship.z, u.x, u.z), p = lead(ship, u, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
+      ship.desiredHeading = lb; ship.throttle = a.torpReload > 2 ? SUB.SILENT_THR : 0.5;
+      if (a.torpReload <= 0 && du > 10 && du < SUB.DD_FIRE && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, u) && fanClear(ship, lb, du + 10)) H.fireSpread(ship, u);
+      return;
+    }
+    // Hunted while the tubes reload: deep, slow and quiet, turning away from the destroyer's track.
     if (ship.submerged && !(a.forcedT > 0) && L.dd && L.ddD < SUB.SILENT) {
       ship.desiredHeading = ddSteer(ship, away(L.dd), L); ship.throttle = SUB.SILENT_THR;
       return;
