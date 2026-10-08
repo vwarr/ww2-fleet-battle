@@ -42,7 +42,10 @@ js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
-js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship type
+js/ships_ai.js          WW.shipAI core: setup, retarget, guns / turrets, dispatch to the role files, shared helpers (WW.shipAI.h)
+js/ai_surface.js        WW.shipAI.roles.surface: battleship / cruiser / destroyer behaviour, destroyer sub hunt
+js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (CAP queue, strikes, launches), pickStrikeTarget
+js/ai_light.js          WW.shipAI.roles.submarine / .pt: submarine and PT boat behaviour
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
 js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spotting
