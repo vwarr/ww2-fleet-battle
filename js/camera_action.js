@@ -183,6 +183,7 @@ window.WW = window.WW || {};
   }
 
   WW.camAction = {
+    slowmo, // night_fx.js: a star shell revealing a target
     init() {
       WW.on('weaponDropped', onDrop);
       WW.on('weaponImpact', onImpact);

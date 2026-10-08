@@ -9,7 +9,11 @@ window.WW = window.WW || {};
   //   rangeFrac    BB/CA preferred gun range as a fraction of main battery range
   //   torpedo      0..1  torpedo emphasis: launch distance (x torpedo range) and the flotilla's size
   //   carrier      0..1  carrier emphasis: strike tempo
-  //   night        0..1  close-quarters style: how much closer the side fights when it presses
+  //   night        0..1  night-fighting style: how much closer the side fights when it presses, and after dark
+  //                       (night_ops.js: closer range, longer torpedo reach, readier to press)
+  //   nightEye     0..1  visual range in full dark, x the day range (lookouts, night optics; night_ops.js visK)
+  //   radar        0..1  surface search radar on BB / CA / DD (> 0.5: fitted; night_ops.js radarR)
+  //   searchlight  0..1  share of the side's BB / CA / DD that use searchlights at night (night_ops.js)
   //   cvStandoff   carrier station distance behind the main body
   //   screenAhead  ASW screen distance ahead of the main body
   //   flotilla     destroyers in the torpedo flotilla (the rest screen / escort)
@@ -32,7 +36,6 @@ window.WW = window.WW || {};
   //                shadows closer and longer)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
-  //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
   //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
   //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
   //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
@@ -54,14 +57,14 @@ window.WW = window.WW || {};
   // Torpedo performance per nation (range, speed, dud rate, wake sighting) is a stat table: core.js WW.TORPEDO_NATION.
   //   (jointStrike, followUp, reserveFrac and patrolBombs are not rolled: they are doctrine, not tuning)
   var BASE = {
-    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
+    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, nightEye: 0.3, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
       patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
-    IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
+    IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, nightEye: 0.5, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
       jointStrike: true, followUp: 'deckload', reserveFrac: 0.4,
       ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
@@ -79,7 +82,7 @@ window.WW = window.WW || {};
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
     d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.ringDD = b.ringDD; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard; d.torpReloads = b.torpReloads;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
-    d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1);
+    d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1); d.searchlight = WW.clamp(d.searchlight, 0, 1); d.nightEye = WW.clamp(d.nightEye, 0.1, 1);
     return d;
   }
 

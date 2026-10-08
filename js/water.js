@@ -21,7 +21,10 @@ window.WW = window.WW || {};
     uniform sampler2D depthTex;
     uniform vec4 extent;          // x0, z0, width, height
     uniform float time;
-    uniform vec3 cShallow, cMid, cDeep, cAbyss, cFoam, cSky, sunDir, sunCol, hzAway, hzSun;
+    uniform vec3 cShallow, cMid, cDeep, cAbyss, cFoam, cSky, sunDir, sunCol, hzAway, hzSun, tint;
+    uniform vec3 glit;
+    uniform float moonPath;            // glitter: sheen weight, sparkle sharpness, sparkle weight
+    uniform vec4 rainC[4];        // rain squalls (weather.js via sky_time.js): x, z, radius, density
     varying vec3 vWorld;
     #include <fog_pars_fragment>
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -70,6 +73,16 @@ window.WW = window.WW || {};
       vec2 fc = fract(vWorld.xz * 0.6) - 0.5;
       glint *= 1.0 - smoothstep(0.05, 0.22, length(fc));
       col = mix(col, vec3(1.0), glint * 0.45 * smoothstep(1.5, 6.0, d));
+      // rain: a darker sea and small rings under a squall
+      float rn = 0.0;
+      for (int i = 0; i < 4; i++) { vec4 rc = rainC[i]; if (rc.z > 0.0) rn = max(rn, (1.0 - smoothstep(0.35, 1.0, length(vWorld.xz - rc.xy) / rc.z)) * rc.w); }
+      if (rn > 0.0) {
+        col = mix(col, col * vec3(0.7, 0.75, 0.84), rn * 0.65);
+        vec2 rq = vWorld.xz * 2.0; float rh = hash(floor(rq)), ph = fract(time * 0.9 + rh * 7.0);
+        float rr = abs(length(fract(rq) - 0.5) - ph * 0.42);
+        col += vec3(0.85, 0.9, 1.0) * (1.0 - smoothstep(0.0, 0.05, rr)) * (1.0 - ph) * step(0.5, rh) * rn * 0.2;
+      }
+      col *= tint;                     // time of day (sky_time.js): dusk, the blue hour, moonlit night
       // fresnel: grazing angles take on the sky colour (soft horizon)
       vec3 v = normalize(cameraPosition - vWorld);
       // warm sun-glitter path toward the low sun: a soft sheen plus fine sparkles on a rippled normal
@@ -77,7 +90,7 @@ window.WW = window.WW || {};
       vec3 nrm = normalize(vec3(rip.x * 0.35, 1.0, rip.y * 0.35));
       float rs = max(dot(reflect(-v, nrm), sunDir), 0.0);
       float sheen = pow(max(dot(reflect(-v, vec3(0.0, 1.0, 0.0)), sunDir), 0.0), 18.0);
-      col += sunCol * (sheen * 0.1 + pow(rs, 420.0) * 0.35) * smoothstep(1.0, 4.0, d);
+      col += sunCol * (sheen * glit.x + pow(rs, glit.y) * glit.z) * smoothstep(1.0, 4.0, d);   // glit: day (0.1, 420, 0.35); the moon path is wider
       float fr = pow(1.0 - clamp(v.y, 0.0, 1.0), 4.0);
       // the horizon colour depends on where we look: peach toward the sun, soft blue away from it
       vec2 az = normalize(-v.xz + 1e-5);
@@ -92,6 +105,15 @@ window.WW = window.WW || {};
         float fogF = smoothstep(fogNear, fogFar, vFogDepth);
         gl_FragColor.rgb = mix(gl_FragColor.rgb, hz, fogF);
       #endif
+      // the moon's path (night, moonPath > 0): a column of glittering ripples under the moon, out to the horizon
+      if (moonPath > 0.0) {
+        vec2 vd = normalize(vWorld.xz - cameraPosition.xz), md = normalize(sunDir.xz);
+        float col0 = exp(-(1.0 - dot(vd, md)) * 130.0) * smoothstep(-0.2, 0.6, dot(vd, md));
+        float rip2 = vnoise(vWorld.xz * vec2(1.9, 1.9) + vec2(time * 0.5, -time * 0.35)) * vnoise(vWorld.xz * 0.7 - time * 0.2);
+        float sp = smoothstep(0.18, 0.42, rip2);
+        float graze = 1.0 - smoothstep(0.12, 0.42, normalize(cameraPosition - vWorld).y);   // a path to the horizon, not a pool at our feet
+        gl_FragColor.rgb += sunCol * col0 * graze * (0.1 + 0.55 * sp) * moonPath * smoothstep(1.0, 4.0, d);
+      }
     }`;
 
   function build() {
@@ -102,7 +124,8 @@ window.WW = window.WW || {};
         cDeep: { value: WW.pastel(0x2a94c4, 0.05) }, cAbyss: { value: WW.pastel(0x236ca8, 0.05) },
         cFoam: { value: new THREE.Color(0xfffaf2) }, cSky: { value: WW.pastel(0xc4d6ea, 0.1) },
         sunDir: { value: (WW.sky && WW.sky.SUN_DIR) || new THREE.Vector3(-0.86, 0.36, 0.36).normalize() }, sunCol: { value: WW.pastel(0xffd2a0) },
-        hzAway: { value: WW.pastel(0xb4d2f2, 0.1) }, hzSun: { value: WW.pastel(0xffc89a, 0.1) }
+        hzAway: { value: WW.pastel(0xb4d2f2, 0.1) }, hzSun: { value: WW.pastel(0xffc89a, 0.1) },
+        tint: { value: new THREE.Color(1, 1, 1) }, glit: { value: new THREE.Vector3(0.1, 420, 0.35) }, moonPath: { value: 0 }, rainC: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 0, 0)) }
       }]),
       vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true,
       extensions: { derivatives: true }
@@ -172,5 +195,5 @@ window.WW = window.WW || {};
     for (let i = n; i < blobs.length; i++) blobs[i].visible = false;
   }
   function update(dt) { t += dt; if (mat) mat.uniforms.time.value = t; updateBlobs(); }
-  WW.water = { setDepth, update };
+  WW.water = { setDepth, update, uniforms: () => mat && mat.uniforms };
 })(window.WW);

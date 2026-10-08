@@ -65,5 +65,13 @@ window.WW = window.WW || {};
     mComp.uniforms.tex.value = rtScene.texture; mComp.uniforms.bloom.value = rtA.texture;
     pass(mComp, null);
   }
-  WW.post = { init, resize, render, toggle() { enabled = !enabled; return enabled; } };
+  // Night (sky_time.js, k = 1 - daylight): a lower bloom threshold and a stronger bloom, so gun flashes, fires,
+  // star shells and searchlights glow against the dark; a touch more saturation keeps the moonlit blue clean.
+  function setNight(k) {
+    if (!mBright) return;
+    mBright.uniforms.threshold.value = BLOOM.threshold - 0.45 * k;
+    mComp.uniforms.strength.value = BLOOM.strength + 0.3 * k;
+    mComp.uniforms.saturation.value = GRADE.saturation + 0.08 * k;
+  }
+  WW.post = { init, resize, render, setNight, toggle() { enabled = !enabled; return enabled; } };
 })(window.WW);

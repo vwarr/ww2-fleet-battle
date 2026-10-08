@@ -236,6 +236,7 @@ window.WW = window.WW || {};
   function step(dt) {
     WW.time.dt = dt; WW.time.now += dt;
     call('terrain', 'update', dt);
+    call('dayNight', 'update', dt); call('weather', 'update', dt); call('nightOps', 'update', dt); // daylight.js, weather.js, night_ops.js
     call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
     call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
