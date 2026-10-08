@@ -20,6 +20,8 @@ window.WW = window.WW || {};
 
   const armed = u => u && (u.kind === 'dive' || u.kind === 'torpedo') && u.ordnance && u.alive;
   const closing = (u, x, z, k) => Math.abs(WW.angleDiff(u.heading, Math.atan2(z - u.z, x - u.x))) < (k || 0.7);
+  // an armed bomber heading at the fleet: closing on the carrier, or attacking (wheel, anvil, run) one of our ships
+  const inbound = (u, c) => closing(u, c.x, c.z, 1.2) || (u.target && u.target.nation === c.nation && u.target.alive && WW.dist(u.x, u.z, u.target.x, u.target.z) < 130);
   const up = p => p.alive && (p.state === 'transit' || p.state === 'attack') && !p.deckPh;
 
   // ---------- the raid picture around a carrier (what its side has detected) ----------
@@ -159,7 +161,7 @@ window.WW = window.WW || {};
       const u = ct.unit;
       if (!u || !u.alive) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      if (dc > (arm && closing(u, c.x, c.z, 1.2) ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
+      if (dc > (arm && inbound(u, c) ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
       else if (arm && u.kind === 'dive' && (u.phase || u.state === 'attack')) pr = 320;
@@ -177,7 +179,7 @@ window.WW = window.WW || {};
     const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z);
     if (d <= LEASH) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
-    return d <= LEASH2 && armed(f) && closing(f, c.x, c.z, 1.2);
+    return d <= LEASH2 && armed(f) && inbound(f, c);
   }
   function fighter(pl, dt) {
     const c = pl.carrier;

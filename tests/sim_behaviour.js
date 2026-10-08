@@ -106,7 +106,7 @@ const CHECKS = [
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
-const INFO = ['jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = ['cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -212,6 +212,7 @@ function install(P) {
   });
   WW.on('planeKill', e => {
     if (!R || !e || !e.shooter || e.shooter.kind !== 'fighter') return;
+    if (!e.shooter.target && e.victim && (e.victim.kind === 'dive' || e.victim.kind === 'torpedo')) R.air.capBK++; // CAP gun kill on a bomber
     const cv = e.shooter.carrier; if (!live(cv)) return;
     const armed = p => p && p.nation !== e.shooter.nation && (p.kind === 'dive' || p.kind === 'torpedo') && p.ordnance && WW.dist(p.x, p.z, cv.x, cv.z) < P.RAID_R;
     if (!(armed(e.victim) || WW.world.planes.some(p => p.alive && armed(p)))) return;
@@ -398,7 +399,7 @@ function install(P) {
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
       intel: { checked: 0, unseen: 0, err: 0 }, cr: { n: 0, away: 0 }, lc: { n: 0, away: 0 }, torp: { passes: 0, par: 0 }, sync: {},
-      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0 } };
+      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0, capBK: 0 } };
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
     const step = spec.light ? 5 : P.SAMPLE;
@@ -449,6 +450,7 @@ function aggregate(rounds) {
     dd_sub_kills: ratio(S(r => r.dd.subDC), S(r => r.dd.subDeaths)), dd_react_med: med(react),
     dd_react_rate: ratio(react.length, react.length + S(r => r.dd.missed)), dd_episodes: react.length + S(r => r.dd.missed),
     sub_bowbeam: ratio(S(r => r.sub.bow + r.sub.beam), shots), sub_shots: shots, sub_dived_dd: ratio(S(r => r.sub.nearDived), near),
+    cap_bkills: rounds.length ? S(r => r.air.capBK || 0) / rounds.length : null,
     cap_on_bmb: ratio(S(r => r.air.capB || 0), S(r => r.air.capF || 0)),
     cap_gap: ratio(S(r => r.air.capGap || 0), S(r => r.air.capN || 0)), esc_with: ratio(S(r => r.air.escWith || 0), S(r => r.air.escN || 0)),
     elem_coh: med(C(r => r.air.coh || [])), air_sync: med(C(r => r.air.sync || [])), sync_n: C(r => r.air.sync || []).length,

@@ -11,6 +11,7 @@ window.WW = window.WW || {};
   const RANGE = 28;        // no firing beyond this (open fire inside ~2x convergence)
   const WING = 1.25;       // wing-gun offset from the centre line (scaled model)
   const DMG = 0.75;        // damage per hitting round (times the type's pt.gun)
+  const BOMBER_K = 2.2;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const N = 240;           // tracer pool size (oldest round is reused)
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
@@ -185,7 +186,7 @@ window.WW = window.WW || {};
   }
   function hitPlane(p, f) {
     if (!f.alive) return;
-    const dmg = DMG * (p.pt.gun || 1), lethal = f.hp - dmg <= 0;
+    const dmg = DMG * (p.pt.gun || 1) * (f.kind === 'fighter' ? 1 : BOMBER_K), lethal = f.hp - dmg <= 0;
     if (lethal && !f.killedBy) f.killedBy = p;
     f.damage(dmg);
     if (Math.random() < 0.35) WW.fx.sparks(f.x, f.y, f.z);
@@ -245,6 +246,7 @@ window.WW = window.WW || {};
   // ---------- offence ----------
   function setMode(s, m) { s.mode = m; s.mt = 0; }
   function offence(p, f, s, dt) {
+    if (f.kind !== 'fighter' && WW.intercept && WW.intercept.attack(p, f, s, dt)) return; // gun passes on bombers (air_intercept.js)
     const pt = p.pt, dist = d3(p, f), dy = f.y - p.y, adv = -dy;
     if (s.foe !== f) { // new engagement: dive on it from above if we have the height
       s.foe = f; setMode(s, adv > 8 && dist > 22 && (slasher(p) || WW.rand() < 0.4) ? 'boom' : 'pursue');
@@ -343,7 +345,7 @@ window.WW = window.WW || {};
     },
     update: updateTracers,
     clearAll: clearTracers,
-    threat, _tracers: T, stats: DS
+    threat, _k: { guns, energy, rate, climb, BV, RANGE }, _tracers: T, stats: DS
   };
   WW.on('roundStart', clearTracers);
   WW.on('setupStart', clearTracers);

@@ -9,7 +9,7 @@ const SEED = +(process.argv[2] || 1), SECS = +(process.argv[3] || 240), FLEET = 
   p.on('pageerror', e => console.log('PAGE', e.message)); p.on('console', m => { if (m.type() === 'error') console.log('ERR', m.text()); });
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
   await p.waitForTimeout(1500);
-  const out = await p.evaluate(([seed, secs, fleet, STEP]) => { window.__detailArg = STEP < 10;
+  const out = await p.evaluate(([seed, secs, fleet, STEP]) => { window.__detailArg = STEP < 10 && STEP >= 1;
     window.requestAnimationFrame = () => 0; WW.time.warp = 1;
     const G = WW.game; if (WW.aces) WW.aces.reset();
     WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
@@ -19,7 +19,7 @@ const SEED = +(process.argv[2] || 1), SECS = +(process.argv[3] || 240), FLEET = 
       G.composition = [...f('USN', 60), ...f('IJN', W - 60)];
     }
     G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null;
-    const lines = [], K = {};
+    const lines = [], K = {}, AG = {};
     WW.on('planeKill', e => { const s = e.shooter, v = e.victim; if (!s || !v) return; const k = (s.target ? 'esc' : 'cap') + '>' + v.kind + (v.ordnance ? '*' : '') + (s.carrier ? ' d' + Math.round(WW.dist(v.x, v.z, s.carrier.x, s.carrier.z) / 25) * 25 : ''); K[k] = (K[k] || 0) + 1; });
     window.__detail = !!window.__detailArg;
     for (let t = 0; t < secs && G.state === 'battle'; t += STEP) {
@@ -32,10 +32,16 @@ const SEED = +(process.argv[2] || 1), SECS = +(process.argv[3] || 240), FLEET = 
         row.push(`${cv.nation} hg ${cv.hangar.fighter}/${cv.hangar.dive}/${cv.hangar.torpedo} cap tr${st('transit')} at${st('attack')} to${st('takeoff')} rt${st('return')} ld${st('landing')} esc ${P.filter(q => q.kind === 'fighter' && q.target).length} bmb ${P.filter(q => q.kind !== 'fighter').length} q[${cv.ai.queue.map(q => q.kind[0] + (q.target ? '*' : '')).join('')}] deck ${cv._deck && cv._deck.mode} fuel ${cap.map(q => q.fuel | 0).join(',')} dk ${cap.map(q => q.deckPh || '-').join(',')}`);
       }
       lines.push(`t=${G.roundTime.toFixed(0)} ` + row.join(' | '));
-      if (window.__detail) for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.state === 'attack' && q.foe) { const f = q.foe; lines.push(`   ${q.nation} ${q.target ? 'esc' : 'cap'} w${q.wing} foe ${f.kind}${f.ordnance ? '*' : ''} ${f.phase || f.sk || f.state} d3 ${Math.hypot(f.x - q.x, f.y - q.y, f.z - q.z).toFixed(0)} dy ${(f.y - q.y).toFixed(0)} mode ${q.df && q.df.mode}/${q.df && q.df.def} spd ${q.speed.toFixed(0)} cv ${WW.dist(q.x, q.z, q.carrier.x, q.carrier.z).toFixed(0)}`); }
+      for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && !q.target && (q.state === 'transit' || q.state === 'attack') && !q.deckPh) {
+        const f = q.foe, k = !f ? 'nofoe' : f.kind === 'fighter' ? 'ftr' : (q.df && q.df.ip || '?') + (q.df && q.df.ipD < 28 ? '<28' : '') + (q.df && Math.abs(q.df.ipAng) < 0.14 && q.df.ipD < 28 ? 'A' : '');
+        AG[k] = (AG[k] || 0) + STEP;
+        if (!f) { const near = WW.world.planes.some(b => b.alive && b.nation !== q.nation && (b.kind === 'dive' || b.kind === 'torpedo') && b.ordnance && WW.dist(b.x, b.z, q.carrier.x, q.carrier.z) < 160); if (near) AG.idleRaid = (AG.idleRaid || 0) + STEP; }
+      }
+      if (window.__detail) for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.state === 'attack' && q.foe) { const f = q.foe; lines.push(`   ${q.nation} ${q.target ? 'esc' : 'cap'} w${q.wing} foe ${f.kind}${f.ordnance ? '*' : ''} ${f.phase || f.sk || f.state} d3 ${Math.hypot(f.x - q.x, f.y - q.y, f.z - q.z).toFixed(0)} dy ${(f.y - q.y).toFixed(0)} mode ${q.df && q.df.mode}/${q.df && q.df.def} ip ${q.df && q.df.ip}:${q.df && (q.df.ipT || 0).toFixed(1)} y ${q.y.toFixed(0)}/${f.y.toFixed(0)} ft ${(f.turn || 0).toFixed(2)} ang ${q.df && (q.df.ipAng || 0).toFixed(2)} el ${q.df && (q.df.ipEl || 0).toFixed(2)} spd ${q.speed.toFixed(0)} cv ${WW.dist(q.x, q.z, q.carrier.x, q.carrier.z).toFixed(0)}`); }
     }
     lines.push('airOps ' + JSON.stringify(WW.airOps && WW.airOps.stats));
-    lines.push('kills ' + JSON.stringify(K) + ' df ' + JSON.stringify(WW.dogfight.stats) + ' lost ' + WW.stats.planesLost);
+    lines.push('capTime ' + JSON.stringify(AG, (k, v) => typeof v === 'number' ? +v.toFixed(1) : v));
+    lines.push('kills ' + JSON.stringify(K) + ' df ' + JSON.stringify(WW.dogfight.stats) + ' ic ' + JSON.stringify(WW.intercept && WW.intercept.stats) + ' lost ' + WW.stats.planesLost);
     return lines;
   }, [SEED, SECS, FLEET, +(process.env.STEP || 10)]);
   console.log(out.join('\n'));
