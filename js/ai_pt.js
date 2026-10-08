@@ -199,7 +199,7 @@ window.WW = window.WW || {};
       const deep = pen(ship, ship.x) > 0.02; // past the midline: home first, whatever the threat bearing
       if (deep) h = home + WW.clamp(WW.angleDiff(home, aw), -0.6, 0.6) + jink * 0.5;
       ship.desiredHeading = h; ship.throttle = 1;
-      const el = T - L.t0, clear = (!nb || nb.margin > 35) && danger(n, ship.x, ship.z) < 1;
+      const el = T - L.t0, clear = (!nb || nb.margin > 60) && danger(n, ship.x, ship.z) < 1;
       if (!deep && ((el > PT.OUT_MIN && clear) || el > PT.OUT_MAX)) { L.state = 'lurk'; L.from = null; L.spotT = 0; }
       return;
     }
