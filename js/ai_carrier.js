@@ -36,7 +36,7 @@ window.WW = window.WW || {};
     let x = 0, z = 0, n = 0;
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const o = c.unit;
-      if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || WW.time.now - c.seenAt > FLEE_AGE) continue;
+      if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || o.isBase || WW.time.now - c.seenAt > FLEE_AGE) continue; // an island base: its batteries are in the danger field
       const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
       const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / (Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD) * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
       if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;

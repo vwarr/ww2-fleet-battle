@@ -142,7 +142,7 @@ const CHECKS = [
 ];
 const DOCTRINE_INFO = ['deck_hits', 'deck_safe', 'deck_planes', 'deck_chain', 'fires', 'fires_out_usn', 'fires_out_ijn', 'fire_kills', 'usn_repaired', 'magazines',
   'charges', 'charge_dds', 'charge_lost', 'charge_torp', 'charge_turned', 'charge_cv_sunk'];
-const BASE_INFO = ['base_neut', 'base_t_neut', 'base_raids', 'rw_closures', 'batteries_out', 'land_strikes', 'land_sorties', 'land_hits', 'bombard_runs', 'bombard_shells'];
+const BASE_INFO = ['base_neut', 'base_t_neut', 'base_cap_leash', 'base_raids', 'rw_closures', 'batteries_out', 'land_strikes', 'land_sorties', 'land_hits', 'bombard_runs', 'bombard_shells'];
 const FB_INFO = ['fb_rescues', 'fb_survivors', 'cat_lost', 'pat_sight_usn', 'pat_sight_ijn', 'pat_lost_usn', 'pat_lost_ijn', 'misid', 'bad_strikes', 'bad_redirects'];
 const INFO = [...BASE_INFO, ...DOCTRINE_INFO, ...FB_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'srch_sect', 'srch_lost', 'form_first', 'form_later', 'sync_usn', 'sync_ijn', 'reserve', 'strafe_hits', 'pt_nn_p10', 'first_dmg', 'tod', 'det_day', 'det_dusk', 'det_night', 'det_radar', 'det_flash', 'night_torps_n', 'searchlights', 'radar_sights', 'night_land', 'night_land_loss', 'recalls', 'wx_det_rain', 'wx_det_clear', 'dive_holds', 'dive_aborts', 'cv_shelter', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
@@ -178,6 +178,7 @@ const BAL_MIN_ROUNDS = 100;
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const QUICK = argv.includes('--quick'), PAGES_DEFAULT = 6;
 const SEEDS = +arg('--seeds', QUICK ? 2 : 8), SEED0 = +arg('--seed0', 1);
+const BASE_OPT = arg('--base', null); // island base owner for every round: USN | IJN | none (default: the scenario's, else the round's roll)
 const ONLY = arg('--only', null), PAGES = Math.max(1, +arg('--pages', PAGES_DEFAULT));
 const scens = SCEN.filter(s => (ONLY ? ONLY.split(',').includes(s.name) : !s.optIn));
 
@@ -427,7 +428,8 @@ function install(P) {
     }
     // ---- fighters on CAP ----
     for (const p of WW.world.planes) {
-      if (!p.alive || p.kind !== 'fighter' || p.target || p.search || !live(p.carrier) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
+      if (!p.alive || p.kind !== 'fighter' || p.target || p.search || !p.carrier || (!p.carrier.isBase && !live(p.carrier)) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
+      if (p.carrier.isBase) { R.ftr.bt = (R.ftr.bt || 0) + dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.bin = (R.ftr.bin || 0) + dt; continue; } // island base CAP: info only
       R.ftr.t += dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.inLeash += dt;
     }
     // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
@@ -608,7 +610,7 @@ function aggregate(rounds) {
     cap_gap: ratio(S(r => r.air.capGap || 0), S(r => r.air.capN || 0)), esc_with: ratio(S(r => r.air.escWith || 0), S(r => r.air.escN || 0)),
     elem_coh: med(C(r => r.air.coh || [])), air_sync: med(C(r => r.air.sync || [])), sync_n: C(r => r.air.sync || []).length,
     bomb_lost: ratio(S(r => r.air.lostArmed || 0), S(r => r.air.bombers || 0)), jettisons: rounds.length ? S(r => r.air.jett || 0) / rounds.length : null,
-    ftr_leash: ratio(S(r => r.ftr.inLeash), S(r => r.ftr.t)), ftr_bombers: ratio(S(r => r.ftr.bomberKillsUA), S(r => r.ftr.killsUA)),
+    ftr_leash: ratio(S(r => r.ftr.inLeash), S(r => r.ftr.t)), base_cap_leash: ratio(S(r => r.ftr.bin || 0), S(r => r.ftr.bt || 0)), ftr_bombers: ratio(S(r => r.ftr.bomberKillsUA), S(r => r.ftr.killsUA)),
     big_range: ratio(S(r => r.big.fs), S(r => r.big.fn)), big_band: ratio(S(r => r.big.band), S(r => r.big.fn)),
     focus: focus.length ? focus.reduce((a, b) => a + b, 0) / focus.length : null, broadside: ratio(S(r => r.big.broad), S(r => r.big.shots)),
     unseen_shots: intelOn && !S(r => r.intel.err) ? S(r => r.intel.unseen) : null, intel_err: S(r => r.intel.err), intel_on: intelOn,
@@ -708,8 +710,8 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     for (let i = 0; i < SEEDS; i++) {
       const seed = SEED0 + i, light = !!sc.light;
       if (sc.fuzz) { specs.push(...FZ.specs(seed)); continue; }
-      if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light }, { seed, random: true, swap: true, light }] : [{ seed, random: true, light, tod: sc.tod, wx: sc.wx }]));
-      else specs.push({ seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall, base: sc.base || null });
+      if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light, base: BASE_OPT }, { seed, random: true, swap: true, light, base: BASE_OPT }] : [{ seed, random: true, light, tod: sc.tod, wx: sc.wx, base: BASE_OPT }]));
+      else specs.push({ seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall, base: BASE_OPT || sc.base || null });
     }
     const rounds = new Array(specs.length);
     let next = 0;

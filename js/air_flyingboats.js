@@ -259,7 +259,7 @@ window.WW = window.WW || {};
   }
 
   function launch(nation, mission, z) {
-    if (!WW.models.buildFlyingBoat) return null;
+    if (!WW.models.buildFlyingBoat || (WW.dayNight && !WW.dayNight.canFly())) return null; // no launches after dusk (daylight.js)
     var p = new FlyingBoat(nation, mission, WW.clamp(z, 30, WW.cfg.MAP_H - 30), getModel(nation));
     WW.world.planes.push(p); WW.stats.planesLaunched++;
     if (mission === 'rescue') stats.dispatched++; else stats.patrols[nation]++;
