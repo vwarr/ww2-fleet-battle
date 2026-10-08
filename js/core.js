@@ -1,7 +1,9 @@
 // core.js (owner A): config, helpers, event bus, data tables. Matches CONTRACT.md.
 window.WW = window.WW || {};
 (function (WW) {
-  WW.cfg = { MAP_W: 480, MAP_H: 300, CELL: 2, ROUND_TIMEOUT: 330 /* sim seconds */ };
+  // 960 x 600: room for an approach phase between fleets (ships keep their size; the sea between them grows).
+  // ROUND_TIMEOUT 420 sim s = 14 min real at 1x (BASE_SPEED 0.5): it only caps stalemates.
+  WW.cfg = { MAP_W: 960, MAP_H: 600, CELL: 2, ROUND_TIMEOUT: 420 /* sim seconds */ };
 
   // Seedable RNG (mulberry32). WW.seedRandom(n) resets it; default seeded from Math.random.
   let _s = (Math.random() * 4294967296) >>> 0;
@@ -52,7 +54,7 @@ window.WW = window.WW || {};
   WW.enemyOf = n => (n === 'USN' ? 'IJN' : 'USN');
 
   WW.SHIP_TYPES = {
-    carrier:    { name: 'Carrier',    hp: 900, speed: 5.0, turn: 0.25, length: 26, minDepth: 6, tons: 30000,
+    carrier:    { name: 'Carrier',    hp: 900, speed: 5.6, turn: 0.25, length: 26, minDepth: 6, tons: 30000,
                   guns: [{ cal: 'small', count: 2, range: 60, reload: 3 }], aa: { range: 45, dps: 6 },
                   planes: { fighter: 6, dive: 4, torpedo: 4 }, torpedoes: null, depthCharges: false },
     battleship: { name: 'Battleship', hp: 1200, speed: 4.2, turn: 0.22, length: 24, minDepth: 7, tons: 45000,
@@ -80,8 +82,9 @@ window.WW = window.WW || {};
   WW.TORPEDO = { dmg: 220, speed: 14 };
   WW.BOMB = { dmg: 180 };
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
-  WW.PLANE_TYPES = { fighter: { hp: 20, speed: 38, range: 500 }, dive: { hp: 28, speed: 30, range: 500 },
-                     torpedo: { hp: 30, speed: 26, range: 500 } };
+  // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter
+  WW.PLANE_TYPES = { fighter: { hp: 20, speed: 38, range: 1000 }, dive: { hp: 28, speed: 30, range: 1000 },
+                     torpedo: { hp: 30, speed: 26, range: 1000 } };
   // Flight model for air combat: turn (rad/s), climb (units/s), dive (top speed in a dive). Added to each type,
   // so WW.PLANE_TYPES[kind] keeps working; WW.PLANE_NATION overrides per nation (Zero: nimble, fragile, light guns; Corsair: tough, dives, six .50s); gun = damage per hitting round.
   const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52 }, dive: { turn: 1.1, climb: 5, dive: 44 }, torpedo: { turn: 1.0, climb: 4.5, dive: 38 } };

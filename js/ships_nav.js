@@ -15,12 +15,18 @@ window.WW = window.WW || {};
     for (const a of [-L / 4, 0, L / 4]) out.push(a, -B / 2, a, B / 2);
     return out; // flat [lx, lz, lx, lz, ...]
   }
-  // Shallowest water under the hull of ship s placed at (x, z) heading h. Off-map counts as 0 (land).
+  // Depth for a hull sample or planner probe: the map edge is open sea, not a wall, so a sample past it reads
+  // the water at the edge. Only the centre is bounded (EDGE); a hull may overhang while it turns away.
+  function depthIn(x, z) {
+    return WW.terrain.depthAt(WW.clamp(x, 0, WW.cfg.MAP_W), WW.clamp(z, 0, WW.cfg.MAP_H));
+  }
+  function edgeDist(x, z) { return Math.min(x, z, WW.cfg.MAP_W - x, WW.cfg.MAP_H - z); }
+  // Shallowest water under the hull of ship s placed at (x, z) heading h.
   function hullMin(s, x, z, h) {
     const P = s.hullPts, c = Math.cos(h), sn = Math.sin(h);
     let m = 1e9;
     for (let i = 0; i < P.length; i += 2) {
-      const d = WW.terrain.depthAt(x + P[i] * c - P[i + 1] * sn, z + P[i] * sn + P[i + 1] * c);
+      const d = depthIn(x + P[i] * c - P[i + 1] * sn, z + P[i] * sn + P[i + 1] * c);
       if (d < m) m = d;
     }
     return m;
@@ -177,14 +183,18 @@ window.WW = window.WW || {};
   // Look-ahead steering (WW.Ship methods). Candidate offsets (radians) around the wanted heading.
   const OFFS = [0, 0.25, -0.25, 0.5, -0.5, 0.8, -0.8, 1.15, -1.15, 1.6, -1.6, 2.2, -2.2, Math.PI];
   const P = WW.Ship.prototype;
-  // How far along heading h the hull stays clear: centre on deep water, bow and both beams on bow-depth water.
+  // How far along heading h the hull stays clear: centre on deep water, bow and both beams on bow-depth water,
+  // centre at least EM off the map edge. Inside either margin already, a probe that is no worse than here
+  // (no shallower, no nearer the edge) still counts as clear, so a ship in a marginal spot sees its way out.
   P.clearance = function (h) {
     const md = this.stats.minDepth + 0.6, look = this.lookDist, step = Math.max(2.5, look / 12); // plan with a margin
     const c = Math.cos(h), s = Math.sin(h), hl = this.stats.length * 0.5, hb = this.beam * 0.5 + 0.5, bt = this.bowDepth;
-    const D = WW.terrain.depthAt;
+    const D = depthIn, em = Math.min(this.beam + 4, edgeDist(this.x, this.z)), d0 = WW.terrain.depthAt(this.x, this.z);
     const ok = d => {
       const x = this.x + c * d, z = this.z + s * d;
-      return nav(x, z, md) && D(x + c * hl, z + s * hl) >= bt && D(x - s * hb, z + c * hb) >= bt && D(x + s * hb, z - c * hb) >= bt;
+      if (edgeDist(x, z) < em) return false;
+      if (!nav(x, z, md) && !(d0 < md && nav(x, z, this.stats.minDepth) && WW.terrain.depthAt(x, z) >= d0)) return false;
+      return D(x + c * hl, z + s * hl) >= bt && D(x - s * hb, z + c * hb) >= bt && D(x + s * hb, z - c * hb) >= bt;
     };
     if (!ok(1)) return 1;
     if (!ok(2.5)) return 2.5;
@@ -206,5 +216,5 @@ window.WW = window.WW || {};
     best %= Math.PI * 2; this.navHeading = best < 0 ? best + Math.PI * 2 : best;
   };
 
-  WW.shipNav = { HARD, GROUND, hullPoints, hullMin, hullOK, fixedOverlap, resolve, placeHull, wreckAt, nav };
+  WW.shipNav = { HARD, GROUND, EDGE, edgeDist, hullPoints, hullMin, hullOK, fixedOverlap, resolve, placeHull, wreckAt, nav };
 })();

@@ -60,10 +60,12 @@ window.WW = window.WW || {};
       return;
     }
     let t = w.target;
-    if (!t || !t.alive || t.submerged) t = w.target = WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
+    if (WW.cag) t = WW.cag.waveTick(w);                        // strike leader: redirect, handover (air_cag.js)
+    if (!t || !t.alive || t.submerged) t = w.target = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: 200 }) : WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
     if (!t) { w.done = true; return; }
     const k = WW.intel && WW.intel.known(w.nation, t) || t;   // fly to where the side last saw it (intel.js)
-    const want = Math.atan2(k.z - w.z, k.x - w.x);
+    let want = Math.atan2(k.z - w.z, k.x - w.x);
+    if (WW.cag) want = WW.cag.detour(w, want, t);              // round the AA umbrella of escorts
     w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
     w.x += Math.cos(w.h) * GUIDE_V * dt; w.z += Math.sin(w.h) * GUIDE_V * dt;
     w.dT = WW.dist(w.x, w.z, k.x, k.z);
@@ -90,9 +92,10 @@ window.WW = window.WW || {};
     if (w.done || (w.go && w.dT < brk)) { pl.sk = 'atk'; return false; }
     pl.state = 'transit';
     const i = pl.fi || 0, k = Math.floor(i / 3), j = i % 3, wing = j === 1 ? -1 : j === 2 ? 1 : 0, nd = Math.ceil((w.nDive || 0) / 3) * 14;
-    if (pl.kind === 'fighter') { // escorts weave (S-turns) above and behind the bombers
-      const ph = WW.time.now * 0.8 + i * 1.9;
-      keep(pl, w, -12 - Math.floor(i / 2) * 6 + Math.cos(ph) * 3, (i % 2 ? 1 : -1) * (12 + Math.floor(i / 2) * 5) + Math.sin(ph) * 10, 46 + (i % 2) * 2, dt);
+    if (pl.kind === 'fighter') { // escorts weave (S-turns): close cover just above the bombers, top cover higher and ahead
+      const ph = WW.time.now * 0.8 + (pl.element ? pl.element.id : i) * 1.9, top = pl.cover === 'top', wg = pl.wing || 0;
+      const side = top ? 1 : -1, ws = wg === 2 ? -6 : wg ? 6 : 0;
+      keep(pl, w, (top ? 6 : -10) - (wg ? 5 : 0) + Math.cos(ph) * 3, side * (top ? 18 : 12) + ws + Math.sin(ph) * 8, (top ? 54 : 44) + wg, dt);
     } else if (pl.kind === 'dive') {
       if (w.go && w.dT < 90) keep(pl, w, -i * 5, i * 6.5, 36 + i * 0.8, dt);                       // echelon right
       else keep(pl, w, -k * 14 - Math.abs(wing) * 5, wing * 6.5, 34 + k * 1.5, dt);              // vic
@@ -180,7 +183,7 @@ window.WW = window.WW || {};
     const g = grp(t);
     // Peel off in turn from the wheel: one plane every ~1.5-2.5 s.
     const rel = Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x)));
-    if (now >= g.nextDive && dh > 13 && dh < 28 && rel < 1.9 && pl.y > 30 && pl.ordnance) {
+    if (now >= g.nextDive && dh > 13 && dh < 28 && rel < 1.9 && pl.y > 30 && pl.ordnance && (!WW.cag || WW.cag.diveOK(pl, t, g))) {
       g.nextDive = now + WW.randRange(1.5, 2.5);
       pl.phase = 'roll'; pl.phaseT = 0; pl.diveTgt = t; pl.push = false; pl.gam = Math.atan2(pl.vy, Math.max(1, pl.speed)); pl.V = Math.max(DIVE_V0, Math.hypot(pl.vy, pl.speed));
       pl.floor = Math.max(topNear(t, 40), 4, ground(t.x, t.z), groundAhead(pl, 6)) + CLEAR; pl.relAlt = pl.floor + 8;
@@ -234,7 +237,7 @@ window.WW = window.WW || {};
     else pl.fly(sx, sz, overLand(pl, 5, Math.abs(da) < 0.5 ? 5 : 16), dt, pl.pt.speed);
     // Both groups turn in together: all ready, someone has waited too long, or a run just started.
     let go = now - g.goT < 7;
-    if (!go && pl.ready) {
+    if (!go && pl.ready && !(WW.cag && WW.cag.vtWait(pl, t, g))) {
       go = true;
       for (const p of WW.world.planes) {
         if (!p.alive || p.kind !== 'torpedo' || p.target !== t || p.sk !== 'anvil' || p.phase) continue;

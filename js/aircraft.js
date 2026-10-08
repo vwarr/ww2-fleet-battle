@@ -70,10 +70,8 @@ window.WW = window.WW || {};
       if (!this.crippled && this.hp < this.maxHp * 0.35 && (this.state === 'transit' || this.state === 'attack') && !this.phase) {
         this.crippled = true;
         if (WW.airDeaths && WW.airDeaths.onCrippled(this)) return;
-        if (WW.rand() < 0.6) {
-          if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8); }
-          this.state = 'return'; this.foe = null;
-        }
+        if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8); }
+        this.state = 'return'; this.foe = null;
       }
     }
     // Damage trail from the engine: thin grey < 70% hp, thick black + flames < 40%, burning when falling.
@@ -139,7 +137,7 @@ window.WW = window.WW || {};
     validTarget() {
       const t = this.target;
       if (t && t.alive && !t.submerged && (!WW.intel || WW.intel.known(this.nation, t))) return t; // still a known contact (intel.js)
-      this.target = WW.shipAI ? WW.shipAI.pickStrikeTarget(this) : null;
+      this.target = WW.cag ? WW.cag.retarget(this) : WW.airOps ? WW.airOps.pickTarget(this) : WW.shipAI ? WW.shipAI.pickStrikeTarget(this) : null;
       return this.target;
     }
 
@@ -173,6 +171,7 @@ window.WW = window.WW || {};
           else if (this.kind === 'dive') this.diveBomber(dt);
           else this.torpBomber(dt);
           if (WW.dogfight && this.kind !== 'fighter') WW.dogfight.jink(this, dt); // bombers under attack weave
+          if (WW.airOps && this.kind !== 'fighter' && this.alive) WW.airOps.bomber(this, dt); // jettison and go home
           break;
         case 'return': this.goHome(dt); break;
         case 'landing': this.landing(dt); break;
@@ -224,12 +223,13 @@ window.WW = window.WW || {};
     }
 
     fighter(dt) {
+      if (WW.airOps) return WW.airOps.fighter(this, dt); // CAP / escort / fighter director (air_ops.js); below: the fallback
       const c = this.carrier;
       this.scanT -= dt; this.burstT -= dt;
       if (this.foe && !this.foe.alive) this.foe = null;
       if (this.scanT <= 0) {
         this.scanT = 0.4;
-        const cx = this.target ? this.x : c.x, cz = this.target ? this.z : c.z, R = this.target ? 90 : 140;
+        const cx = this.target ? this.x : c.x, cz = this.target ? this.z : c.z, R = this.target ? 90 : 180;
         let best = null, bd = R;
         const foes = WW.intel ? WW.intel.enemyPlanes(this.nation) : [];   // detected enemy planes (intel.js)
         for (const c of foes) {

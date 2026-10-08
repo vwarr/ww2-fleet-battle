@@ -7,6 +7,7 @@ window.WW = window.WW || {};
   const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
   const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
   const HEEL = { carrier: 0.045, battleship: 0.04, cruiser: 0.08, destroyer: 0.12, pt: 0.14, submarine: 0.07 }; // rad at full speed + full turn
+  const EDGE_BAND = 30; // soft edge-avoidance band (units from the map boundary)
   const BAND = 0.35, HELM = 0.4; // turn rate is proportional below BAND rad of heading error; HELM s to full rudder
 
   const wreckShips = [];             // settled wrecks (not in WW.world.ships)
@@ -25,6 +26,7 @@ window.WW = window.WW || {};
   }
   const nav = (x, z, d) => WW.shipNav.nav(x, z, d), wreckAt = (x, z) => WW.shipNav.wreckAt(x, z); // ships_nav.js
   function wrap(a) { a %= TAU; return a < 0 ? a + TAU : a; }
+  const vr = (a, b) => a + (b - a) * Math.random(); // visual-only randomness (sinking booms, fires, wreck smoke): keeps WW.rand for the sim
 
   class Ship {
     constructor(type, nation, x, z, heading) {
@@ -94,6 +96,11 @@ window.WW = window.WW || {};
           dx += (ex / d) * w; dz += (ez / d) * w;
         }
       }
+      // Soft edge avoidance: an inward push that grows fast inside EDGE_BAND, so ships turn off the map
+      // boundary long before the hull gets pinned against it.
+      const eb = Math.max(EDGE_BAND, this.lookDist * 0.6), MW = WW.cfg.MAP_W, MH = WW.cfg.MAP_H;
+      const ep = e => (e < eb ? 2.5 * ((eb - e) / eb) * ((eb - e) / eb) : 0);
+      dx += ep(this.x) - ep(MW - this.x); dz += ep(this.z) - ep(MH - this.z);
       const want = Math.atan2(dz, dx);
       this.navT -= dt;
       if (this.navT <= 0) { this.navT = 0.2 + WW.rand() * 0.1; this.planNav(want); }
@@ -108,10 +115,25 @@ window.WW = window.WW || {};
           const a = (k / 16) * TAU, d = this.clearance(a) + 0.5 * WW.terrain.depthAt(this.x + Math.cos(a) * 7, this.z + Math.sin(a) * 7);
           if (d > bd) { bd = d; this.escapeH = a; } // most open water for the whole hull (never off the map edge)
         }
-        this.escapeT = 3;
+        this.escapeT = 3; this.escHold = 0; this.escAstern = false;
       }
-      if (this.escapeT > 0) { this.escapeT -= dt; this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0;
-        pivot = pivot && Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.6; } // swing to face it first, then go
+      // A jammed swing (an end against the shallows or a wreck, turn rate 0 for 1 s): come about the other
+      // way instead, as an escape toward the clearest heading on the free side. An escape that jams again
+      // backs off astern first (bow run up on a shoal).
+      const dj = WW.angleDiff(this.heading, this.escapeT > 0 ? this.escapeH : this.navHeading);
+      this.escStall = Math.abs(dj) > 0.4 && Math.abs(this.turnRate) < 1e-3 && !(this.asternT > 0) ? (this.escStall || 0) + dt : 0;
+      if (this.escStall > 1 && this.escapeT > 0 && !this.escAstern) { this.asternT = 2.5; this.escAstern = true; this.escStall = 0; }
+      if (this.escStall > 1) {
+        this.escAstern = false;
+        let bc = -1;
+        for (const o of [1.2, 2, 2.8]) { const h = this.heading - Math.sign(dj) * o, c = this.clearance(h); if (c > bc) { bc = c; this.escapeH = wrap(h); } }
+        this.escStall = 0; this.escapeT = 3; this.escHold = 0;
+      }
+      if (this.escapeT > 0) { // swing to face it first (up to 15 s for a big hull), then go for escapeT s
+        const off = Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.3;
+        if (off && this.escHold < 15) this.escHold += dt; else this.escapeT -= dt;
+        this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0; pivot = pivot && off;
+      }
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
       const diff = WW.angleDiff(this.heading, this.navHeading);
       // Helm: rate ∝ heading error (full rate past BAND), and the rudder takes HELM s to swing hard over.
@@ -129,7 +151,7 @@ window.WW = window.WW || {};
 
       // Step, with hard guarantees: the centre never ends on a non-navigable cell and no hull sample
       // (bow, stern, beams) ends on water shallower than shipNav.HARD — full turn, half turn, astern, straight.
-      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, m = 3, N = WW.shipNav, cur = N.hullMin(this, this.x, this.z, h0);
+      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, N = WW.shipNav, m = N.EDGE, cur = N.hullMin(this, this.x, this.z, h0);
       const fo = N.fixedOverlap(this, this.x, this.z, h0) + 1e-6; // never drive deeper into a wreck / sinking hull
       const pose = (h, v) => {
         const nx = WW.clamp(this.x + Math.cos(h) * v, m, W - m), nz = WW.clamp(this.z + Math.sin(h) * v, m, H - m);
@@ -138,6 +160,11 @@ window.WW = window.WW || {};
       };
       this.turnRate = 0;
       const v = this.speed * dt, back = -0.35 * st.speed * dt;
+      if (this.asternT > 0) { // backing off a shoal / wreck, rudder toward the plan
+        this.asternT -= dt; this.speed = 0;
+        if (pose(h0 - turn * 0.5, back) || pose(h0, back)) return;
+        this.asternT = 0;
+      }
       for (const f of [1, 0.5]) if (pose(h0 + turn * f, v)) { this.turnRate = dt > 0 ? turn * f / dt : 0; this.blockedT = 0; return; }
       // Slow and the swing is blocked (an end would touch the shallows / map edge): turn in place, else go astern.
       if (Math.abs(turn) > 1e-4 && this.speed < st.speed * 0.3) {
@@ -315,8 +342,8 @@ window.WW = window.WW || {};
       });
       this.boomT -= dt;
       if (this.boomT <= 0 && this.sinkT < 5) {
-        this.boomT = WW.randRange(1.4, 2.8);
-        const p = this.toWorld(WW.randRange(-L * 0.4, L * 0.4), 0);
+        this.boomT = vr(1.4, 2.8);
+        const p = this.toWorld(vr(-L * 0.4, L * 0.4), 0);
         WW.fx.explosion(p[0], 1, p[1], WW.clamp(L / 12, 0.6, 1.8));
         WW.emit('shipBoom', { ship: this, x: p[0], y: 1, z: p[1], size: WW.clamp(L / 16, 0.5, 1.4) }); // sound hook
       }
@@ -324,9 +351,9 @@ window.WW = window.WW || {};
         this.fireT -= dt;
         if (this.fireT <= 0) {
           this.fireT = 0.12;
-          const p = this.toWorld(WW.randRange(-L * 0.3, L * 0.3), 0);
+          const p = this.toWorld(vr(-L * 0.3, L * 0.3), 0);
           WW.fx.fire(p[0], 0.8, p[1]);
-          if (WW.rand() < 0.4) WW.fx.smoke(p[0], 2, p[1], true, 1.5);
+          if (Math.random() < 0.4) WW.fx.smoke(p[0], 2, p[1], true, 1.5);
         }
       }
       if (!this.slickDone && this.sinkT > 3) { this.slickDone = true; WW.fx.oilSlick(this.x, this.z, L * 0.8); }
@@ -348,8 +375,8 @@ window.WW = window.WW || {};
       if (this.wreckT > 30 || this.wreckInfo.top < 0.3) return;
       this.smokeT -= dt;
       if (this.smokeT <= 0) {
-        this.smokeT = WW.randRange(0.6, 1.2) * (this.dmgSites.length ? 2.5 : 1); // lighter when hit sites smoke too
-        WW.fx.smoke(this.x + WW.randRange(-1, 1), Math.max(0.5, Math.min(this.wreckInfo.top, 4)), this.z + WW.randRange(-1, 1), true, 0.5);
+        this.smokeT = vr(0.6, 1.2) * (this.dmgSites.length ? 2.5 : 1); // lighter when hit sites smoke too
+        WW.fx.smoke(this.x + vr(-1, 1), Math.max(0.5, Math.min(this.wreckInfo.top, 4)), this.z + vr(-1, 1), true, 0.5);
       }
     }
 
@@ -418,6 +445,7 @@ window.WW = window.WW || {};
       for (const s of WW.world.ships) s.remove();
       for (const s of wreckShips) s.remove();
       WW.world.ships.length = 0; wreckShips.length = 0;
+      nextId = 1; // ids feed sim maths (ships_ai jink phase): same ids every round for a seeded replay
       if (WW.world.wrecks) WW.world.wrecks.length = 0; else WW.world.wrecks = [];
       if (WW.damage) WW.damage.clearAll();
     }

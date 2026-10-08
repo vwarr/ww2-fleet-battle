@@ -228,5 +228,5 @@ window.WW = window.WW || {};
     if (msgTimer > 0) { msgTimer -= rdt; el.msg.style.display = msgTimer > 0 ? 'block' : 'none'; }
   }
 
-  WW.ui = { init, update, say };
+  WW.ui = { init, update, say, caption, captionOn: () => capEnd > 0 }; // caption / captionOn: air_captions.js
 })(window.WW);

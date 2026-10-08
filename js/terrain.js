@@ -52,31 +52,32 @@ window.WW = window.WW || {};
     centres.push(best);
     return best;
   }
+  // Features sit in the open sea between the two start zones (x 135 .. W - 135); counts scale with that area.
   function makeFeatures() {
     features = []; centres.length = 0;
-    const nIsl = 1 + Math.floor(rnd() * 2);
+    const nIsl = 3 + Math.floor(rnd() * 4);
     for (let i = 0; i < nIsl; i++) {
-      const [cx, cz] = spot(150, 330, 50, 250, 90), r = rr(10, 17);
+      const [cx, cz] = spot(150, W - 150, 50, H - 50, 90), r = rr(10, 17);
       addFeature('island', cx, cz, r * rr(0.7, 1.3), r * rr(0.6, 1.1), rr(0, Math.PI), rr(3, 8));
       if (rnd() < 0.5) { // spit trailing off the island
         const a = rr(0, Math.PI * 2), len = r * rr(1.1, 1.8);
         addFeature('spit', cx + Math.cos(a) * len * 0.7, cz + Math.sin(a) * len * 0.7, len * 0.6, rr(1.8, 3), a, rr(0.5, 1.2));
       }
     }
-    const nSmall = 1 + Math.floor(rnd() * 3);
+    const nSmall = 4 + Math.floor(rnd() * 5);
     for (let i = 0; i < nSmall; i++) {
-      const [x, z] = spot(140, 340, 25, 275, 60);
+      const [x, z] = spot(140, W - 140, 25, H - 25, 60);
       addFeature('islet', x, z, rr(4, 7), rr(4, 7), rr(0, 3), rr(1.5, 3.5));
     }
-    const nBar = 1 + Math.floor(rnd() * 2);
+    const nBar = 2 + Math.floor(rnd() * 3);
     for (let i = 0; i < nBar; i++) {
-      const edge = rnd() < 0.35; // a bar may sit near the top/bottom edges anywhere
-      const [cx, cz] = edge ? spot(40, 440, rnd() < 0.5 ? 10 : 265, rnd() < 0.5 ? 35 : 290, 50) : spot(140, 340, 30, 270, 50);
+      const edge = rnd() < 0.35, top = rnd() < 0.5; // a bar may sit near the top/bottom edges anywhere
+      const [cx, cz] = edge ? spot(40, W - 40, top ? 10 : H - 35, top ? 35 : H - 10, 50) : spot(140, W - 140, 30, H - 30, 50);
       addFeature('bar', cx, cz, rr(8, 18), rr(1.5, 2.5), rr(0, Math.PI), rr(-0.4, 0.4));
     }
-    const nReef = 1 + Math.floor(rnd() * 3);
+    const nReef = 3 + Math.floor(rnd() * 4);
     for (let i = 0; i < nReef; i++) {
-      const [x, z] = spot(130, 350, 20, 280, 50);
+      const [x, z] = spot(130, W - 130, 20, H - 20, 50);
       addFeature('reef', x, z, rr(5, 10), rr(3, 7), rr(0, 3), rr(-2.6, -1.4));
     }
   }
@@ -106,9 +107,9 @@ window.WW = window.WW || {};
   // raw terrain height (negative = under water) anywhere, including outside the map
   function heightRaw(x, z) {
     let h = -BASE_DEPTH + (fbm(x * 0.012, z * 0.012) - 0.5) * 8;
-    // fleet start zones (x<120, x>360) stay open, except along the top/bottom edges
-    const open = Math.min(smooth(95, 135, x), 1 - smooth(345, 385, x));
-    const keep = Math.max(open, smooth(45, 25, z), smooth(255, 275, z));
+    // fleet start zones (x<120, x>W-120) stay open, except along the top/bottom edges
+    const open = Math.min(smooth(95, 135, x), 1 - smooth(W - 135, W - 95, x));
+    const keep = Math.max(open, smooth(45, 25, z), smooth(H - 45, H - 25, z));
     if (keep > 0.01) for (let i = 0; i < features.length; i++) {
       let fh = featureHeight(features[i], x, z);
       if (keep < 1) fh = WW.lerp(-BASE_DEPTH - 4, fh, keep);
@@ -119,9 +120,10 @@ window.WW = window.WW || {};
     return h;
   }
 
-  function landFraction() {
+  function landFraction(step) {
+    step = step || 5;
     let land = 0, tot = 0;
-    for (let z = 2; z < H; z += 5) for (let x = 2; x < W; x += 5) { tot++; if (heightRaw(x, z) > 0) land++; }
+    for (let z = 2; z < H; z += step) for (let x = 2; x < W; x += step) { tot++; if (heightRaw(x, z) > 0) land++; }
     return land / tot;
   }
 
@@ -177,12 +179,16 @@ window.WW = window.WW || {};
   function buildFloorGeo(x0, z0, x1, z1, step) {
     const nx = Math.ceil((x1 - x0) / step), nz = Math.ceil((z1 - z0) / step);
     const pos = new Float32Array((nx + 1) * (nz + 1) * 3), col = new Float32Array(pos.length);
+    // heights once per vertex (the big map's floor has ~300k vertices); the AO pass reads its neighbours from here
+    const NX = nx + 1, hs = new Float32Array(NX * (nz + 1));
+    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) hs[j * NX + i] = -rawDepth(x0 + i * step, z0 + j * step);
+    const hAt = (i, j) => hs[WW.clamp(j, 0, nz) * NX + WW.clamp(i, 0, nx)];
     let p = 0;
     for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
-      const x = x0 + i * step, z = z0 + j * step, h = -rawDepth(x, z);
+      const x = x0 + i * step, z = z0 + j * step, h = hs[j * NX + i];
       const c = h > 0 ? ramp(LAND, h) : ramp(FLOOR, -h);
       // baked ambient occlusion: darken creases/hollows and the band where land meets water
-      const nb = (-rawDepth(x + step, z) - rawDepth(x - step, z) - rawDepth(x, z + step) - rawDepth(x, z - step)) * 0.25;
+      const nb = (hAt(i + 1, j) + hAt(i - 1, j) + hAt(i, j + 1) + hAt(i, j - 1)) * 0.25;
       const crease = WW.clamp((nb - h) * 0.35, 0, 0.22);
       const wet = h > -1.5 && h < 0.35 ? 0.1 * (1 - Math.abs(h + 0.55) / 0.95) : 0;
       c.multiplyScalar(1 - crease - Math.max(0, wet));
@@ -207,7 +213,7 @@ window.WW = window.WW || {};
   function buildProps() {
     propsGroup = new THREE.Group();
     let palms = 0, huts = 0;
-    for (let tries = 0; tries < 4000 && palms < 46; tries++) {
+    for (let tries = 0; tries < 12000 && palms < 120; tries++) {
       const x = rr(0, W), z = rr(0, H), h = -depthAt(x, z);
       if (h < 0.6 || h > 4.5) continue;
       const g = new THREE.Group();
@@ -224,7 +230,7 @@ window.WW = window.WW || {};
       g.position.set(x, h - 0.1, z); g.rotation.y = rr(0, 6.28);
       propsGroup.add(g); palms++;
     }
-    for (let tries = 0; tries < 2000 && huts < 6; tries++) {
+    for (let tries = 0; tries < 6000 && huts < 14; tries++) {
       const x = rr(0, W), z = rr(0, H), h = -depthAt(x, z);
       if (h < 1.2 || h > 3.5) continue;
       const g = new THREE.Group();
@@ -255,7 +261,7 @@ window.WW = window.WW || {};
     let lo = 0.3, hi = 3.2;
     for (let it = 0; it < 9; it++) {
       radScale = (lo + hi) / 2;
-      if (landFraction() > target) hi = radScale; else lo = radScale;
+      if (landFraction(10) > target) hi = radScale; else lo = radScale; // coarse samples: fast enough on the big map
     }
     radScale = (lo + hi) / 2;
     buildGrid();

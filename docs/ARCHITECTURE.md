@@ -10,6 +10,8 @@ This document tells you how the code is organized. Read it before you change a m
 - Keep each file at approximately 400 lines or fewer. If a file becomes larger, split it into two files and add the new file to `index.html`.
 - Do not make a new geometry or a new material for each projectile, particle or plane. Make them one time and share them. Use object pools for projectiles and particles. In `clearAll()`, put the objects back in the pool.
 - Effects use `Math.random`. The simulation uses the seeded `WW.rand`. This keeps a round the same for the same seed.
+  - Visual and sound code (effects, camera, audio, smoke/fire timers, how a dead plane falls or how long a ditched wreck floats) must not call `WW.rand`, and sim code must not depend on it: for example AA timers run only while a live plane exists, not while a wreck lingers. Per-round state that feeds the sim is reset in `clearAll()`/`roundStart` (ship ids, `WW.wind`, which steers carriers). The next auto round's seed comes from `WW.rand`.
+  - A replay: stop the render loop (`requestAnimationFrame = () => 0`, `WW.time.warp = 1`), then `WW.aces.reset()` (aces carry over between rounds by design), `WW.terrain.generate(seed)`, `WW.seedRandom(seed)`, `WW.time.now = 0`, `WW.game.startRound({ keepMap: true })`, and drive `__sim.fastForward`. `tests/determinism.js [seed] [seconds]` checks that this gives identical traces in one page, after another seed, and in a fresh page.
 - Code that the combat code calls must not throw errors into the combat code. `WW.damage` catches its own errors.
 
 ## Load order
@@ -34,6 +36,7 @@ js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
 js/models_planes.js     WW.models.buildPlane
 js/models_scout.js      WW.models.buildScout: scout floatplanes
+js/models_crew.js       WW.crew: tiny sailors on every ship (instanced), deck stations, idle / fire / abandon-ship motion
 js/effects.js           WW.fx: pooled particle effects
 js/damage.js            WW.damage: fires and smoke at hit points, WW.wind
 js/combat.js            WW.combat: projectile pool, shells, anti-aircraft fire
@@ -42,18 +45,33 @@ js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
-js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship type
+js/ai_threat.js         WW.threat: per-side danger field (grid), danger(), bestHeading()
+js/ai_threat_view.js    WW.threatView: debug overlay (key G): danger field + contact picture
+js/fleet_groups.js      WW.fleetGroups: doctrine tables, group assignment, formation stations
+js/fleet_cmd.js         WW.fleetCmd: per-side commander and blackboard (posture, groups, focus, strikes, sectors)
+js/ships_ai.js          WW.shipAI core: setup, retarget, guns / turrets, dispatch to the role files, shared helpers (WW.shipAI.h)
+js/ai_surface.js        WW.shipAI.roles.surface: battleship / cruiser / destroyer behaviour, destroyer sub hunt
+js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (CAP queue, strikes, launches), pickStrikeTarget
+js/ai_light.js          WW.shipAI.roles.submarine: submarine behaviour; WW.lightAI.h helpers shared with ai_pt.js
+js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_light.js)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
+js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns, tracer rounds
+js/air_intercept.js     WW.intercept: fighter gun passes on bombers (wheel arc lead, dive line, stern passes)
 js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
 js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spotting
 js/air_props.js         WW.airProps: pooled parachutes, life rafts, sheared-off wings
+js/lifeboats.js         WW.lifeboats: a sinking ship's boats row to a friendly ship or the shore
 js/air_deaths.js        WW.airDeaths: shoot-down / ditch / bail-out / deck slide-off deaths
 js/air_deck.js          WW.airDeck: deck parking, wing folding, takeoff runs, into-the-wind turns, landing pattern
 js/air_fx.js            WW.airFx: prop disc, dive brakes, wing-tip vapour, exhaust flicker, canopy glint
 js/air_strikes.js       WW.strike: strike waves (form-up, vics), sequential dive bombing, anvil torpedo attack
+js/air_squadrons.js     WW.squadrons: carrier names, VF/VB/VT squadrons per carrier slot, sections / divisions / shotai, wingman slots
+js/air_ops.js           WW.airOps: air boss (CAP relief, scrambles, strike hold, deck-aware launches), fighter director, jettison, scout sectors
+js/air_cag.js           WW.cag: strike leader (handover, redirect, AA detour), VT/VB timing, close and top cover escorts
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulder shot, slow motion
+js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
@@ -61,11 +79,11 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 
 ## World coordinates
 
-- 1 unit is approximately 2 m. The map is `WW.cfg.MAP_W` (x, 0 to 480) by `WW.cfg.MAP_H` (z, 0 to 300). Sea level is y = 0. Up is +y.
+- 1 unit is approximately 2 m. The map is `WW.cfg.MAP_W` (x, 0 to 960) by `WW.cfg.MAP_H` (z, 0 to 600). Sea level is y = 0. Up is +y.
 - A heading `h` is in radians. It goes from +x toward +z. The forward vector is `(cos h, 0, sin h)`.
 - Each model (ship and plane) has its bow or nose on local **+x**. To show heading `h`, set `group.rotation.y = -h`.
 - Hull lengths: carrier 26, battleship 24, cruiser 18, destroyer 12, submarine 10, PT boat 5 units.
-- The USN fleet starts on the west side (x 15 to 115). The IJN fleet starts on the east side (x 365 to 465).
+- The USN fleet starts on the west side (x 15 to 115). The IJN fleet starts on the east side (x `MAP_W` − 115 to `MAP_W` − 15, so 845 to 945). The formations keep their size; approximately 670 units of open sea lie between the two screens at the start. Light forces (destroyers, PT boats) meet after approximately 35 s, the battleships and cruisers after approximately 90 s.
 
 ## Time
 
@@ -80,13 +98,13 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 Each animation frame (`main.js`, `frame`):
 
 1. Advance the simulation. For each step (`step`):
-   1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s)
+   1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
    2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
-   5. `WW.fx.update`
+   5. `WW.fx.update`, then `WW.lifeboats.update`
    6. Round logic: victory, time limit and the next round
-2. `WW.water.update`, `WW.cam.update`, `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
+2. `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
 3. Render through `WW.post.render` (HDR, bloom, tone curve). If `WW.post` is not available, render directly.
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
@@ -94,9 +112,9 @@ Each animation frame (`main.js`, `frame`):
 ## Data tables (core.js)
 
 ```js
-WW.cfg = { MAP_W: 480, MAP_H: 300, CELL: 2, ROUND_TIMEOUT: 330 /* simulation seconds */ };
+WW.cfg = { MAP_W: 960, MAP_H: 600, CELL: 2, ROUND_TIMEOUT: 420 /* simulation seconds: 14 min at 1× */ };
 WW.SHIP_TYPES = {   // hp is multiplied by HP_SCALE = 2.0 when core.js loads
-  carrier:    { hp:900,  speed:5.0, turn:0.25, length:26, minDepth:6,   tons:30000, planes:{ fighter:6, dive:4, torpedo:4 }, ... },
+  carrier:    { hp:900,  speed:5.6, turn:0.25, length:26, minDepth:6,   tons:30000, planes:{ fighter:6, dive:4, torpedo:4 }, ... },
   battleship: { hp:1200, speed:4.2, turn:0.22, length:24, minDepth:7,   tons:45000, ... },
   cruiser:    { hp:650,  speed:5.5, turn:0.35, length:18, minDepth:5,   tons:12000, ... },
   destroyer:  { hp:300,  speed:7.5, turn:0.6,  length:12, minDepth:3,   tons:2000, depthCharges:true, ... },
@@ -105,7 +123,7 @@ WW.SHIP_TYPES = {   // hp is multiplied by HP_SCALE = 2.0 when core.js loads
 };
 WW.SHELL = { mg:{dmg:2}, small:{dmg:12}, med:{dmg:35}, big:{dmg:110} };
 WW.TORPEDO = { dmg:220, speed:14 };  WW.BOMB = { dmg:180 };  WW.DEPTH_CHARGE = { dmg:120, radius:6 };
-WW.PLANE_TYPES = { fighter:{hp:20, speed:38}, dive:{hp:28, speed:30}, torpedo:{hp:30, speed:26} };
+WW.PLANE_TYPES = { fighter:{hp:20, speed:38, range:1000}, dive:{hp:28, speed:30, range:1000}, torpedo:{hp:30, speed:26, range:1000} };  // fuel = range / speed × 6 s
 WW.NATIONS = { USN: {...}, IJN: {...} };   // only id and ui colours are used; models.js has its own palette
 WW.world = { ships: [], planes: [], wrecks: [] };
 WW.stats = { planesLaunched, planesLanded, planesLost, shellsFired, torpedoesFired,
@@ -130,7 +148,7 @@ WW.terrain = {
 };
 ```
 
-Each map has 1 to 2 islands, 1 to 3 islets, 1 to 2 sandbars and 1 to 3 reefs. Land is approximately 2 to 6% of the map. The two start zones stay open. The terrain bakes soft ambient occlusion into its vertex colours. `generate` sends the depth grid to `WW.water.setDepth`.
+Each map has 3 to 6 islands, 4 to 8 islets, 2 to 4 sandbars and 3 to 6 reefs, spread over the sea between the start zones (x 135 to `MAP_W` − 135). Land is approximately 2 to 6% of the map. The two start zones (x < 120 and x > `MAP_W` − 120) stay open. `generate` takes approximately 200 ms (headless, 960 × 600). The terrain bakes soft ambient occlusion into its vertex colours. `generate` sends the depth grid to `WW.water.setDepth`.
 
 ### sky.js, water.js, post.js
 
@@ -159,6 +177,21 @@ WW.models.buildPlane(kind, nation) -> {
 ```
 
 Materials are `MeshToonMaterial` with a shared 5-step gradient and baked vertex ambient occlusion. `models_detail.js` adds fine detail (gun tubs, lifeboats, radar, rails, catapults and more) and merges the static parts of a ship into one mesh per material. It makes this one time for each type and nation. Ships cast and receive shadows. Planes cast shadows.
+
+### models_crew.js, lifeboats.js
+
+```js
+WW.crew = { init(), update(rdt), clearAll(), stats() -> { ships, sailors, visible, ms, maxMs, buildMs },
+            addFigure(worldMatrix, nation, role),   // one extra figure this frame (lifeboats)
+            adopt(ship, n), stations(type, nation), SCALE, FAR };
+WW.lifeboats = { init(), update(dt), figures(), clearAll(), stats() };
+```
+
+- Visual only: `Math.random`, no effect on the simulation. Both clear themselves on `roundStart` and `setupStart`.
+- Sailors are about 0.48 units tall (`SCALE` 1.1). That is larger than true scale, like the planes' `PLANE_SCALE`, so they read in close shots. All sailors in the scene are 4 `InstancedMesh`es (shirt and arms, trousers, head, cap). The 4 meshes share one instance-matrix buffer and use per-instance colours: USN dungarees with a white cap, IJN whites with a dark cap, khaki officers, grey-helmeted gunners and coloured carrier deck jerseys.
+- Stations per type are in ship-local coordinates (carrier 13, battleship 10, cruiser 7, destroyer 5, PT boat 3, submarine 3). The surplus valid stations are spares for rescued sailors. Deck heights come from vertical-line hits on a throwaway model of each type and nation, made one time in `init`. A station that would be in the air, inside superstructure or without head room is dropped. Each deck sailor also gets a walkable lane along x.
+- `WW.crew.update` runs each frame on real time. Sailors idle, sway, look around and walk a step along their lane. Two of them run to the worst fire site (`ship.dmgSites`) or to a fresh hit (`shipHit`). The PT boat gunner turns with his mount. When the ship sinks, the sailors go below or run to the rail and jump. A sailor whose feet go under water is hidden. A submarine's crew shows only while it is surfaced. Ships more than `FAR` (115) units from the camera are skipped. Wrecks have no crew.
+- `WW.lifeboats.update` runs on simulation time. 1.2 s into a sinking, whaleboats (carrier 4, battleship 3, cruiser 2) or 1 raft (destroyer, submarine, PT boat) launch from the sides. Every 3 s, each boat picks the nearer goal: a live friendly ship or the shore (a ring search with `WW.terrain.depthAt`, sized from `WW.cfg`). It rows at 1.2 units/s, steers around hulls and keeps off land. A friendly ship picks it up (its sailors join that ship's crew through `WW.crew.adopt`). On land it beaches and its sailors stand on the sand until the round ends. With no goal for 90 s, it fades. The pool has 36 boats.
 
 ### effects.js
 
@@ -218,7 +251,14 @@ class WW.Ship {
 }
 WW.ships = { init(), update(dt), clearAll(), spawn(type, nation, x, z, heading) -> Ship, alive(nation?) -> Ship[] };
 WW.shipNav = { hullPoints, hullOK, resolve, placeHull, wreckAt, nav, ... };
-WW.shipAI = { setup(ship), update(ship, dt) };
+WW.shipAI = {
+  setup(ship), update(ship, dt), retarget(ship), ROLE_W, VALUE,
+  roles: { surface, carrier, submarine, pt },            // fn(ship, dt) per type, registered by the role files
+  h: { bearing, seen, lead, fireSpread, blend, idle,      // shared helpers (ships_ai.js)
+       withdraw, comb, score, riskOf, unreachable },
+  surface: { followStation, prefRange, engage, torpedoes }, // ai_surface.js seams
+  pickStrikeTarget(unit), capWanted(carrier) -> n, strikeTarget(carrier)  // ai_carrier.js; capWanted: CAP fighters wanted (air_ops.js)
+};
 ```
 
 - Navigation: `ships_nav.js` checks points along the keel and on the two sides of each hull. All points must be at a depth of 0.5 or more. If a move is not permitted, the ship tries a smaller turn, a turn in place, astern with a turn, a slow forward move, then straight astern.
@@ -226,8 +266,51 @@ WW.shipAI = { setup(ship), update(ship, dt) };
 - Spacing: each type has a personal space (carrier 70, battleship and cruiser 35, destroyer 20, PT boat and submarine 12). Escorts stay 50 to 80 units from their carrier.
 - After all ships move, `WW.shipNav.resolve` pushes overlapping hulls apart. The lighter ship moves more. Wrecks above the water and sinking ships do not move.
 - Sinking takes approximately 8 s. The ship moves at most 15 units and does not go into another wreck or onto land. The wreck stays on the seabed until the next round. In shallow water, one end of the wreck stays above the water.
-- A submarine must come to the surface for 25 s after 45 s under water. A submerged submarine casts no shadow.
-- Ship AI: each ship selects a target and keeps a range that is correct for its weapons. Destroyers find submarines in a 65-unit radius and attack with depth charges. PT boats move in fast, fire torpedoes and move away. Carriers stay back and launch strikes. Late in a round, they move nearer to the enemy.
+- A submarine must come to the surface for 25 s after 45 s under water (`ai_light.js`). A submerged submarine casts no shadow.
+- Ship AI, per step: `ships_ai.js` retargets every 1 to 1.5 s, runs the role (`roles[type]`, else `roles.surface`), then the shared overrides `withdraw` (unless `ship.ai.ownWithdraw`) and `comb` (unless `ship.ai.ownComb`), then the guns. Roles write only `ship.desiredHeading` and `ship.throttle`, plus their own state on `ship.ai`.
+- **Target score** (`h.score`): `ROLE_W[type][target] × VALUE[target] × pHit × finishBonus × WW.fleetCmd.assignment − exposure`. Only fresh contacts count.
+  - pHit falls with range, rises when the target is broadside on, and is ×0.8 on a plane or scout sighting.
+  - finishBonus is 1 + 0.8 × damage taken, +0.1 when the target is burning.
+  - exposure is the danger at the target's position × (1 − risk).
+  - Stickiness: a ship switches targets only for a score 1.3× the current one, recomputed each time.
+  - A destroyer scores a carrier or battleship only when another own destroyer is within 150 (a flotilla attack, never a solo charge).
+  - A carrier that is out of gun range and at least 0.9× as fast as the shooter scores ×0.3 (`h.unreachable`). A surface ship with such a target keeps its formation station instead of chasing.
+- Per-mount guns:
+  - the main battery takes the main target when it is in range, else the best target in range by its own weights;
+  - secondaries take the closest small threat in range (`SEC_W`);
+  - a PT boat's MG never fires at a battleship or cruiser (`GUN_W.mg`).
+- `fireSpread` returns false and holds fire for 1.5 s when an allied surface ship is inside the fan, out to torpedo range.
+- **Cripples** (`h.withdraw`): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
+- **Torpedo combing** (`h.comb`): a track from `WW.intel.torpedoes` that will pass within half a hull length + 6 inside 70 units. After a reaction delay (PT 0.4 s, DD 0.7 s, sub 1 s, CA 1.2 s, CV 1.8 s, BB 2 s), the ship turns parallel to the track, bow or stern on, whichever is the smaller turn, until the torpedo has passed.
+- Surface ships (`ai_surface.js`):
+  - with no target, they keep their commander station;
+  - otherwise they orbit at `prefRange`: `doctrine.rangeFrac` × main range, and inside torpedo range for DDs;
+    - while the side presses: × (0.55 + 0.15 × (1 − night));
+    - while the side withdraws: × 1.15;
+  - they are tied to the station when more than 110 from it (escorts: 60), and every heading goes through `bestHeading` with the type's risk;
+  - they launch torpedoes inside `(0.6 + 0.3 × doctrine.torpedo)` × torpedo range.
+  The late-round `pref × 0.55` hack is gone.
+- Destroyers hunt a known sub inside `SUB_HUNT` (100) before surface targets. The attack run is in `ai_surface.js` (`dcApproach`, the `DC_*` constants above `surfaceAI`): it steers for the sub's predicted position at detonation, lays a stern stick of 5 charges plus a K-gun pair as it passes over, then comes round to re-attack.
+- **Carriers** (`ai_carrier.js`) never charge.
+  - Station: the commander's, `cvStandoff` behind the battle line. It is kept 0.15 to 0.35 of the width from the carrier's own edge and 150 from the north and south edges; with no battle line it is a fixed home at 0.2 of the width.
+  - Flee: the carrier runs from every known gun ship (contacts up to 90 s old, moved along their course for up to 20 s) inside `max(210, 1.5 × gun range + 50)`, summed with weights (1 − d / r)².
+  - It turns into the wind (`WW.airDeck.steer`) only on station, outside the edge band, with no danger at its position and no gun ship known within 320.
+  - Every heading goes through `bestHeading` with risk 0, with helm hysteresis: a course change of more than 0.3 rad at most every 2 s.
+  - It handles its own cripple withdrawal (`ownWithdraw`).
+  - CAP: `capWanted(carrier)` (one more fighter when detected raiders are within 200 and fewer than 3 are up).
+  - Strikes: `strikeTarget(carrier)` returns `WW.fleetCmd.strikeOrder(carrier).target` unless it is on hold. The strike interval is 35 to 55 s × (1.25 − 0.5 × `doctrine.carrier`).
+- **PT boats** (`ai_pt.js`, state in `ship.ai.lt`, tuning in `WW.lightAI.PT`): hit and run only.
+  - **Lurk**: the commander's PT station (own flank), pulled to an island cover point within 150 of it (deep water beside land that blocks line of sight; `coverPts()`, sampled once per map). The spot stays at least 0.06 half-map inside the own half and outside known gun reach: `WW.threat` danger, plus heavy ships seen this round and since lost (`ghosts`, kept 240 s, moved along their last course). The wing of a pair lurks 14 beside its leader. At the spot a PT patrols in legs: out stern-on to the enemy at 0.9 throttle, back to the spot at 0.5.
+  - **Target of opportunity**, checked every 0.5 s with tubes loaded and hp ≥ 35%: a fresh contact (not a PT) that is isolated (no other enemy gun ship within 75), crippled (< 50% hp), slow (stats speed < 6 or making < 2.5), or a DD / CA within 30 of land. The firing point is 38 off the target's beam, from an 8 s look-ahead on its track; the pair splits bow-ward / aft-ward, and the far beam is used when it is clearer. The run needs the target within `DASH + FIRE`, a dash ≤ 130, the firing point ≤ 0.12 half-map past the midline, and danger along the path minus the target's own share (`ownDps`) ≤ `EX_MAX` 9 (× 1.6 crippled, × 1.4 near land, × 1.2 isolated). `WW.lightAI.stats` counts the refusals.
+  - **Pairs**: the partner (`WW.fleetCmd` PT group, paired by slot, else the nearest own PT) joins a running mate's target from the other beam when its own path check passes.
+  - **Run**: full speed to the firing point, then the bow on the lead point; it fires inside 50 when the core fan check and a local land check along the track pass. It aborts on a lost contact, after 24 s, past 0.16 half-map, after losing 30% hp, when the path danger spikes past 2.2 × `EX_MAX`, or when a fresh DD within 80 turns its bow toward the PT.
+  - **Break off** (`out` after a run, `flee` from a known gun ship within 25 of its reach or any known danger > 0.6 while lurking): full speed straight away from the closest threat, leaning ±0.25 toward home with a ±0.18 jink, through the smaller turn first. Past the midline, home comes first. It returns to the spot once clear.
+  - MG: only at PT boats, surfaced subs, or a DD within 25 (`calTarget` is rewritten every step). The PT handles its own cripples (`ownWithdraw`) and combs torpedo tracks only while lurking (`ownComb` otherwise).
+- **Submarines** (`ai_light.js`, state in `ship.ai.ls`, tuning in `WW.lightAI.SUB`):
+  - **Ambush**: every 0.5 s, the best contact up to 30 s old (CV 4, BB 3, CA 2; never a DD or PT; × 0.45 when a DD is within 80 of it, × 1.4 crippled, × 1.15 slow). The sub goes to a point 55 off the target's predicted track (from its last-known heading and speed) that it can reach before the target gets there. There it waits slowly, bow on the lead point. It fires inside 82 (not under 22) only from the target's bow or beam (angle on the bow < 115°), with the fan and land check.
+  - **After firing** (`evadeT` 14 s): submerged, throttle 0.45, turned away from the target or a DD within 90.
+  - **Depth**: down while a DD is known within 90, a plane within 125, a gun ship within 80, after a shot, or while closing a target within 105 with fresh air. A DD within 130 or a target within 105 keeps it down only until 18 s of dive time; then it surfaces to refresh while still unseen. Otherwise it runs surfaced. A surfacing aborts when any of these appears. The existing limit stands: 45 s under water forces 25 s on the surface.
+  - **Destroyers**: headings go through `ddSteer`, which keeps 100 from every known DD's position and its position 8 s ahead. A DD inside sonar range (65), or one bearing down within 90, is "cornered" fire, the one time a sub targets a DD. With the tubes nearly ready, the sub holds its bow on that DD and fires inside 38. Otherwise it goes slow (0.3) and turns away. With the air running low and a gun ship within 130, it opens the distance before the forced surfacing; when forced up, it runs from the nearest threat. Crippled (< 35% hp) and forced up within 60 of a hunter, the crew scuttles her.
 - The AI sees the enemy only through `WW.intel` (below). A ship's target and its per-calibre gun targets are fresh contacts, and guns and torpedoes fire only while `WW.intel.visible` is true. A destroyer that loses a sub runs to its last-known position and gives it up there. With no fresh target, a ship goes to the nearest last-known contact; with none, it searches toward the enemy's half of the map (the half away from its own fleet), then sweeps north and south.
 
 ### intel.js
@@ -243,19 +326,129 @@ WW.intel = {
   enemyShips(nation, { fresh }) -> Contact[],  // fresh: true (3 s) or a number of s; filtered result is a shared scratch array
   enemyPlanes(nation, { fresh }) -> Contact[], // default fresh: true
   centre(nation) -> { x, z } | null,         // centre of the ship contacts' last-known positions
+  torpedoes(nation) -> Track[],              // enemy torpedo tracks seen within R.TORP = 45 of any own ship (shared array)
   age(contact) -> s, R, T, stats             // R: every detection range, T: timing (one table each, top of intel.js)
 };
-// Contact: { unit, x, z, heading, speed, seenAt, firstSeenAt, quality: 'visual' | 'sonar' | 'scout' | 'air', by }
+// Contact: { unit, x, z, heading, speed, seenAt, firstSeenAt, quality: 'visual' | 'radar' | 'sonar' | 'scout' | 'air', by }
+// Track: { proj, x, z, h, speed, run, seenAt, firstSeenAt } - one object per running torpedo, dropped when it ends
 ```
 
 - Every 0.5 s of sim time (both sides in one tick) each side looks for enemy ships and planes. Detection uses no random numbers.
 - A ship sees an enemy ship at `R.SEEN[target type] × R.EYE[observer type]` (battleship or carrier 240, cruiser 210, destroyer 170, surfaced sub 70, PT boat 75; a destroyer's eye is 0.85, a PT boat's 0.55, a submerged sub's periscope 0.5). A ship that fired its guns in the last 6 s is seen at `R.FLASH[cal]` (big 400). Land more than 0.4 above the sea between two ships blocks the view (up to 10 samples of `WW.terrain.depthAt`, cached per pair per tick).
 - Destroyer sonar finds a submerged sub within 65. Nothing else sees a submerged sub.
 - Airborne planes see ships within 100, scouts within 120, with no line-of-sight test. A scout also sets `ship.spottedUntil` / `spottedBy` within 85 for `combat.js` `SPOT_DISP`.
-- Ships see planes at `R.SEE_PLANE` (carrier 170, battleship and cruiser 130, destroyer 110). Planes see planes within 100.
+- Ships see planes at `R.SEE_PLANE` (carrier 170, battleship and cruiser 130, destroyer 110). `R.SEE_PLANE_NATION` overrides it per nation (USN carrier radar 250, quality `'radar'` beyond the visual range). Planes see planes within 100.
 - A contact keeps its last-seen position. It is dropped after 90 s (ships) or 10 s (planes) out of sight, or when the unit dies.
 - Events: `contact` `{ nation, unit, first, by }` when an enemy ship is sighted for the first time this round (`first: true`) or again after 30 s out of sight; `firstSighting` `{ nation, unit }` once per side per enemy carrier or battleship.
 - What uses it: `ships_ai.js` retarget, guns, torpedoes, idle search, sub hunt, `pickStrikeTarget` (contacts up to 45 s old) and the carrier's CAP scan; `aircraft.js` fighter scan and `validTarget`; `air_strikes.js` (a wave flies to the last-known position); `air_scouts.js` search area; `combat_aa.js` target choice. Hit tests, flak bursts, crash targets and dogfight tail checks stay omniscient. The camera is omniscient.
+
+
+### AI framework: fleet_cmd.js, fleet_groups.js, ai_threat.js, ships_ai.js and the role files
+
+The ship AI has three layers. Each layer reads only what its side knows (`WW.intel`); the physics stays omniscient.
+
+1. **Commander** (`fleet_cmd.js`, tables in `fleet_groups.js`): one per side, ticked from `main.js step()` right after `WW.intel.update`, every `TICK = 2` s of sim time (USN and IJN staggered by 1 s). Each tick rebuilds the side's danger field and writes the side's blackboard.
+2. **Danger field** (`ai_threat.js`): a coarse grid per side of the damage per second that the known enemy can deliver at each point.
+3. **Ships** (`ships_ai.js` core plus the role files): every 1 to 1.5 s, a ship rescores its targets with the shared target score. Every step, the role file for its type sets `ship.desiredHeading` and `ship.throttle`, and the core then applies its overrides (cripple withdrawal, torpedo combing). `ships_nav` `planNav` still has the last word on land and collisions.
+
+Every tick is wrapped in try/catch, so nothing throws into the sim. The doctrine roll is the only randomness, and it uses `WW.rand` at `roundStart` (after the fleets spawn), so a seeded round replays the same way.
+
+#### WW.fleetCmd (fleet_cmd.js)
+
+```js
+WW.fleetCmd = {
+  update(dt), reset(), TICK, VALUE, stats: { ticks, ms, steps },  // ms / steps = commander + threat cost per sim step
+  side(nation) -> Blackboard | null,
+  order(ship) -> Order | null,             // null before the side's first tick
+  doctrine(nation) -> Doctrine,
+  focusFor(ship) -> Ship[],                // the focus targets of the ship's group (0 to 2)
+  incoming(nation, target) -> dps,         // expected fire the side already has on that target
+  assignment(ship, target) -> factor,      // target-score factor: a carrier's `defend` enemy x2.5 for ships within 380 of
+                                           // that carrier; saturated (overkill) x0.6; focus x1.35; else 1
+  strikeOrder(carrier) -> { target, contact, score, hold } | null,  // the strike decision (air ops read it)
+  scoutPoint(nation, x, z) -> { x, z } | null                       // best search sector for a scout near (x, z)
+};
+Blackboard = {
+  nation, t,                               // t: sim time of the last tick
+  posture,                                 // 'search' | 'approach' | 'engage' | 'withdraw' | 'press'
+  postureAt, late, timeLeft,               // late: past 55% of ROUND_TIMEOUT
+  strength: { own, known, ratio },         // POWER x hp share; known = intel contacts, weighted down with age
+  doctrine,                                // see below
+  axis: { x, z, h },                       // main-body guide and heading of advance (toward enemyCentre, else searchPoint)
+  enemyCentre: { x, z } | null,            // age-weighted centre of the enemy ship contacts
+  searchPoint: { x, z },                   // the highest-priority scout sector near the main body
+  groups: { main, carrier, screen, flotilla, pt, sub },   // each { members: Ship[], guide: { x, z } }
+  orders: Map(ship.id -> Order),
+  focus: { main, carrier, screen, flotilla, pt, sub },    // Ship[] (0 to 2) per group
+  incoming: Map(target Ship -> dps),
+  strikes: Map(carrier.id -> { target, contact, score, hold }),
+  airRaid: { carrier, n } | null,          // armed enemy bombers detected within 130 of an own carrier
+  defend: [{ carrier, enemy, d }],         // per own carrier: nearest known enemy gun ship within 280 (seen in the last 30 s)
+  sectors: [{ x, z, looked, stale, prio }] // 6 x 4 scout sectors
+};
+Order = { ship, group, role, slot, sx, sz, t };
+// group: 'main' | 'carrier' | 'screen' | 'flotilla' | 'pt' | 'sub'
+// role:  'line' | 'carrier' | 'escort' | 'asw' | 'torpedo' | 'ambush' | 'patrol' | 'withdraw'
+// (sx, sz): the formation station. It is clamped 30 units inside the map; land is the nav layer's job.
+```
+
+- **Posture**: `search` while the side has no contacts. `withdraw` after 60 s if the known strength ratio is below `doctrine.withdrawRatio`. `press` late in the round if the ratio is at least `pressRatio × (1.15 − 0.3 × aggression)`. Otherwise `engage` when any known enemy is within 260 of an own ship, else `approach`. Carriers never press.
+- **Groups** (`WW.fleetGroups.assign`):
+  - carriers go to `carrier`, together with the first cruiser (when there are 2 or more) and the first destroyer as escorts;
+  - battleships and the other cruisers go to `main`;
+  - one destroyer goes to `screen` (ASW), then up to `doctrine.flotilla` destroyers to `flotilla`, and any extra destroyers back to `screen`;
+  - PT boats go to `pt`, submarines to `sub`;
+  - any ship (not a sub) below `WW.fleetGroups.CRIP = 0.35` hp gets role `withdraw`.
+- **Stations** (`WW.fleetGroups.stations`) are offsets (forward, lateral) along `axis.h`:
+  - main: line abreast at lateral 0, ±45, ±90, …, advanced by the posture lead (search / approach +45, press +35, engage 0, withdraw −45);
+  - carriers: `cvStandoff` behind the main guide;
+  - escorts: a ring about 80 out around the first carrier;
+  - screen: `screenAhead` ahead of the main body;
+  - flotilla: on the flanks (lateral ±110);
+  - PT boats: lateral ±150, never past the midline;
+  - subs: 220 ahead, ±100 to the flank;
+  - withdrawing ships: 70 behind their own carrier (or the main body).
+- **Focus** (per gun group): the 1 or 2 best fresh targets from the group's guide, scored by group weight × `VALUE` × damage × proximity. `incoming` is rebuilt every tick from every own ship's `ship.target` (gun dps in range × 0.35). A target is saturated when its incoming fire kills it within 20 s; the shooter's own share is not counted.
+- **Carrier defence**: each `defend` enemy is the carrier group's focus and scores ×3 as a strike target (self-defence first).
+- **Strikes**: for each carrier, the best contact that is at most 45 s old and within 650 of it. The score is value × damage × freshness, divided by distance and by the AA around the target (from the AA channel of the danger field). With no such contact there is no order. `hold` is set while that carrier is under an air raid.
+
+#### Doctrine (WW.fleetGroups.BASE, rolled ±10% per round)
+
+| field | USN | IJN | used by |
+|---|---|---|---|
+| aggression | 0.5 | 0.65 | press threshold |
+| rangeFrac | 0.84 | 0.78 | battleship / cruiser preferred range (× main battery range) |
+| torpedo | 0.35 | 0.8 | launch distance (× torpedo range: 0.6 + 0.3 × torpedo) |
+| carrier | 0.8 | 0.55 | strike tempo (interval × (1.25 − 0.5 × carrier)) |
+| night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.55 + 0.15 × (1 − night))) |
+| cvStandoff | 230 | 200 | carrier station behind the main body |
+| screenAhead | 70 | 60 | ASW screen station |
+| flotilla | 1 | 2 | destroyers in the torpedo flotilla |
+| pressRatio / withdrawRatio | 1.2 / 0.45 | 1.1 / 0.4 | posture |
+| risk (cv, bb, ca, dd, ss, pt) | 0, .55, .45, .45, .35, .2 | 0, .5, .55, .6, .4, .3 | `WW.threat.bestHeading` risk tolerance |
+
+#### WW.threat (ai_threat.js)
+
+```js
+WW.threat = {
+  CELL: 20, DREF: 20, stats: { builds, ms, lookups },
+  build(nation),                                   // fleet_cmd tick: rebuild nation's field from its contacts
+  danger(nation, x, z, { air }) -> dps,            // bilinear; air: the AA channel (plane routing)
+  bestHeading(ship, want, risk, { look, k, air }) -> heading,
+  away(nation, x, z, { air }) -> heading | null,   // downhill direction of the field
+  edge(x, z) -> 0..1.5,                            // map-edge penalty used by bestHeading
+  field(nation) -> { surf, air, max, airMax, t, n, nx, nz, cell }  // raw grids (Float32Array, row-major by z)
+};
+```
+
+- The grid is 49 × 31 nodes (20-unit cells over the 960 × 600 map), with a surface channel and an AA channel.
+- Each enemy contact adds the following, scaled by its age weight (1 while fresh, falling to 0.3 at 90 s) and by `0.5 + 0.5 × hp share`:
+  - every gun: `SHELL.dmg × count / reload × 0.5` inside its range, ×1.3 at point blank, tapering to 0 over 25 units outside it;
+  - torpedoes: `TORPEDO.dmg × count / reload × 0.3` out to 0.85 × torpedo range, weighted toward the contact's bow arc (subs included);
+  - the AA channel: `aa.dps` out to `aa.range × 1.55`.
+  A stale contact is moved along its last course for up to 20 s, and its reach grows by `age × speed × 0.5` (at most 40).
+- `bestHeading` samples 16 headings around `want`, looking `look` ahead (default speed × 9, 30 to 70) and half way. Each heading scores `cos(offset) − danger / DREF × k × (1 − risk) − edge − 0.15 × turn`. The result goes into `ship.desiredHeading`; `planNav` still steers around land.
+- Overlay (`ai_threat_view.js`, `WW.threatView.toggle()`, key **G**): visual only and off by default. G cycles off → USN picture → IJN picture. It tints the sea red where the guns and torpedoes reach and blue under the AA umbrella. It shows a ring at each enemy contact's last-known position: coloured while fresh, grey and fading with age. A label shows the side's posture. Use it with the map camera (C) to see each side's contact picture.
 
 ### aircraft.js
 
@@ -264,7 +457,36 @@ WW.air = { init(), update(dt), clearAll(), launch(carrier, kind, target) -> Plan
 // Plane: kind, nation, carrier, x, y, z, heading, hp, alive, state, group, damage(amount)
 ```
 
-Planes take off from the carrier deck, fly to the target and attack. Dive bombers dive and drop bombs. Torpedo bombers fly low and drop torpedoes. Fighters escort the bombers and fight enemy planes. Planes that survive fly back, land and rearm in 10 s. If the carrier sinks, its planes in the air ditch. A damaged plane trails smoke (grey below 50% hp, charcoal below 30% hp). A plane with less than 35% hp can drop its weapon and fly home.
+Planes take off from the carrier deck, fly to the target and attack. Dive bombers dive and drop bombs. Torpedo bombers fly low and drop torpedoes. Fighters escort the bombers and fight enemy planes. Planes that survive fly back, land and rearm in 10 s. If the carrier sinks, its planes in the air ditch. A damaged plane trails smoke (grey below 50% hp, charcoal below 30% hp). A bomber with less than 35% hp drops its weapon and flies home. `Plane.fighter` hands over to `WW.airOps.fighter`, bombers call `WW.airOps.bomber` every step, and `validTarget` retargets through `WW.cag.retarget`; the old code stays as the fallback.
+
+### Air command: air_squadrons.js, air_ops.js, air_cag.js, air_captions.js
+
+The air side has a command structure: squadrons and elements, an air boss and fighter director per carrier, and a strike leader (CAG) per strike. All of it is sim code (`WW.rand` only, names from slots, element ids restart each round), except `air_captions.js`, which is visual only.
+
+```js
+WW.squadrons = { group(carrier) -> { name, sq: { fighter, dive, torpedo } }, squadronOf(carrier, kind), follow(plane, dt) -> bool,
+                 rank(plane) -> 'Lt. Cmdr. Thach', elements() -> Element[], stats, SIZE };
+// Squadron: { kind, nation, name ('VF-6' | 'Akagi fighter unit'), short, cvName, leader (pilot), sorties, lost }
+// Element:  { id, key, kind, nation, sq, size, members: [leader, wingmen...], div (USN: the section it pairs with) }
+// Plane:    squadron, element, leader (null for the element leader), wing (0 = leader), cover ('close' | 'top', escorts)
+WW.airOps = { plan(carrier, dt), fighter(plane, dt), bomber(plane, dt), pickTarget(from, { near }), capWanted(carrier),
+              picture(carrier), underAttack(carrier), CAP_R: 35, LEASH: 52.5, LEASH2: 157.5, RAID_R: 120, stats };
+WW.cag = { waveTick(wave), detour(wave, heading, target), retarget(plane), diveOK(plane, target, grp), vtWait(plane, target, grp),
+           escortPick(plane), escort(plane, target, dt), cover(plane), stats };
+WW.airCaptions = { lineFor(subject), tick(), stats };
+```
+
+- **Squadrons** (`air_squadrons.js`): each carrier slot (the n-th carrier of a nation, like the aces rosters) has a name (USN Enterprise, Yorktown, Hornet, ...; IJN Akagi, Kaga, Soryu, ...) and one fighter, dive bomber and torpedo squadron (USN VF-6 / VB-6 / VT-6; IJN "Akagi fighter unit", "dive-bomber unit", "attack unit"). They carry over between rounds; `WW.aces.reset()` resets them too. A launched plane joins its squadron and an element of its mission (CAP or strike) for 30 s: USN fighters fly 2-plane sections paired into 4-plane divisions, IJN fighters 3-plane shotai, bombers 3-plane vics. `follow()` keeps a wingman on its slot off the leader (CAP and transit); in a fight the wingman covers the leader. A lost leader or a leader going home: the next plane leads ('reform'); a lone survivor joins another element of the mission ('rejoin'). Pilots belong to their squadron (`pilot.squadron`); the squadron leader is its senior pilot in the air. `air_dogfight.js`: the Thach weave turns toward the plane's own section first (nearest friendly as the fallback), and a fighter answers an enemy on its leader's or wingman's tail.
+- **Air boss** (`airOps.plan`, called from `ai_carrier.js` airOps): keeps `capWanted` fighters on CAP (a standing element: USN 2, IJN 3; 4 when enemy planes are detected inside 250, so USN radar scrambles earlier than IJN lookouts) and launches a relief when an on-station fighter has less than 45 s of fuel. CAP launches go first. A strike needs a known target (`WW.fleetCmd.strikeOrder`, else intel scored by value, damage, freshness, distance and AA); it is not queued or launched while the carrier is under air attack (an armed enemy bomber within 120; at most 30 s), and its planes wait while the deck recovers or 3 launches are queued (at most 25 s). Escorts are the fighters left after one CAP relief (at most 4). When the carrier is under air attack, its escorts within 320 that have the fuel recall to defend it (`plane.recall`). `air_deck.js`: a CAP launch waits at most 6 s for a recovery (20 s for a strike), and the carrier does not turn into the wind within 80 of the map edge.
+- **Fighter director** (`airOps.fighter`): CAP orbits 35 over its carrier, shifted 15 toward the nearest detected raid and higher while one is up. Target priority: a torpedo bomber on its run (or anvil) > a dive bomber in the wheel or dive > other armed bombers > fighters attacking own planes > other fighters, nearer first. Leash: CAP engages only within 52.5 (1.5 × radius) of its carrier, or out to 157.5 an armed bomber inbound (closing on the carrier, or attacking one of our ships), or out to 118 a bomber below half hp (finish it as it turns for home); beyond that it lets go, except to defend itself (`dogfight.pick`'s tail check). Relieved CAP goes home under 27 s of fuel.
+- **Gun passes on bombers** (`air_intercept.js`, `WW.intercept.attack`, called by `air_dogfight.js` offence for any foe that is not a fighter): a turning fight loses to a dive bomber circling in the wheel, so the fighter flies passes: set up above and outside the bomber's track (ahead along the wheel's arc; behind and above a torpedo bomber), dive onto it with the gun lead predicted along its arc (`predict(f, t)`), throttle back inside ~30 to stay on the gun line, a short burst, break away and extend 1.6 s, set up again. A dive bomber in its dive is chased down the dive line. The pass holds the foe (`df.lock`). Fighter hits on a bomber do `BOMBER_K = 5` × the normal damage (a big, steady, lightly protected target).
+- **Bombers** (`airOps.bomber`): below 35% hp, or with a fighter on the tail for 3 s while below 55% hp and no friendly fighter within 45, the bomber jettisons and goes home (deterministic).
+- **CAG** (`air_cag.js`, hooks in `air_strikes.js`): the senior armed bomber of a wave leads it (the squadron leader, else a VB element leader); if it is lost the next takes over ('cag'). It steers the wave guide round the detected AA umbrella while more than 120 from the target (`WW.threat.danger(..., { air: true })`, else known ships' `aa`), and within 140 of the target, if the target is gone or not seen in the last 4 s, redirects the whole strike to the best visible target within 170 (cripples preferred, 'redirect'). Timing: dive bombers hold in the wheel until the torpedo bombers turn in (at most 20 s), torpedo bombers wait at the anvil for the dive bombers to reach the wheel (at most 15 s), so the attacks land within a few seconds of each other.
+- **Escorts**: the wave's first fighter element is close cover (just above and behind the bombers; engages fighters attacking them), the next is top cover (higher and ahead; engages fighters approaching the strike). Any escort breaks off for a fighter on a bomber's tail. Over the target they circle the bombers (close) or the target (top); then they ride home over the returning bombers.
+- **Scouts**: `Scout.prototype.plan` flies a sweep round `WW.fleetCmd.scoutPoint` when there is one, and pushes search legs 110 out from known enemy carriers (their CAP).
+- **Events**: `airOrder` `{ carrier, squadron, order, plane, leader, target, squadrons, raid }`, order one of `launch`, `cap`, `scramble`, `relief`, `recall`, `jettison`, `reform`, `rejoin`, `strikeAway`, `cag`, `attack`, `redirect`.
+- **Captions** (`air_captions.js`, visual only): it wraps `WW.cam.update` and, every 0.25 s of real time, looks at the director's shot (`WW.cam._shot()`: its subject, or the diving plane of an orbit). If that subject has a squadron moment it shows a small caption (`WW.ui.caption(main, sub, 4.5, true)`): "VT-6 begins its run", "VB-6 pushes over", "Lt. Cmdr. X leads VB-6 in", "Strike away: VF-6, VB-6, VT-6", "CAP vectored to raid" with a compass bearing and distance, an ace's kill. At most one air caption every 15 s of real time, none in free camera, map view, or while another caption (the victory card) shows. It adds camera candidates for the CAG leading a strike in and a CAP element in formation (`WW.camHooks`).
+- Tests: `tests/sim_behaviour.js` (cap_bkills: CAP gun kills on bombers per round, cap_on_bmb, cap_gap, esc_with, elem_coh, air_sync, bomb_lost, jettisons), `tests/air_probe.js` (one carrier round's air picture), `tests/air_shots.js` (screenshots, `tests/shots/air_*.png`).
 
 ### air_aces.js
 
@@ -272,7 +494,7 @@ Each carrier plane gets a pilot (`plane.pilot = { name, kills, sorties, ace }`) 
 
 ### air_scouts.js, models_scout.js
 
-Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-style monoplane, IJN: Pete-style biplane, both with one centre float and two wing floats). 5 to 25 s into a round, the catapult trains outboard and fires. The plane on the catapult model (`ship.model.floatplane`, from models_detail.js) is hidden while the scout flies. The scout is a `WW.Scout` (a `WW.Plane` with kind `'scout'`, `WW.PLANE_TYPES.scout`) in `WW.world.planes`, so fighters, AA and the camera see it. Its states are `catapult`, `transit` (search), `return`, `alight` and `afloat`. Other states, such as `falling` and `ditch`, use the Plane code. It flies a search arc 90 units from the centre of the enemy contacts (`WW.intel.centre`) on the near side, or around the middle of the enemy's half of the map when nothing is known. `intel.js` does its spotting: it reports contacts and sets `ship.spottedUntil = now + 20` (and `ship.spottedBy`) on enemy ships within 85 units. In `combat.fireShell`, the dispersion of a shot at a spotted target farther than 60 units is multiplied by `SPOT_DISP = 0.85`. After 85 s, or below 50% hp, the scout flies home, alights beside its ship, taxis alongside for approximately 3.5 s and is taken back aboard. There are at most 2 sorties per ship, with 50 s between them.
+Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-style monoplane, IJN: Pete-style biplane, both with one centre float and two wing floats). 5 to 25 s into a round, the catapult trains outboard and fires. The plane on the catapult model (`ship.model.floatplane`, from models_detail.js) is hidden while the scout flies. The scout is a `WW.Scout` (a `WW.Plane` with kind `'scout'`, `WW.PLANE_TYPES.scout`) in `WW.world.planes`, so fighters, AA and the camera see it. Its states are `catapult`, `transit` (search), `return`, `alight` and `afloat`. Other states, such as `falling` and `ditch`, use the Plane code. It flies a search arc 90 units from the centre of the enemy contacts (`WW.intel.centre`) on the near side, or around the middle of the enemy's half of the map when nothing is known. `intel.js` does its spotting: it reports contacts and sets `ship.spottedUntil = now + 20` (and `ship.spottedBy`) on enemy ships within 85 units. In `combat.fireShell`, the dispersion of a shot at a spotted target farther than 60 units is multiplied by `SPOT_DISP = 0.85`. After 130 s (the first approximately 35 s are the flight out on the big map), or below 50% hp, the scout flies home, alights beside its ship, taxis alongside for approximately 3.5 s and is taken back aboard. There are at most 2 sorties per ship, with 50 s between them.
 
 `camera.js` `candidates()` calls each function in `WW.camHooks` (`fn(add, dur)`). The aces module adds aces in dogfights. The scouts module adds catapult launches and alightings.
 
@@ -280,7 +502,7 @@ Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-
 
 ### camera.js, freecam.js
 
-- `WW.cam` (director): it selects a live subject (a sinking, a torpedo or dive-bomb attack, a carrier launch, a dogfight, a burning ship or a battleship that fires). It films the subject for 12 to 25 s with a slow orbit, chase, fly-by or wide shot, then cross-fades in 1.4 s. Every second shot is a wide shot. The subject stays in the middle third of the frame. The camera stays more than 7 units from a hull and above the terrain. Setup mode and map view (`C`) use a high overview.
+- `WW.cam` (director): it selects a live subject (a sinking, a torpedo or dive-bomb attack, a carrier launch, a dogfight, a burning ship or a battleship that fires). It films the subject for 12 to 25 s with a slow orbit, chase, fly-by or wide shot, then cross-fades in 1.4 s. Every second shot is a wide shot. A wide shot or diorama orbit looks at the front line when the nearest enemy ships are less than 280 units apart, and otherwise at one fleet on its approach. The opening shot of a round shows one fleet side-on. The subject stays in the middle third of the frame. The camera stays more than 7 units from a hull and above the terrain. Setup mode and map view (`C`) use a high overview.
 - `WW.camAction` (`camera_action.js`) adds action shots to the director. When the director films a dive-bomb attack and the bomb falls, the camera follows the bomb to the impact and holds on the explosion. When it films a torpedo run and the plane drops its torpedo, the camera follows the wake to the hit or the miss. These hand-offs do not cut. They change the current shot. A fighter with a foe can get an over-the-shoulder shot: behind and above the fighter, its foe ahead, with a slow, rate-limited turn. Planes with `kills` or `ace` (if present) get a higher priority. `combat_weapons.js` sends the events `weaponDropped` `{ kind: 'bomb' | 'torpedo', proj, plane, target }` and `weaponImpact` `{ kind, proj, x, z, ship }` (`ship` is null for a miss). Test hook: `WW.cam.film(candidate)`; `tests/action_cam.js` records each action shot.
 - `WW.freecam`: left-drag orbits, the wheel zooms, right-drag and `W` `A` `S` `D` pan, `Q` and `E` turn. A click follows a ship or a plane. After 20 s with no input, the director starts again.
 
@@ -315,6 +537,6 @@ WW.game = {
 window.__sim = { stats, game, world, fastForward(seconds, onStep), setScale(n), focus(x, z, width, hold), snapCamera() };
 ```
 
-Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 destroyers, 1 submarine and 2 PT boats in a task-force formation. A round ends when one side has no ships, when only submarines are left and nothing sinks for 60 s, or at the time limit (330 simulation seconds). At the time limit, the side with more tonnage wins. The victory caption shows for 9 s.
+Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 destroyers, 1 submarine and 2 PT boats in a task-force formation. A round ends when one side has no ships, when only submarines are left and nothing sinks for 60 s, or at the time limit (420 simulation seconds, 14 minutes at 1×). At the time limit, the side with more tonnage wins. The victory caption shows for 9 s.
 
 `ui.js` shows the panels only in setup mode. In battle, `H` shows the panel. It also controls the captions, the tilt-shift bands (`T`) and fullscreen. There is no letterbox.

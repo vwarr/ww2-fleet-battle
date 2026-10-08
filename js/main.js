@@ -6,7 +6,8 @@ window.WW = window.WW || {};
   const BASE_SPEED = 0.5;     // calm pace: the UI's 1x runs the simulation at half speed
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
-  const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: 365, x1: 465, cx: 415, heading: Math.PI } };
+  // start zones hug the west / east edges; the open sea between them is the approach
+  const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: W - 115, x1: W - 15, cx: W - 65, heading: Math.PI } };
 
   const call = (mod, fn, ...a) => { const m = WW[mod]; if (m && typeof m[fn] === 'function') return m[fn](...a); };
   const ALL_MODULES = ['fx', 'combat', 'air', 'ships'];
@@ -24,7 +25,7 @@ window.WW = window.WW || {};
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft edges (VSM left a faint box-shaped tint on the seabed)
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 4000);
+    camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 5000);
     WW.renderer = renderer; WW.scene = scene; WW.camera = camera;
     window.addEventListener('resize', resize);
   }
@@ -55,7 +56,7 @@ window.WW = window.WW || {};
     const out = [];
     for (const nation of ['USN', 'IJN']) {
       const counts = { carrier: WW.rand() < 0.25 ? 2 : 1, battleship: WW.randInt(1, 2), cruiser: 2, destroyer: 3, submarine: 1, pt: 2 };
-      const dir = nation === 'USN' ? 1 : -1, rearX = nation === 'USN' ? 26 : W - 26, cz = WW.randRange(115, 185);
+      const dir = nation === 'USN' ? 1 : -1, rearX = nation === 'USN' ? 26 : W - 26, cz = WW.randRange(H / 2 - 70, H / 2 + 70);
       const placed = [];
       for (const type in counts) {
         const slots = SLOTS[(type === 'carrier' || type === 'cruiser') && counts.carrier === 2 ? type + '2' : type];
@@ -128,7 +129,7 @@ window.WW = window.WW || {};
     startRound(opts) {
       opts = opts || {};
       if (!opts.keepMap || !WW.terrain.seed) {
-        game.seed = (Math.random() * 1e9) >>> 0;
+        game.seed = (WW.rand() * 1e9) >>> 0; // WW.rand: the round after a seeded round replays too
         WW.terrain.generate(game.seed);
       }
       clearModules();
@@ -197,10 +198,12 @@ window.WW = window.WW || {};
     WW.time.dt = dt; WW.time.now += dt;
     call('terrain', 'update', dt);
     call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
+    call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
     call('air', 'update', dt);
     call('combat', 'update', dt);
     call('fx', 'update', dt);
+    call('lifeboats', 'update', dt);
     updateGame(dt);
   }
   function advance(simDt) {
@@ -217,6 +220,7 @@ window.WW = window.WW || {};
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
+    call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);
     call('ui', 'update', rdt);
@@ -235,7 +239,7 @@ window.WW = window.WW || {};
 
   function boot() {
     setupRenderer();
-    ['audio', 'sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui', 'freecam'].forEach(m => {
+    ['audio', 'sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'crew', 'lifeboats', 'ui', 'freecam'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
     });
     call('post', 'init');

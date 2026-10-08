@@ -42,10 +42,12 @@ Each battle stands alone. During the battle, the panel is not shown. Only three 
 - The camera works like a film director. It selects an interesting subject and films it with a slow, smooth shot.
   Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
 - A battle ends when one side has no ships. A caption shows the winner and the ships that each side lost.
-- At the time limit, the side with more tonnage wins.
+- A battle has a time limit of 14 minutes at 1× speed. At the time limit, the side with more tonnage wins.
 - After the caption, the game goes back to the start: a new map with fleets placed and waiting. If you placed your own fleets, the game keeps them.
 
 The game runs at a calm pace: at 1× speed, the ships and planes move at half of their normal speed.
+The fleets start on opposite sides of a large map, so each battle begins with an approach: the carriers launch strikes and the scouts search first. The light forces meet after about a minute, and the big guns open after about three minutes.
+A typical battle lasts 9 to 13 minutes at 1× speed.
 
 ## Auto battles (screensaver)
 
