@@ -71,7 +71,7 @@ window.WW = window.WW || {};
     FIRE_MAX: 55,
     EX_MAX: 9,        // acceptable path danger from ships other than the target (dps)
     PEN_RUN: 0.12, PEN_ABORT: 0.16, PEN_LURK: -0.06, // midline limits (x half-map)
-    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28
+    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240
   };
   function partner(ship) {
     const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null;
@@ -83,6 +83,25 @@ window.WW = window.WW || {};
   }
   // Where to lurk: the commander's PT station (own flank, own half), pulled to nearby island cover, kept out of
   // known gun reach. The wing of a pair lurks beside its leader.
+  // Heavy ships a side has seen this round, remembered past the intel contact's expiry (a PT boat's own eye is
+  // short, so a battleship it lost track of may well be inside its gun range). A lurk spot keeps clear of where it
+  // may be now: its gun range plus how far it may have gone, along its last course.
+  const ghosts = { USN: new Map(), IJN: new Map() };
+  WW.on('roundStart', () => { ghosts.USN.clear(); ghosts.IJN.clear(); });
+  function noteGhosts(ship) {
+    const G = ghosts[ship.nation]; if (!G) return;
+    for (const c of contacts(ship, 3)) if (c.unit.type === 'battleship' || c.unit.type === 'cruiser') G.set(c.unit.id, { u: c.unit, x: c.x, z: c.z, h: c.heading, sp: c.speed, t: c.seenAt });
+  }
+  function ghostNear(ship, x, z) {
+    const G = ghosts[ship.nation]; if (!G) return false;
+    for (const [k, g] of G) {
+      const ag = now() - g.t;
+      if (!g.u.alive || ag > PT.GHOST_T) { G.delete(k); continue; }
+      const dr = Math.min(ag, 30), gx = g.x + Math.cos(g.h) * g.sp * dr, gz = g.z + Math.sin(g.h) * g.sp * dr;
+      if (WW.dist(x, z, gx, gz) < g.u.stats.guns[0].range + 30 + Math.min(ag * 1.5, 90)) return true;
+    }
+    return false;
+  }
   function lurkSpot(ship, L) {
     const a = ship.ai, o = order(ship), W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, n = ship.nation;
     let bx, bz;
@@ -92,15 +111,17 @@ window.WW = window.WW || {};
     const lim = W / 2 + homeX(ship) * -PT.PEN_LURK * W / 2;    // never lurk past this x
     bx = ship.nation === 'USN' ? Math.min(bx, lim) : Math.max(bx, lim);
     bx = WW.clamp(bx, 40, W - 40);
-    for (let k = 0; k < 3 && danger(n, bx, bz) > 0.3; k++) bx = WW.clamp(bx + homeX(ship) * 60, 40, W - 40); // out of known reach
+    noteGhosts(ship);
+    for (let k = 0; k < 4 && (danger(n, bx, bz) > 0.3 || ghostNear(ship, bx, bz)); k++) bx = WW.clamp(bx + homeX(ship) * 60, 40, W - 40); // out of known reach
     const ec = WW.intel && WW.intel.centre ? WW.intel.centre(n) : null;
-    let best = { x: bx, z: bz }, bs = -danger(n, bx, bz) * 30;
+    let best = { x: bx, z: bz }, bs = -danger(n, bx, bz) * 30 - (ghostNear(ship, bx, bz) ? 150 : 0);
     for (const c of coverPts()) {
       const dd = WW.dist(c.x, c.z, bx, bz);
       if (dd > 150 || pen(ship, c.x) > PT.PEN_LURK) continue;
       const dg = danger(n, c.x, c.z);
       let s = 25 - dd * 0.35 - dg * 30 - (dg > 0.3 ? 200 : 0) - WW.dist(c.x, c.z, ship.x, ship.z) * 0.05;
       if (ec) s -= WW.dist(c.x, c.z, ec.x, ec.z) * 0.08;
+      if (s > bs && ghostNear(ship, c.x, c.z)) s -= 150;
       if (s > bs) { bs = s; best = c; }
     }
     const pr = L.pair.p && L.pair.p.ai && L.pair.p.ai.lt;
