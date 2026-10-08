@@ -26,7 +26,7 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
   -webkit-backdrop-filter: blur(2.5px); backdrop-filter: blur(2.5px); transition: opacity 1s; }
 #film .tilt.top { top: 0; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
 #film .tilt.bottom { bottom: 0; -webkit-mask-image: linear-gradient(transparent, #000); mask-image: linear-gradient(transparent, #000); }
-#film.notilt .tilt, #film:not(.cinema) .tilt { opacity: 0; }
+#film.notilt .tilt, #film:not(.cinema) .tilt { opacity: 0; -webkit-backdrop-filter: none; backdrop-filter: none; } /* off in setup / map view */
 
 /* ---- HUD: soft toy-box panels, shown in setup, faded out in battle ---- */
 #hud { position: fixed; inset: 0; pointer-events: none; font-size: 13px; line-height: 1.45; }

@@ -120,6 +120,15 @@ window.WW = window.WW || {};
       const f = WW.game && WW.game.state === 'victory' && WW.game.winner ? fleetCentre(WW.game.winner) : frontCentre();
       shot.cx = f.x; shot.cz = f.z; shot.r = WW.clamp((f.d || 150) * 0.9 + 80, 140, 300);
       shot.a0 = WW.rand() * Math.PI * 2; shot.w = 0.012 * shot.side;
+      if (shotCount === 1 && WW.game && WW.game.state === 'battle') { // opening shot: both fleets, side-on
+        let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+        for (const o of WW.world.ships) if (o.alive) { x0 = Math.min(x0, o.x); x1 = Math.max(x1, o.x); z0 = Math.min(z0, o.z); z1 = Math.max(z1, o.z); }
+        if (x1 > x0) {
+          shot.cx = (x0 + x1) / 2; shot.cz = (z0 + z1) / 2; shot.centred = true;
+          shot.r = WW.clamp((x1 - x0) * 0.95 + 40, 200, 460);
+          shot.a0 = WW.rand() < 0.5 ? Math.PI / 2 : -Math.PI / 2; shot.w = 0.006 * shot.side;
+        }
+      }
     }
     lastKind = c.kind; lastSubj = s || null;
     if (s) { recent.push(s); if (recent.length > 3) recent.shift(); }
@@ -161,7 +170,8 @@ window.WW = window.WW || {};
         if (shot.cx === undefined) { const f = frontCentre(); shot.cx = f.x; shot.cz = f.z; shot.r = 200; shot.a0 = 1; shot.w = 0.025; }
         // low and wide, looking a little past the action so the hazy horizon shows at the top
         const a = shot.a0 + shot.w * shot.t;
-        gL.set(shot.cx - Math.cos(a) * shot.r * 0.35, 0, shot.cz - Math.sin(a) * shot.r * 0.35);
+        const past = shot.centred ? 0 : 0.35;
+        gL.set(shot.cx - Math.cos(a) * shot.r * past, 0, shot.cz - Math.sin(a) * shot.r * past);
         gP.set(shot.cx + Math.cos(a) * shot.r, shot.r * 0.24, shot.cz + Math.sin(a) * shot.r);
       }
     }
