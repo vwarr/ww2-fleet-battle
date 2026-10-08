@@ -208,10 +208,10 @@ function install(P) {
     }
     if (B.sees) { R.intel.checked++; try { if (!B.sees(s.nation, tg)) R.intel.unseen++; } catch (err) { R.intel.err++; } }
   });
-  WW.on('shipHit', e => { if (R && e && e.ship) R.lastHit[e.ship.id] = e.kind; });
+  WW.on('shipHit', e => { if (R && e && e.ship) { R.lastHit[e.ship.id] = e.kind; const k = e.ship.nation + ':' + e.ship.type + ':' + e.kind; R.dmg[k] = (R.dmg[k] || 0) + (+e.amount || 0); } });
   WW.on('shipSunk', s => {
     if (!R || !s) return;
-    R.sunk.push({ type: s.type, nation: s.nation, t: +now().toFixed(1) });
+    R.sunk.push({ type: s.type, nation: s.nation, t: +now().toFixed(1), by: R.lastHit[s.id] || null });
     if (s.type === 'submarine') { const k = R.lastHit[s.id] || '?'; R.dd.subDeaths++; if (k === 'dc') R.dd.subDC++; R.dd.kinds[k] = (R.dd.kinds[k] || 0) + 1; }
   });
   WW.on('planeKill', e => {
@@ -408,7 +408,7 @@ function install(P) {
     G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9 }, pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
@@ -434,7 +434,7 @@ function install(P) {
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
       cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
-    out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
+    out.dmg = R.dmg; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
     return out;
