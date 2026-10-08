@@ -62,6 +62,8 @@ window.WW = window.WW || {};
   }
   WW.on('roundStart', () => { cover = null; });
   WW.on('setupStart', () => { cover = null; });
+  const stats = { checks: 0, far: 0, deep: 0, shoal: 0, hot: 0 }; // PT run checks and why they were refused
+  WW.on('roundStart', () => { for (const k in stats) stats[k] = 0; });
   const order = ship => (WW.fleetCmd && WW.fleetCmd.order ? WW.fleetCmd.order(ship) : null);
 
   // ---------------- PT boats ----------------
@@ -143,13 +145,17 @@ window.WW = window.WW || {};
   function runCheck(ship, c, side, gate) {
     const u = c.unit, n = ship.nation, f = firePoint(ship, u, side);
     const dash = WW.dist(ship.x, ship.z, f.x, f.z);
-    if (dash > PT.DASH || pen(ship, f.x) > PT.PEN_RUN || WW.terrain.depthAt(f.x, f.z) < 2) return null;
+    stats.checks++;
+    if (dash > PT.DASH) { stats.far++; return null; }
+    if (pen(ship, f.x) > PT.PEN_RUN) { stats.deep++; return null; }
+    if (WW.terrain.depthAt(f.x, f.z) < 2) { stats.shoal++; return null; }
     let ex = 0;
     for (let k = 1; k <= 4; k++) {
       const x = ship.x + (f.x - ship.x) * k / 4, z = ship.z + (f.z - ship.z) * k / 4;
       ex = Math.max(ex, danger(n, x, z) - ownDps(u, WW.dist(x, z, u.x, u.z)));
     }
-    return ex <= gate ? { fx: f.x, fz: f.z, dash, ex } : null;
+    if (ex > gate) { stats.hot++; return null; }
+    return { fx: f.x, fz: f.z, dash, ex };
   }
   function opportunity(ship, L) {
     const cs = contacts(ship, 20), guns = cs.filter(c => c.unit.stats.guns.length && !c.unit.submerged);
@@ -163,10 +169,12 @@ window.WW = window.WW || {};
       const land = (u.type === 'destroyer' || u.type === 'cruiser') && landNear(u.x, u.z, 30);
       if (!(iso || crip || land || slow)) continue;
       const gate = PT.EX_MAX * (crip ? 1.6 : 1) * (land ? 1.4 : 1) * (iso ? 1.2 : 1);
-      const r = runCheck(ship, c, sideOf(ship, u, L.pair.lead), gate);
+      // the beam on our side, else the far beam (away from a consort), whichever run is clearer
+      const s0 = sideOf(ship, u, L.pair.lead), r0 = runCheck(ship, c, s0, gate), r1 = runCheck(ship, c, -s0, gate);
+      const r = r0 && (!r1 || r0.ex <= r1.ex + 2) ? r0 : r1, side = r === r0 ? s0 : -s0;
       if (!r) continue;
       const s = VAL[u.type] * (crip ? 1.6 : 1) * (iso ? 1.3 : 1) / (1 + r.dash / 60 + r.ex / 10);
-      if (!best || s > best.score) best = { c, score: s };
+      if (!best || s > best.score) best = { c, score: s, side };
     }
     return best;
   }
@@ -197,7 +205,7 @@ window.WW = window.WW || {};
   const L0state = a => (a.lt ? a.lt.state : 'lurk');
   function ptAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now();
-    const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, pair: { p: null, lead: true } });
+    const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, leg: 'fwd', legT: 0, pair: { p: null, lead: true } });
     a.ownComb = L0state(a) !== 'lurk'; // combing a torpedo track would break a dash; at the lurk spot, comb
     a.ownWithdraw = true; // a crippled PT lurks at home and makes no runs (below) rather than the core's withdrawal
     mgTarget(ship);
@@ -251,7 +259,6 @@ window.WW = window.WW || {};
       return;
     }
     // ---- lurk ----
-    if (decide && nb && (nb.margin < 25 || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
     L.spotT -= dt;
     if (L.spotT <= 0) { L.spotT = 4; lurkSpot(ship, L); }
     if (decide && a.torpReload <= 0 && ship.hp >= ship.maxHp * 0.35) {
@@ -262,13 +269,15 @@ window.WW = window.WW || {};
         const c = WW.intel.known(n, pl.tgt);
         if (c && age(c) <= 3 && runCheck(ship, c, -pl.side, PT.EX_MAX * 1.6)) { tgt = pl.tgt; L.side = -pl.side; }
       }
-      if (!tgt) { const o = opportunity(ship, L); if (o) { tgt = o.c.unit; L.side = sideOf(ship, tgt, L.pair.lead); } }
+      if (!tgt) { const o = opportunity(ship, L); if (o) { tgt = o.c.unit; L.side = o.side; } }
       if (tgt) { L.state = 'run'; L.tgt = tgt; L.t0 = T; L.hp0 = ship.hp; ship.target = tgt; return; }
     }
+    // inside known gun reach with no run worth making: break off
+    if (decide && nb && (nb.margin < 25 || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
     // At the spot: a patrol leg stern-on to the enemy (a break-off then needs no turn), and a slower leg back.
     const d = WW.dist(ship.x, ship.z, L.lx, L.lz);
-    if (L.leg === 'back' && d > PT.IDLE_R) L.leg = 'fwd';
-    else if (L.leg !== 'back' && d < 8) L.leg = 'back';
+    if (L.leg === 'back' && (d > PT.IDLE_R || T - L.legT > 8)) { L.leg = 'fwd'; L.legT = T; } // (land astern: the timer turns it back)
+    else if (L.leg !== 'back' && (d < 8 || (d < 25 && T - L.legT > 25))) { L.leg = 'back'; L.legT = T; }
     if (L.leg === 'back') {
       const ec = WW.intel && WW.intel.centre ? WW.intel.centre(n) : null;
       ship.desiredHeading = (ec ? Math.atan2(ship.z - ec.z, ship.x - ec.x) : homeX(ship) < 0 ? PI : 0) + 0.3 * Math.sin(T * 0.4 + ship.id);
@@ -419,5 +428,5 @@ window.WW = window.WW || {};
 
   WW.shipAI.roles.submarine = subAI;
   WW.shipAI.roles.pt = ptAI;
-  WW.lightAI = { PT, SUB, coverPts, opportunity, fanClear }; // tuning tables and helpers (tests, overlay)
+  WW.lightAI = { PT, SUB, stats, coverPts, opportunity, fanClear }; // tuning tables and helpers (tests, overlay)
 })();
