@@ -11,8 +11,9 @@ window.WW = window.WW || {};
   'use strict';
   var ACE_KILLS = 5, MAX_MARKS = 10, SKILL_SPEED = 1.05, SKILL_HP = 1.15;
   var KINDS = { fighter: 1, dive: 1, torpedo: 1 };
-  // fuselage half-width per kind in model units (models_planes.js SPEC.fw * ~0.54): marks sit on the skin
+  // fallback fuselage half-width per kind (model units); the real skin is found by a ray at the model (skinZ)
   var SIDE_Z = { fighter: 0.235, dive: 0.255, torpedo: 0.265 };
+  var skin = {}, ray = null;
   var NAMES = {
     USN: ['O\'Hare', 'Thach', 'Vejtasa', 'Swett', 'Galer', 'Foss', 'Flatley', 'McCuskey', 'Mehle', 'Hanson', 'Dibb', 'Brassfield'],
     IJN: ['Sakai', 'Nishizawa', 'Iwamoto', 'Sugita', 'Ota', 'Sasai', 'Okumura', 'Muto', 'Hayashi', 'Ishii', 'Fukumoto', 'Kanno']
@@ -69,14 +70,32 @@ window.WW = window.WW || {};
     }
     return mk;
   }
+  // Half-width of the fuselage skin at local (x, y): a ray from the side at the body meshes (not wings, prop,
+  // payload or marks), cached per type and nation, so marks sit on any model shape.
+  function skinZ(p, x, y) {
+    var key = p.kind + p.nation + x.toFixed(3) + y.toFixed(3);
+    if (skin[key] !== undefined) return skin[key];
+    var g = p.group, z = SIDE_Z[p.kind] || 0.24, body = [];
+    try {
+      if (!ray) ray = new THREE.Raycaster();
+      g.updateMatrixWorld(true);
+      g.children.forEach(function (o) { if (o.isMesh && o !== (p.model && p.model.payload)) body.push(o); });
+      var o0 = g.localToWorld(new THREE.Vector3(x, y, 2)), o1 = g.localToWorld(new THREE.Vector3(x, y, -2));
+      ray.set(o0, o1.sub(o0).normalize());
+      var hit = ray.intersectObjects(body, false)[0];
+      if (hit) z = Math.abs(g.worldToLocal(hit.point.clone()).z) + 0.008;
+    } catch (e) { /* keep the fallback */ }
+    return (skin[key] = z);
+  }
   // Lay out n marks on both fuselage sides, below and ahead of the canopy, two rows of five.
-  function layout(mk, kind, nation, n) {
-    var g = geo(), z = SIDE_Z[kind] || 0.24, usn = nation === 'USN';
+  function layout(mk, p, n) {
+    var g = geo(), kind = p.kind, nation = p.nation, usn = nation === 'USN', z;
     for (var i = 0; i < mk.items.length; i++) {
       var it = mk.items[i], j = i % MAX_MARKS, side = i < MAX_MARKS ? 1 : -1, show = j < n;
       it.f.visible = it.d.visible = show;
       if (!show) continue;
       var col = j % 5, row = Math.floor(j / 5), x = 0.6 - col * 0.135, y = 0.07 - row * 0.1;
+      z = skinZ(p, x, y);
       it.f.position.set(x, y, side * z); it.d.position.set(x, y, side * (z + 0.003));
       it.f.material = usn ? g.white : g.blue;   // USN pilots paint Japanese flags; IJN pilots white-on-blue ticks
       it.d.material = usn ? g.red : g.white;
@@ -85,7 +104,7 @@ window.WW = window.WW || {};
   function showMarks(p) {
     if (!p.group) return;
     if (!p._marks) { p._marks = getMarks(p.nation); p.group.add(p._marks.group); }
-    layout(p._marks, p.kind, p.nation, Math.min(MAX_MARKS, p.kills));
+    layout(p._marks, p, Math.min(MAX_MARKS, p.kills));
   }
   function dropMarks(p) {
     if (!p._marks) return;
