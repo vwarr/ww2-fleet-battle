@@ -104,6 +104,7 @@ window.WW = window.WW || {};
       S.push({ lx: lx, ly: ly, lz: lz, sev: Math.min(3, 0.4 + amount / 120), fire: burn, smoke: smoke,
         low: kind === 'torpedo', fT: R() * 0.1, sT: R() * 0.3, boomT: rr(6, 14), perm: false });
     }
+    if (WW.emit && !WW.simOnly) WW.emit('dmgSite', { ship: ship, lx: lx, ly: ly, lz: lz, kind: kind, cal: cal, amount: amount }); // damage_visuals.js
     if (kind === 'torpedo' && !sub) ship.listRoll = clamp((ship.listRoll || 0) + side * 0.035, -0.12, 0.12);
     if (big) disableTurret(ship, lx, lz);
     if (burning.indexOf(ship) < 0) burning.push(ship);

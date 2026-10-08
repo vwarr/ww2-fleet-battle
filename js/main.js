@@ -257,11 +257,14 @@ window.WW = window.WW || {};
     requestAnimationFrame(frame);
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
+    call('dmgVis', 'unpose');      // the sim never sees the visual settling / trim (damage_visuals.js)
     // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
+    call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
+    call('dmgVis', 'draw', rdt);    // scorch / hole decals and deck wrecks on the posed hulls
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);
     call('ui', 'update', rdt);
@@ -273,6 +276,7 @@ window.WW = window.WW || {};
   // onStep: optional test hook, called after every sim step of fastForward
   function fastForward(seconds, onStep) {
     let left = seconds;
+    call('dmgVis', 'unpose');
     while (left > 1e-9) { const d = Math.min(STEP, left); step(d); left -= d; if (onStep) onStep(d); }
   }
   window.__sim = { stats: WW.stats, game: WW.game, world: WW.world, fastForward, setScale,
@@ -301,7 +305,7 @@ window.WW = window.WW || {};
   function boot() {
     if (WW.simOnly) return bootSim();
     setupRenderer();
-    ['audio', 'sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'crew', 'lifeboats', 'ui', 'freecam'].forEach(m => {
+    ['audio', 'sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'crew', 'lifeboats', 'dmgVis', 'ui', 'freecam'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
     });
     call('post', 'init');
