@@ -87,13 +87,13 @@ window.WW = window.WW || {};
     const exposure = WW.threat ? base * 0.3 * Math.min(1, WW.threat.danger(ship.nation, c.x, c.z) / (2 * WW.threat.DREF)) * (1 - risk) : 0;
     return base * pHit * finish * assign - exposure;
   }
-  // A target out of gun range that runs away at (nearly) our best speed cannot be caught: chasing it only drags
-  // the ship out of formation (a battleship or cruiser never runs down a fleeing carrier).
+  // A carrier out of gun range that is (nearly) as fast as we are cannot be caught: chasing it only drags the ship
+  // out of formation (a battleship or cruiser never runs down a carrier; it fights it only if it comes in range).
   function unreachable(ship, t) {
     const R = reach(ship.stats), d = WW.dist(ship.x, ship.z, t.x, t.z);
     if (d <= R) return false;
-    const u = t.unit || t, away = Math.cos(WW.angleDiff(t.heading, Math.atan2(t.z - ship.z, t.x - ship.x)));
-    return away > 0 && u.stats.speed >= 0.9 * ship.stats.speed; // not closing, and its type can outrun us
+    const u = t.unit || t;
+    return u.stats.speed >= 0.9 * ship.stats.speed && u.type === 'carrier'; // a carrier can always turn away and outrun us
   }
   function riskOf(ship) { const d = WW.fleetCmd && WW.fleetCmd.doctrine(ship.nation); return d ? d.risk[ship.type] || 0 : 0.5; }
 

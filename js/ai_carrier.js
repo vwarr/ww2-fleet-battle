@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
-  const FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 60; // a destroyer (fast) is run from as soon as it is seen
+  const FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320; // a destroyer (fast) is run from as soon as it is seen
   // Summed repulsion from every known gun ship inside its flee radius (weight (1 - d / radius)^2): the heading
   // away from all of them, or null when none is close.
   function fleeFrom(ship) {
@@ -35,10 +35,12 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const o = c.unit;
       if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || WW.time.now - c.seenAt > FLEE_AGE) continue;
-      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, c.x, c.z), k = d / Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD);
+      const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
+      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD);
+      if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;
       if (k >= 1 || d < 1) continue;
       const w = (1 - k) * (1 - k) + 0.05;
-      x += (ship.x - c.x) / d * w; z += (ship.z - c.z) / d * w; n++;
+      x += (ship.x - cx) / d * w; z += (ship.z - cz) / d * w; n++;
     }
     return n ? Math.atan2(z, x) : null;
   }
@@ -57,7 +59,10 @@ window.WW = window.WW || {};
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
     ship.desiredHeading = want;
     const here = WW.threat ? WW.threat.danger(ship.nation, ship.x, ship.z) : 0;
-    if (WW.airDeck && fl === null && here < 1) WW.airDeck.steer(ship, false); // into the wind while launching / recovering (air_deck.js)
+    // Into the wind while launching / recovering (air_deck.js), only with no danger near, on (or near) station and
+    // clear of the map edges (a long run downwind of the station otherwise ends pinned on the edge).
+    const onStation = !o || WW.dist(ship.x, ship.z, o.sx, o.sz) < 120, wary = WW.time.now - (a.cvWary || -1e9) < 10; // a gun ship known within WIND_SAFE
+    if (WW.airDeck && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) WW.airDeck.steer(ship, false);
     // An enemy ship closing inside ~90 units: turn away from it (allies are spaced by ships.js SPACE).
     const n = a.near;
     if (n && n.alive && n.nation !== ship.nation && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {

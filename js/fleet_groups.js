@@ -91,13 +91,14 @@ window.WW = window.WW || {};
     var back = B.doctrine.cvStandoff * (B.posture === 'search' ? 0.8 : 1);
     var ci = 0;
     G.carrier.members.forEach(function (q) {
-      if (q.type === 'carrier') { // kept 110 inside the map edges: room to run
+      if (q.type === 'carrier') {
         // with no battle line to hide behind: a fixed home in its own fifth of the map (never trails the destroyers)
         const p = G.main.members.length ? at(mg.x, mg.z, -back, (ci ? 60 : 0) * (ci % 2 ? -1 : 1))
           : { x: ownX === 0 ? W * 0.2 : W * 0.8, z: WW.clamp(q.z, 150, H - 150) + (ci ? 80 : 0) };
         ci++;
-        p.x = WW.clamp(p.x, 110, W - 110); p.z = WW.clamp(p.z, 110, H - 110);
-        p.x = ownX === 0 ? Math.min(p.x, W * 0.35) : Math.max(p.x, W * 0.65); // and in its own third of the map
+        // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
+        // room to run in every direction
+        p.x = ownX === 0 ? WW.clamp(p.x, W * 0.15, W * 0.35) : WW.clamp(p.x, W * 0.65, W * 0.85); p.z = WW.clamp(p.z, 150, H - 150);
         set(q, p); return;
       }
       var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q;

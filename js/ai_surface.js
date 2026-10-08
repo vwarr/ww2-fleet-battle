@@ -68,7 +68,7 @@ window.WW = window.WW || {};
     }
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
     if (!t) { if (o) followStation(ship, o, B); else H.idle(ship); return; }
-    if (o && B.posture !== 'press' && H.unreachable(ship, t)) followStation(ship, o, B); // never run down a target that outruns us (unless pressing)
+    if (o && H.unreachable(ship, t)) followStation(ship, o, B); // never run down a target that outruns us (a carrier)
     else engage(ship, t, o, B);
     torpedoes(ship, t, B);
   }
