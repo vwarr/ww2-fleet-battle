@@ -13,11 +13,11 @@ window.WW = window.WW || {};
   // ---------------- PT boats ----------------
   const PT = {
     DASH: 130,        // max run length to the firing point
-    FIRE: 42,         // firing distance from the target (torpedo range 70; close = fewer misses)
-    FIRE_MAX: 55,
+    FIRE: 38,         // firing distance from the target (torpedo range 70; close = fewer misses)
+    FIRE_MAX: 50,
     EX_MAX: 9,        // acceptable path danger from ships other than the target (dps)
     PEN_RUN: 0.12, PEN_ABORT: 0.16, PEN_LURK: -0.06, // midline limits (x half-map)
-    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240, FLEE_DG: 0.6, IDLE_R: 40, IDLE_THR: 0.9
+    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 40, IDLE_THR: 0.9
   };
   function partner(ship) {
     const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null;
@@ -77,7 +77,7 @@ window.WW = window.WW || {};
   // A target of opportunity: { c, fx, fz, score } or null. Isolated, crippled, slow, or a DD / CA near land,
   // within a short dash, with acceptable danger along the run from ships other than the target.
   function firePoint(ship, u, side) {
-    const t = WW.dist(ship.x, ship.z, u.x, u.z) / ship.stats.speed;
+    const t = Math.min(PT.LEAD_T, WW.dist(ship.x, ship.z, u.x, u.z) / ship.stats.speed); // short look-ahead only
     const px = u.x + Math.cos(u.heading) * u.speed * t, pz = u.z + Math.sin(u.heading) * u.speed * t;
     const h = u.heading + side;
     return { x: px + Math.cos(h) * PT.FIRE, z: pz + Math.sin(h) * PT.FIRE };
@@ -89,6 +89,7 @@ window.WW = window.WW || {};
   function runCheck(ship, c, side, gate) {
     const u = c.unit, n = ship.nation, f = firePoint(ship, u, side);
     const dash = WW.dist(ship.x, ship.z, f.x, f.z);
+    if (WW.dist(ship.x, ship.z, u.x, u.z) > PT.DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
     stats.checks++;
     if (dash > PT.DASH) { stats.far++; return null; }
     if (pen(ship, f.x) > PT.PEN_RUN) { stats.deep++; return null; }
