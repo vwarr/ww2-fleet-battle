@@ -4,23 +4,12 @@ window.WW = window.WW || {};
 (function () {
   const TAU = Math.PI * 2;
   let nextId = 1;
-  // Candidate steering offsets (radians) around the wanted heading.
-  const OFFS = [0, 0.25, -0.25, 0.5, -0.5, 0.8, -0.8, 1.15, -1.15, 1.6, -1.6, 2.2, -2.2, Math.PI];
   const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
   const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
 
   const wreckShips = [];             // settled wrecks (not in WW.world.ships)
   let wreckCol = null;
   if (WW.world && !WW.world.wrecks) WW.world.wrecks = []; // [{x, z, radius, top}]
-  // Wreck whose top is above water and covers (x, z), or null.
-  function wreckAt(x, z) {
-    const w = WW.world.wrecks || [];
-    for (let i = 0; i < w.length; i++) {
-      const o = w[i], dx = x - o.x, dz = z - o.z;
-      if (o.top > 0.2 && dx * dx + dz * dz < o.radius * o.radius) return o;
-    }
-    return null;
-  }
   // A settled wreck or another sinking ship whose footprint overlaps a circle of radius r at (x, z).
   function wreckNear(x, z, r, self) {
     const w = WW.world.wrecks || [];
@@ -32,7 +21,7 @@ window.WW = window.WW || {};
     }
     return false;
   }
-  function nav(x, z, d) { return WW.terrain.isNavigable(x, z, d) && !((WW.world.wrecks || []).length && wreckAt(x, z)); }
+  const nav = (x, z, d) => WW.shipNav.nav(x, z, d), wreckAt = (x, z) => WW.shipNav.wreckAt(x, z); // ships_nav.js
   function wrap(a) { a %= TAU; return a < 0 ? a + TAU : a; }
 
   class Ship {
@@ -62,7 +51,11 @@ window.WW = window.WW || {};
       if (typeof THREE !== 'undefined') {
         const b = new THREE.Box3().setFromObject(this.group);
         if (isFinite(b.min.y) && isFinite(b.max.y)) { this.hullBot = Math.min(-0.3, b.min.y); this.hullTop = Math.max(1, b.max.y); }
+        if (isFinite(b.min.z)) this.beam = WW.clamp(b.max.z - b.min.z, st.length / 10, st.length / 3); // bow is +x: z extent = beam
       }
+      if (!this.beam) this.beam = st.length / 7;
+      this.hullPts = WW.shipNav.hullPoints(st.length, this.beam); // footprint samples (ships_nav.js)
+      this.bowDepth = Math.max(WW.shipNav.HARD + 0.4, st.minDepth * 0.6); // planner: hull ends/sides keep this much water
       this.depthY = this.submerged ? SUB_DEPTH : 0;
       this.hangar = st.planes ? { fighter: st.planes.fighter, dive: st.planes.dive, torpedo: st.planes.torpedo } : null;
       this.baseColors = this.model.hullMats.map(m => (m.color ? m.color.clone() : null));
@@ -78,32 +71,7 @@ window.WW = window.WW || {};
       return [this.x + lx * c - lz * s, this.z + lx * s + lz * c];
     }
 
-    // Look-ahead: how far along heading h the water stays navigable.
-    clearance(h) {
-      const md = this.stats.minDepth + 0.6, look = this.lookDist, step = Math.max(2.5, look / 12); // plan with a margin
-      const c = Math.cos(h), s = Math.sin(h);
-      if (!nav(this.x + c, this.z + s, md)) return 1;
-      if (!nav(this.x + c * 2.5, this.z + s * 2.5, md)) return 2.5;
-      for (let d = Math.max(4, this.stats.length * 0.5); d <= look; d += step) {
-        if (!nav(this.x + c * d, this.z + s * d, md)) return d;
-      }
-      return look + step;
-    }
-
-    planNav(want) {
-      const look = this.lookDist;
-      this.clearAhead = this.clearance(this.heading);
-      let best = want, bestScore = -1e9;
-      for (let i = 0; i < OFFS.length; i++) {
-        const h = want + OFFS[i];
-        const c = this.clearance(h);
-        const score = (c >= look ? 1.2 : c / look) * 4 - Math.abs(OFFS[i]) * 0.7
-          - Math.abs(WW.angleDiff(this.heading, h)) * 0.3;
-        if (score > bestScore) { bestScore = score; best = h; }
-        if (i === 0 && c >= look) break; // straight line is clear
-      }
-      this.navHeading = wrap(best);
-    }
+    // clearance(h) / planNav(want): look-ahead steering, in ships_nav.js.
 
     move(dt) {
       const st = this.stats, md = st.minDepth;
@@ -112,7 +80,7 @@ window.WW = window.WW || {};
       const list = WW.world.ships, rs = SPACE[this.type] || 20;
       for (let i = 0; i < list.length; i++) {
         const o = list[i];
-        if (o === this || !o.alive || (o.submerged !== this.submerged)) continue;
+        if (o === this || o.removed || !(o.alive || o.sinking) || (o.submerged !== this.submerged)) continue; // steer clear of sinking hulls too
         const r = Math.max(rs, SPACE[o.type] || 20, (st.length + o.stats.length) * 0.6 + 4);
         const ex = this.x - o.x, ez = this.z - o.z, d2 = ex * ex + ez * ez;
         if (d2 < r * r && d2 > 1e-4) {
@@ -131,18 +99,17 @@ window.WW = window.WW || {};
       if (this.pivotT > 2 && !(this.escapeT > 0)) {
         let bd = -1e9;
         for (let k = 0; k < 16; k++) {
-          const a = (k / 16) * TAU, d = WW.terrain.depthAt(this.x + Math.cos(a) * 7, this.z + Math.sin(a) * 7);
-          if (d > bd) { bd = d; this.escapeH = a; }
+          const a = (k / 16) * TAU, d = this.clearance(a) + 0.5 * WW.terrain.depthAt(this.x + Math.cos(a) * 7, this.z + Math.sin(a) * 7);
+          if (d > bd) { bd = d; this.escapeH = a; } // most open water for the whole hull (never off the map edge)
         }
         this.escapeT = 3;
       }
-      if (this.escapeT > 0) { this.escapeT -= dt; this.navHeading = this.escapeH; this.navT = 0.3; pivot = false; this.pivotT = 0; }
+      if (this.escapeT > 0) { this.escapeT -= dt; this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0;
+        pivot = pivot && Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.6; } // swing to face it first, then go
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
       const diff = WW.angleDiff(this.heading, this.navHeading);
       const maxT = st.turn * sf * dt;
-      const turn = WW.clamp(diff, -maxT, maxT);
-      this.heading = wrap(this.heading + turn);
-      this.turnRate = dt > 0 ? turn / dt : 0;
+      const turn = WW.clamp(diff, -maxT, maxT), h0 = this.heading;
 
       // Speed: slow down when the way ahead is short or the turn is large.
       let ts = st.speed * WW.clamp(this.throttle, 0, 1);
@@ -152,11 +119,27 @@ window.WW = window.WW || {};
       const acc = st.speed * (ts > this.speed ? 0.12 : 0.25) * dt;
       this.speed += WW.clamp(ts - this.speed, -acc, acc);
 
-      // Step, with a hard guarantee: never end on a non-navigable cell.
-      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, m = 3;
-      const nx = WW.clamp(this.x + Math.cos(this.heading) * this.speed * dt, m, W - m);
-      const nz = WW.clamp(this.z + Math.sin(this.heading) * this.speed * dt, m, H - m);
-      if (nav(nx, nz, md)) { this.x = nx; this.z = nz; this.blockedT = 0; return; }
+      // Step, with hard guarantees: the centre never ends on a non-navigable cell and no hull sample
+      // (bow, stern, beams) ends on water shallower than shipNav.HARD — full turn, half turn, astern, straight.
+      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, m = 3, N = WW.shipNav, cur = N.hullMin(this, this.x, this.z, h0);
+      const fo = N.fixedOverlap(this, this.x, this.z, h0) + 1e-6; // never drive deeper into a wreck / sinking hull
+      const pose = (h, v) => {
+        const nx = WW.clamp(this.x + Math.cos(h) * v, m, W - m), nz = WW.clamp(this.z + Math.sin(h) * v, m, H - m);
+        if (!nav(nx, nz, md) || !N.hullOK(this, nx, nz, h, cur) || N.fixedOverlap(this, nx, nz, h) > fo) return false;
+        this.x = nx; this.z = nz; this.heading = wrap(h); return true;
+      };
+      this.turnRate = 0;
+      const v = this.speed * dt, back = -0.35 * st.speed * dt;
+      for (const f of [1, 0.5]) if (pose(h0 + turn * f, v)) { this.turnRate = dt > 0 ? turn * f / dt : 0; this.blockedT = 0; return; }
+      // Slow and the swing is blocked (an end would touch the shallows / map edge): turn in place, else go astern.
+      if (Math.abs(turn) > 1e-4 && this.speed < st.speed * 0.3) {
+        if (pose(h0 + turn, 0) || pose(h0 + turn * 0.5, 0)) { this.speed *= 0.5; this.turnRate = turn / dt; return; }
+        if (pose(h0 + turn, back) || pose(h0 + turn * 0.5, back)) { this.speed = 0; return; }
+        const crawl = 0.3 * st.speed; // stern in the shallows: creep ahead into deeper water instead
+        for (const f of [1, 0.5, 0]) if (pose(h0 + turn * f, crawl * dt)) { this.speed = crawl; this.turnRate = turn * f / dt; return; }
+        if (pose(h0, back)) { this.speed = 0; return; }
+      }
+      if (pose(h0, v)) { this.blockedT = 0; return; }
       if (nav(this.x, this.z, md)) {
         // Blocked: stay, bleed speed, turn hard toward the planned heading.
         this.speed *= 0.5;
@@ -167,24 +150,27 @@ window.WW = window.WW || {};
           for (let k = 0; k < 24; k++) {
             const h = (k / 24) * TAU, c = Math.cos(h), s = Math.sin(h);
             if (!nav(this.x + c * 0.4, this.z + s * 0.4, md) || !nav(this.x + c * 1.5, this.z + s * 1.5, md + 0.2) || !nav(this.x + c * 4, this.z + s * 4, md + 0.4)) continue;
+            if (N.hullMin(this, this.x + c * 3, this.z + s * 3, h) < N.HARD) continue;
             const d = Math.abs(WW.angleDiff(this.navHeading, h));
             if (d < bd) { bd = d; bh = h; }
           }
           if (bh !== null) { this.navHeading = bh; this.navT = 1.5; }
         } else if (this.navT > 1.5 || this.navT <= 0) this.navT = 0;
-        const dd = WW.angleDiff(this.heading, this.navHeading);
-        this.heading = wrap(this.heading + WW.clamp(dd, -st.turn * dt * 3, st.turn * dt * 3));
+        const dd = WW.clamp(WW.angleDiff(h0, this.navHeading), -st.turn * dt * 3, st.turn * dt * 3);
+        if (pose(h0 + dd, 0) || pose(h0 + dd * 0.4, 0)) return;
+        // Bow or stern against the shore: go astern a little while swinging (a three-point turn).
+        if (pose(h0 + dd * 0.5, back) || pose(h0, back)) { this.speed = 0; return; }
         return;
       }
       // Already on bad water (bad spawn, or a wreck settled on us).
-      const v = Math.max(1.5, this.speed) * dt, wk = wreckAt(this.x, this.z);
+      const ve = Math.max(1.5, this.speed) * dt, wk = wreckAt(this.x, this.z);
       if (wk && WW.terrain.isNavigable(this.x, this.z, md)) {
         // Back away from the wreck along the most outward direction that keeps terrain depth.
         const out = Math.atan2(this.z - wk.z, this.x - wk.x);
         for (let k = 0; k < 13; k++) {
           const a = out + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.35;
-          const px = this.x + Math.cos(a) * v, pz = this.z + Math.sin(a) * v;
-          if (px > m && px < W - m && pz > m && pz < H - m && WW.terrain.isNavigable(px, pz, md)) { this.x = px; this.z = pz; return; }
+          const px = this.x + Math.cos(a) * ve, pz = this.z + Math.sin(a) * ve;
+          if (px > m && px < W - m && pz > m && pz < H - m && WW.terrain.isNavigable(px, pz, md) && N.hullOK(this, px, pz, h0, cur)) { this.x = px; this.z = pz; return; }
         }
         return; // boxed in: hold position (still on valid terrain)
       }
@@ -193,7 +179,7 @@ window.WW = window.WW || {};
         const a = (k / 12) * TAU, d = WW.terrain.depthAt(this.x + Math.cos(a) * 5, this.z + Math.sin(a) * 5);
         if (d > bd) { bd = d; bx = Math.cos(a); bz = Math.sin(a); }
       }
-      this.x = WW.clamp(this.x + bx * v, m, W - m); this.z = WW.clamp(this.z + bz * v, m, H - m);
+      this.x = WW.clamp(this.x + bx * ve, m, W - m); this.z = WW.clamp(this.z + bz * ve, m, H - m);
     }
 
     updateDepth(dt) {
@@ -281,20 +267,32 @@ window.WW = window.WW || {};
       this.sinkT += dt;
       const L = this.stats.length, k = Math.min(1, this.sinkT / 8), g = this.group;
       this.speed = Math.max(0, this.speed - dt * 0.7);
-      if (this.driftH !== undefined) this.heading += WW.clamp(WW.angleDiff(this.heading, this.driftH), -0.3 * dt, 0.3 * dt);
+      const N = WW.shipNav, dep = (p) => Math.max(0, WW.terrain.depthAt(p[0], p[1]));
+      if (this.driftH !== undefined) { // swing toward the drift heading unless an end would touch the shallows
+        const nh = this.heading + WW.clamp(WW.angleDiff(this.heading, this.driftH), -0.3 * dt, 0.3 * dt);
+        if (N.hullMin(this, this.x, this.z, nh) >= N.GROUND) this.heading = nh;
+      }
       const mh = this.pushH !== undefined ? this.pushH : this.heading;
       const nx = this.x + Math.cos(mh) * this.speed * dt, nz = this.z + Math.sin(mh) * this.speed * dt;
       if (WW.dist(nx, nz, this.sx0, this.sz0) > DRIFT_MAX || (wreckNear(nx, nz, L * 0.5 + 3, this) && !wreckNear(this.x, this.z, L * 0.5 + 3, this))) this.speed = 0; // stay near the sinking spot, apart from other wrecks
-      else if (WW.terrain.isNavigable(nx, nz, Math.max(1.2, L * 0.1))) { this.x = nx; this.z = nz; } else this.speed = 0; // grounded
+      else if (WW.terrain.isNavigable(nx, nz, Math.max(1.2, L * 0.1)) && N.hullMin(this, nx, nz, this.heading) >= N.GROUND) { this.x = nx; this.z = nz; }
+      else this.speed = 0; // grounded: no hull sample reaches the beach
       // Ease down to rest on the seabed (shallow water leaves the upperworks above the surface).
-      const D = Math.max(0, WW.terrain.depthAt(this.x, this.z));
-      const flatY = Math.min(-1, -D - this.hullBot * 0.8);
+      // The deeper end goes down (bow up when the stern has deeper water); keels follow the seabed.
+      const Dm = dep([this.x, this.z]), Db = dep(this.toWorld(L * 0.5, 0)), Ds = dep(this.toWorld(-L * 0.5, 0));
+      if (Math.abs(Db - Ds) > 0.5) this.pitchSgn = Ds > Db ? 1 : -1;
+      const sg = this.pitchSgn || Math.sign(this.sinkPitch || 1), fy = d => Math.min(-1, -d - this.hullBot * 0.8);
+      const flatY = fy(sg > 0 ? Ds : Db), snMin = Math.max((fy(sg > 0 ? Db : Ds) - flatY) / L, (fy(Dm) - flatY) / (L * 0.5));
       // In shallow water one end rests on the seabed and the other end rears clear of the surface.
       const want = WW.clamp(L * 0.2, 1.6, 5);             // how far the raised end should show
       let roll = this.sinkRoll, sn = (want - flatY - this.hullTop * 0.85) / L;
       if (sn > 0.5) sn = 0;                               // too deep: settle flat on the bottom
       else { sn = WW.clamp(sn, 0.24, 0.5); roll *= 0.6; } // clearly tilted: reads as a wreck, not a ship
-      const th = Math.asin(sn) * Math.sign(this.sinkPitch || 1);
+      sn = WW.clamp(Math.max(sn, snMin), 0, 0.7);         // never let the high end or midships sink into the seabed
+      for (let r = 0; r < 3; r++) { // don't roll the upperworks over a beach
+        const p = this.toWorld(0, this.hullTop * Math.sin(roll)); if (WW.terrain.depthAt(p[0], p[1]) >= N.GROUND) break; roll *= 0.4;
+      }
+      const th = Math.asin(sn) * sg;
       this.restY = flatY + L * 0.5 * sn;
       this.restTop = flatY + this.hullTop * Math.cos(roll) + L * sn;
       g.position.set(this.x, WW.lerp(this.startY, this.restY, k * k), this.z);
@@ -375,6 +373,7 @@ window.WW = window.WW || {};
       }
       if (heading === undefined) heading = nation === 'USN' ? 0 : Math.PI;
       const s = new Ship(type, nation, x, z, heading);
+      WW.shipNav.placeHull(s, nav);  // whole hull clear of land too, not just the centre
       if (WW.scene) WW.scene.add(s.group);
       WW.world.ships.push(s);
       if (WW.shipAI && WW.shipAI.setup) WW.shipAI.setup(s);
@@ -393,8 +392,12 @@ window.WW = window.WW || {};
         if (battle) { if (WW.shipAI) WW.shipAI.update(s, dt); }
         else if (live) s.throttle = Math.min(s.throttle, 0.5);
         if (live) s.move(dt); else { s.turnRate = 0; s.speed = 0; }
+        s.updateDepth(dt); // before the collision pass: a sub surfacing under a ship gets pushed clear
+      }
+      if (live) WW.shipNav.resolve(arr, wreckShips); // hard backstop: no hulls through each other or through wrecks
+      for (const s of arr) {
+        if (s.removed || s.wreck || s.sinking) continue;
         s.effects(dt);
-        s.updateDepth(dt);
         s.syncGroup(t);
       }
       prune();

@@ -24,9 +24,11 @@ js/effects.js         owner: B
 js/combat.js          owner: D
 js/combat_weapons.js  owner: D   (torpedoes, bombs, depth charges)
 js/ships.js           owner: C
+js/ships_nav.js       owner: dev-nav   (WW.shipNav: hull footprint + hard collision)
 js/ships_ai.js        owner: C   (WW.shipAI)
 js/aircraft.js        owner: C
 js/camera.js          integrator (WW.cam: director / map camera; main calls init, resize, update)
+js/freecam.js         integrator (WW.freecam: user camera; camera.js asks it for goals while active)
 js/post.js            integrator (WW.post: HDR render target, bloom, filmic shoulder; main renders through it)
 js/ui.js              owner: A
 js/main.js            owner: A
