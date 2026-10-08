@@ -120,6 +120,14 @@ window.WW = window.WW || {};
       if (this.escapeT > 0) { // swing to face it first (up to 15 s for a big hull), then go for escapeT s
         const off = Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.3;
         if (off && this.escHold < 15) this.escHold += dt; else this.escapeT -= dt;
+        // The swing jammed (an end against the shallows): come about the other way, toward the clearest heading.
+        this.escStall = off && Math.abs(this.turnRate) < 1e-3 ? (this.escStall || 0) + dt : 0;
+        if (this.escStall > 1) {
+          const sg = WW.angleDiff(this.heading, this.escapeH) > 0 ? -1 : 1;
+          let bc = -1;
+          for (const o of [1.2, 2, 2.8]) { const h = this.heading + sg * o, c = this.clearance(h); if (c > bc) { bc = c; this.escapeH = wrap(h); } }
+          this.escStall = 0;
+        }
         this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0; pivot = pivot && off;
       }
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
