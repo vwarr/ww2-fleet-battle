@@ -130,3 +130,11 @@ Over 100 rounds of randomized fleets for both sides, each nation wins 50 ± 5. N
 - Radio chatter: event-driven lines (pilots, fighter director, ship crews; IJN in Japanese with English subtitles), tied to squadron and pilot callsigns. Voice: synthesized radio "garble" (speech-like syllables, radio filter, static, squelch) plus film subtitles. NO speechSynthesis toggle (user chose option 1 only). No period slurs. Chatter follows what the camera shows, plus important fleet-wide calls.
 
 - Future-proof for pre-synthesized voices (user idea): line catalog as data (stable id, speaker role, text, fragment structure for callsigns and bearings), plus a voice-backend interface (garble now; sample playback later). Recordings would be dry; the radio filter is applied live in WebAudio. Fall back to garble when files are missing or under file://. Later: an offline tools/ script generates clips per line × voice from the same catalog (model must do Japanese; license must allow distribution; no real-person cloning).
+
+## 7. Historical doctrine items (formations, torpedoes, submarines, supply)
+Every nation difference below is a doctrine parameter (fleet_groups.js BASE) or a per-nation stat table (core.js WW.TORPEDO_NATION), so the balance pass can tune it. Details: ARCHITECTURE.md (Formation doctrine, Submarine doctrine, Ammunition and fuel).
+- Formations: USN AA ring (escorts 25-45 around each carrier on the threat axis, turning with it); IJN surface vanguard well ahead of the carriers (Santa Cruz); both zigzag under sub threat on a shared plan.
+- Torpedoes: IJN Type 93 / 95 longer, faster, nearly wakeless (tracks seen at ~27 instead of 45, so combing comes late); USN Mk 13 / 14 / 15 slower, shorter, visible wakes, 12-28% duds.
+- Submarines: IJN carriers first, shadowing, patrol line; USN nearest target, lifeguard pickups.
+- Supply: finite main / AA ammunition, torpedo reload sets (IJN DD / CA one, USN none), destroyer fuel.
+- Measured effect on the 100-round gate (seed0 1, Oct 2026, each item switched off alone): the torpedo table is by far the largest; ring, vanguard, zigzag and sub roles are each within noise; supply favours the USN (it caps the IJN reloads). See tests/doctrine.js for the per-nation metrics.

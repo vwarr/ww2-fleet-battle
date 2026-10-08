@@ -136,6 +136,8 @@ node tests/determinism.js [seed] [seconds]           # same seed, same round: on
 node tests/determinism.js --cross 1,2,3 300          # rendered page vs sim-only page (always launches both)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
 node tests/endgame_shots.js rescue 19                # render-mode endgame screenshots (cripple 9, rescue 19, retreat 8)
+node tests/doctrine.js [rounds=24] [seed0=1]         # doctrine metrics per nation: formation, zigzag, torpedoes, subs, supply
+node tests/doctrine_shots.js ring 3                  # render-mode doctrine screenshots (ring, vanguard, wake_usn, wake_ijn, dud, lifeguard)
 ```
 
 `--pages` (sim_behaviour, sim_rounds) defaults to 6, measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier), so 6 is the compromise. The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game.
@@ -264,7 +266,7 @@ WW.combat = {
 };
 ```
 
-Shells fly on a ballistic arc to a lead point. Accuracy decreases with range. Shells and bombs do not hit a submerged submarine. Torpedoes and depth charges do. `combat.update` also does the anti-aircraft fire of each ship. Combat calls `ship.takeDamage(amount, x, z, kind, cal)`.
+Shells fly on a ballistic arc to a lead point. Accuracy decreases with range. Shells and bombs do not hit a submerged submarine. Torpedoes and depth charges do. A torpedo takes its launcher's nation weapon (`ship.stats.torpedoes`, else `WW.torpSpec(nation, 'air')`): speed, `sight` and a dud roll at launch (`p.dud`). A dud that reaches a hull does no damage: a small splash and sparks, `torpedoDud` and `weaponImpact` with `dud: true` (sound: `torp.dud`). On the water a steam torpedo leaves a bubbly white streak (`fx.wake` + `fx.torpBubbles`), an oxygen one (`sight` < 1) a faint trace (`fx.wake(..., faint)`). A submerged sub with an enemy ship within 110 shows a periscope feather (`Ship.effects`). `combat.update` also does the anti-aircraft fire of each ship. Combat calls `ship.takeDamage(amount, x, z, kind, cal)`.
 
 `combat_aa.js` (`WW.combatAA = { update, clearAll, applyJink, cfg, _debug }`) does the anti-aircraft fire; `combat.js` `updateAA` and `clearAll` call it.
 - Each ship's `aa.dps` is split into a heavy share (battleship 60%, cruiser and carrier 55%) and a light share (all of it on destroyers and PT boats).
@@ -314,7 +316,7 @@ WW.shipAI = {
   - a PT boat's MG never fires at a battleship or cruiser (`GUN_W.mg`).
 - `fireSpread` returns false and holds fire for 1.5 s when an allied surface ship is inside the fan, out to torpedo range.
 - **Cripples** (`h.withdraw`, used by carriers' own code and PT boats; surface ships use `crippleHome` below): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
-- **Torpedo combing** (`h.comb`): a track from `WW.intel.torpedoes` that will pass within half a hull length + 6 inside 70 units. After a reaction delay (PT 0.4 s, DD 0.7 s, sub 1 s, CA 1.2 s, CV 1.8 s, BB 2 s), the ship turns parallel to the track, bow or stern on, whichever is the smaller turn, until the torpedo has passed.
+- **Torpedo combing** (`h.comb`; the track must first be seen: `R.TORP` × the torpedo's `sight`, so an IJN oxygen torpedo is seen at ~27, a USN steam torpedo at ~58): a track from `WW.intel.torpedoes` that will pass within half a hull length + 6 inside 70 units. After a reaction delay (PT 0.4 s, DD 0.7 s, sub 1 s, CA 1.2 s, CV 1.8 s, BB 2 s), the ship turns parallel to the track, bow or stern on, whichever is the smaller turn, until the torpedo has passed.
 - Surface ships (`ai_surface.js`; the order inside `surfaceAI`: sub hunt, then AA cover / press / station / engage, torpedoes, torpedo angling, early combing, the carrier keep-off, and last `crippleHome`):
   - **Pursuit** (posture `pursue`, see fleet_cmd): with nothing in gun range a ship steams for `WW.endgameAI.pursueContact`: the nearest last-known enemy up to 120 s old (cripples count as 0.6 × the distance), aimed ahead along its course by the time it takes to get there (at most 60 s); carriers only when fair game; no lair or home-waters limit. It closes like a press (`prefRange` × press factor), is not tied to its station, and a destroyer may attack a crippled capital ship alone. `WW.endgameAI.fairGame(ship, cv, B)`: a carrier that is crippled (hp < `CRIP` or `speedK` < 0.75), slower than 0.95 × the pursuer, or with no fit known gun ship of its own within 150; for it the carrier keep-off, the `CV_KEEP` floor of `prefRange` and of `torpedoRun`, and `h.unreachable` are lifted;
   - with no target, they keep their commander station. While the side presses (`posture 'press'`) they steam instead for the nearest last-known enemy contact up to 60 s old (`pressContact`, `closeOn`): never a carrier, never a PT boat for a BB / CA, never a contact within 230 of a known enemy carrier (its lair) or inside the enemy's home waters (0.35 of the width from its edge). A target out of gun range in those home waters is not chased either (`homeWaters`): the press holds at the edge of the band and a broken enemy that gets home retires (main.js);
@@ -445,11 +447,11 @@ Order = { ship, group, role, slot, sx, sz, t };
 - **Stations** (`WW.fleetGroups.stations`) are offsets (forward, lateral) along `axis.h`:
   - main: line abreast at lateral 0, ±45, ±90, …, advanced by the posture lead (search / approach +45, press +35, engage 0, withdraw −45);
   - carriers: `cvStandoff` behind the main guide (the guide is the centroid of the main group's ships that are not withdrawing cripples), in the band 0.15–0.35 of the width from the own edge; while the side withdraws, straight home to 0.08–0.1 of the width at the carrier's own z. Then `cvSafe` slides the station away from every known enemy gun ship (contacts ≤ 60 s) to 1.9 × its gun range + 20;
-  - escorts: a ring about 80 out around the first carrier;
+  - escorts: each carrier's ring (`fleet_formation.js`, below): the USN AA ring (`ringR` 35) on the threat axis, live and turning with the carrier; the IJN loose ring about 80 out along the axis;
   - screen: `screenAhead` ahead of the main body;
   - flotilla: on the flanks (lateral ±110);
   - PT boats: lateral ±150, never past the midline;
-  - subs: 220 ahead, ±100 to the flank;
+  - subs: 220 ahead, ±100 to the flank; with `doctrine.subLine` (IJN) a patrol line across the axis, 90 apart, 0.55 of the way to the enemy's known centre (160 to 320 ahead);
   - withdrawing ships: 70 behind their own carrier (or the main body).
 - **Focus** (per gun group): the 1 or 2 best fresh targets from the group's guide, scored by group weight × `VALUE` × damage × proximity. `incoming` is rebuilt every tick from every own ship's `ship.target` (gun dps in range × 0.35). A target is saturated when its incoming fire kills it within 20 s; the shooter's own share is not counted.
 - **Carrier defence**: each `defend` enemy is the carrier group's focus and scores ×3 as a strike target (self-defence first).
@@ -470,6 +472,33 @@ Order = { ship, group, role, slot, sx, sz, t };
 | pressRatio / withdrawRatio | 1.2 / 0.45 | 1.1 / 0.4 | posture |
 | risk (cv, bb, ca, dd, ss, pt) | 0, .55, .45, .45, .35, .2 | 0, .5, .55, .6, .4, .3 | `WW.threat.bestHeading` risk tolerance |
 | rescue / scuttle (flags, not rolled) | true / false | false / true | endgame: USN destroyers pick up survivors and escort cripples home; IJN runs at best speed and may scuttle a cripple about to be caught |
+| ringR | 35 | 0 | carrier escorts' ring radius (0: the old loose ring ~80); `fleet_formation.js` |
+| ringDD / ringBB (flag) | 2 / true | 1 / false | destroyers per carrier ring; a battleship joins the ring when the side has two or more |
+| vanguard | 0 | 0.33 | search / approach / engage: the carriers hold this × map width behind the main body (the surface vanguard) |
+| zigzag | 1 | 1 | zigzag plan scale under sub threat |
+| subLine / subShadow / lifeguard (flags) | false / false / true | true / true / false | sub patrol line, shadowing, lifeguard duty (`ai_sub_roles.js`) |
+| subCV / subNear | 1 / 25 | 2.2 / 40 | sub ambush weight of a carrier; time scale (s) of the reach discount (lower: nearer targets win) |
+| aaAmmo / ddFuel / torpReloads | 1.25 / 1.1 / 0 | 1 / 1 / 1 | `ship_supply.js`: AA ammunition and destroyer fuel factors, reload sets for DD / CA tubes (not rolled) |
+
+Torpedo performance per nation is a stat table, `WW.TORPEDO_NATION` in `core.js` (per launcher: `ship` = DD / CA tubes, `submarine`, `pt`, `air`): `rangeK` × the type's torpedo range, `speed`, `dud` (share of hits that do not go off, rolled with `WW.rand` at launch), `sight` (× intel `R.TORP`: how close a ship must be to see the wake). IJN Type 93 / 95: long, fast, nearly wakeless; USN Mk 13 / 14 / 15: slower, shorter, steam wakes, duds. `WW.shipType(type, nation)` merges the nation's torpedoes into the per-nation `ship.stats` that every ship carries, so everything that reads `ship.stats.torpedoes` (launch distances, the danger field, the subs' and PTs' leads) sees the nation's weapon.
+
+#### Formation doctrine (fleet_formation.js, WW.formation)
+
+- **AA ring** (`ringR` > 0, USN): `assign` gives each carrier its escorts (`ringCounts`: a battleship with `ringBB` and two or more, the cruiser when the side has two or more, then `ringDD` destroyers, at least one), spread over the carriers round robin, big ships first. `ringStations` puts slot 0 on the threat axis (the bearing of the enemy's centre, else the axis of advance) and the others at ±1.15, ±2.2 rad and astern, `ringR` out (at least the two hulls' spacing + 6). The station is live (`ringPoint`): `followStation` hands a ring escort to `ringKeep`, which closes it with a lead along the carrier's course and on it matches the carrier's course and speed, so the group turns into the wind together. A ring escort keeps its station whatever it is shooting at (`ai_surface.js ringHold`) while its carrier lives and the side is not pressing, pursuing or withdrawing. `ship.ringCv` lets it inside the carrier's personal space (`ships.js move`).
+- **Vanguard** (`vanguard` > 0, IJN): in search / approach / engage the carriers hold `max(cvStandoff, vanguard × MAP_W)` behind the main body, may hang back to 0.08 of the width from their own edge, and the line's lead grows by 35 in search / approach.
+- **Zigzag**: with an enemy sub contact (≤ 75 s old) within 300 of the main body, the carrier group or the screen, or a sub's torpedo track seen or a sub's torpedo hit in the last 75 s, `B.zig` follows a shared plan (`ZIG` offsets, `LEG` 22 s each, from the sim clock) × `zigzag`. Not while pressing or pursuing. `followStation` adds it to the course; carriers on passage too (`ai_carrier.js`). Ring escorts follow their carrier.
+
+#### Submarine doctrine (ai_sub_roles.js, WW.subRoles)
+
+`ai_light.js ambush` multiplies a carrier contact by `subCV` and discounts the time to get ahead of a target by `subNear`. With `subShadow` (IJN) a contact the boat cannot get ahead of is shadowed from 110 off its quarter (intel shares the sighting). With `lifeguard` (USN), a boat at ≥ 50% hp with no destroyer within 160, no aircraft and no gun ship within 130, and no target within 200, claims an open survivor or aircrew pickup of its own side from the endgame task list (`WW.endgame.tasks()`, or `WW.rescue.tasks()` when that exists) that destroyers have left for 6 s, within 380 and in safe water (danger ≤ 8). It runs there surfaced, stops alongside and `endgame.js pickup` counts the rescue; lifeboats row to her. It gives the task up when a threat comes near.
+
+#### Ammunition and fuel (ship_supply.js, WW.supply)
+
+`ship.sup` per ship (lazy): main-battery turret shots (BB 80, CA 150, DD 200, CV 400), AA battery-seconds (CV 260, BB / CA 230, DD 170; × `aaAmmo`; a heavy salvo uses 1.1, a light tick 0.25), torpedo loads (DD / CA 1 + `torpReloads`, sub 7, PT 2), destroyer fuel (380 full-speed seconds × `ddFuel`, burning (speed / top)³ a second). Below 20%: the main battery holds fire past 0.8 × range, AA is × 0.6 and shows fewer tracers, a destroyer is held to 0.6 throttle; empty: silent / tubes empty (`torpReload` = ∞); fuel below 8%: 0.45 throttle. A ship with no fuel or nothing left to fight with is `spent`: role `withdraw`, and the surface role drops its target (its guns still answer). Hooks: `Ship.move` (fuel), `ships_ai.js guns` (`shell`), `fireSpread` (`torpFired`), `combat_aa.js` (`aa`). A normal battle rarely runs anything dry; long duels and pursuits feel it.
+
+#### Doctrine metrics (WW.docStats)
+
+`WW.dstat(key, nation, v)` (core.js) adds to per-round counters, reset on `roundStart`: torpedoes fired / hit / dud per launcher (`torpFiredShip`, `torpHitAir`, ...), first-sighting and combing distances (`torpSeenD/N`, `combD/N`), `zigT`, `subShadowT`, `subPatrolT`, `lifeguardClaim/Pick/T`, and the supply events (`supMainLow`, `supAAOut`, `supTorpOut`, `supFuelLow`, ...). Sim code only writes them; `tests/doctrine.js` reads them.
 
 #### WW.threat (ai_threat.js)
 

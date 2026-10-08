@@ -39,8 +39,10 @@ require('fs').mkdirSync(out, { recursive: true });
         }
       } else if (scene === 'wake_usn' || scene === 'wake_ijn') {
         const n = scene === 'wake_usn' ? 'USN' : 'IJN';
-        const q = torps().find(q => q.nation === n && q.owner && q.owner.stats && q.run > 25);
-        if (q) return { x: q.x, z: q.z, w: 40, who: n + ' torpedo run ' + q.run.toFixed(0) + ' sight ' + q.sight, proj: q };
+        // a ship-launched torpedo well into its run with open water ahead (no hull within 45 of its next 3 s)
+        const q = torps().find(q => q.nation === n && q.owner && q.owner.stats && q.run > 12 && q.range - q.run > 50 &&
+          !L.some(s => WW.dist(s.x, s.z, q.x + Math.cos(q.h) * q.sp * 1.5, q.z + Math.sin(q.h) * q.sp * 1.5) < 45));
+        if (q) return { x: q.x + Math.cos(q.h) * q.sp * 1.2, z: q.z + Math.sin(q.h) * q.sp * 1.2, w: 34, who: n + ' torpedo run ' + q.run.toFixed(0) + ' sight ' + q.sight, proj: q };
       } else if (scene === 'dud') {
         for (const q of torps()) {
           if (!q.dud) continue;
@@ -69,7 +71,7 @@ require('fs').mkdirSync(out, { recursive: true });
     const n = +(process.env.SHOTS || 3);
     for (let i = 0; i < n; i++) {
       await p.waitForTimeout(1500); await p.screenshot({ path: `${out}/${scene}_${seed}_${i}.png` });
-      await p.evaluate(s => __sim.fastForward(s), +(process.env.STEP || (scene === 'dud' ? 0.6 : 1.5)));
+      await p.evaluate(s => __sim.fastForward(s), +(process.env.STEP || (scene === 'dud' ? 0.6 : scene.startsWith('wake') ? 0.4 : 1.5)));
     }
   }
   await b.close();
