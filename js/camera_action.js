@@ -55,7 +55,7 @@ window.WW = window.WW || {};
         P0: cur.P.clone(), L0: cur.L.clone() });
       handFrom(shot);
     } else if (ev.kind === 'torpedo') {
-      if (!ev.plane || ev.plane !== shot.subj) return;
+      if (!ev.plane || ev.plane !== shot.subj || !ev.plane.kind) return; // torpedo bombers only (ships have no .kind)
       const h = p.h, f = V().set(Math.cos(h), 0, Math.sin(h));
       const off = V().copy(cur.P).sub(V().set(p.x, 0, p.z));   // start from where the camera is: no jump
       Object.assign(shot, { stage: 'torp', proj: p, fwd: f, off, tship: shipOf(ev.plane.target), st: 0, dur: shot.t + 14,
@@ -149,7 +149,7 @@ window.WW = window.WW || {};
     let f = shot.foe;
     if (a.foe && a.foe !== f && a.foe.alive && (!f || !f.alive || f.removed)) f = shot.foe = a.foe, shot.foeDead = 0;
     if (f && (f.removed || (!f.alive && shot.foeDead > 2.8))) f = shot.foe = (a.foe && a.foe.alive ? a.foe : null), shot.foeDead = 0;
-    if (f && !f.alive) {
+    if (f && !f.alive && !(f.hp > 0)) { // shot down (a landing or a ditching is not a kill)
       if (!shot.foeDead) { // the latched foe just went down: a kill on camera
         shot.foeDead = 1e-3;
         if (Math.hypot(f.x - a.x, f.y - a.y, f.z - a.z) < 40) shot.slow = slowmo();

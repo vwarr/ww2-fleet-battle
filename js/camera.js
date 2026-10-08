@@ -307,7 +307,8 @@ window.WW = window.WW || {};
         // heavy easing for the director, crisp for the user; action shots set their own (crisper) rates
         P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 : (shot && shot.kP) || 0.9)));
         L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 : (shot && shot.kL) || 1.3)));
-        if (!manual && !cam.isOverview()) clearHulls(P, 12); // the eased camera lags its goal: a safety net for the camera itself
+        // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)
+        if (!manual && !cam.isOverview() && P.y < 14) { _c.copy(P); clearHulls(_c, 14); P.lerp(_c, (1 - Math.exp(-rdt * 6)) * Math.min(1, (14 - P.y) / 4)); }
       }
       camera.position.copy(P);
       camera.lookAt(L);
