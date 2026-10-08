@@ -136,8 +136,8 @@ window.WW = window.WW || {};
         cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
-      var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q;
-      set(q, at(g.x, g.z, r[0], r[1]));
+      var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; // the flagship's escorts close in
+      set(q, at(g.x, g.z, r[0] * rk, r[1] * rk));
     });
     G.screen.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });
     G.flotilla.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + 30, (i % 2 ? -1 : 1) * (110 + 25 * (i >> 1)))); });

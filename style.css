@@ -105,3 +105,5 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 #aar .stamp { position: absolute; right: 24px; top: 16px; transform: rotate(9deg); color: rgba(180, 40, 35, 0.6);
   border: 2px solid rgba(180, 40, 35, 0.55); padding: 2px 10px; font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase; border-radius: 3px; }
 @media (max-width: 560px) { #aar .cols { grid-template-columns: 1fr; } #diary, #diary.film { width: 70vw; } }
+
+#hud .row.adm { white-space: pre-line; max-width: 300px; line-height: 1.35; }
