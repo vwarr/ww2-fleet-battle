@@ -182,6 +182,7 @@ window.WW = window.WW || {};
   function startBattle() {
     const c = WW.game.composition || [];
     if (!c.some(s => s.nation === 'USN') || !c.some(s => s.nation === 'IJN')) return uiError('Both sides need ships');
+    if (WW.admirals) WW.admirals.startFromPreview(); // the admirals shown on the panel
     WW.game.startRound({ keepMap: true });
   }
 

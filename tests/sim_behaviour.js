@@ -456,6 +456,7 @@ function install(P) {
       eg: WW.endgame && WW.endgame.stats ? JSON.parse(JSON.stringify(WW.endgame.stats)) : null, spd: R.spd, spdN: R.spdN,
       sf: WW.shipFires && WW.shipFires.stats ? JSON.parse(JSON.stringify(WW.shipFires.stats)) : null,
       ch: WW.charge && WW.charge.stats ? JSON.parse(JSON.stringify(WW.charge.stats)) : null,
+      adm: WW.admirals && WW.admirals.of('USN') ? { USN: WW.admirals.of('USN').key, IJN: WW.admirals.of('IJN') ? WW.admirals.of('IJN').key : null, st: JSON.parse(JSON.stringify(WW.admirals.stats)) } : null,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
@@ -616,8 +617,24 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
         `;  ${(Date.now() - t0) / 1000 / rounds.length * PAGES >= 0 ? ((Date.now() - t0) / 1000 / rounds.length).toFixed(2) : ''} s wall/round (${PAGES} page${PAGES > 1 ? 's' : ''})` +
         (sc.mirror ? `;  same fleet won both sides in ${pairs(rounds)} of ${rounds.length >> 1} pairs` : ''));
     }
+    if (rounds.some(r => r.adm)) admTable(rounds);
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
     else console.log('  info: ' + [...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
+  }
+  // admirals.js: win rate per admiral matchup (USN admiral vs IJN admiral) and the command metrics
+  function admTable(rounds) {
+    const T = {}, per = {}, n = rounds.length, S = f => rounds.reduce((a, r) => a + (r.adm ? f(r.adm.st) : 0), 0);
+    for (const r of rounds) {
+      if (!r.adm) continue;
+      const k = r.adm.USN + ' v ' + r.adm.IJN, t = T[k] = T[k] || { n: 0, USN: 0, IJN: 0 };
+      t.n++; if (r.winner) t[r.winner]++;
+      for (const nat of ['USN', 'IJN']) { const q = per[nat + ':' + r.adm[nat]] = per[nat + ':' + r.adm[nat]] || { n: 0, w: 0 }; q.n++; if (r.winner === nat) q.w++; }
+    }
+    console.log('  admirals (USN v IJN: rounds, USN wins / IJN wins): ' + Object.keys(T).sort().map(k => `${k} ${T[k].n}: ${T[k].USN}/${T[k].IJN}`).join(';  '));
+    console.log('  admiral win rate: ' + Object.keys(per).sort().map(k => `${k} ${per[k].w}/${per[k].n} (${(per[k].w / per[k].n).toFixed(2)})`).join('  '));
+    const ords = {}; for (const r of rounds) if (r.adm) for (const k in r.adm.st.orders) ords[k] = (ords[k] || 0) + r.adm.st.orders[k];
+    console.log(`  command: flag lost ${(S(s => s.flagLost) / n).toFixed(2)}/round, transfers ${(S(s => s.transfers) / n).toFixed(2)}/round, leaderless ${S(s => s.leaderless)}, confusion ${(S(s => s.confusionSec) / n).toFixed(1)} s/round; orders/round ` +
+      Object.keys(ords).sort().map(k => `${k} ${(ords[k] / n).toFixed(2)}`).join(' '));
   }
   console.log('\n=== SUMMARY ===');
   console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);
