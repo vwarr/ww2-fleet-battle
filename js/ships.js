@@ -7,6 +7,7 @@ window.WW = window.WW || {};
   const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
   const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
   const HEEL = { carrier: 0.045, battleship: 0.04, cruiser: 0.08, destroyer: 0.12, pt: 0.14, submarine: 0.07 }; // rad at full speed + full turn
+  const EDGE_BAND = 30; // soft edge-avoidance band (units from the map boundary)
   const BAND = 0.35, HELM = 0.4; // turn rate is proportional below BAND rad of heading error; HELM s to full rudder
 
   const wreckShips = [];             // settled wrecks (not in WW.world.ships)
@@ -95,6 +96,11 @@ window.WW = window.WW || {};
           dx += (ex / d) * w; dz += (ez / d) * w;
         }
       }
+      // Soft edge avoidance: an inward push that grows fast inside EDGE_BAND, so ships turn off the map
+      // boundary long before the hull gets pinned against it.
+      const eb = Math.max(EDGE_BAND, this.lookDist * 0.6), MW = WW.cfg.MAP_W, MH = WW.cfg.MAP_H;
+      const ep = e => (e < eb ? 2.5 * ((eb - e) / eb) * ((eb - e) / eb) : 0);
+      dx += ep(this.x) - ep(MW - this.x); dz += ep(this.z) - ep(MH - this.z);
       const want = Math.atan2(dz, dx);
       this.navT -= dt;
       if (this.navT <= 0) { this.navT = 0.2 + WW.rand() * 0.1; this.planNav(want); }
@@ -109,10 +115,13 @@ window.WW = window.WW || {};
           const a = (k / 16) * TAU, d = this.clearance(a) + 0.5 * WW.terrain.depthAt(this.x + Math.cos(a) * 7, this.z + Math.sin(a) * 7);
           if (d > bd) { bd = d; this.escapeH = a; } // most open water for the whole hull (never off the map edge)
         }
-        this.escapeT = 3;
+        this.escapeT = 3; this.escHold = 0;
       }
-      if (this.escapeT > 0) { this.escapeT -= dt; this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0;
-        pivot = pivot && Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.6; } // swing to face it first, then go
+      if (this.escapeT > 0) { // swing to face it first (up to 15 s for a big hull), then go for escapeT s
+        const off = Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.3;
+        if (off && this.escHold < 15) this.escHold += dt; else this.escapeT -= dt;
+        this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0; pivot = pivot && off;
+      }
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
       const diff = WW.angleDiff(this.heading, this.navHeading);
       // Helm: rate ∝ heading error (full rate past BAND), and the rudder takes HELM s to swing hard over.
@@ -130,7 +139,7 @@ window.WW = window.WW || {};
 
       // Step, with hard guarantees: the centre never ends on a non-navigable cell and no hull sample
       // (bow, stern, beams) ends on water shallower than shipNav.HARD — full turn, half turn, astern, straight.
-      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, m = 3, N = WW.shipNav, cur = N.hullMin(this, this.x, this.z, h0);
+      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, N = WW.shipNav, m = N.EDGE, cur = N.hullMin(this, this.x, this.z, h0);
       const fo = N.fixedOverlap(this, this.x, this.z, h0) + 1e-6; // never drive deeper into a wreck / sinking hull
       const pose = (h, v) => {
         const nx = WW.clamp(this.x + Math.cos(h) * v, m, W - m), nz = WW.clamp(this.z + Math.sin(h) * v, m, H - m);
