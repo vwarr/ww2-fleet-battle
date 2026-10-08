@@ -7,7 +7,7 @@
 //    secondary explosions, the planes on deck and rearming destroyed, several avgas fires ('deckHit' event, the
 //    "five fateful minutes"). With avgas fires burning, a magazine / fuel explosion may follow (CHAIN_P /
 //    damageControl^2 a second while 3 or more burn). An empty deck takes the normal damage.
-//  - Damage control (doctrine.damageControl; USN 1.3, IJN 1): above 1.15 flooding is slowly pumped out (some speed
+//  - Damage control (doctrine.damageControl; USN 1.5, IJN 1): above 1.15 flooding is slowly pumped out (some speed
 //    back) and a ship over 60% hp with no fire patches up to REPAIR_MAX of its hp; at 1.15 or below flooding creeps on.
 //  - Magazine: a heavy hit (torpedo, bomb, big shell) on a battleship or cruiser detonates a magazine with chance
 //    MAG_P (x MAG_TURRET within MAG_R of a main turret): the ship blows up and sinks ('magazine' event).
