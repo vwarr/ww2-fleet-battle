@@ -66,7 +66,7 @@ window.WW = window.WW || {};
     }
     return best;
   }
-  function fit(s) { return s.alive && !s.sinking && s.type === 'destroyer' && s.hp >= 0.3 * s.maxHp && !s.rescue; }
+  function fit(s) { return s.alive && !s.sinking && s.type === 'destroyer' && s.hp >= WW.fleetGroups.CRIP * s.maxHp && !s.rescue; } // a cripple runs home instead
   function plan(now) {
     var ships = WW.world.ships;
     for (var i = 0; i < ships.length; i++) {
@@ -91,7 +91,7 @@ window.WW = window.WW || {};
   function steer(ship, dt) {
     var ch = ship.ai && ship.ai.charge; if (!ch) return false;
     var f = ch.foe, cv = ch.cv, now = WW.time.now, n = ship.nation;
-    var over = !f.alive || f.sinking || ship.hp < 0.3 * ship.maxHp || now - ch.t0 > CHARGE_T || !cv.alive ||
+    var over = !f.alive || f.sinking || ship.hp < WW.fleetGroups.CRIP * ship.maxHp || now - ch.t0 > CHARGE_T || !cv.alive ||
       WW.dist(f.x, f.z, cv.x, cv.z) > ch.R * 1.3;
     if (over) {
       if (cv.alive && f.alive && !f.sinking && WW.dist(f.x, f.z, cv.x, cv.z) > ch.R * 1.3) stats.turned[n]++;
