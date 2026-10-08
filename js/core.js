@@ -83,7 +83,7 @@ window.WW = window.WW || {};
   WW.PLANE_TYPES = { fighter: { hp: 20, speed: 38, range: 500 }, dive: { hp: 28, speed: 30, range: 500 },
                      torpedo: { hp: 30, speed: 26, range: 500 } };
   // Flight model for air combat: turn (rad/s), climb (units/s), dive (top speed in a dive). Added to each type,
-  // so WW.PLANE_TYPES[kind] keeps working; WW.PLANE_NATION overrides per nation (Zero: nimble, fragile, light guns; Wildcat: tough, dives, six .50s); gun = damage per hitting round.
+  // so WW.PLANE_TYPES[kind] keeps working; WW.PLANE_NATION overrides per nation (Zero: nimble, fragile, light guns; Corsair: tough, dives, six .50s); gun = damage per hitting round.
   const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52 }, dive: { turn: 1.1, climb: 5, dive: 44 }, torpedo: { turn: 1.0, climb: 4.5, dive: 38 } };
   for (const k in PLANE_FLIGHT) for (const f in PLANE_FLIGHT[k]) if (WW.PLANE_TYPES[k][f] === undefined) WW.PLANE_TYPES[k][f] = PLANE_FLIGHT[k][f];
   WW.PLANE_NATION = {
