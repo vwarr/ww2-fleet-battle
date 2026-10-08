@@ -2,15 +2,17 @@
 // In one page: run seed S, run S again, run another seed then S. Then run S in a fresh page.
 // Each run records a trace every EVERY sim seconds (positions/hp of all ships and live planes, plus WW.stats deltas);
 // all traces must match the first. On a mismatch it prints the first divergent time and entity.
-// Runs in sim-only mode (index.html?sim) unless --render.
-// --cross: the same seeds in a full (rendered) page and a sim-only page must give identical traces.
-// Usage: node tests/determinism.js [seed=1] [seconds=300] [--render]
-//        node tests/determinism.js --cross [seeds=1,2,3] [seconds=300]
-//        (BASE_URL=http://localhost:PORT/, CHROMIUM=headless shell, EVERY=5 sample interval in sim s)
-const { chromium } = require('playwright');
+// Runs in the node runner by default (tests/node_sim.js); --browser: a sim-only Chrome page; --render: the full game.
+// --cross: the same seeds in each of --modes (default render,browser,node: the full game in Chrome, the sim-only
+// Chrome page and the node runner) must give identical traces; the first mode is the reference.
+// Usage: node tests/determinism.js [seed=1] [seconds=300] [--browser | --render]
+//        node tests/determinism.js --cross [seeds=1,2,3] [seconds=300] [--modes browser,node]
+//        (BASE_URL=http://localhost:PORT/ and CHROMIUM=headless shell for the Chrome modes; EVERY=5 sample interval in sim s)
 const crypto = require('crypto');
 const H = require('./headless');
-const CROSS = H.argv.includes('--cross'), pos = H.argv.filter(a => a !== '--cross');
+const CROSS = H.argv.includes('--cross'), mi = H.argv.indexOf('--modes');
+const MODES = mi >= 0 ? H.argv[mi + 1].split(',') : ['render', 'browser', 'node'];
+const pos = H.argv.filter((a, i) => a !== '--cross' && a !== '--modes' && H.argv[i - 1] !== '--modes');
 const SEEDS = (pos[0] || (CROSS ? '1,2,3' : '1')).split(',').map(Number), SEED = SEEDS[0];
 const SECS = +(pos[1] || 300), EVERY = +(process.env.EVERY || 5);
 
@@ -70,27 +72,30 @@ function compare(ref, tr) {
   return null;
 }
 
-// --cross: per seed, a rendered page and a sim-only page (one browser each) must match exactly
+// --cross: per seed, one page in each mode (one browser each) must match the first mode's trace exactly
 async function cross() {
-  const errs = [], br = await H.launch(chromium, true), bs = await H.launch(chromium, false);
-  const pr = await openPage(br, errs, true), ps = await openPage(bs, errs, false);
+  const errs = [], pages = [];
+  for (const m of MODES) { const b = await H.launchAs(m); pages.push({ m, b, p: await openPage(b, errs, m === 'render') }); }
   let fail = 0;
   for (const seed of SEEDS) {
-    const a = await trace(pr, seed, SECS), b = await trace(ps, seed, SECS), d = compare(a, b);
-    if (d) fail++;
-    const last = a[a.length - 1];
-    console.log(`seed ${seed}: render ${hash(a)}  sim ${hash(b)}  ${d ? 'DIVERGED at ' + d : 'identical'}  (${SECS} sim s, ${a.length} samples, ` +
-      `${Object.keys(last.ents).length} entities at end, ${last.stats})`);
+    const tr = [];
+    for (const x of pages) { const t0 = Date.now(); tr.push(await trace(x.p, seed, SECS)); x.ms = Date.now() - t0; }
+    const ds = tr.map((t, i) => (i ? compare(tr[0], t) : null)), bad = ds.filter(Boolean);
+    if (bad.length) fail++;
+    const last = tr[0][tr[0].length - 1];
+    console.log(`seed ${seed}: ` + pages.map((x, i) => `${x.m} ${hash(tr[i])} (${(x.ms / 1000).toFixed(1)}s)`).join('  ') +
+      `  ${bad.length ? 'DIVERGED: ' + ds.map((d, i) => (d ? pages[i].m + ' at ' + d : '')).filter(Boolean).join('; ') : 'identical'}` +
+      `  (${SECS} sim s, ${tr[0].length} samples, ${Object.keys(last.ents).length} entities at end, ${last.stats})`);
   }
-  await br.close(); await bs.close();
+  for (const x of pages) await x.b.close();
   if (errs.length) console.log('page errors:\n' + errs.slice(0, 10).join('\n'));
-  console.log(fail || errs.length ? `FAIL: ${fail} seed(s) diverged between render and sim-only mode` : 'PASS: render and sim-only traces identical');
+  console.log(fail || errs.length ? `FAIL: ${fail} seed(s) diverged between ${MODES.join(', ')}` : `PASS: ${MODES.join(', ')} traces identical`);
   process.exit(fail || errs.length ? 1 : 0);
 }
 
 (async () => {
   if (CROSS) return cross();
-  const b = await H.launch(chromium);
+  const b = await H.launch();
   const errs = [];
   const other = SEED + 1000;
   const runs = [];
@@ -113,7 +118,7 @@ async function cross() {
     console.log(`${hash(tr)}  ${name}${d ? '  DIVERGED at ' + d : ''}`);
   }
   const last = ref[ref.length - 1];
-  console.log(`${H.RENDER ? 'render' : 'sim-only'} mode, seed ${SEED}, ${SECS} sim s, ${ref.length} samples; at end: ${Object.keys(last.ents).length} entities, ${last.stats}`);
+  console.log(`${H.MODE} mode, seed ${SEED}, ${SECS} sim s, ${ref.length} samples; at end: ${Object.keys(last.ents).length} entities, ${last.stats}`);
   if (errs.length) console.log('page errors:\n' + errs.slice(0, 10).join('\n'));
   console.log(fail ? `FAIL: ${fail} run(s) diverged` : 'PASS: identical traces');
   process.exit(fail ? 1 : 0);
