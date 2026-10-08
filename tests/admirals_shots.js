@@ -36,7 +36,7 @@ require('fs').mkdirSync(out, { recursive: true });
     return ev ? ev.text + ' (' + ev.from + ' -> ' + ev.to + ')' : null;
   });
   console.log('transfer:', tr);
-  for (let i = 0; i < 2; i++) { console.log(await p.evaluate(() => JSON.stringify({ q: WW.admiralFlags.queue().map(q => [q.main, q.must, +(q.at - performance.now() / 1000).toFixed(1), +(q.until - performance.now() / 1000).toFixed(1)]), on: WW.ui.captionOn(), cap: document.querySelector('#film .caption .main').textContent }))); await p.waitForTimeout(400); }
+  for (let i = 0; i < 1; i++) { console.log(await p.evaluate(() => JSON.stringify({ q: WW.admiralFlags.queue().map(q => [q.main, q.must, +(q.at - performance.now() / 1000).toFixed(1), +(q.until - performance.now() / 1000).toFixed(1)]), on: WW.ui.captionOn(), cap: document.querySelector('#film .caption .main').textContent }))); await p.waitForTimeout(400); }
   await film('IJN');
   await p.waitForTimeout(1200); await p.screenshot({ path: `${out}/adm_transfer.png` });
   await p.waitForTimeout(2500); await p.screenshot({ path: `${out}/adm_transfer_2.png` });
