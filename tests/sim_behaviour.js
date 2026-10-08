@@ -5,8 +5,10 @@
 // planeKill, weaponDropped, weaponImpact). It never reads AI internals (ship.ai), so it works on the old and
 // the new AI. Fog-of-war checks use WW.intel when it exists (feature-detected), else they SKIP.
 //
-// Usage:  BASE_URL=http://localhost:8746/ node tests/sim_behaviour.js [--seeds N] [--seed0 S] [--only a,b] [--quick] [--pages K]
-//         balance gate: --only balance --seeds 100 --pages 4   (balance/balance_mirror run only when named; --seeds 400 for tuning)
+// Usage:  BASE_URL=http://localhost:8746/ node tests/sim_behaviour.js [--seeds N] [--seed0 S] [--only a,b] [--quick] [--pages K] [--render]
+//         balance gate: --only balance --seeds 100   (balance/balance_mirror run only when named; --seeds 400 for tuning)
+//         Sim-only mode (index.html?sim, no WebGL; identical results) unless --render (the full game on software GL).
+//         --pages: parallel game pages, default 6 (M1 Pro, 6P+2E cores: 6 beat 4, 5 and 8 on the balance gate).
 //         npm run test:ai            (tests/run.sh serves on port 8000)
 // Env:    CHROMIUM = headless shell path;  JSON=path writes raw per-scenario metrics and per-round records.
 // Exit code 1 if any hard check FAILs (WARN = fuzzy check, reported but not fatal).
@@ -41,6 +43,7 @@
 // ---------------------------------------------------------------------------------------------------------
 const { chromium } = require('playwright');
 const fs = require('fs');
+const HL = require('./headless');
 
 // ======================= THRESHOLDS (tune here) =======================
 // op: '<=' | '>=' | 'in' (thr = [lo, hi]) | '=='.  level: FAIL (hard) | WARN (fuzzy).
@@ -135,9 +138,9 @@ const BAL_MIN_ROUNDS = 100;
 
 // ======================= CLI =======================
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const QUICK = argv.includes('--quick');
+const QUICK = argv.includes('--quick'), PAGES_DEFAULT = 6;
 const SEEDS = +arg('--seeds', QUICK ? 2 : 8), SEED0 = +arg('--seed0', 1);
-const ONLY = arg('--only', null), PAGES = Math.max(1, +arg('--pages', 1));
+const ONLY = arg('--only', null), PAGES = Math.max(1, +arg('--pages', PAGES_DEFAULT));
 const scens = SCEN.filter(s => (ONLY ? ONLY.split(',').includes(s.name) : !s.optIn));
 
 // ======================= PAGE SIDE =======================
@@ -507,23 +510,26 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
 // ======================= MAIN =======================
 (async () => {
   const T0 = Date.now();
-  const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const b = await HL.launch(chromium);
   let errs = [];
-  const pages = [];
-  for (let k = 0; k < PAGES; k++) { // --pages K: K independent game pages run rounds in parallel
+  // --pages K: K independent game pages run rounds in parallel (opened together in sim-only mode)
+  async function openPage(k) {
     const p = await b.newPage({ viewport: { width: 640, height: 360 } });
     p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
     // 'domcontentloaded' + retries: a long-running python http.server sometimes stalls the 'load' event
     for (let tries = 0; ; tries++) {
-      try { await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 }); await p.waitForFunction(() => window.__sim && window.WW && WW.game, null, { timeout: 60000 }); break; }
+      try { await p.goto(HL.url(), { waitUntil: 'domcontentloaded', timeout: 60000 }); await p.waitForFunction(() => window.__sim && window.WW && WW.game, null, { timeout: 60000 }); break; }
       catch (e) { if (tries >= 2) throw e; console.log(`page ${k}: load retry (${e.message.split('\n')[0]})`); }
     }
-    await p.waitForTimeout(1500);
+    await p.waitForTimeout(HL.settle());
     // stop the render loop driving the sim (setScale clamps at 0.1; the director's slow-motion warp too): we drive it
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
     await p.evaluate(install, P);
-    pages.push(p);
+    return p;
   }
+  const pages = [];
+  if (HL.RENDER) for (let k = 0; k < PAGES; k++) pages.push(await openPage(k));
+  else pages.push(...await Promise.all([...Array(PAGES).keys()].map(openPage)));
   const results = {}, raw = {};
   let hardFails = 0;
   const totals = { PASS: 0, FAIL: 0, WARN: 0, SKIP: 0 };
@@ -567,7 +573,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
   }
   console.log('\n=== SUMMARY ===');
-  console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s`);
+  console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);
   for (const sc of scens) {
     const M = results[sc.name], f = [];
     for (const c of CHECKS) {
