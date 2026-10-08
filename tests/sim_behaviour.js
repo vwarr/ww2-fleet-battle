@@ -348,6 +348,7 @@ function install(P) {
       placeFleet(spec.A, spec.aNation, zn[spec.aNation], comp);
       placeFleet(spec.B, WW.enemyOf(spec.aNation), zn[WW.enemyOf(spec.aNation)], comp);
     }
+    if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }

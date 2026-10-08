@@ -29,6 +29,7 @@ function trace(p, seed, secs) {
     if (WW.aces) WW.aces.reset();
     WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
     const s0 = Object.assign({}, WW.stats);
+    G.composition = null; G.mode = 'auto'; // the page boots into setup with its own random fleets: start from this seed's fleets
     G.startRound({ keepMap: true });
     const n = v => typeof v === 'number' ? (Object.is(v, -0) ? 0 : v) : v;
     const snap = t => {

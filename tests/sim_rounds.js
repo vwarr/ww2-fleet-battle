@@ -43,6 +43,7 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
       const moved = {};   // per ship id: [x, z, t of last real move]
       let stuck = 0, nan = 0;
       const H = window.__h; H.sight = {}; H.fire = null; H.blind = 0; H.shots = 0;
+      G.composition = null; G.mode = 'auto'; // the page boots into setup with its own random fleets: start from this seed's fleets
       G.startRound({ keepMap: true });
       const comp = {}; for (const s of WW.world.ships) comp[s.nation + ':' + s.type] = (comp[s.nation + ':' + s.type] || 0) + 1;
       let t = 0;
