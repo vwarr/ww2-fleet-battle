@@ -63,6 +63,7 @@ window.WW = window.WW || {};
     s8(f, C.white, 0.75, 0.12, 0.14, 0.05, 0.08, 0);                  // float
     bx(f, C.dark, 0.03, 0.18, 0.03, 0.05, 0.1, 0);
     s8(f, C.dark, 0.06, 0.32, 0.06, 0.52, 0.32, 0);                   // prop
+    return f;
   }
   function catapult(g, x, y, z, len, ry) {
     var c = bx(g, C.dark, len, 0.08, 0.16, x, y, z); c.rotation.y = ry || 0;
@@ -123,7 +124,7 @@ window.WW = window.WW || {};
       searchlight(g, isJ ? -0.6 + 0.9 : -0.9 + 0.95, D + 0.8, k * 0.75);
     });
     catapult(g, -10.6, D, 0.7, 1.9, 0.25);
-    floatplane(g, P, -10.7, D + 0.08, -0.65, 0.25);
+    s.floatplane = floatplane(g, P, -10.7, D + 0.08, -0.65, 0.25);  // air_scouts.js hides it while the scout flies
     crane(g, P, -11.3, D, 1.1, 0.8);
     if (isJ) {
       rangefinder(g, P, 1.7, D + 0.8 + 3.94, 0, 2.0);
@@ -146,7 +147,7 @@ window.WW = window.WW || {};
       searchlight(g, -2.4, D + 0.6, k * 0.62);
     });
     catapult(g, -4.7, D, 0, 1.6, 0.5);
-    floatplane(g, P, -4.7, D + 0.08, 0, 0.5);
+    s.floatplane = floatplane(g, P, -4.7, D + 0.08, 0, 0.5);
     crane(g, P, -5.3, D, -0.9, -0.6);
     if (isJ) { rangefinder(g, P, 1.45, D + 0.6 + 2.6, 0, 1.4); radar(g, -3.6, D + 2.4, 0, 0.5); }
     else { rangefinder(g, P, 2.1, D + 1.6, 0, 1.2); radar(g, 1.5, D + 1.6 + 2.0 + 0.08, 0, 0.8); }
@@ -261,7 +262,8 @@ window.WW = window.WW || {};
     if (fn && H) fn(s, P, H, P.id === 'IJN');
     var key = type + '|' + P.id, tobjs = s.turrets.map(function (t) { return t.obj; });
     s.turrets.forEach(function (t, i) { merge(t.obj, key + '|t' + i, [], s.hullMats, 0); });
-    merge(s.group, key, tobjs, s.hullMats, H ? H[2] : 0);
+    if (s.floatplane) merge(s.floatplane, key + '|fp', [], [], null);  // own mesh: the scout can hide it
+    merge(s.group, key, s.floatplane ? tobjs.concat([s.floatplane]) : tobjs, s.hullMats, H ? H[2] : 0);
   }
   if (WW.models) { WW.models._finish = finish; WW.models._merge = merge; }
   else console.error('models_detail.js must load after models.js');

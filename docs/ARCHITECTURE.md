@@ -25,6 +25,7 @@ js/terrain.js           WW.terrain: sea floor, islands, depth grid
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
 js/models_planes.js     WW.models.buildPlane
+js/models_scout.js      WW.models.buildScout: scout floatplanes
 js/effects.js           WW.fx: pooled particle effects
 js/damage.js            WW.damage: fires and smoke at hit points, WW.wind
 js/combat.js            WW.combat: projectile pool, shells, anti-aircraft fire
@@ -33,6 +34,8 @@ js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship type
 js/aircraft.js          WW.air, WW.Plane: carrier planes
+js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
+js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spotting
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/post.js              WW.post: HDR render target, bloom, tone curve
@@ -205,6 +208,16 @@ WW.air = { init(), update(dt), clearAll(), launch(carrier, kind, target) -> Plan
 ```
 
 Planes take off from the carrier deck, fly to the target and attack. Dive bombers dive and drop bombs. Torpedo bombers fly low and drop torpedoes. Fighters escort the bombers and fight enemy planes. Planes that survive fly back, land and rearm in 10 s. If the carrier sinks, its planes in the air ditch. A damaged plane trails smoke (grey below 50% hp, charcoal below 30% hp). A plane with less than 35% hp can drop its weapon and fly home.
+
+### air_aces.js
+
+Each carrier plane gets a pilot (`plane.pilot = { name, kills, sorties, ace }`) from its carrier's roster. A pilot who lands goes back to the roster and flies again. A pilot who is shot down or ditches is lost. A roster belongs to a carrier slot (the n-th carrier of a nation), so surviving pilots carry over into the next round. When a plane is shot down, the kill goes to the pilot of `victim.killedBy`. If `killedBy` is missing, it goes to an enemy plane whose `foe` is the victim. An AA kill (`killedBy` is a ship) gives no pilot credit. At 5 kills the pilot becomes an ace: `plane.ace = true`, `plane.kills`, `plane.skill`, +5% speed, +15% hp, and small pooled kill marks on both fuselage sides. The module emits the `ace` event. It wraps `WW.air.update`, `WW.air.clearAll`, `Plane.prototype.shotDown` and `Plane.prototype.ditch`. `WW.aces.infoText()` adds the ace count to the UI info line.
+
+### air_scouts.js, models_scout.js
+
+Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-style monoplane, IJN: Pete-style biplane, both with one centre float and two wing floats). 5 to 25 s into a round, the catapult trains outboard and fires. The plane on the catapult model (`ship.model.floatplane`, from models_detail.js) is hidden while the scout flies. The scout is a `WW.Scout` (a `WW.Plane` with kind `'scout'`, `WW.PLANE_TYPES.scout`) in `WW.world.planes`, so fighters, AA and the camera see it. Its states are `catapult`, `transit` (search), `return`, `alight` and `afloat`. Other states, such as `falling` and `ditch`, use the Plane code. It flies a search arc 90 units from the enemy fleet's centre on the near side. It sets `ship.spottedUntil = now + 20` (and `ship.spottedBy`) on enemy ships within 85 units. In `combat.fireShell`, the dispersion of a shot at a spotted target farther than 60 units is multiplied by `SPOT_DISP = 0.85`. After 85 s, or below 50% hp, the scout flies home, alights beside its ship, taxis alongside for approximately 3.5 s and is taken back aboard. There are at most 2 sorties per ship, with 50 s between them.
+
+`camera.js` `candidates()` calls each function in `WW.camHooks` (`fn(add, dur)`). The aces module adds aces in dogfights. The scouts module adds catapult launches and alightings.
 
 ### camera.js, freecam.js
 

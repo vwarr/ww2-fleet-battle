@@ -15,6 +15,7 @@ window.WW = window.WW || {};
   };
   var AA_INTERVAL = 0.25;
   var BEAM_FRAC = 0.12;      // half-beam = length * BEAM_FRAC
+  var SPOT_DISP = 0.85, SPOT_MIN = 60;  // target spotted by a scout floatplane (air_scouts.js): dispersion x0.85 beyond 60 units
 
   // ---------- helpers ----------
   function rnd() { return WW.rand ? WW.rand() : Math.random(); }
@@ -139,6 +140,7 @@ window.WW = window.WW || {};
       // dispersion grows with range
       var dist = Math.hypot(ax - m.x, az - m.z);
       var r = (B.disp * dist + B.c) * Math.sqrt(rnd()), a = rnd() * Math.PI * 2;
+      if (dist > SPOT_MIN && target.spottedUntil > (WW.time ? WW.time.now : 0)) r *= SPOT_DISP;
       ax += Math.cos(a) * r; az += Math.sin(a) * r;
       T = Math.max(0.15, Math.hypot(ax - m.x, az - m.z) / hs);
 

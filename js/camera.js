@@ -75,6 +75,7 @@ window.WW = window.WW || {};
       else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(5, 'chase', p, { dur: dur(10, 13) });
       else if (p.state === 'transit' && p.ordnance) add(3, 'chase', p, { dur: dur(12, 15) });
     }
+    (WW.camHooks || []).forEach(f => { try { f(add, dur); } catch (e) { /* never break the director */ } }); // air_aces.js, air_scouts.js
     return out;
   }
   function pickShot() {
