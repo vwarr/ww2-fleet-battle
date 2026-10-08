@@ -131,9 +131,19 @@ window.WW = window.WW || {};
       default: return null;
     }
   }
+  const diaryT = {};
+  function diary(e, L) { // the war diary (war_diary.js): one entry per kind of base event, at most every 45 s of sim time
+    if (!WW.diary || !WW.diary.add) return;
+    const now = WW.time.now;
+    if (L[2] < 2 && now - (diaryT[e.kind] || -1e9) < 45) return;
+    diaryT[e.kind] = now;
+    WW.diary.add(L[0] + (L[1] ? ': ' + L[1] : ''), L[2] >= 2 ? 3 : L[2] ? 2 : 1, e.base.nation, { kind: 'base' });
+  }
   function caption(e) {
-    if (WW.simOnly || !WW.ui || !WW.ui.caption || !e || !e.base) return;
+    if (WW.simOnly || !e || !e.base) return;
     const L = line(e); if (!L) return;
+    diary(e, L);
+    if (!WW.ui || !WW.ui.caption) return;
     const t = performance.now() / 1000;
     if ((L[2] < 2 && t - capT < 12) || (WW.ui.captionOn && WW.ui.captionOn() && L[2] < 2)) { if (L[2] >= 1) capQ = { e, t }; return; }
     capT = t; WW.ui.caption(L[0], L[1], 4.5, true);
@@ -155,7 +165,7 @@ window.WW = window.WW || {};
 
   WW.on('baseBuilt', onBuilt);
   WW.on('baseEvent', caption);
-  WW.on('roundStart', () => { if (!(WW.islandBase && WW.islandBase.base)) clear(); });
+  WW.on('roundStart', () => { for (const k in diaryT) delete diaryT[k]; if (!(WW.islandBase && WW.islandBase.base)) clear(); });
   WW.on('setupStart', () => { if (!(WW.islandBase && WW.islandBase.base)) clear(); });
   WW.baseFx = { update(rdt) { if (WW.simOnly) return; try { update(rdt); retry(); } catch (e) { console.error('baseFx', e); } }, clear, _parked: () => parked };
 })();
