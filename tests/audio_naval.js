@@ -13,7 +13,7 @@ const DEMO = process.env.DEMO_DIR || path.join(__dirname, 'shots', 'audio_naval'
 fs.mkdirSync(DEMO, { recursive: true });
 
 const PATCHES = [ // name, params, render seconds, max duration
-  ['gun.big', { size: 1, n: 1 }, 6, 5], ['gun.big', { size: 1.2, n: 3 }, 6, 5.5], ['gun.med', { n: 3 }, 4, 3], ['gun.small', {}, 2, 1.5], ['gun.mg', {}, 1.5, 1],
+  ['gun.big', { size: 1, n: 1 }, 6, 5], ['gun.big', { size: 1.2, n: 3 }, 6, 5.5], ['gun.med', { n: 3 }, 4, 3], ['gun.small', {}, 2, 1.5], ['gun.dd', { n: 2 }, 3, 2.6], ['gun.mg', {}, 1.5, 1],
   ['shell.whistle', { size: 1 }, 2.5, 1.8], ['shell.whistle', { size: 0.6 }, 2.5, 1.8],
   ['shell.splash', { size: 1.4 }, 4, 3.5], ['shell.splash', { size: 1 }, 4, 3], ['shell.splash.small', { size: 0.7 }, 1.5, 1], ['shell.splash.small', { size: 0.35 }, 1.5, 1],
   ['shell.land', { size: 1.4 }, 2.5, 2.2],

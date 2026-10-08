@@ -31,16 +31,17 @@ window.WW = window.WW || {};
   // ---------- guns ----------
   // p.size: gun weight (1 = battleship), p.n: barrels in this salvo (one play per salvo)
   A.register('gun.big', {
-    ref: 70, max: 3, minGap: 0.14, sos: true, reverb: 0.5, duck: 0.3, dur: 4, params: { size: 1, n: 1 },
+    ref: 140, max: 3, minGap: 0.14, sos: true, reverb: 0.55, duck: 0.6, dur: 4.5, params: { size: 1, n: 1 },
     build(ctx, out, p) {
       const k = p.size || 1, r = p.rate, t = p.t, n = Math.min(4, p.n || 1), parts = [];
-      const g0 = 0.47 / (1 + 0.18 * (n - 1));
-      parts.push(S.boom(ctx, out, t, { f0: V(58) / Math.sqrt(k), f1: 24, dur: 2.1 * k, gain: g0, body: 1, crack: 0.3, bright: 0.65, rate: r }));
+      const g0 = 0.55 / (1 + 0.15 * (n - 1));
+      parts.push(S.boom(ctx, out, t, { f0: V(58) / Math.sqrt(k), f1: 24, dur: 2.5 * k, gain: g0, body: 1, crack: 0.45, bright: 0.75, rate: r }));
+      parts.push(S.burst(ctx, out, t, { type: 'bandpass', f: V(820), f1: 240, q: 0.7, a: 0.001, d: 0.3, gain: 0.28, rate: r })); // the muzzle blast
       for (let i = 1; i < n; i++) // the other barrels: a ragged, overlapping roll rather than separate clicks
-        parts.push(S.boom(ctx, out, t + R(0.025, 0.11) * i / r, { f0: V(52, 0.12) / Math.sqrt(k), f1: 22, dur: 1.7 * k, gain: 0.18, body: 0.75, crack: 0.12, bright: 0.55, rate: r }));
-      parts.push(S.burst(ctx, out, t + 0.04 / r, { noise: 'pink', type: 'lowpass', f: 650, f1: 90, q: 0.3, a: 0.06, d: 1.9 * k, gain: 0.28, rate: r }));
+        parts.push(S.boom(ctx, out, t + R(0.025, 0.11) * i / r, { f0: V(52, 0.12) / Math.sqrt(k), f1: 22, dur: 1.9 * k, gain: 0.24, body: 0.8, crack: 0.2, bright: 0.6, rate: r }));
+      parts.push(S.burst(ctx, out, t + 0.04 / r, { noise: 'pink', type: 'lowpass', f: 650, f1: 90, q: 0.3, a: 0.06, d: 2.3 * k, gain: 0.34, rate: r }));
       // distant thunder: the report rolling back off the islands
-      parts.push(S.burst(ctx, out, t + R(0.55, 0.9) / r, { noise: 'brown', type: 'lowpass', f: V(210, 0.15), f1: 70, q: 0.5, a: 0.35, d: 1.4 * k, gain: 0.22 * Math.min(1.4, 0.8 + 0.2 * n), rate: r }));
+      parts.push(S.burst(ctx, out, t + R(0.55, 0.9) / r, { noise: 'brown', type: 'lowpass', f: V(210, 0.15), f1: 70, q: 0.5, a: 0.35, d: 1.8 * k, gain: 0.3 * Math.min(1.4, 0.8 + 0.2 * n), rate: r }));
       return S.done(p, parts);
     }
   });
@@ -64,6 +65,18 @@ window.WW = window.WW || {};
         S.burst(ctx, out, t, { type: 'bandpass', f: V(1500), f1: 600, q: 1.1, a: 0.001, d: 0.07, gain: 0.32, rate: r }),
         S.burst(ctx, out, t + 0.02 / r, { noise: 'pink', type: 'lowpass', f: 900, f1: 180, q: 0.3, a: 0.02, d: 0.5, gain: 0.12, rate: r })
       ]);
+    }
+  });
+  // a destroyer's main guns (5-inch): a hard, heavy crack with a short boom and a ring off the water. p.n barrels
+  A.register('gun.dd', {
+    ref: 75, max: 3, minGap: 0.1, sos: true, reverb: 0.4, duck: 0.25, dur: 2.6, params: { n: 1 },
+    build(ctx, out, p) {
+      const r = p.rate, t = p.t, n = Math.min(2, p.n || 1), parts = [];
+      parts.push(S.boom(ctx, out, t, { f0: V(96), f1: 40, dur: 1.2, gain: 0.52, body: 0.9, crack: 0.65, bright: 1, rate: r }));
+      if (n > 1) parts.push(S.boom(ctx, out, t + R(0.03, 0.08) / r, { f0: V(90, 0.12), f1: 38, dur: 0.9, gain: 0.26, body: 0.7, crack: 0.3, bright: 0.85, rate: r }));
+      parts.push(S.burst(ctx, out, t, { type: 'bandpass', f: V(1150), f1: 380, q: 0.9, a: 0.001, d: 0.16, gain: 0.4, rate: r })); // the crack
+      parts.push(S.burst(ctx, out, t + 0.03 / r, { noise: 'pink', type: 'lowpass', f: 800, f1: 140, q: 0.3, a: 0.04, d: 1.3, gain: 0.24, rate: r }));
+      return S.done(p, parts);
     }
   });
   // a short rattle: 4 to 6 rounds in one play (throttled so a PT's gun is a burst every so often, not a buzz)
@@ -138,20 +151,20 @@ window.WW = window.WW || {};
   // ---------- hits and explosions ----------
   // shell or bomb on a hull: clang + crunch + (bang > 0) an explosion. p.size 0.3..2 (from damage), p.bang 0..1
   A.register('ship.hit', {
-    ref: 35, max: 3, minGap: 0.08, sos: true, reverb: 0.35, dur: 2.5, params: { size: 1, bang: 1 },
+    ref: 35, max: 2, minGap: 0.22, sos: true, reverb: 0.35, dur: 2.5, params: { size: 1, bang: 1 },
     build(ctx, out, p) {
       const r = p.rate, t = p.t, k = p.size || 1, bang = p.bang == null ? 1 : p.bang;
-      const parts = clang(ctx, out, t, { f: V(260, 0.18) / Math.sqrt(k), d: 0.5 + 0.25 * k, gain: 0.16, rate: r });
-      parts.push(S.burst(ctx, out, t, { type: 'bandpass', f: V(700), f1: 260, q: 0.9, a: 0.002, d: 0.18 + 0.06 * k, gain: 0.32, rate: r })); // crunch
-      parts.push(S.crackle(ctx, out, t + 0.01 / r, { dur: 0.25 + 0.2 * k, f: 1300, q: 0.7, gain: 0.5, density: 0.7, rate: r }));
+      const parts = clang(ctx, out, t, { f: V(260, 0.18) / Math.sqrt(k), d: 0.35 + 0.15 * k, gain: 0.04, rate: r });
+      parts.push(S.burst(ctx, out, t, { type: 'bandpass', f: V(700), f1: 260, q: 0.9, a: 0.002, d: 0.18 + 0.06 * k, gain: 0.2, rate: r })); // crunch
+      parts.push(S.crackle(ctx, out, t + 0.01 / r, { dur: 0.25 + 0.2 * k, f: 1100, q: 0.7, gain: 0.25, density: 0.7, rate: r }));
       if (bang > 0) parts.push(S.boom(ctx, out, t + 0.01 / r, { f0: V(72) / Math.sqrt(k), f1: 32, dur: 0.7 + 0.6 * k, gain: 0.45 * bang * Math.min(1, 0.5 + 0.3 * k), body: 0.85, crack: 0.25, bright: 0.7, rate: r }));
       return S.done(p, parts);
     }
   });
   // small arms on a hull: a soft metallic tick
   A.register('ship.ping', {
-    ref: 10, max: 2, minGap: 0.18, sos: true, reverb: 0.1, dur: 0.3,
-    build(ctx, out, p) { return S.done(p, clang(ctx, out, p.t, { f: V(620, 0.2), d: 0.12, gain: 0.12, rate: p.rate })); }
+    ref: 10, max: 1, minGap: 0.8, sos: true, reverb: 0.1, dur: 0.3,
+    build(ctx, out, p) { return S.done(p, clang(ctx, out, p.t, { f: V(620, 0.2), d: 0.1, gain: 0.07, rate: p.rate })); }
   });
   // secondary explosion (ammunition / fuel) on a burning or sinking ship. p.size 0.5..1.6
   A.register('ship.boom', {

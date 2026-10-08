@@ -169,9 +169,9 @@ window.WW = window.WW || {};
   // ---------- one-shots ----------
   // metal hit on an airframe: inharmonic ping + a short tearing rip
   A.register('plane.hit', {
-    ref: 8, max: 3, minGap: 0.09, reverb: 0.12, dur: 0.4,
+    ref: 8, max: 2, minGap: 0.2, reverb: 0.12, dur: 0.4,
     build(ctx, out, p) {
-      const r = p.rate, f = R(850, 1350), g = 0.8;
+      const r = p.rate, f = R(850, 1350), g = 0.45;
       return S.done(p, [
         S.tone(ctx, out, p.t, { f, f1: f * 0.94, a: 0.001, d: R(0.12, 0.2), gain: 0.16 * g, rate: r }),
         S.tone(ctx, out, p.t, { f: f * R(1.52, 1.62), a: 0.001, d: 0.09, gain: 0.1 * g, rate: r }),

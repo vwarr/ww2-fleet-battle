@@ -22,7 +22,7 @@ window.WW = window.WW || {};
   });
   function flushSalvos() {
     for (let i = 0; i < salvo.length; i++) {
-      const s = salvo[i], name = GUN[s.cal]; if (!name) continue;
+      const s = salvo[i], name = s.cal === 'small' && s.ship && s.ship.type === 'destroyer' ? 'gun.dd' : GUN[s.cal]; if (!name) continue;
       const size = s.cal === 'big' ? clamp(lenOf(s.ship) / 24, 0.8, 1.2) : 1;
       A.play(name, { x: s.x, y: s.y, z: s.z, n: s.n, size, vol: Math.min(1, 0.8 + 0.1 * s.n) });
     }
@@ -55,9 +55,9 @@ window.WW = window.WW || {};
     if (!A.live || !e || !e.ship) return;
     const s = e.ship, x = e.x != null && isFinite(e.x) ? e.x : s.x, z = e.z != null && isFinite(e.z) ? e.z : s.z, y = 1.2;
     if (e.kind === 'torpedo') A.play('torp.hit', { x, y: 0, z });
-    else if (e.kind === 'bomb') A.play('ship.hit', { x, y, z, size: 1.6, bang: 0 }); // the bomb blast itself belongs to the aircraft/weapons family
+    else if (e.kind === 'bomb') A.play('ship.hit', { x, y, z, size: 1.6, bang: 0, vol: 0.4 }); // the bomb blast itself belongs to the aircraft/weapons family
     else if (e.kind === 'dc') { /* dcBlast covers it */ }
-    else if (e.cal === 'mg') A.play('ship.ping', { x, y, z });
+    else if (e.cal === 'mg') A.play('ship.ping', { x, y, z, vol: 0.5 });
     else { const size = clamp((e.amount || 20) / 55, 0.35, 2); A.play('ship.hit', { x, y, z, size, duck: size > 1.5 ? 0.35 : 0 }); }
   });
   WW.on('shipBoom', e => { if (A.live && e) A.play('ship.boom', { x: e.x, y: e.y || 1, z: e.z, size: clamp(e.size || 1, 0.5, 1.6) }); });
