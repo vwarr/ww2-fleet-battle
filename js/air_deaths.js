@@ -50,7 +50,7 @@ window.WW = window.WW || {};
 
   function bail(p, at) { p.bailAt = at; }
   function startDitch(p) {
-    p.deathMode = 'ditch'; p.state = 'ditch'; p.hp = Math.min(p.hp, p.maxHp * 0.45); p.crew = true; p.roll = 0;
+    p.deathMode = 'ditch'; p.state = 'ditch'; if (p.hp <= 0) p.hp = p.maxHp * 0.45; p.crew = true; p.roll = 0; // shot down: grey smoke, no flames
   }
   function onShotDown(p) {
     try {
