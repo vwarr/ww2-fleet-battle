@@ -33,6 +33,7 @@ js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship type
 js/aircraft.js          WW.air, WW.Plane: carrier planes
+js/air_fx.js            WW.airFx: prop disc, dive brakes, wing-tip vapour, exhaust flicker, canopy glint
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/post.js              WW.post: HDR render target, bloom, tone curve
@@ -129,7 +130,12 @@ WW.models.buildShip(type, nation) -> {
   hullMats: [ hull, deck, waterline band ],  // per-ship materials that can be tinted
   _hg                            // hull size [length, beam, top], for damage.js
 };
-WW.models.buildPlane(kind, nation) -> { group, prop, payload };  // payload: bomb or torpedo mesh, or null
+WW.models.buildPlane(kind, nation) -> {
+  group, prop, payload,          // payload: bomb or torpedo mesh, or null; prop spins about local x
+  wingL, wingR,                  // Groups at the wing roots (port -z, starboard +z). Fold up: wingL.rotation.x = +a, wingR.rotation.x = -a
+  brakes,                        // null or { open, parts, set(a) } (a: 0 closed .. 1 open); SBD split flaps, D3A under-wing brakes
+  blades, disc, fx, name         // prop blades / blurred disc, local fx anchors (exh, canopy, tipL, tipR), type name
+};  // types: USN F4F Wildcat / SBD Dauntless / TBD Devastator, IJN A6M Zero / D3A Val / B5N Kate
 ```
 
 Materials are `MeshToonMaterial` with a shared 5-step gradient and baked vertex ambient occlusion. `models_detail.js` adds fine detail (gun tubs, lifeboats, radar, rails, catapults and more) and merges the static parts of a ship into one mesh per material. It makes this one time for each type and nation. Ships cast and receive shadows. Planes cast shadows.

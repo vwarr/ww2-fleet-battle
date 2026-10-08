@@ -184,15 +184,26 @@ window.WW = window.WW || {};
       this.sync(dt);
     }
 
+    // Visual attitude (order 'YZX': heading, then pitch, then roll). Coordinated bank: tan(bank) = v * turnRate / g,
+    // reached with a short roll-in / roll-out lag; pitch follows the flight path. gload (units/s^2) feeds wing-tip vapour.
     sync(dt) {
-      const g = this.group;
+      const g = this.group, G_EFF = 35;
       g.position.set(this.x, this.y, this.z);
       g.rotation.y = -this.heading;
-      g.rotation.z = Math.atan2(this.vy, Math.max(1, this.speed));
-      this.roll += (WW.clamp(this.turn * 0.7, -1.2, 1.2) - this.roll) * Math.min(1, dt * 4);
+      const path = Math.atan2(this.vy, Math.max(1, this.speed)), p0 = this.pitch === undefined || !(dt > 0) ? path : this.pitch;
+      this.pitch = p0 + (path - p0) * (dt > 0 ? 1 - Math.exp(-dt / 0.12) : 1);
+      const pr = dt > 0 ? (this.pitch - p0) / dt : 0;
+      this.tr = dt > 0 ? (this.tr || 0) + (this.turn - (this.tr || 0)) * (1 - Math.exp(-dt / 0.15)) : this.turn;
+      let bank = WW.clamp(Math.atan2(this.speed * this.tr, G_EFF), -1.3, 1.3);
+      if (this.alive) bank *= Math.max(0, Math.cos(this.pitch)); // no steep bank while pointing down a dive
+      const dr = bank - this.roll, maxR = 2.6 * dt;               // roll rate limit = the roll-in / roll-out lag
+      this.roll += WW.clamp(dr * Math.min(1, dt * 7), -maxR, maxR);
+      const v = Math.hypot(this.speed, this.vy);
+      this.gload = Math.hypot(this.speed * this.tr, v * Math.max(0, pr));
+      g.rotation.z = this.pitch + WW.clamp(pr * 0.05, 0, 0.08);  // a touch of nose-up while pulling out
       const f = this.hp / this.maxHp; // a badly damaged plane wobbles (visual only)
       g.rotation.x = this.roll + (f < 0.4 && this.alive && this.state !== 'rollout' ? Math.sin(this.t * 7.3) * 0.12 + Math.sin(this.t * 3.1) * 0.08 : 0);
-      if (this.prop) this.prop.rotation.x += dt * 45;
+      if (WW.airFx) WW.airFx.sync(this, dt); else if (this.prop) this.prop.rotation.x += dt * 45;
     }
 
     takeoff(dt) {
@@ -359,6 +370,7 @@ window.WW = window.WW || {};
   WW.Plane = Plane;
   WW.air = {
     init() {
+      if (WW.airFx) WW.airFx.init();
       if (tracers.length || !WW.scene) return;
       for (let i = 0; i < 16; i++) { // one material per pooled line (created once) so each can fade on its own
         const mat = new THREE.LineBasicMaterial({ color: 0xe6c27a, transparent: true, opacity: 0.5, depthWrite: false });
@@ -393,11 +405,13 @@ window.WW = window.WW || {};
       let j = 0;
       for (let i = 0; i < arr.length; i++) if (!arr[i].removed) arr[j++] = arr[i];
       arr.length = j;
+      if (WW.airFx) WW.airFx.update(dt);
     },
     clearAll() {
       for (const p of WW.world.planes) p.remove();
       WW.world.planes.length = 0;
       for (const ln of tracers) ln.visible = false;
+      if (WW.airFx) WW.airFx.clearAll();
     }
   };
 })();
