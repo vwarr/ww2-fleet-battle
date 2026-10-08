@@ -38,6 +38,7 @@ window.WW = window.WW || {};
       const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
       const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD);
       if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;
+      if (d < (ship.ai.thrD || 1e9) || ship.ai.thrT !== WW.time.now) { ship.ai.thrD = d; ship.ai.thrT = WW.time.now; ship.ai.thrB = Math.atan2(cz - ship.z, cx - ship.x); } // nearest known gun ship's bearing
       if (k >= 1 || d < 1) continue;
       const w = (1 - k) * (1 - k) + 0.05;
       x += (ship.x - cx) / d * w; z += (ship.z - cz) / d * w; n++;
@@ -75,6 +76,13 @@ window.WW = window.WW || {};
     const now = WW.time.now;
     if (a.cvH === undefined || now - a.cvHT >= 2) { a.cvH = ship.desiredHeading; a.cvHT = now; }
     else if (Math.abs(WW.angleDiff(a.cvH, ship.desiredHeading)) >= 0.3) ship.desiredHeading = a.cvH;
+    // A reversal of course turns away from the nearest known gun ship: if the shortest turn would swing the bow
+    // across its bearing, step the other way round (90 deg at a time) instead.
+    const dd = WW.angleDiff(ship.heading, ship.desiredHeading);
+    if (a.thrT === now && a.thrD < 400 && Math.abs(dd) > 2) {
+      const tb = WW.angleDiff(ship.heading, a.thrB);
+      if (Math.sign(tb) === Math.sign(dd) && Math.abs(tb) < Math.abs(dd)) ship.desiredHeading = ship.heading - Math.sign(dd) * 1.5;
+    }
     if (!WW.air || !ship.hangar) return;
     airOps(ship, dt);
   }
