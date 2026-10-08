@@ -243,7 +243,7 @@ window.WW = window.WW || {};
 
     // A cripple lists heavier: flooding and lost buoyancy, on the side of its torpedo list (else its sinking side).
     cripList() {
-      const f = this.hp / this.maxHp, x = (this.flood || 0) * 0.25 + Math.max(0, 0.5 - f) * 0.14;
+      const f = this.hp / this.maxHp, x = Math.min(0.16, (this.flood || 0) * 0.3 + Math.max(0, 0.6 - f) * 0.22); // up to ~9 deg more
       return x ? (this.listRoll ? Math.sign(this.listRoll) : this.sinkDir) * x : 0;
     }
 

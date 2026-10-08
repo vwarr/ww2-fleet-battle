@@ -176,7 +176,12 @@ window.WW = window.WW || {};
     tasks: function () { return tasks; },
     // open survivor pickups of a side: assigned ones, and fresh ones still waiting for a rescuer
     pending: function (n) { var c = 0, now = WW.time.now; for (var i = 0; i < tasks.length; i++) { var t = tasks[i]; if (!t.done && t.nation === n && (t.by || now - t.t0 < 20)) c++; } return c; },
-    // visual helper (lifeboats.js): the rescuer of open survivors within r of (x, z), or null. Reads the sim only.
+    // visual helpers (lifeboats.js; they read the sim only): an open survivor pickup of side n within r of (x, z)
+    // that a rescuer may still come for, and the rescuer of one, or null
+    taskNear: function (n, x, z, r) {
+      for (var i = 0; i < tasks.length; i++) { var t = tasks[i]; if (!t.done && t.kind === 'ship' && t.nation === n && WW.dist2(t.x, t.z, x, z) < r * r) return t; }
+      return null;
+    },
     rescuerNear: function (n, x, z, r) {
       for (var i = 0; i < tasks.length; i++) { var t = tasks[i]; if (!t.done && t.by && t.nation === n && t.by.alive && WW.dist2(t.x, t.z, x, z) < r * r) return t.by; }
       return null;
