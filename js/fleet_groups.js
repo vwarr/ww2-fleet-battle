@@ -29,18 +29,27 @@ window.WW = window.WW || {};
   //                trained early in the war; USN 0.09 / 0.18 (the Midway PBY and SBD reports)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
+  //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
+  //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
+  //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
+  //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
+  //   (jointStrike, followUp and reserveFrac are not rolled: they are doctrine, not tuning)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
+      jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
+      jointStrike: true, followUp: 'deckload', reserveFrac: 0.4,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
+  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
-    for (k in b) if (typeof b[k] === 'number') d[k] = b[k] * j();
+    for (k in b) if (typeof b[k] === 'number' && !FIXED[k]) d[k] = b[k] * j();
+    for (k in FIXED) d[k] = b[k];
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
