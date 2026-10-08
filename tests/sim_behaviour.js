@@ -341,7 +341,7 @@ function install(P) {
     if (t > 60) for (const cv of L) {
       if (cv.type !== 'carrier' || !cv.hangar) continue;
       const cap = PL.filter(p => p.carrier === cv && p.kind === 'fighter' && !p.target && up(p)).length;
-      if (cap >= 2 || cv.hangar.fighter + PL.filter(p => p.carrier === cv && p.kind === 'fighter' && p.alive).length < 2) continue;
+      if (cv.hangar.fighter + PL.filter(p => p.carrier === cv && p.kind === 'fighter' && p.alive).length < 2) continue;
       R.air.capN++; if (cap < 2) R.air.capGap++;
     }
     for (const p of PL) {

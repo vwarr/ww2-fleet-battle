@@ -49,6 +49,7 @@ window.WW = window.WW || {};
 
   // CAP queue, strike waves and launches.
   function airOps(ship, dt) {
+    if (WW.airOps && WW.airOps.plan) return WW.airOps.plan(ship, dt); // air boss (air_ops.js); below: the fallback
     const a = ship.ai, hg = ship.hangar;
     // CAP when enemy planes come near.
     a.capT -= dt;
