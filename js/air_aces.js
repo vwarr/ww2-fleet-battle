@@ -97,7 +97,7 @@ window.WW = window.WW || {};
     p.ace = true;
     p.skill = 1 + 0.03 * Math.min(10, p.kills);
     if (p.pt && !p._acePT) {
-      var k = p.kind, b = p.pt;
+      var k = p.kind + p.nation, b = p.pt; // per nation: dogfight.equip gives each nation its own stats
       p.pt = acePT[k] || (acePT[k] = Object.assign({}, b, { speed: b.speed * SKILL_SPEED, hp: b.hp * SKILL_HP }));
       p._acePT = true;
       if (p.alive && p.hp === p.maxHp) { p.maxHp = p.pt.hp; p.hp = p.maxHp; }

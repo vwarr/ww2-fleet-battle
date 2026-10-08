@@ -278,8 +278,11 @@ window.WW = window.WW || {};
   // Pooled models come back whole: both wings shown, nothing left hidden.
   function restore(m) {
     if (!m) return;
-    if (m.wingL) m.wingL.visible = true;
-    if (m.wingR) m.wingR.visible = true;
+    [m.wingL, m.wingR].forEach(function (w) { // shown, unfolded, back at the root (deck folds them)
+      if (!w) return;
+      w.visible = true; w.rotation.set(0, 0, 0);
+      if (w.userData.home) w.position.fromArray(w.userData.home);
+    });
     if (m.group) { m.group.visible = true; m.group.rotation.x = 0; m.group.rotation.z = 0; }
   }
 
