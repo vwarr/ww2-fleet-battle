@@ -74,6 +74,33 @@ window.WW = window.WW || {};
     return best;
   }
 
+  // ---------- the reserve strike (Nagumo's dilemma) ----------
+  // While no enemy carrier is known, a strike on anything else leaves doctrine reserveFrac of the bombers in the
+  // hangar, armed for ships, for when the enemy carriers turn up: a carrier sighting launches the reserve at once.
+  // Held RSV_MAX s with no carrier found, the reserve is rearmed for the targets at hand (REARM s, the deck loaded
+  // with planes and ordnance meanwhile: cv.deckRearmUntil) and goes with the next strike.
+  const RSV_MAX = 110, REARM = 20;
+  const RS = { held: 0, launches: 0, rearmed: 0, targets: {} };
+  const cvKnown = n => WW.intel && WW.intel.enemyShips(n, { fresh: 90 }).some(c => c.unit && c.unit.alive && c.unit.type === 'carrier');
+  function reserveHold(cv, tgt) {   // bombers to hold back from this strike: { dive, torpedo }
+    const a = cv.ai, d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(cv.nation) : null, now = WW.time.now;
+    const frac = d ? d.reserveFrac || 0 : 0, none = { dive: 0, torpedo: 0 };
+    if (a.rsv && (tgt.type === 'carrier' || cvKnown(cv.nation))) { RS.launches++; RS.targets[tgt.type] = (RS.targets[tgt.type] || 0) + 1; a.rsv = null; a.rsvGo = true; return none; }
+    if (!frac || tgt.type === 'carrier' || cvKnown(cv.nation)) return none;
+    const r = a.rsv || (a.rsv = { t0: now, rearmT: 0 });
+    if (!a.rsvHeld) { a.rsvHeld = true; RS.held++; }
+    if (now - r.t0 > RSV_MAX) {
+      if (!r.rearmT) { r.rearmT = now + REARM; cv.deckRearmUntil = r.rearmT; }
+      if (now >= r.rearmT) { RS.rearmed++; RS.targets[tgt.type] = (RS.targets[tgt.type] || 0) + 1; a.rsv = null; a.rsvGo = true; return none; }
+    }
+    return { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
+  }
+  function reserveTick(cv) {        // a carrier sighted while the reserve is held: strike now
+    const a = cv.ai; if (!a.rsv || a.strikeT <= 1 || a.queue.some(q => q.target)) return;
+    const so = WW.fleetCmd && WW.fleetCmd.strikeOrder ? WW.fleetCmd.strikeOrder(cv) : null;
+    if ((so && so.target && so.target.type === 'carrier') || (a.rsv.rearmT && WW.time.now >= a.rsv.rearmT)) a.strikeT = 1;
+  }
+
   // ---------- air boss ----------
   function capWanted(cv) { // ai_carrier.js capWanted when present (standing element, 4 under a raid)
     if (WW.shipAI && WW.shipAI.capWanted) return +WW.shipAI.capWanted(cv) || 0;
@@ -107,6 +134,7 @@ window.WW = window.WW || {};
     }
     if (WW.search) WW.search.plan(cv, dt); // search flights while nothing is known (air_search.js)
     // strikes: only on a known target, and not while the carrier is under air attack (fighters first)
+    reserveTick(cv);
     a.strikeT -= dt;
     a.lholdT = attacked ? (a.lholdT || 0) + dt : 0;
     if (a.strikeT <= 0 && !a.queue.some(q => q.target) && attacked && (a.holdT || 0) < HOLD_MAX) {
@@ -116,16 +144,19 @@ window.WW = window.WW || {};
       const pur = WW.fleetCmd && WW.fleetCmd.side(cv.nation) && WW.fleetCmd.side(cv.nation).posture === 'pursue';
       a.strikeT = WW.randRange(35, 55) * (pur ? 0.55 : 1); a.holdT = 0; // pursuit: every spare plane, sooner
       const tgt = pickTarget(cv);
-      if (tgt && hg.dive + hg.torpedo > 0) {
+      const hold = tgt && hg.dive + hg.torpedo > 0 ? reserveHold(cv, tgt) : null;
+      const nd = hold ? hg.dive - hold.dive : 0, nt = hold ? hg.torpedo - hold.torpedo : 0;
+      if (tgt && nd + nt > 0) {
         const cs = capState(cv), reserve = Math.max(0, capWanted(cv) - cs.on - cs.coming) + 1; // keep a relief back
         const esc = Math.min(Math.max(0, hg.fighter - reserve), 4);
         for (let i = 0; i < esc; i++) a.queue.push({ kind: 'fighter', target: tgt });
-        const n = Math.max(hg.dive, hg.torpedo);
+        const n = Math.max(nd, nt);
         for (let i = 0; i < n; i++) {
-          if (i < hg.dive) a.queue.push({ kind: 'dive', target: tgt });
-          if (i < hg.torpedo) a.queue.push({ kind: 'torpedo', target: tgt });
+          if (i < nd) a.queue.push({ kind: 'dive', target: tgt });
+          if (i < nt) a.queue.push({ kind: 'torpedo', target: tgt });
         }
-        if (WW.strike) WW.strike.newWave(cv, tgt, a.queue);
+        if (WW.strike) WW.strike.newWave(cv, tgt, a.queue, { reserve: !!a.rsvGo });
+        a.rsvGo = false;
       }
     }
     // launches: CAP any time; strike planes not while recovering, the deck is foul, or the carrier is under attack
@@ -244,7 +275,7 @@ window.WW = window.WW || {};
 
   // scouts: search sectors, shadowing and the way home live in air_search.js (WW.search)
 
-  function reset() { for (const k in ST) ST[k] = 0; }
+  function reset() { for (const k in ST) ST[k] = 0; RS.held = RS.launches = RS.rearmed = 0; RS.targets = {}; }
   WW.on('roundStart', reset);
-  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, stats: ST, plan, fighter, bomber, pickTarget, capWanted, picture, underAttack, armed };
+  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, stats: ST, plan, fighter, bomber, pickTarget, capWanted, picture, underAttack, armed, reserve: RS };
 })();
