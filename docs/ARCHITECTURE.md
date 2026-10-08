@@ -41,6 +41,7 @@ js/air_props.js         WW.airProps: pooled parachutes, life rafts, sheared-off 
 js/air_deaths.js        WW.airDeaths: shoot-down / ditch / bail-out / deck slide-off deaths
 js/air_deck.js          WW.airDeck: deck parking, wing folding, takeoff runs, into-the-wind turns, landing pattern
 js/air_fx.js            WW.airFx: prop disc, dive brakes, wing-tip vapour, exhaust flicker, canopy glint
+js/air_strikes.js       WW.strike: strike waves (form-up, vics), sequential dive bombing, anvil torpedo attack
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/post.js              WW.post: HDR render target, bloom, tone curve

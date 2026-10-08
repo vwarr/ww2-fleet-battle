@@ -67,13 +67,22 @@ window.WW = window.WW || {};
         if (wm > cap) { wx *= cap / wm; wz *= cap / wm; }
         vx = wx; vz = wz;
       }
-      var sc = 4 + y * 0.25;   // scatter grows with drop height
+      var sc = 4 + y * 0.25, vy0 = 0, dv = plane.dropV;   // scatter grows with drop height
+      if (dv) { // dive release (air_strikes.js): keep the plane's dive velocity, small bomb-sight trim, ~1 unit scatter
+        vy0 = Math.min(0, dv.y); T = (vy0 + Math.sqrt(vy0 * vy0 + 2 * GRAV * y)) / GRAV; vx = dv.x; vz = dv.z; sc = 0.6 + y * 0.03;
+        if (target && target.alive) {
+          var ex = target.x + Math.cos(target.heading || 0) * (target.speed || 0) * T - (plane.x + vx * T);
+          var ez = target.z + Math.sin(target.heading || 0) * (target.speed || 0) * T - (plane.z + vz * T), em = Math.hypot(ex, ez) / T, ec = 5;
+          if (em > ec) { ex *= ec / em; ez *= ec / em; }
+          vx += ex / T; vz += ez / T;
+        }
+      }
       vx += I.rr(-sc, sc) / T; vz += I.rr(-sc, sc) / T;
       var p = I.acquire('bomb', I.G.bomb, I.M.bomb);
-      p.x = plane.x; p.y = y; p.z = plane.z; p.vx = vx; p.vy = 0; p.vz = vz;
+      p.x = plane.x; p.y = y; p.z = plane.z; p.vx = vx; p.vy = vy0; p.vz = vz;
       p.nation = plane.nation; p.target = target || null;
       p.dmg = ((WW.BOMB && WW.BOMB.dmg) || 180) * I.rr(0.85, 1.15);
-      I.place(p, p.x, p.y, p.z); I.orient(p, vx, 0, vz);
+      I.place(p, p.x, p.y, p.z); I.orient(p, vx, vy0, vz);
       I.stat('bombsDropped');
       return p;
     } catch (e) { return null; }
