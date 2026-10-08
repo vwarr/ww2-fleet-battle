@@ -77,13 +77,13 @@ window.WW = window.WW || {};
     const nReef = 1 + Math.floor(rnd() * 3);
     for (let i = 0; i < nReef; i++) {
       const [x, z] = spot(130, 350, 20, 280, 50);
-      addFeature('reef', x, z, rr(5, 10), rr(3, 7), rr(0, 3), rr(-3, -0.8));
+      addFeature('reef', x, z, rr(5, 10), rr(3, 7), rr(0, 3), rr(-2.6, -1.4));
     }
   }
 
   let radScale = 1;
   // shelf: width (units) of the shallow ledge outside the coast; drop: width of the slope down to deep water
-  const SHELF = { island: [6, 20], islet: [4, 15], spit: [3.5, 13], bar: [3, 12], reef: [3.5, 13] }; // gentle shelves, no cliffs
+  const SHELF = { island: [6, 20], islet: [4, 15], spit: [3, 9], bar: [2.5, 7], reef: [3, 10] }; // gentle shelves, no cliffs
   function featureHeight(f, x, z) {
     const dx = x - f.cx, dz = z - f.cz;
     const u = dx * f.c + dz * f.s, v = -dx * f.s + dz * f.c;
@@ -93,7 +93,12 @@ window.WW = window.WW || {};
     if (n > (1 + (sh[0] + sh[1]) / rmin) / 0.75) return -99;
     n *= 0.88 + 0.24 * vnoise(x * 0.05 + 40, z * 0.05 + 40); // gently wobbly, rounded coast
     const shoreH = -0.7;
-    if (n < 1) return shoreH + (f.peak - shoreH) * smooth(1, 0.45, n); // soft rounded lump with a flat-ish top
+    if (n < 1) {
+      if (f.peak < shoreH) return f.peak - 0.8 * n * n; // submerged reef: a gentle dome, no flat rim near the surface
+      // soft rounded lump; the blend with a linear term keeps a real slope at the waterline (clean foam line)
+      const k = 0.6 * smooth(1, 0.45, n) + 0.4 * WW.clamp((1 - n) / 0.55, 0, 1);
+      return shoreH + (f.peak - shoreH) * k;
+    }
     const e = (n - 1) * rmin; // approx distance from the coast
     if (e < sh[0]) return Math.min(f.peak, shoreH) - 2.8 * e / sh[0];
     return WW.lerp(Math.min(f.peak, shoreH) - 2.8, -BASE_DEPTH - 4, smooth(sh[0], sh[0] + sh[1], e));
@@ -137,7 +142,7 @@ window.WW = window.WW || {};
   // ---- colours: smooth gradients (soft pastel toy-box palette) ----
   const C = hex => new THREE.Color(hex);
   const FLOOR = [[0, C(0xf2e4bc)], [1.5, C(0xe6e2bc)], [4, C(0xb8dcc6)], [8, C(0x86c0c4)], [14, C(0x5f9cb8)], [24, C(0x4a82a8)]];
-  const LAND = [[0, C(0xf4e2b0)], [0.7, C(0xf0dcaa)], [1.3, C(0xa9d48a)], [3, C(0x8fc679)], [5.5, C(0x7ab868)], [8, C(0xc8c4ae)]];
+  const LAND = [[0, C(0xf4e2b0)], [0.7, C(0xf0dcaa)], [1.3, C(0xa9d48a)], [3, C(0x8fc679)], [5.5, C(0x7ab868)], [8, C(0x86b872)]]; // soft green tops (no pale bald patch)
   const tmpC = new THREE.Color();
   function ramp(tbl, v) {
     if (v <= tbl[0][0]) return tmpC.copy(tbl[0][1]);
@@ -223,6 +228,7 @@ window.WW = window.WW || {};
       g.position.set(x, h - 0.15, z); g.rotation.y = rr(0, 6.28);
       propsGroup.add(g); huts++;
     }
+    propsGroup.traverse(o => { if (o.isMesh) o.castShadow = true; });
     root.add(propsGroup);
   }
 

@@ -1,4 +1,4 @@
-html, body { margin: 0; height: 100%; overflow: hidden; background: #d6ecf4; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #a6d6f2; }
 body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #2f4256; }
 #game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
 #game.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
@@ -6,9 +6,9 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 /* ---- film look: colour grade, vignette, letterbox, captions ---- */
 #film { position: fixed; inset: 0; pointer-events: none; }
 #film .grade { position: absolute; inset: 0; mix-blend-mode: soft-light;
-  background: linear-gradient(180deg, rgba(150, 190, 230, 0.12) 0%, rgba(255, 236, 205, 0.08) 55%, rgba(255, 190, 130, 0.22) 100%); }
+  background: linear-gradient(180deg, rgba(120, 180, 255, 0.06) 0%, rgba(255, 240, 210, 0.04) 55%, rgba(255, 200, 140, 0.12) 100%); }
 #film .vignette { position: absolute; inset: 0;
-  background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 55%, rgba(22, 34, 48, 0.32) 100%); }
+  background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 62%, rgba(22, 40, 64, 0.2) 100%); }
 #film .bar { position: absolute; left: 0; right: 0; height: 0; background: #0b0f14; transition: height 2.5s ease-in-out; }
 #film .bar.top { top: 0; } #film .bar.bottom { bottom: 0; }
 #film.cinema .bar { height: 7.5vh; }

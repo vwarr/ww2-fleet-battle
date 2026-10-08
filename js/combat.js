@@ -50,8 +50,9 @@ window.WW = window.WW || {};
     }
     return null;
   }
-  function damage(s, amt, x, z) {
-    try { if (s && s.alive && s.takeDamage) { s.takeDamage(amt, x, z); stat('hits'); return true; } } catch (e) { /* ignore */ }
+  // kind/cal (optional) let WW.damage place the right impact fx and fire site on the hull.
+  function damage(s, amt, x, z, kind, cal) {
+    try { if (s && s.alive && s.takeDamage) { s.takeDamage(amt, x, z, kind, cal); stat('hits'); return true; } } catch (e) { /* ignore */ }
     return false;
   }
 
@@ -171,7 +172,8 @@ window.WW = window.WW || {};
     var tgt = (p.target && p.target.alive) ? p.target : null;
     var hit = findHit(p.nation, x, z, S.splash * 0.3, false, tgt);
     if (hit) {
-      damage(hit, p.dmg, x, z);
+      damage(hit, p.dmg, x, z, 'shell', p.cal);
+      if (WW.damage) return;   // impact fx at the hull hit point are placed by WW.damage
       var big = p.cal === 'big' || p.cal === 'med';
       if (p.cal === 'mg') fx('sparks', x, 1, z);
       else { fx('explosion', x, 1.2, z, S.splash * 0.6); if (big) fx('sparks', x, 1.5, z); else fx('sparks', x, 1, z); }

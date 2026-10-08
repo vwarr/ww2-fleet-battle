@@ -74,6 +74,9 @@ window.WW = window.WW || {};
     var b1 = box(prop, C.dark, 0.05, 1.0, 0.13, 0, -0.5, 0);
     var b2 = box(prop, C.dark, 0.05, 1.0, 0.13, 0, 0, 0); b2.rotation.x = Math.PI / 2; b2.position.set(0, 0, -0.5);
     void b1;
+    // merge static parts (prop and payload stay separate: they spin / hide)
+    if (m._merge) m._merge(g, 'plane|' + kind + '|' + nat.id, payload ? [prop, payload] : [prop], []);
+    if (m._shadows) m._shadows(g, false);
     return { group: g, prop: prop, payload: payload };
   }
   if (WW.models) WW.models.buildPlane = buildPlane;

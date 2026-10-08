@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   const P = new THREE.Vector3(), L = new THREE.Vector3();        // current camera position / look point
   const gP = new THREE.Vector3(), gL = new THREE.Vector3();      // goals for this frame
   const _c = new THREE.Vector3(), _f = new THREE.Vector3();
-  let shot = null, lastKind = '', lastSubj = null, shotCount = 0, snapNext = true, forced = null;
+  let shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null;
 
   // ---------- overview fit (setup / map mode) ----------
   function placeOverview(d, tz) {
@@ -56,9 +56,10 @@ window.WW = window.WW || {};
     const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr: pr + WW.rand() * 2, kind, subj }, extra || {}));
     for (const s of WW.world.ships) {
       if (s.removed) continue;
-      if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: s.stats.length * 1.6 + 22, dur: 10, w: 0.12 });
-      if (s.wreck && s.wreckInfo && s.wreckInfo.top > 1 && s.wreckT < 40) add(3.5, 'orbit', s, { r: s.stats.length * 1.4 + 16, dur: 8, w: 0.08 });
+      if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: s.stats.length * 1.5 + 12, dur: 10, w: 0.12 });
+      if (s.wreck && s.wreckInfo && s.wreckInfo.top > 1 && s.wreckT < 12) add(1.5, 'orbit', s, { r: s.stats.length * 1.3 + 10, dur: 6, w: 0.08 });
       if (!s.alive) continue;
+      if (s.hp < s.maxHp * 0.5 && s.type !== 'pt') add(5, 'orbit', s, { r: s.stats.length * 1.4 + 12, dur: 8, w: 0.1 }); // burning
       const t = s.target, d = t ? WW.dist(s.x, s.z, t.x, t.z) : 1e9;
       if (s.type === 'battleship' && t && d < 170) add(6, 'flyby', s, { dur: 11 });
       else if (s.type === 'cruiser' && t && d < 120) add(4.5, 'chase', s, { dur: 9 });
@@ -69,7 +70,7 @@ window.WW = window.WW || {};
     for (const p of WW.world.planes) {
       if (!p.alive) continue;
       if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8, 'chase', p, { dur: 8 });
-      else if (p.kind === 'dive' && p.state === 'attack' && p.target) add(7.5, 'orbit', p.target, { r: p.target.stats.length * 1.5 + 30, dur: 9, w: 0.1, hgt: 0.55 });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target) add(7.5, 'orbit', p.target, { r: p.target.stats.length * 1.4 + 20, dur: 9, w: 0.1, hgt: 0.55 });
       else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(5, 'chase', p, { dur: 6 });
       else if (p.state === 'transit' && p.ordnance) add(3, 'chase', p, { dur: 7 });
     }
@@ -81,7 +82,7 @@ window.WW = window.WW || {};
     if (shotCount % 4 !== 1) for (const c of candidates()) {
       let s = c.pr;
       if (c.kind === lastKind) s -= 2.5;
-      if (c.subj === lastSubj) s -= 4;
+      if (c.subj && recent.indexOf(c.subj) >= 0) s -= 5; // no repeats back-to-back
       if (!best || s > best.score) { best = c; best.score = s; }
     }
     if (!best || best.score < 3) best = { kind: 'wide', dur: 10 };
@@ -92,10 +93,19 @@ window.WW = window.WW || {};
     shot.side = WW.rand() < 0.5 ? -1 : 1;
     const s = c.subj;
     if (c.kind === 'orbit') {
-      shot.a0 = WW.rand() * Math.PI * 2; shot.w = (c.w || 0.1) * shot.side; shot.hgt = c.hgt || 0.42;
+      shot.w = (c.w || 0.1) * shot.side; shot.hgt = c.hgt || 0.42;
+      // start where the foreground (between subject and camera) is open water, not shoals
+      let best = -1e9, off = WW.rand() * Math.PI * 2;
+      for (let i = 0; i < 10; i++) {
+        const a = off + i * Math.PI / 5, mid = a + shot.w * (shot.dur || 8) * 0.5;
+        const o = openness(s.x, s.z, a, c.r) + openness(s.x, s.z, mid, c.r);
+        if (o > best) { best = o; shot.a0 = a; }
+      }
     } else if (c.kind === 'flyby') { // camera slides along the ship's beam, low over the water
       const h = s.heading, fx = Math.cos(h), fz = Math.sin(h), len = s.stats ? s.stats.length : 10;
-      const off = len * 1.4 + 22;
+      const off = len * 1.3 + 14;
+      const sideA = h + Math.PI / 2; // pick the beam with more open water
+      shot.side = openness(s.x, s.z, sideA, off) >= openness(s.x, s.z, sideA + Math.PI, off) ? 1 : -1;
       shot.from = { x: -fx * len * 2.2 - fz * off * shot.side, z: -fz * len * 2.2 + fx * off * shot.side };
       shot.to = { x: fx * len * 2.2 - fz * off * shot.side, z: fz * len * 2.2 + fx * off * shot.side };
       shot.y = Math.max(5, len * 0.45);
@@ -105,6 +115,7 @@ window.WW = window.WW || {};
       shot.a0 = WW.rand() * Math.PI * 2; shot.w = 0.025 * shot.side;
     }
     lastKind = c.kind; lastSubj = s || null;
+    if (s) { recent.push(s); if (recent.length > 3) recent.shift(); }
     snapNext = true; // hard cut
   }
 
@@ -121,7 +132,12 @@ window.WW = window.WW || {};
       }
       case 'chase': {
         const h = s.heading !== undefined ? s.heading : 0, isPlane = sp.y > 0.5;
-        const back = isPlane ? 26 : (s.stats ? s.stats.length : 10) * 1.3 + 18;
+        const back = isPlane ? 20 : (s.stats ? s.stats.length : 10) * 1.2 + 10;
+        if (shot.t === 0 || shot.sideT === undefined) { // choose the quarter with open water once
+          shot.sideT = 1;
+          const hb = h + Math.PI;
+          shot.side = openness(sp.x, sp.z, hb - 0.5, back * 1.1) >= openness(sp.x, sp.z, hb + 0.5, back * 1.1) ? 1 : -1;
+        }
         const lat = shot.side * back * 0.55;
         _f.set(Math.cos(h), 0, Math.sin(h));
         gP.set(sp.x - _f.x * back - _f.z * lat, (isPlane ? sp.y : 0) + back * 0.38, sp.z - _f.z * back + _f.x * lat);
@@ -143,10 +159,24 @@ window.WW = window.WW || {};
       }
     }
   }
-  function keepSane(v) { // stay over the world, above water and land
+  // how open (deep) the water is between (x, z) and the point r away at angle a: 0 (land) .. 10 (deep)
+  function openness(x, z, a, r) {
+    let o = 0;
+    for (const f of [0.35, 0.6, 0.85, 1.1]) o += WW.clamp(depth(x + Math.cos(a) * r * f, z + Math.sin(a) * r * f), -2, 10);
+    return o;
+  }
+  function depth(x, z) { return (x < 0 || x > W || z < 0 || z > H) ? 15 : WW.terrain.depthAt(x, z); }
+  function keepSane(v, look) { // stay over the world, above land, and keep the view line clear of terrain
     v.x = WW.clamp(v.x, -120, W + 120); v.z = WW.clamp(v.z, -120, H + 120);
-    const land = -WW.terrain.depthAt(WW.clamp(v.x, 0, W), WW.clamp(v.z, 0, H));
-    v.y = Math.max(v.y, 4, land + 5);
+    const d0 = depth(v.x, v.z);
+    v.y = Math.max(v.y, 5, -d0 + 6, d0 < 3 ? 11 : 0); // over shoals sit higher, so they do not fill the frame
+    let need = v.y;
+    for (const f of [0.15, 0.3, 0.45, 0.6, 0.75]) {
+      const x = WW.lerp(v.x, look.x, f), z = WW.lerp(v.z, look.z, f), y = WW.lerp(v.y, look.y, f);
+      const ground = Math.max(0, -depth(x, z)) + (depth(x, z) < 2 ? 3 : 1.5);
+      if (y < ground) need = Math.max(need, v.y + (ground - y) / (1 - f));
+    }
+    v.y = need;
   }
 
   const cam = {
@@ -162,12 +192,13 @@ window.WW = window.WW || {};
       });
     },
     resize() { if (camera) fitMap(); },
+    target() { return L; },
+    isOverview() { const st = WW.game && WW.game.state; return st === 'setup' || !st || cam.mode === 'map'; },
     toggle() { cam.mode = cam.mode === 'director' ? 'map' : 'director'; snapNext = true; shot = null; return cam.mode === 'map' ? 'map' : 'cinematic'; },
     // test hook: film (x, z) with a slow orbit about `width` units across, for `hold` seconds
     focus(x, z, width, hold) {
       forced = true;
       startShot({ kind: 'orbit', subj: { x, z, y: 0 }, r: (width || 100) * 0.55, dur: hold || 8, w: 0.06, pr: 99 });
-      shot.a0 = Math.PI * 0.5; // look from the south
       cam.update(0);
     },
     snap() { forced = null; shot = null; snapNext = true; cam.update(0); },
@@ -180,7 +211,7 @@ window.WW = window.WW || {};
         if (shot) shot.t += rdt;
         if (!shot || shot.t >= shot.dur) { forced = null; pickShot(); }
         shotGoal();
-        keepSane(gP);
+        keepSane(gP, gL);
       }
       if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; }
       else {

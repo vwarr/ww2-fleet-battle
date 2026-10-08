@@ -49,7 +49,7 @@ window.WW = window.WW || {};
     constructor(kind, nation, carrier, target, m) {
       this.kind = kind; this.nation = nation; this.carrier = carrier; this.target = target || null;
       this.model = m; this.group = m.group; this.prop = m.prop;
-      this.pt = WW.PLANE_TYPES[kind]; this.hp = this.pt.hp; this.alive = true; this.state = 'takeoff';
+      this.pt = WW.PLANE_TYPES[kind]; this.hp = this.maxHp = this.pt.hp; this.trailT = 0; this.hitFxT = 0; this.crippled = false; this.alive = true; this.state = 'takeoff';
       const dk = deckInfo(carrier), L = carrier.stats.length, c = Math.cos(carrier.heading), s = Math.sin(carrier.heading);
       this.deckY = dk.y;
       this.x = dk.x - c * L * 0.38; this.z = dk.z - s * L * 0.38; this.y = dk.y + DECK_Y;
@@ -65,7 +65,36 @@ window.WW = window.WW || {};
     damage(amount) {
       if (!this.alive) return;
       this.hp -= amount;
-      if (this.hp <= 0) this.shotDown();
+      if (this.hitFxT <= this.t) { // throttled hit flash: sparks + a puff of debris smoke at the airframe
+        this.hitFxT = this.t + 0.18;
+        WW.fx.sparks(this.x, this.y, this.z);
+        if (Math.random() < 0.5) WW.fx.smoke(this.x, this.y, this.z, true, 0.35);
+      }
+      if (this.hp <= 0) { this.shotDown(); return; }
+      // Badly hit: jettison the payload and turn for home (not mid-dive / mid-run).
+      if (!this.crippled && this.hp < this.maxHp * 0.35 && (this.state === 'transit' || this.state === 'attack') && !this.phase) {
+        this.crippled = true;
+        if (WW.rand() < 0.6) {
+          if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8); }
+          this.state = 'return'; this.foe = null;
+        }
+      }
+    }
+    // Damage trail from the engine: thin grey < 70% hp, thick black + flames < 40%, burning when falling.
+    trail(dt, falling) {
+      const f = this.hp / this.maxHp;
+      if (!falling && f >= 0.7) return;
+      const heavy = falling || f < 0.4, ld = WW.damage ? WW.damage.load() : 1, fx = WW.fx;
+      const n = 1.25 * PLANE_SCALE, c = Math.cos(this.heading), sn = Math.sin(this.heading);
+      const nx = this.x + c * n * 0.6, nz = this.z + sn * n * 0.6;
+      this.flameT = (this.flameT || 0) - dt; // flickering flames at the engine (fire puffs trail behind fast planes, so keep them sparse)
+      if (heavy && this.flameT <= 0) { this.flameT = falling ? 0.06 : 0.16; fx.fire(nx, this.y + 0.1, nz); }
+      const iv = falling ? 0.07 : heavy ? 0.08 : 0.11;
+      if (WW.damage) WW.damage.want(1 / iv);
+      this.trailT -= dt;
+      if (this.trailT > 0) return;
+      this.trailT = iv * Math.min(3, ld);
+      fx.smoke(nx - c * 0.8, this.y + 0.1, nz - sn * 0.8, heavy, falling ? 0.9 : heavy ? 0.75 : 0.42);
     }
     shotDown() {
       this.alive = false; this.state = 'falling'; WW.stats.planesLost++;
@@ -106,10 +135,9 @@ window.WW = window.WW || {};
       const fx = WW.fx;
       if (this.state === 'falling') {
         this.vy -= 9 * dt; this.heading += this.spin * dt; this.turn = this.spin * 2; this.speed *= 1 - 0.3 * dt;
-        this.smokeT -= dt;
-        if (this.smokeT <= 0) { this.smokeT = 0.06; fx.smoke(this.x, this.y, this.z, true, 0.6); }
+        this.trail(dt, true);
         this.integrate(dt, true);
-        if (this.y <= 0) { fx.splash(this.x, this.z, 1.2); this.remove(); }
+        if (this.y <= 0) { fx.splash(this.x, this.z, 1.6); fx.explosion(this.x, 0.3, this.z, 0.6); this.remove(); }
         return;
       }
       if (this.state === 'ditch') {
@@ -135,6 +163,7 @@ window.WW = window.WW || {};
         case 'landing': this.landing(dt); break;
         case 'rollout': this.rollout(dt); return;
       }
+      this.trail(dt, false);
       this.integrate(dt, false);
     }
 
@@ -152,7 +181,8 @@ window.WW = window.WW || {};
       g.rotation.y = -this.heading;
       g.rotation.z = Math.atan2(this.vy, Math.max(1, this.speed));
       this.roll += (WW.clamp(this.turn * 0.7, -1.2, 1.2) - this.roll) * Math.min(1, dt * 4);
-      g.rotation.x = this.roll;
+      const f = this.hp / this.maxHp; // a badly damaged plane wobbles (visual only)
+      g.rotation.x = this.roll + (f < 0.4 && this.alive && this.state !== 'rollout' ? Math.sin(this.t * 7.3) * 0.12 + Math.sin(this.t * 3.1) * 0.08 : 0);
       const sh = this.model.shadow;
       if (sh) { // dark blob on the water below the plane; hidden over the deck and while falling
         const over = this.state === 'takeoff' || this.state === 'rollout' || this.state === 'landing' && this.y < this.deckY + 3;

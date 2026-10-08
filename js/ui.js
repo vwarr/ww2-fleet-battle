@@ -4,7 +4,7 @@ window.WW = window.WW || {};
   const TYPES = ['carrier', 'battleship', 'cruiser', 'destroyer', 'submarine', 'pt'];
   const SHORT = { carrier: 'CV', battleship: 'BB', cruiser: 'CA', destroyer: 'DD', submarine: 'SS', pt: 'PT' };
   let el = {}, hudPeek = false, selType = 'destroyer', selNation = 'USN';
-  let lastHud = 0, msgTimer = 0, capTimer = 0;
+  let lastHud = 0, msgTimer = 0, capEnd = 0;
 
   const $ = (tag, cls, parent, text) => {
     const e = document.createElement(tag);
@@ -54,7 +54,7 @@ window.WW = window.WW || {};
     el.cap = el.film.querySelector('.caption');
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
     WW.on('roundStart', d => caption('Round ' + d.round, '', 4, true));
-    WW.on('setupStart', () => { capTimer = 0; el.cap.classList.remove('on'); });
+    WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); });
     WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', 'Round ' + d.round, 7, false));
 
     const canvas = document.getElementById('game');
@@ -68,7 +68,7 @@ window.WW = window.WW || {};
   function caption(main, sub, secs, small) {
     el.capMain.textContent = main; el.capSub.textContent = sub || '';
     el.cap.classList.toggle('small', !!small);
-    el.cap.classList.add('on'); capTimer = secs;
+    el.cap.classList.add('on'); capEnd = performance.now() + secs * 1000; // wall-clock, so slow frames cannot stretch it
   }
 
   function onKey(e) {
@@ -96,7 +96,7 @@ window.WW = window.WW || {};
     const st = WW.SHIP_TYPES[selType];
     if (!WW.terrain.isNavigable(p.x, p.z, st.minDepth)) return say('Too shallow for a ' + st.name.toLowerCase());
     for (const c of WW.game.composition) {
-      const need = (st.length + WW.SHIP_TYPES[c.type].length) * 0.5;
+      const need = WW.game.minSpacing ? WW.game.minSpacing(selType, c.type) : (st.length + WW.SHIP_TYPES[c.type].length) * 0.5;
       if (WW.dist2(p.x, p.z, c.x, c.z) < need * need) return say('Too close to another ship');
     }
     const c = { type: selType, nation: selNation, x: p.x, z: p.z };
@@ -154,7 +154,7 @@ window.WW = window.WW || {};
     // HUD shows in setup; in battle it fades away (H shows it again)
     el.panel.classList.toggle('hidden', !inSetup && !hudPeek);
     el.film.classList.toggle('cinema', !inSetup && !(WW.cam && WW.cam.mode === 'map'));
-    if (capTimer > 0) { capTimer -= rdt; if (capTimer <= 0) el.cap.classList.remove('on'); }
+    if (capEnd && performance.now() > capEnd) { capEnd = 0; el.cap.classList.remove('on'); }
     if (msgTimer > 0) { msgTimer -= rdt; el.msg.style.display = msgTimer > 0 ? 'block' : 'none'; }
   }
 

@@ -2,13 +2,10 @@
 window.WW = window.WW || {};
 (function (WW) {
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
-    const STEP = 0.05;          // max sim step
+  const STEP = 0.05;          // max sim step
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
   const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: 365, x1: 465, cx: 415, heading: Math.PI } };
-  // Where each type sits inside its side's zone (0 = rear edge of the map, 1 = toward the enemy).
-  const DEPTH_IN_ZONE = { carrier: [0.0, 0.3], battleship: [0.3, 0.6], cruiser: [0.4, 0.75], destroyer: [0.6, 1.0],
-                          submarine: [0.7, 1.0], pt: [0.7, 1.0] };
 
   const call = (mod, fn, ...a) => { const m = WW[mod]; if (m && typeof m[fn] === 'function') return m[fn](...a); };
   const ALL_MODULES = ['fx', 'combat', 'air', 'ships'];
@@ -21,7 +18,9 @@ window.WW = window.WW || {};
   function setupRenderer() {
     const canvas = document.getElementById('game');
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setClearColor(0xd6ecf4);
+    renderer.setClearColor(0xa6d6f2);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.VSMShadowMap; // blurred, very soft shadows
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 4000);
     WW.renderer = renderer; WW.scene = scene; WW.camera = camera;
@@ -39,39 +38,39 @@ window.WW = window.WW || {};
   WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; } };
 
   // ---------- fleets ----------
+  // Realistic spacing: a carrier keeps ~70 units from any ship, big ships ~35, small craft ~20.
+  const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, submarine: 20, pt: 20 };
+  const minSpacing = (a, b) => Math.max(SPACE[a] || 20, SPACE[b] || 20);
+  // Task-force formation in local (forward f, lateral l) units: carriers at the rear,
+  // battleships ahead, cruisers on the wings, a destroyer screen, then subs and PT boats.
+  const SLOTS = {
+    carrier: [[0, 0]], carrier2: [[0, -50], [0, 50]],
+    battleship: [[72, -28], [72, 28]], cruiser: [[36, -64], [36, 64]], cruiser2: [[40, -112], [40, 112]],
+    destroyer: [[98, -56], [100, 0], [98, 56]], submarine: [[118, -30]], pt: [[112, 32], [108, 84]]
+  };
   function randomComposition() {
-    const counts = { carrier: WW.randInt(1, 2), battleship: WW.randInt(1, 2), cruiser: 2, destroyer: WW.randInt(3, 4),
-                     submarine: WW.randInt(1, 2), pt: WW.randInt(2, 3) };
     const out = [];
     for (const nation of ['USN', 'IJN']) {
+      const counts = { carrier: WW.rand() < 0.25 ? 2 : 1, battleship: WW.randInt(1, 2), cruiser: 2, destroyer: 3, submarine: 1, pt: 2 };
+      const dir = nation === 'USN' ? 1 : -1, rearX = nation === 'USN' ? 26 : W - 26, cz = WW.randRange(115, 185);
       const placed = [];
-      for (const type in counts) for (let i = 0; i < counts[type]; i++) {
-        const p = placeInZone(type, nation, placed);
-        if (p) { placed.push(p); out.push({ type, nation, x: p.x, z: p.z }); }
+      for (const type in counts) {
+        const slots = SLOTS[(type === 'carrier' || type === 'cruiser') && counts.carrier === 2 ? type + '2' : type];
+        for (let i = 0; i < counts[type]; i++) {
+          const [f, l] = slots[i % slots.length];
+          const p = nearestOk(rearX + dir * f, cz + l * dir, type, placed);
+          placed.push(p); out.push({ type, nation, x: p.x, z: p.z });
+        }
       }
     }
     return out;
   }
-  function zoneRange(type, nation) {
-    const s = SIDE[nation], f = DEPTH_IN_ZONE[type];
-    const a = s.x0 + (s.x1 - s.x0) * f[0], b = s.x0 + (s.x1 - s.x0) * f[1];
-    return nation === 'USN' ? [a, b] : [s.x1 - (b - s.x0), s.x1 - (a - s.x0)];
-  }
-  function clearOf(x, z, len, placed) {
+  function clearOf(x, z, type, placed) {
     for (const p of placed) {
-      const need = (len + p.len) * 0.6 + 2;
+      const need = minSpacing(type, p.type);
       if (WW.dist2(x, z, p.x, p.z) < need * need) return false;
     }
     return true;
-  }
-  function placeInZone(type, nation, placed) {
-    const st = WW.SHIP_TYPES[type], r = zoneRange(type, nation);
-    for (let k = 0; k < 40; k++) {
-      const p = WW.terrain.randomSeaPoint(st.minDepth, r[0], r[1]);
-      if (p && clearOf(p.x, p.z, st.length, placed) && WW.terrain.isNavigable(p.x, p.z, st.minDepth)) return { x: p.x, z: p.z, len: st.length };
-    }
-    const p = WW.terrain.randomSeaPoint(st.minDepth, SIDE[nation].x0, SIDE[nation].x1);
-    return p ? { x: p.x, z: p.z, len: st.length } : null;
   }
   // nearest navigable point (spiral search) that is clear of other ships
   function nearestOk(x, z, type, placed) {
@@ -80,10 +79,15 @@ window.WW = window.WW || {};
       const n = Math.max(1, Math.round(r / 2));
       for (let i = 0; i < n; i++) {
         const a = i / n * Math.PI * 2, px = WW.clamp(x + Math.cos(a) * r, 5, W - 5), pz = WW.clamp(z + Math.sin(a) * r, 8, H - 8);
-        if (WW.terrain.isNavigable(px, pz, st.minDepth + 1) && clearOf(px, pz, st.length, placed)) return { x: px, z: pz, len: st.length };
+        if (WW.terrain.isNavigable(px, pz, st.minDepth + 1) && clearOf(px, pz, type, placed)) return { x: px, z: pz, type };
       }
     }
-    return { x, z, len: st.length };
+    // no fully clear spot: take the nearest navigable one
+    for (let r = 0; r < 200; r += 3) for (let i = 0; i < 16; i++) {
+      const a = i / 16 * Math.PI * 2, px = WW.clamp(x + Math.cos(a) * r, 5, W - 5), pz = WW.clamp(z + Math.sin(a) * r, 8, H - 8);
+      if (WW.terrain.isNavigable(px, pz, st.minDepth + 1)) return { x: px, z: pz, type };
+    }
+    return { x, z, type };
   }
   // keep the fleet shape, move its centre into the side's start zone, then fix each ship onto good water
   function repositionComposition(comp) {
@@ -147,7 +151,7 @@ window.WW = window.WW || {};
       WW.emit('setupStart', {});
     },
     enterAuto() { game.mode = 'auto'; game.composition = null; game.startRound(); },
-    randomComposition,
+    randomComposition, minSpacing,
     spawnComposition,
     tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0); },
     endRound(winner) {

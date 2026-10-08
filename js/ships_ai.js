@@ -85,7 +85,7 @@ window.WW = window.WW || {};
     let mw = false;
     for (const ts of a.turrets) {
       ts.reload -= dt;
-      if (!ts.gun) continue;
+      if (!ts.gun || ts.disabled) continue; // knocked out by a heavy hit (WW.damage)
       let tgt = a.calTarget && a.calTarget[ts.gun.cal];
       if (tgt && (!tgt.alive || tgt.submerged)) tgt = null;
       // Aim as an offset from the turret's rest angle (aft turrets rest at PI) so it never swings through the bridge.

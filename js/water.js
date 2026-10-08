@@ -38,16 +38,22 @@ window.WW = window.WW || {};
       vec3 col = mix(cShallow, cMid, smoothstep(0.0, 4.0, d));
       col = mix(col, cDeep, smoothstep(3.0, 11.0, d));
       col = mix(col, cAbyss, smoothstep(10.0, 22.0, d));
-      float alpha = mix(0.42, 0.9, smoothstep(0.0, 12.0, d));
+      float alpha = mix(0.56, 0.9, smoothstep(0.0, 12.0, d));
       if (!inside) alpha = 1.0;
       // gentle large-scale swell shading
       float sw = vnoise(vWorld.xz * 0.035 + vec2(time * 0.05, time * 0.03)) * 0.6 + vnoise(vWorld.xz * 0.09 - vec2(time * 0.07, 0.0)) * 0.4;
       col *= 0.96 + 0.08 * sw;
+      // soft caustic ripples over sandy shallows: reads as water over sand, not a solid surface
+      float cz = vnoise(vWorld.xz * 0.45 + vec2(time * 0.25, -time * 0.2)) + vnoise(vWorld.xz * 0.7 - vec2(time * 0.18, time * 0.22));
+      float caust = smoothstep(0.82, 1.0, 1.0 - abs(cz - 1.0)) * (1.0 - smoothstep(1.0, 5.0, d));
+      col = mix(col, vec3(0.93, 1.0, 0.97), caust * 0.35);
       // foam: a crisp outline at the shore plus a softer ring that breathes outward
       float wob = (vnoise(vWorld.xz * 0.25 + time * 0.15) - 0.5) * 0.35;
-      float shore = 1.0 - smoothstep(0.55, 0.75, d + wob);
+      float shore = 1.0 - smoothstep(0.75, 0.98, d + wob);
       float ringPos = 1.3 + 0.45 * sin(time * 0.8 + vWorld.x * 0.02);
-      float ring = (1.0 - smoothstep(0.0, 0.18, abs(d + wob * 0.6 - ringPos))) * 0.55 * (1.0 - smoothstep(1.2, 2.4, d));
+      // world-space depth slope: rings only where the seabed really shelves (flat tops would give blocky contours)
+      float slope = length(vec2(dFdx(d), dFdy(d))) / max(length(vec2(dFdx(vWorld.x), dFdy(vWorld.x))) + length(vec2(dFdx(vWorld.z), dFdy(vWorld.z))), 1e-3);
+      float ring = (1.0 - smoothstep(0.0, 0.18, abs(d + wob * 0.6 - ringPos))) * 0.55 * (1.0 - smoothstep(1.2, 2.4, d)) * smoothstep(0.08, 0.2, slope);
       float foam = max(shore, ring);
       col = mix(col, cFoam, foam);
       alpha = max(alpha, foam * 0.95);
@@ -72,17 +78,24 @@ window.WW = window.WW || {};
     mat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
         depthTex: { value: null }, extent: { value: new THREE.Vector4(0, 0, 1, 1) }, time: { value: 0 },
-        cShallow: { value: new THREE.Color(0xa8ece0) }, cMid: { value: new THREE.Color(0x5ccad0) },
+        cShallow: { value: new THREE.Color(0x8fe4da) }, cMid: { value: new THREE.Color(0x5ccad0) },
         cDeep: { value: new THREE.Color(0x3aa0c8) }, cAbyss: { value: new THREE.Color(0x2f7cb4) },
-        cFoam: { value: new THREE.Color(0xffffff) }, cSky: { value: new THREE.Color(0xd6ecf4) }
+        cFoam: { value: new THREE.Color(0xffffff) }, cSky: { value: new THREE.Color(0xa6d6f2) }
       }]),
-      vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true
+      vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true,
+      extensions: { derivatives: true }
     });
     const g = new THREE.PlaneGeometry(9000, 9000, 1, 1); g.rotateX(-Math.PI / 2);
     mesh = new THREE.Mesh(g, mat);
     mesh.position.set(WW.cfg.MAP_W / 2, 0, WW.cfg.MAP_H / 2);
     mesh.renderOrder = 1; mesh.frustumCulled = false;
     WW.scene.add(mesh);
+    // soft, cool-tinted shadow catcher just above the sea: ships and planes shade the water
+    const sg = new THREE.PlaneGeometry(WW.cfg.MAP_W + 400, WW.cfg.MAP_H + 400); sg.rotateX(-Math.PI / 2);
+    const catcher = new THREE.Mesh(sg, new THREE.ShadowMaterial({ color: 0x24507a, opacity: 0.22, depthWrite: false }));
+    catcher.position.set(WW.cfg.MAP_W / 2, 0.06, WW.cfg.MAP_H / 2);
+    catcher.receiveShadow = true; catcher.renderOrder = 2;
+    WW.scene.add(catcher);
   }
 
   // depthFn(x, z) -> depth, sampled over the rectangle (x0, z0, w, h)

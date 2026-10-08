@@ -29,8 +29,9 @@ window.WW = window.WW || {};
   var GRAD = null;
   function grad() {
     if (GRAD) return GRAD;
-    var d = new Uint8Array([128, 128, 128, 255, 182, 182, 182, 255, 230, 230, 230, 255]);
-    GRAD = new THREE.DataTexture(d, 3, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    // 5 gentle steps with a high floor (shadow side ~0.73 of lit) so the shading stays soft
+    var d = new Uint8Array([170, 170, 170, 255, 188, 188, 188, 255, 204, 204, 204, 255, 218, 218, 218, 255, 232, 232, 232, 255]);
+    GRAD = new THREE.DataTexture(d, 5, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     return GRAD;
   }
@@ -92,21 +93,22 @@ window.WW = window.WW || {};
   // Hull: lofted, bow on +x. Rounded bilge, flared sides, sheer rising to the bow, raked forefoot.
   // Material groups: 0 = deck, 1 = sides + transom.
   // hull station at u (0 = stern, 1 = bow): x, half-width w, deck height yt, keel yb
-  function hullAt(L, B, top, bowLen, sternW, sheer, u) {
+  function hullAt(L, B, top, bowLen, sternW, sheer, u, rk) {
     var h = B / 2, xb = L / 2 - bowLen, x = -L / 2 + u * L, w = h, t;
     if (x > xb) { t = (x - xb) / bowLen; w = h * Math.pow(Math.max(0, 1 - Math.pow(Math.min(t, 1), 1.7)), 0.75); }
     else if (u < 0.12) { t = 1 - u / 0.12; w = h * (1 - (1 - sternW) * t * t); }
     w = Math.max(w, 0.04);
     var yt = top + sheer * Math.pow(Math.max(0, (u - 0.68) / 0.32), 2) + sheer * 0.3 * Math.pow(Math.max(0, (0.1 - u) / 0.1), 2);
-    var yb = -0.5 + (x > xb ? Math.pow((x - xb) / bowLen, 2) * (yt + 0.5) * 0.55 : 0);
+    var yb = -0.5 + (x > xb ? Math.pow((x - xb) / bowLen, 2) * ((rk == null ? top : rk) + 0.5) * 0.55 : 0);
+    if (yb > yt - 0.03) { yb = yt - 0.03; w = 0.02; }   // band copy: vanish where the hull's forefoot is raked away
     return { x: x, w: w, yt: yt, yb: yb };
   }
   var hullCache = {};
-  function hullGeo(L, B, top, bowLen, sternW, sheer) {
-    var key = [L, B, top, bowLen, sternW, sheer].join('_');
+  function hullGeo(L, B, top, bowLen, sternW, sheer, rk) {
+    var key = [L, B, top, bowLen, sternW, sheer, rk].join('_');
     if (hullCache[key]) return hullCache[key];
     var NS = 30, NJ = 7, pos = [], deckI = [], sideI = [], st = [];
-    for (var i = 0; i <= NS; i++) st.push(hullAt(L, B, top, bowLen, sternW, sheer, i / NS));
+    for (var i = 0; i <= NS; i++) st.push(hullAt(L, B, top, bowLen, sternW, sheer, i / NS, rk));
     function V(x, y, z) { pos.push(x, y, z); return pos.length / 3 - 1; }
     var base = [1, -1].map(function (sd) {
       var b = pos.length / 3;
@@ -214,7 +216,7 @@ window.WW = window.WW || {};
     var g = new THREE.Group();
     g.add(new THREE.Mesh(hullGeo(L, B, top, bowLen, sternW, sheer), [deckMat, hullMat]));
     // waterline (boot-topping) band: a slightly wider low copy of the hull
-    var band = new THREE.Mesh(hullGeo(L, B, 0.16, bowLen, sternW, 0), bandMat);
+    var band = new THREE.Mesh(hullGeo(L, B, 0.16, bowLen, sternW, 0, top), bandMat);
     band.scale.set(1 + 0.04 / L, 1, 1 + 0.06 / B); g.add(band);
     return { group: g, turrets: [], stacks: [], deck: null, hullMats: [hullMat, deckMat, bandMat], _hg: [L, B, top, bowLen, sternW, sheer] };
   }
@@ -353,6 +355,15 @@ window.WW = window.WW || {};
     return s;
   };
 
+  // all ship/plane meshes cast shadows; ships also receive them (turrets/islands shade decks). Outlines never do.
+  function shadows(g, receive) {
+    var lm = lineMat();
+    g.traverse(function (o) {
+      if (!o.isMesh) return;
+      var isLine = Array.isArray(o.material) ? o.material[0] === lm : o.material === lm;
+      o.castShadow = !isLine; o.receiveShadow = !!receive && !isLine;
+    });
+  }
   WW.models = {
     init: function () { geo(); grad(); },
     buildShip: function (type, nationId) {
@@ -366,10 +377,11 @@ window.WW = window.WW || {};
       if (cals.length === s.turrets.length) s.turrets.forEach(function (t, i) { t.cal = cals[i]; });
       else if (window.console) console.warn('models: turret count mismatch for', type, cals.length, s.turrets.length);
       delete s._hg;
+      shadows(s.group, true);
       return s;
     },
     // shared helpers for models_planes.js
     _mat: mat, _box: box, _bar: bar, _cyl: cyl, _disc: disc, _xc: xc, _sph: sph, _nation: nation, _C: C,
-    _grad: grad, _lineMat: lineMat, _hullAt: hullAt, _geo: geo, _mesh: mesh
+    _grad: grad, _lineMat: lineMat, _hullAt: hullAt, _geo: geo, _mesh: mesh, _shadows: shadows
   };
 })();

@@ -38,9 +38,8 @@ window.WW = window.WW || {};
       }
       var hit = I.findHit(p.nation, p.x, p.z, 0.4, true, null);
       if (hit) {
-        I.damage(hit, p.dmg, p.x, p.z);
-        I.fx('splash', p.x, p.z, 4);
-        I.fx('explosion', p.x, 0.8, p.z, 2.5);
+        I.damage(hit, p.dmg, p.x, p.z, 'torpedo');
+        if (!WW.damage) { I.fx('splash', p.x, p.z, 4); I.fx('explosion', p.x, 0.8, p.z, 2.5); }
         p.dead = true; return;
       }
       if (p.run >= p.range) { p.dead = true; return; }
@@ -88,8 +87,8 @@ window.WW = window.WW || {};
     var tgt = (p.target && p.target.alive) ? p.target : null;
     var hit = I.findHit(p.nation, p.x, p.z, 0.6, false, tgt);
     if (hit) {
-      I.damage(hit, p.dmg, p.x, p.z);
-      I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z);
+      I.damage(hit, p.dmg, p.x, p.z, 'bomb');
+      if (!WW.damage) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
     } else if (I.depthAt(p.x, p.z) <= 0) {
       I.fx('explosion', p.x, 0.6, p.z, 1.2); I.fx('smoke', p.x, 1, p.z, true, 1.5);
     } else {
@@ -132,7 +131,7 @@ window.WW = window.WW || {};
       var d = Math.hypot(s.x - p.x, s.z - p.z);
       if (d > R) continue;
       var amt = D * (1 - 0.6 * d / R) * (s.submerged ? 1 : 0.5);
-      I.damage(s, amt, p.x, p.z);
+      I.damage(s, amt, p.x, p.z, 'dc');
     }
   }
 

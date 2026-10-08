@@ -43,7 +43,7 @@ window.WW = window.WW || {};
       this.lookDist = Math.max(30, 2.2 * st.speed / st.turn);
       // Visual / fx state.
       this.bob = WW.rand() * TAU; this.wakeT = WW.rand() * 0.2; this.smokeT = 0; this.fireT = 0;
-      this.fires = []; this.sinkT = 0; this.boomT = 0; this.slickDone = false;
+      this.dmgSites = []; this.listRoll = 0; this.sinkT = 0; this.boomT = 0; this.slickDone = false;
       this.sinkDir = WW.rand() < 0.5 ? -1 : 1; this.sinkPitch = (WW.rand() - 0.5) * 0.3;
       this.sinkRoll = this.sinkDir * WW.randRange(0.5, 0.9); this.wreck = false; this.wreckInfo = null;
       this.hullBot = -1; this.hullTop = 6; // local vertical extent, for resting on the seabed
@@ -196,7 +196,7 @@ window.WW = window.WW || {};
       const g = this.group, amp = 0.35 / Math.sqrt(this.stats.length);
       g.position.set(this.x, this.depthY + Math.sin(t * 1.1 + this.bob) * amp * 0.5, this.z);
       g.rotation.y = -this.heading;
-      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.turnRate * 0.25;
+      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.turnRate * 0.25 + this.listRoll;
       g.rotation.z = Math.sin(t * 0.9 + this.bob) * amp * 0.12;
     }
 
@@ -219,21 +219,12 @@ window.WW = window.WW || {};
       if (f >= 0.6) return;
       this.smokeT -= dt;
       if (this.smokeT <= 0) {
-        this.smokeT = f < 0.35 ? 0.18 : 0.3;
+        this.smokeT = (f < 0.35 ? 0.18 : 0.3) * (this.dmgSites.length ? 2 : 1) * (WW.damage ? WW.damage.load() : 1);
         const stacks = this.model.stacks || [];
         if (stacks.length) {
           this.group.updateMatrixWorld(true);
           for (const sObj of stacks) { sObj.getWorldPosition(WW._v3 || (WW._v3 = new THREE.Vector3())); fx.smoke(WW._v3.x, WW._v3.y, WW._v3.z, f < 0.35, 1 + st.length / 20); }
         } else fx.smoke(this.x, 2, this.z, f < 0.35, 1);
-      }
-      this.fireT -= dt;
-      if (this.fireT <= 0 && this.fires.length) {
-        this.fireT = 0.09;
-        for (const fi of this.fires) {
-          const p = this.toWorld(fi.lx, fi.lz);
-          fx.fire(p[0], 1 + this.depthY, p[1]);
-          if (WW.rand() < 0.15) fx.smoke(p[0], 2, p[1], true, 1.2);
-        }
       }
     }
 
@@ -242,24 +233,18 @@ window.WW = window.WW || {};
       this.model.hullMats.forEach((m, i) => { if (m.color && this.baseColors[i]) m.color.copy(this.baseColors[i]).multiplyScalar(dark); });
     }
 
-    takeDamage(amount, hx, hz) {
+    // kind ('shell'|'torpedo'|'bomb'|'dc') and cal are optional: WW.damage turns the hit into a local fire/smoke site.
+    takeDamage(amount, hx, hz, kind, cal) {
       if (!this.alive) return;
       this.hp -= amount;
+      if (WW.damage) WW.damage.hit(this, amount, hx, hz, kind, cal);
       if (this.hp <= 0) { this.hp = 0; this.startSinking(); return; }
-      if (this.hp / this.maxHp < 0.6 && this.fires.length < 3 && (this.fires.length === 0 || WW.rand() < 0.4)) {
-        const L = this.stats.length;
-        let lx = WW.randRange(-L * 0.35, L * 0.35), lz = 0;
-        if (hx !== undefined && hz !== undefined) {
-          const ex = hx - this.x, ez = hz - this.z, c = Math.cos(this.heading), s = Math.sin(this.heading);
-          lx = WW.clamp(ex * c + ez * s, -L * 0.4, L * 0.4); lz = WW.clamp(-ex * s + ez * c, -1.2, 1.2);
-        }
-        this.fires.push({ lx, lz });
-      }
       this.applyLook();
     }
 
     startSinking() {
       this.alive = false; this.sinking = true; this.sinkT = 0; this.target = null; this.startY = this.depthY;
+      if (Math.abs(this.listRoll) > 0.02) this.sinkRoll = Math.sign(this.listRoll) * Math.abs(this.sinkRoll);
       const L = this.stats.length;
       // Drift toward nearby shallows (if any) so wrecks often ground where they stay visible.
       let bd = WW.terrain.depthAt(this.x, this.z) - 2, bh;
@@ -299,7 +284,7 @@ window.WW = window.WW || {};
       this.restTop = flatY + this.hullTop * Math.cos(roll) + L * sn;
       g.position.set(this.x, WW.lerp(this.startY, this.restY, k * k), this.z);
       g.rotation.y = -this.heading;
-      g.rotation.x = roll * Math.min(1, this.sinkT / 4);
+      g.rotation.x = WW.lerp(this.listRoll, roll, Math.min(1, this.sinkT / 4));
       g.rotation.z = WW.lerp(this.sinkPitch, th || this.sinkPitch, k) * k;
       if (!wreckCol) wreckCol = new THREE.Color(0x7a5a44); // rust: stays visible under the water
       this.model.hullMats.forEach((m, i) => {
@@ -312,7 +297,7 @@ window.WW = window.WW || {};
         const p = this.toWorld(WW.randRange(-L * 0.4, L * 0.4), 0);
         WW.fx.explosion(p[0], 1, p[1], WW.clamp(L / 9, 0.8, 2.5));
       }
-      if (this.sinkT < 6) {
+      if (this.sinkT < 6 && !this.dmgSites.length) { // damaged ships burn at their hit sites (WW.damage)
         this.fireT -= dt;
         if (this.fireT <= 0) {
           this.fireT = 0.12;
@@ -328,7 +313,7 @@ window.WW = window.WW || {};
 
     // Settled: stays in the scene until clearAll; leaves WW.world.ships; blocks navigation if it breaks the surface.
     becomeWreck() {
-      this.sinking = false; this.wreck = true; this.wreckT = 0; this.fires.length = 0;
+      this.sinking = false; this.wreck = true; this.wreckT = 0;
       const top = this.restTop;
       this.wreckInfo = { x: this.x, z: this.z, radius: this.stats.length * 0.5 + 3, top, born: WW.time.now, type: this.type };
       WW.world.wrecks.push(this.wreckInfo);
@@ -340,14 +325,14 @@ window.WW = window.WW || {};
       if (this.wreckT > 30 || this.wreckInfo.top < 0.3) return;
       this.smokeT -= dt;
       if (this.smokeT <= 0) {
-        this.smokeT = WW.randRange(0.6, 1.2);
+        this.smokeT = WW.randRange(0.6, 1.2) * (this.dmgSites.length ? 2.5 : 1); // lighter when hit sites smoke too
         WW.fx.smoke(this.x + WW.randRange(-1, 1), Math.max(0.5, Math.min(this.wreckInfo.top, 4)), this.z + WW.randRange(-1, 1), true, 0.5);
       }
     }
 
     remove() {
       if (this.removed) return;
-      this.removed = true; this.sinking = false; this.alive = false;
+      this.removed = true; this.sinking = false; this.alive = false; this.dmgSites.length = 0;
       if (WW.scene) WW.scene.remove(this.group);
       this.model.hullMats.forEach(m => { if (m.dispose) m.dispose(); });
     }
@@ -399,12 +384,14 @@ window.WW = window.WW || {};
       }
       prune();
       for (const w of wreckShips) w.updateWreck(dt);
+      if (WW.damage) WW.damage.update(dt);
     },
     clearAll() {
       for (const s of WW.world.ships) s.remove();
       for (const s of wreckShips) s.remove();
       WW.world.ships.length = 0; wreckShips.length = 0;
       if (WW.world.wrecks) WW.world.wrecks.length = 0; else WW.world.wrecks = [];
+      if (WW.damage) WW.damage.clearAll();
     }
   };
 })();

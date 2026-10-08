@@ -64,14 +64,14 @@ window.WW = window.WW || {};
     if (mode === 'glow') { if (cam) cam.getWorldQuaternion(_q2); else _q2.identity(); }
     for (k = 0; k < this.count; k++) {               // write live instances densely
       i = this.act[k];
-      var t = this.age[i] / this.life[i], e = 1 - (1 - t) * (1 - t), s = this.s0[i] + (this.s1[i] - this.s0[i]) * e, b = 1;
+      var t = this.age[i] / this.life[i], e = 1 - (1 - t) * (1 - t) * (1 - t), s = this.s0[i] + (this.s1[i] - this.s0[i]) * e, b = 1;
       var sp = this.spin[i] * this.age[i];
       if (mode === 'puff') {
-        if (t > 0.62) { var x = (t - 0.62) / 0.38; s *= 1 - x * x * (3 - 2 * x); }
+        if (t > 0.55) { var x = (t - 0.55) / 0.45; s *= 1 - x * x * (3 - 2 * x); }
         _q.setFromEuler(_e.set(this.ex[i] + sp, this.ey[i] + sp * 0.7, 0));
         _s.set(s, s, s);
       } else if (mode === 'glow') {
-        b = Math.min(1, t * 10) * (1 - t) * (1 - t);
+        b = Math.min(1, t * 6) * (1 - t) * (1 - t);
         _q.setFromAxisAngle(_z, this.ey[i] + sp).premultiply(_q2);
         _s.set(s, s, s);
       } else {                                        // flat
@@ -149,18 +149,22 @@ window.WW = window.WW || {};
     oil.forEach(function (o) { if (o.mesh.parent !== WW.scene) WW.scene.add(o.mesh); });
   }
 
+  // drift: WW.wind ({x, z}, set per round by WW.damage) when defined
+  function windX() { return WW.wind ? WW.wind.x : 0.3; }
+  function windZ() { return WW.wind ? WW.wind.z : 0; }
+
   // ---- effect recipes ----
   var W = 0xffffff, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4; // foam colours are peak alpha (grey level)
   function splash(x, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
-    var sq = Math.sqrt(size), n = Math.min(16, 4 + Math.round(size * 3)), up = 3.2 * sq + 2;
+    var sq = Math.sqrt(size), n = Math.min(14, 4 + Math.round(size * 2.5)), up = 2.6 * sq + 1.6;
     for (var i = 0; i < n; i++) {                       // puffy white column
       var a = R() * 6.28, r = R() * 0.22 * size, out = rr(0.1, 0.7) * sq, f = i / n;
       P.solid.spawn(x + Math.cos(a) * r, 0.1 + f * 0.4 * size, z + Math.sin(a) * r, Math.cos(a) * out, up * (0.45 + 0.75 * f) * rr(0.85, 1.1), Math.sin(a) * out,
-        rr(1.0, 1.5) * Math.sqrt(size * 0.6 + 0.4), (0.3 + 0.25 * (1 - f)) * size + 0.2, (0.55 + 0.35 * (1 - f)) * size + 0.3,
-        col(W), col(0xd8ecf0), 7, 0.6, rr(-1, 1), true);
+        rr(1.4, 2.0) * Math.sqrt(size * 0.6 + 0.4), (0.3 + 0.25 * (1 - f)) * size + 0.2, (0.55 + 0.35 * (1 - f)) * size + 0.3,
+        col(W), col(0xe4f0f2), 4.5, 0.9, rr(-0.6, 0.6), true);
     }
-    for (var d = 0; d < 3 + (size | 0); d++) {          // little droplet puffs
+    for (var d = 0; d < 2 + (size * 0.5 | 0); d++) {          // little droplet puffs
       var b = R() * 6.28, o = rr(1.5, 3) * sq;
       P.solid.spawn(x, 0.3, z, Math.cos(b) * o, up * rr(0.5, 0.9), Math.sin(b) * o, rr(0.7, 1.1), 0.25 * sq, 0.18 * sq,
         col(W), col(0xe4f2f4), 12, 0.2, 0, true);
@@ -173,48 +177,49 @@ window.WW = window.WW || {};
   }
   function explosion(x, y, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
-    var n = Math.min(18, 5 + Math.round(size * 3.5)), f = 0.5 + 0.45 * size;
-    P.halo.spawn(x, y + 0.5 * f, z, 0, 0.5, 0, 0.5, 2.5 * f, 5 * f, col(0xffc070), col(0xff7030), 0, 0, 0);
+    var n = Math.min(14, 4 + Math.round(size * 2.5)), f = 0.5 + 0.45 * size;
+    P.halo.spawn(x, y + 0.5 * f, z, 0, 0.4, 0, 0.6, 1.6 * f, 3.2 * f, col(0x9a6a40), col(0x804020), 0, 0, 0);
     for (var i = 0; i < n; i++) {                       // warm fireball puffs
       var hot = i < n / 2;
       P.glow.spawn(x + rr(-0.5, 0.5) * f, y + rr(0, 0.6) * f, z + rr(-0.5, 0.5) * f,
-        rr(-1.8, 1.8) * f, rr(0.8, 2.6) * f, rr(-1.8, 1.8) * f, rr(0.4, 0.85),
-        (hot ? 0.7 : 0.5) * f, (hot ? 1.5 : 1.2) * f, col(hot ? 0xfff2b0 : 0xffc45a), col(hot ? 0xffa040 : 0xe0562a), -0.5, 2.5, rr(-2, 2));
+        rr(-1.2, 1.2) * f, rr(0.6, 1.8) * f, rr(-1.2, 1.2) * f, rr(0.6, 1.1),
+        (hot ? 0.6 : 0.45) * f, (hot ? 1.3 : 1.05) * f, col(hot ? 0xffe0a8 : 0xf8b878), col(hot ? 0xf09a5a : 0xd8785a), -0.4, 2.2, rr(-1, 1));
     }
-    var nd = Math.min(10, 2 + Math.round(size * 1.5));
+    var nd = Math.min(6, 1 + Math.round(size));
     for (var d = 0; d < nd; d++) {                      // chunky debris bits
       P.solid.spawn(x, y + 0.3, z, rr(-4, 4) * Math.sqrt(size), rr(4, 9) * Math.sqrt(size), rr(-4, 4) * Math.sqrt(size),
-        rr(1, 1.8), rr(0.2, 0.35) * Math.sqrt(size), 0.18, col(0x4a4440), col(0x3a3634), 16, 0.2, rr(-6, 6), true);
+        rr(1, 1.8), rr(0.12, 0.22) * Math.sqrt(size), 0.12, col(0x6a5a50), col(0x7a6a60), 16, 0.2, rr(-6, 6), true);
     }
     for (var s = 0; s < 2 + Math.round(size); s++)
-      P.smoke.spawn(x + rr(-0.6, 0.6) * f, y + rr(0.3, 1) * f, z + rr(-0.6, 0.6) * f, rr(-0.5, 0.5) + 0.25, rr(1.2, 2.2), rr(-0.5, 0.5),
-        rr(2.4, 3.6), 0.6 * f, rr(1.6, 2.2) * f, col(0x5a5654), col(0x9a9896), -0.1, 0.6, rr(-0.5, 0.5));
+      P.smoke.spawn(x + rr(-0.6, 0.6) * f, y + rr(0.3, 1) * f, z + rr(-0.6, 0.6) * f, rr(-0.5, 0.5) + windX(), rr(1.2, 2.2), rr(-0.5, 0.5) + windZ(),
+        rr(3.0, 4.2), 0.6 * f, rr(1.3, 1.8) * f, col(0x6a6560), col(0xd6d2cc), -0.1, 0.6, rr(-0.4, 0.4));
     sparks(x, y + 0.3, z);
   }
   function muzzleFlash(x, y, z) {
     if (!P) return;
-    P.halo.spawn(x, y, z, 0, 0, 0, 0.16, 1.4, 2.4, col(0xffe0a0), col(0xff9a40), 0, 0, 0);
-    P.glow.spawn(x, y, z, rr(-0.5, 0.5), 0.4, rr(-0.5, 0.5), 0.12, 0.45, 0.7, col(0xfff6d0), col(0xffb050), 0, 0, 0);
+    P.halo.spawn(x, y, z, 0, 0, 0, 0.14, 0.8, 1.4, col(0x9a6e48), col(0x6a3a20), 0, 0, 0);
+    P.glow.spawn(x, y, z, rr(-0.3, 0.3), 0.3, rr(-0.3, 0.3), 0.14, 0.3, 0.5, col(0xffe2b0), col(0xf0a060), 0, 0, 0);
     P.smoke.spawn(x, y, z, rr(-0.3, 0.3), 0.8, rr(-0.3, 0.3), 1.1, 0.35, 1.0, col(0xc8c6c0), col(0xe6e4e0), 0, 0.5, 0.5);
   }
   function flak(x, y, z) {
     if (!P) return;
-    P.halo.spawn(x, y, z, 0, 0, 0, 0.18, 0.6, 1.4, col(0xffd080), col(0xff6020), 0, 0, 0);
+    P.halo.spawn(x, y, z, 0, 0, 0, 0.18, 0.5, 1.0, col(0x8a6040), col(0x603018), 0, 0, 0);
     for (var i = 0; i < 3; i++)
       P.smoke.spawn(x + rr(-0.3, 0.3), y + rr(-0.3, 0.3), z + rr(-0.3, 0.3), rr(-0.6, 0.6), rr(-0.2, 0.5), rr(-0.6, 0.6),
-        rr(1.2, 1.8), rr(0.3, 0.45), rr(0.9, 1.3), col(0x3e3e44), col(0x6a6a70), 0, 2, rr(-1, 1));
+        rr(1.2, 1.8), rr(0.3, 0.45), rr(0.9, 1.3), col(0x5c5c62), col(0x9a9aa0), 0, 2, rr(-1, 1));
   }
   function smoke(x, y, z, dark, size) {
     if (!P) return; size = size || 1;
-    P.smoke.spawn(x + rr(-0.15, 0.15), y, z + rr(-0.15, 0.15), rr(-0.3, 0.3) + 0.3, rr(1.0, 1.8), rr(-0.3, 0.3),
-      rr(2.6, 3.8), 0.55 * size, rr(1.7, 2.3) * size,
-      col(dark ? 0x46474c : 0xd2d2ce), col(dark ? 0x86878a : 0xf0f0ec), -0.25, 0.25, rr(-0.5, 0.5));
+    var k = rr(0.7, 1.25) * size;                       // varied puff sizes: reads as separate cotton balls
+    P.smoke.spawn(x + rr(-0.3, 0.3), y, z + rr(-0.3, 0.3), rr(-0.5, 0.5) + windX(), rr(1.1, 2.0), rr(-0.5, 0.5) + windZ(),
+      rr(2.6, 3.8), 0.5 * k, rr(1.2, 1.6) * k,
+      col(dark ? (R() < 0.45 ? 0x55514e : 0x6e6964) : 0xd8d6d2), col(dark ? 0xc4bfb8 : 0xf4f2ee), -0.25, 0.25, rr(-0.5, 0.5));
   }
   function fire(x, y, z) {
     if (!P || R() > 0.55) return;             // throttle: ships call this every frame
-    P.glow.spawn(x + rr(-0.35, 0.35), y + rr(0, 0.2), z + rr(-0.35, 0.35), rr(-0.3, 0.3), rr(1.4, 2.6), rr(-0.3, 0.3),
+    P.glow.spawn(x + rr(-0.35, 0.35), y + rr(0, 0.2), z + rr(-0.35, 0.35), rr(-0.3, 0.3) + windX() * 0.5, rr(1.4, 2.6), rr(-0.3, 0.3) + windZ() * 0.5,
       rr(0.5, 0.85), rr(0.55, 0.8), rr(1.0, 1.4), col(R() < 0.5 ? 0xffe27a : 0xffb048), col(0xe0482a), -0.6, 0.8, rr(-3, 3));
-    if (R() < 0.4) P.halo.spawn(x, y + 0.5, z, 0, 1, 0, 0.35, 1.6, 2.4, col(0xff9a40), col(0xff5020), 0, 0, 0);
+    if (R() < 0.3) P.halo.spawn(x, y + 0.5, z, 0, 1, 0, 0.45, 1.4, 2.0, col(0x7a4a28), col(0x502810), 0, 0, 0);
   }
   function wake(x, z, heading, size) {
     if (!P) return; size = size || 1;
@@ -231,9 +236,9 @@ window.WW = window.WW || {};
   }
   function sparks(x, y, z) {
     if (!P) return;
-    var n = 5 + (R() * 4 | 0);
+    var n = 2 + (R() * 3 | 0);
     for (var i = 0; i < n; i++)
-      P.halo.spawn(x, y, z, rr(-6, 6), rr(2, 8), rr(-6, 6), rr(0.3, 0.6), 0.5, 0.25, col(0xffe8a0), col(0xff7020), 14, 0.5, 0, true);
+      P.halo.spawn(x, y, z, rr(-3, 3), rr(1.5, 4), rr(-3, 3), rr(0.3, 0.5), 0.4, 0.2, col(0xa08050), col(0x604020), 9, 0.8, 0, true);
   }
 
   function update(dt) {
