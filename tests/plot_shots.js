@@ -14,7 +14,7 @@ require('fs').mkdirSync(out, { recursive: true });
   await p.goto(process.env.BASE_URL + 'index.html?v=' + Date.now());
   await p.waitForFunction(() => window.__sim && window.WW && WW.game && WW.plot);
   await p.waitForTimeout(1500);
-  const info = await p.evaluate(({ seed, secs }) => {
+  const info = await p.evaluate(({ seed, secs, misid }) => {
     const G = WW.game;
     __sim.setScale(0.05);
     WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
@@ -22,12 +22,14 @@ require('fs').mkdirSync(out, { recursive: true });
     if (WW.aces) WW.aces.reset();
     WW.seedRandom(seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.composition = comp; G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null;
-    while (G.state === 'battle' && G.roundTime < secs) __sim.fastForward(1);
+    // MISID=1: stop at the first moment after secs / 2 that a side holds a misidentified contact (flying-boat reports)
+    const mis0 = () => ['USN', 'IJN'].some(n => WW.intel.contacts(n).some(c => c.misid && c.unit.alive));
+    while (G.state === 'battle' && G.roundTime < secs) { __sim.fastForward(1); if (misid && G.roundTime > secs / 2 && mis0()) break; }
     WW.cam.mode = 'map';
     const mis = [];
     for (const n of ['USN', 'IJN']) for (const c of WW.intel.contacts(n)) if (c.misid) mis.push(n + ' sees ' + c.unit.type + ' as ' + c.reportedType);
     return { t: G.roundTime, state: G.state, mis };
-  }, { seed, secs });
+  }, { seed, secs, misid: !!process.env.MISID });
   console.log('at', JSON.stringify(info));
   const shot = async (name, fn, wait) => { if (fn) await p.evaluate(fn); await p.waitForTimeout(wait || 1600); await p.screenshot({ path: `${out}/${name}.png` }); };
   await shot('plot_omniscient', () => WW.plot.set(null), 2500);

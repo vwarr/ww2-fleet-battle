@@ -32,7 +32,7 @@ window.WW = window.WW || {};
       submarine: ['I-168', 'I-26', 'I-19', 'I-176'], pt: ['Gyoraitei 1', 'Gyoraitei 2', 'Gyoraitei 3', 'Gyoraitei 4', 'Gyoraitei 5', 'Gyoraitei 6'] }
   };
   const names = new Map();
-  let entries = [], pend = { USN: [], IJN: [] }, notes = { USN: [], IJN: [] }, sighted = { USN: false, IJN: false };
+  let entries = [], pend = { USN: [], IJN: [] }, notes = { USN: [], IJN: [] }, sighted = { USN: false, IJN: false }, ever = { USN: new Set(), IJN: new Set() };
   let hitSaid = new Set(), reported = new Map(), round = 0, dirty = true, el = null, pref = { map: true, film: false }, tick = 0;
 
   // ---------- helpers ----------
@@ -100,7 +100,7 @@ window.WW = window.WW || {};
     if (!P.length || WW.time.now - P[0].t < BATCH) return;
     pend[nation] = [];
     const count = {}, by = P[0].by;
-    let x = 0, z = 0, k = 0, top = 0, misid = false;
+    let x = 0, z = 0, k = 0, top = 0, misid = false, fresh = 0;
     for (const q of P) {
       const c = WW.intel && WW.intel.known(nation, q.unit);
       const t = q.reportedType || typeOf(c) || q.unit.type;
@@ -108,6 +108,7 @@ window.WW = window.WW || {};
       x += q.x !== undefined ? q.x : c ? c.x : q.unit.x; z += q.z !== undefined ? q.z : c ? c.z : q.unit.z; k++;
       if (q.misid) misid = true;
       reported.set(q.unit, t);
+      if (!ever[nation].has(q.unit)) { ever[nation].add(q.unit); fresh++; }
     }
     x /= k; z /= k;
     const types = Object.keys(count).sort((a, b) => (RANK[b] || 0) - (RANK[a] || 0));
@@ -117,7 +118,7 @@ window.WW = window.WW || {};
     N.push({ text: short, x, z, t: WW.time.now, misid, top, id: Math.random() });
     if (N.length > NOTE_KEEP) N.shift();
     const first = !sighted[nation]; sighted[nation] = true;
-    if (top < 4 && !first) return;
+    if ((top < 4 && !first) || !fresh) return; // a re-sighting is a note on the plot, not a diary entry
     const what = types.map(t => (count[t] > 1 ? count[t] + ' ' : '') + word(t, count[t])).join(', ');
     const ob = observer(by);
     add('Enemy ' + what + ' sighted bearing ' + brg + (ob ? ' (' + ob + ')' : ''), top >= 6 ? 3 : top >= 5 ? 2 : first ? 2 : 1, nation, { kind: 'sighting' }, rt);
@@ -126,7 +127,7 @@ window.WW = window.WW || {};
   // ---------- event wiring (each handler only reads) ----------
   function on(name, fn) { WW.on(name, e => { try { fn(e); } catch (err) { /* visual only */ } }); }
   on('roundStart', () => {
-    round++; entries = []; pend = { USN: [], IJN: [] }; notes = { USN: [], IJN: [] }; sighted = { USN: false, IJN: false };
+    round++; entries = []; pend = { USN: [], IJN: [] }; notes = { USN: [], IJN: [] }; sighted = { USN: false, IJN: false }; ever = { USN: new Set(), IJN: new Set() };
     hitSaid = new Set(); reported = new Map(); names.clear(); dirty = true;
     for (const s of WW.world.ships) nameOf(s); // name every ship now: the list shrinks as ships sink
     add('Task forces at sea. All hands to battle stations.', 0);
@@ -163,7 +164,7 @@ window.WW = window.WW || {};
   on('shipSunk', s => s && s.stats && add(nameOf(s) + (s.type === 'carrier' || s.type === 'battleship' ? ' sinks' : ' sunk'), RANK[s.type] >= 5 ? 3 : RANK[s.type] >= 3 ? 2 : 1, s.nation, { kind: 'sunk', ship: s }));
   on('shipScuttled', s => s && s.stats && add(nameOf(s) + ' scuttled by her own escorts', 2, s.nation, { kind: 'sunk' }));
   on('shipEscaped', s => s && s.stats && add(nameOf(s) + ' breaks away and escapes ' + (s.x < WW.cfg.MAP_W / 2 ? 'west' : 'east'), 1, s.nation));
-  on('escortCharge', e => e.carrier && add((e.ships || []).slice(0, 2).map(nameOf).join(' and ') + ((e.ships || []).length > 2 ? ' and others' : '') + ' charge to cover ' + nameOf(e.carrier), 2, e.carrier.nation));
+  on('escortCharge', e => e.carrier && add((e.ships || []).slice(0, 2).map(nameOf).join(' and ') + ((e.ships || []).length > 2 ? ' and others' : '') + ((e.ships || []).length > 1 ? ' charge' : ' charges') + ' to cover ' + nameOf(e.carrier), 2, e.carrier.nation));
   on('rescue', e => {
     const who = e.ship ? nameOf(e.ship) : e.air ? observer(e.air) : null;
     if (who) add(who + ' picks up ' + (e.kind === 'pilot' ? 'a downed flyer' : (e.n > 1 ? e.n + ' ' : '') + 'survivors'), 1, (e.ship || e.air || {}).nation);
