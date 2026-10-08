@@ -4,8 +4,8 @@
 //    wind, gone after SMOKE_LIFE s). intel.js los() treats a line of sight through a cloud as blocked (ship to ship),
 //    so a ship behind the screen cannot be seen or fired on by ships.
 //  - Charge: once a second per side, an own carrier with a known enemy gun ship (seen in the last 10 s) inside
-//    1.5 x that ship's main gun range x doctrine.escortCharge (USN 1, IJN 0.6), or closing on it inside 300 (USN
-//    only: eagerness >= 0.8), sends every fit destroyer within CHARGE_R of it at that ship: full speed at its lead
+//    (0.6 + 0.6 x doctrine.escortCharge (USN 1, IJN 0.6)) x that ship's main gun range, or closing on it inside 300
+//    (eagerness >= 0.8: USN), at most once in COOL s per carrier, sends every fit destroyer within CHARGE_R of it at that ship: full speed at its lead
 //    point, making smoke, torpedoes at the doctrine's launch distance, then guns. The charge ends when the foe is
 //    sunk or turned back (beyond 1.3 x the trigger), the destroyer drops below 30% hp, or after CHARGE_T s.
 //    Events: 'escortCharge' { carrier, foe, ships }. ai_endgame.js steer() hands the helm to steer() here first.
@@ -13,7 +13,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var SMOKE_R = 18, SMOKE_LIFE = 40, SMOKE_DT = 2, SMOKE_MAX = 60;
-  var CHARGE_R = 320, CHARGE_T = 75, CLOSING_R = 300;
+  var CHARGE_R = 320, CHARGE_T = 75, CLOSING_R = 300, COOL = 90, TRIG0 = 0.6, TRIG1 = 0.6;
   var clouds = [], tick = 0, puffT = 0, stats = null;
   function per() { return { USN: 0, IJN: 0 }; }
   function reset() {
@@ -60,7 +60,7 @@ window.WW = window.WW || {};
     var cs = WW.intel.enemyShips(cv.nation), best = null, bk = 1e9;
     for (var i = 0; i < cs.length; i++) {
       var c = cs[i], u = c.unit; if (!u || !u.alive || u.sinking || !GUN[u.type] || now - c.seenAt > 10) continue;
-      var g = u.stats.guns[0], d = WW.dist(cv.x, cv.z, c.x, c.z), R = g.range * 1.5 * e;
+      var g = u.stats.guns[0], d = WW.dist(cv.x, cv.z, c.x, c.z), R = g.range * (TRIG0 + TRIG1 * e);
       var closing = e >= 0.8 && d < CLOSING_R && c.speed > 1 && Math.abs(WW.angleDiff(c.heading, Math.atan2(cv.z - c.z, cv.x - c.x))) < 0.5;
       if ((d < R || closing) && d / R < bk) { bk = d / R; best = u; }
     }
@@ -70,15 +70,15 @@ window.WW = window.WW || {};
   function plan(now) {
     var ships = WW.world.ships;
     for (var i = 0; i < ships.length; i++) {
-      var cv = ships[i]; if (!cv.alive || cv.sinking || cv.type !== 'carrier') continue;
+      var cv = ships[i]; if (!cv.alive || cv.sinking || cv.type !== 'carrier' || now - (cv.chargeAt || -1e9) < COOL) continue;
       var foe = threatTo(cv, now); if (!foe) continue;
       var sent = [];
       for (var k = 0; k < ships.length; k++) {
         var s = ships[k]; if (s.nation !== cv.nation || !fit(s) || (s.ai.charge && s.ai.charge.foe.alive)) continue;
         if (WW.dist2(s.x, s.z, cv.x, cv.z) > CHARGE_R * CHARGE_R) continue;
-        s.ai.charge = { foe: foe, cv: cv, t0: now, R: foe.stats.guns[0].range * 1.5 * eager(cv.nation), smokeT: 0 }; sent.push(s);
+        s.ai.charge = { foe: foe, cv: cv, t0: now, R: foe.stats.guns[0].range * (TRIG0 + TRIG1 * eager(cv.nation)), smokeT: 0 }; sent.push(s);
       }
-      if (sent.length) { stats.charges[cv.nation]++; stats.ships[cv.nation] += sent.length; WW.emit('escortCharge', { carrier: cv, foe: foe, ships: sent }); }
+      if (sent.length) { cv.chargeAt = now; stats.charges[cv.nation]++; stats.ships[cv.nation] += sent.length; WW.emit('escortCharge', { carrier: cv, foe: foe, ships: sent }); }
     }
   }
   function update(dt) {
