@@ -250,7 +250,8 @@ window.WW = window.WW || {};
       try { detonate(q, planes); } catch (e) { /* never throw */ }
     }
     pending.length = w;
-    if (!planes.length || !timers) return;
+    // live planes only: dead ones linger for a Math.random time (ditched wrecks), which must not change AA timing
+    if (!timers || !planes.some(function (p) { return p && p.alive; })) return;
     for (var i = 0; i < ships.length; i++) {
       var s = ships[i];
       if (!usable(s)) continue;
