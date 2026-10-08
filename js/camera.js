@@ -88,6 +88,8 @@ window.WW = window.WW || {};
     return out;
   }
   function pickShot() {
+    const sc = WW.camStory && WW.camStory.pick(); // story mode (camera_story.js) owns the cuts while it runs
+    if (sc) return startShot(sc);
     shotCount++;
     let best = null;
     if (shotCount % 2 === 0) for (const c of candidates()) {
@@ -143,6 +145,7 @@ window.WW = window.WW || {};
     }
     lastKind = c.kind; lastSubj = s || null;
     if (s) { recent.push(s); if (recent.length > 3) recent.shift(); }
+    if (c.hard) fadeReady = true; // a hard cut (story mode): no cross-fade
     snapNext = true; // cut (softened by a cross-fade, see afterRender)
   }
 
@@ -150,6 +153,7 @@ window.WW = window.WW || {};
     const s = shot.subj, k = Math.min(1, shot.t / shot.dur);
     if (s && !gone(s)) pos(s, shot.last || (shot.last = new THREE.Vector3()));
     if (WW.camAction && WW.camAction.goal(shot, gP, gL, rdt)) return; // bomb / torpedo hand-offs, over-the-shoulder
+    if (WW.storyShots && WW.storyShots.goal(shot, gP, gL, rdt)) return; // story mode shots (camera_story_shots.js)
     const sp = shot.last;
     switch (sp ? shot.kind : 'wide') {
       case 'orbit': {
@@ -265,6 +269,7 @@ window.WW = window.WW || {};
       WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; });
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
       if (WW.camAction) WW.camAction.init();
+      if (WW.camStory) WW.camStory.init();
     },
     resize() { if (camera) fitMap(); },
     afterRender() {
@@ -290,6 +295,7 @@ window.WW = window.WW || {};
     // test hook: film a given candidate now, e.g. film({ kind: 'chase', subj: plane, dur: 14 })
     film(c) { forced = true; startShot(Object.assign({ pr: 99, dur: 12 }, c)); },
     _shot() { return shot; },
+    cut() { forced = null; shot = null; }, // the next update picks a new shot (story mode start / end)
     snap() { forced = null; shot = null; snapNext = true; fadeReady = true; cam.update(0); },
     update(rdt) {
       if (!camera) return;
@@ -306,7 +312,7 @@ window.WW = window.WW || {};
       } else {
         manual = false;
         if (shot) shot.t += rdt;
-        if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && !shot.stage && dull(shot.subj))) { forced = null; pickShot(); }
+        if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && !shot.stage && !shot.story && dull(shot.subj))) { forced = null; pickShot(); }
         shotGoal(rdt);
         keepSane(gP, gL);
         if (shot.kind !== 'wide' && (shot.aim || shot.last)) compose(shot.aim || shot.last);
