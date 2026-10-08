@@ -288,7 +288,7 @@ window.WW = window.WW || {};
   }
   var tick = 0;
   function schedule(dt) {
-    if (!battle()) return;
+    if (!battle() || location.search.includes('nodumbo')) return;
     tick -= dt; if (tick > 0) return; tick = 1;
     var d = WW.fleetCmd && WW.fleetCmd.doctrine('USN');
     if (!d || !d.rescue || stats.dispatched >= MAX_RESCUE || count('USN') >= MAX_UP) return;
