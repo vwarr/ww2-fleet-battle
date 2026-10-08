@@ -90,7 +90,8 @@ window.WW = window.WW || {};
       last: '', phase: '', fall: null, ending: 0, cutaway: null, lastCutaway: -1e9, title: titleOf(p, arc.mission), titleUntil: wall() + CAPS };
     lastSq = p.squadron || null; ST.stories++;
     log.push({ start: true, lead: p.kind + ' ' + (p.squadron ? p.squadron.short : ''), mission: arc.mission, at: wall() });
-    WW.cam.cut();
+    S.begun = false;
+    if (user) WW.cam.cut(); // the director's own pick waits for the current shot to end (never cuts an action shot)
     return true;
   }
   function end(quiet) {
@@ -127,9 +128,9 @@ window.WW = window.WW || {};
     const opts = [];
     for (const [sk, w] of MENU[phase] || MENU.transit) {
       if (sk === 'ots' && phase === 'bandits') { if (L.kind === 'fighter' && ok(L.foe)) opts.push(['afots', w]); continue; }
-      if (sk === S.last && opts.length) continue;
-      if (WW.storyShots.valid(sk, L, S.group)) opts.push([sk, sk === S.last ? w * 0.2 : w]);
+      if (WW.storyShots.valid(sk, L, S.group)) opts.push([sk, w]);
     }
+    if (opts.length > 1) for (let i = opts.length - 1; i >= 0; i--) if (opts[i][0] === S.last) opts.splice(i, 1); // never the same shot twice running
     if (!opts.length) return airborne(L) ? 'chase' : 'high';
     let tot = 0; for (const o of opts) tot += o[1];
     let r = Math.random() * tot;
@@ -157,6 +158,7 @@ window.WW = window.WW || {};
   // camera.js pickShot(): the next story shot, or null (the director picks as usual)
   function pick() {
     if (!S) return null;
+    if (!S.begun) { if (!ok(S.lead)) { S = null; return null; } S.begun = true; S.t0 = wall(); S.titleUntil = wall() + CAPS; }
     const now = wall();
     if (S.ending) { if (S.ending === 1) { S.ending = 2; const L = S.lead, c = mk('high', L, 7, false); if (L.removed) c.subj = { x: L.x, y: L.y, z: L.z, heading: L.heading, nation: L.nation }; return c; } end(true); return null; }
     if (S.fall && !S.fall.shown && S.lead && !S.lead.removed && now - S.fall.at < FALL) { // watch the leader go down
@@ -207,6 +209,7 @@ window.WW = window.WW || {};
       return;
     }
     const shot = WW.cam._shot();
+    if (!S.begun) return; // waiting for the director's current shot to end
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
       S.regroupT = 2; const g = groupOf(S.lead);
       for (const m of S.group) if (ok(m) && g.indexOf(m) < 0) g.push(m);

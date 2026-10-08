@@ -58,7 +58,7 @@ window.WW = window.WW || {};
       if (sk === 'deck') return L.state === 'takeoff' && L.carrier && L.carrier.alive;
       if (sk === 'wing') return air && !!wingOf({ subj: L, group });
       if (sk === 'ots') return air && !!tgtOf(L) && L.ordnance;
-      if (sk === 'water') return air && L.kind === 'torpedo' && L.y < 22 && (L.phase === 'run' || L.sk === 'anvil');
+      if (sk === 'water') return air && L.kind === 'torpedo' && L.y < 8 && (L.phase === 'run' || L.sk === 'anvil'); // at wave height only
       if (sk === 'side' || sk === 'chase') return air || L.state === 'landing';
       return true;
     },
@@ -97,7 +97,7 @@ window.WW = window.WW || {};
         case 'side': {
           const C = centre(shot, rdt), h = smoothH(shot, L.heading, rdt, 0.6);
           _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
-          const R = shot.R || (shot.R = 46 + 10 * Math.random());
+          const R = shot.R || (shot.R = 36 + 8 * Math.random());
           gP.set(C.x + _r.x * shot.side * R + _f.x * 8, C.y + 3, C.z + _r.z * shot.side * R + _f.z * 8);
           gL.set(C.x + _f.x * 4, C.y, C.z + _f.z * 4);
           shot.aim.copy(C);

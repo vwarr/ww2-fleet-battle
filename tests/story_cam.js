@@ -46,7 +46,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
   const shotTag = () => p.evaluate(() => { const s = WW.cam._shot(); return s ? (s.sk || s.kind) + (s.stage ? ':' + s.stage : '') : '-'; });
   let n = 0;
   const snap = async (tag) => {
-    const st = await p.evaluate(() => { __render = true; __step(1); const c = WW.camera.position, s = WW.cam._shot(); return [c.x, c.y, c.z].map(v => v.toFixed(1)).join(',') + ' ' + (s ? s.kind + '/' + s.sk : '-'); });
+    const st = await p.evaluate(() => { __render = true; __step(1); const fd = document.getElementById('fade'); if (fd) fd.style.opacity = '0'; const c = WW.camera.position, s = WW.cam._shot(); return [c.x, c.y, c.z].map(v => v.toFixed(1)).join(',') + ' ' + (s ? s.kind + '/' + s.sk : '-'); });
     console.log('  cam', st);
     const file = `story_${String(n++).padStart(2, '0')}_${tag.replace(/[^a-z0-9]+/gi, '_')}.png`;
     const ts = Date.now(); await p.screenshot({ path: path.join(OUT, file), timeout: 180000 }); console.log("  (" + (Date.now() - ts) + " ms)"); console.log('  shot', 'tests/shots/story/' + file);
@@ -103,6 +103,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
     console.log(`[forced ${k}]`, r);
     if (r === 'none') continue;
     await p.evaluate(() => { __render = false; __step(65); });
+    console.log('  ', await p.evaluate(() => { const s = WW.cam._shot(), L = s.subj, f = v => v ? [v.x, v.y, v.z].map(a => (+a).toFixed(0)).join(',') : '-'; return 'lead ' + f(L) + ' ' + L.state + ' centre ' + f(s.cS) + ' cam ' + f(WW.camera.position) + ' group ' + (s.group || []).length; }));
     await snap('forced_' + k);
     await p.evaluate(() => WW.camStory.stop());
   }
