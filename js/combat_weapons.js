@@ -146,7 +146,8 @@ window.WW = window.WW || {};
       if (!I.shipUsable(s) || s.nation === p.nation || (s.type !== 'submarine' && !s.submerged)) continue;
       var d = Math.hypot(s.x - p.x, s.z - p.z);
       if (d > R) continue;
-      var amt = D * (1 - 0.6 * d / R) * (s.submerged ? 1 : 0.5);
+      // Steep falloff: a charge close aboard cracks the pressure hull (3x at contact), a near miss only shakes it.
+      var k = 1 - d / R, amt = D * 3 * k * k * (s.submerged ? 1 : 0.5);
       I.damage(s, amt, p.x, p.z, 'dc');
     }
   }
