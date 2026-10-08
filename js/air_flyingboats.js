@@ -14,10 +14,10 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   if (!WW.Plane) { console.error('air_flyingboats.js must load after aircraft.js'); return; }
-  var SCALE = 1.7, WATER_Y = 0.62, OFF = 34;          // flight scale (span ~11-13 units), hull resting height, spawn / exit beyond the edge
+  var SCALE = 1.7, WATER_Y = 0.45, OFF = 34;          // flight scale (span ~11-13 units), hull resting height, spawn / exit beyond the edge
   var ALT_R = 18, CIRCLE_R = 34, SAFE_DPS = 10, HOLD_MAX = 80, FTR_R = 150, ESC_R = 70; // rescue: altitude, orbit, landing rules
   var PICK_T = { pilot: 9, ship: 16 }, SHIP_WAIT = 30, PILOT_WAIT = 5, MAX_UP = 2, MAX_RESCUE = 4;
-  if (WW.PLANE_TYPES && !WW.PLANE_TYPES.flyingboat) WW.PLANE_TYPES.flyingboat = { hp: 48, speed: 22, range: 4000 };
+  if (WW.PLANE_TYPES && !WW.PLANE_TYPES.flyingboat) WW.PLANE_TYPES.flyingboat = { hp: 34, speed: 22, range: 4000 };
   var pool = {}, base = WW.Plane.prototype, stats = null;
   var OWN = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, alight: 1, afloat: 1, liftoff: 1, 'return': 1 };
   var WATER = { afloat: 1, liftoff: 1 };
@@ -119,7 +119,7 @@ window.WW = window.WW || {};
     // ---- shared flight: off the map to its own edge ----
     goHome(dt) {
       var hx = edgeX(this.nation) + (this.nation === 'USN' ? -10 : 10), low = hunted(this, 90);
-      this.fly(hx, this.z, low ? 7 : 24, dt, this.pt.speed * (low ? 1.12 : 1), 0.5);
+      this.fly(hx, this.z, low ? 12 : 24, dt, this.pt.speed * (low ? 1.08 : 1), 0.5);
       if (this.nation === 'USN' ? this.x < -OFF + 2 : this.x > WW.cfg.MAP_W + OFF - 2) { stats.home[this.nation]++; emit(this, 'home'); this.remove(); }
     }
     // ---- rescue ----
@@ -133,7 +133,7 @@ window.WW = window.WW || {};
     }
     flee(dt) { // enemy fighters on it: low over the water, toward home; the survivors wait for the next try
       var hx = edgeX(this.nation);
-      this.fly(hx, this.z, 6, dt, this.pt.speed * 1.12, 0.7);
+      this.fly(hx, this.z, 12, dt, this.pt.speed * 1.08, 0.7);
     }
     safe(t) {
       if (WW.threat && WW.threat.danger(this.nation, t.x, t.z) > SAFE_DPS) return false;            // known enemy guns reach it
@@ -209,10 +209,15 @@ window.WW = window.WW || {};
         stats.aborted++; this.dropTask(); emit(this, 'abort'); this.setState('liftoff'); return;
       }
       if (stop) t.pickT = (t.pickT || 0) + dt;
+      if (stop && !this.raftShown && t.kind === 'pilot' && WW.airProps) {   // visual: the aircrew's raft, if theirs has drifted off
+        this.raftShown = true;
+        var near = WW.airProps._rafts.some(function (r) { return r.alive && WW.dist(r.x, r.z, t.x, t.z) < 45; });
+        if (!near) { var a = this.heading + Math.PI * 0.6; WW.airProps.raft(this.x + Math.cos(a) * 9, this.z + Math.sin(a) * 9, 40, true); }
+      }
       if ((t.pickT || 0) >= (PICK_T[t.kind] || 12)) {
         stats.rescues++; stats.survivors += t.n; if (t.kind === 'pilot') stats.pilots += t.n;
         if (WW.endgame && WW.endgame.complete) WW.endgame.complete(t, this); else t.done = true;
-        this.task = null; emit(this, 'rescued');
+        this.task = null; this.raftShown = false; emit(this, 'rescued');
         this.setState('liftoff');
       }
     }

@@ -161,14 +161,14 @@ window.WW = window.WW || {};
     if (foe && foe.posture === 'pursue') stats.pursuitKills[foe.nation]++;
     addTask(s.nation, s.x, s.z, (BOATS[s.type] || 0) * PER_BOAT, 'ship', s.stats.length);
   });
-  // Aircrew in the water: a ditched plane, one the crew abandoned, or a crew that bailed out (air_deaths.js picks the mode with WW.rand); at the sim position of the moment.
+  // Aircrew in the water: a ditched plane, or one the crew abandoned (air_deaths.js picks the mode with WW.rand).
   function hookPlanes() {
     var P = WW.Plane && WW.Plane.prototype; if (!P) return;
     ['shotDown', 'ditch'].forEach(function (nm) {
       var orig = P[nm];
       P[nm] = function () {
         var was = this.alive, r = orig.apply(this, arguments);
-        try { if (was && !this.alive && (this.deathMode === 'ditch' || this.deathMode === 'abandon' || this.bailAt != null)) addTask(this.nation, this.x, this.z, CREW[this.kind] || 1, 'pilot'); } catch (e) { /* never into the air code */ }
+        try { if (was && !this.alive && (this.deathMode === 'ditch' || this.deathMode === 'abandon')) addTask(this.nation, this.x, this.z, CREW[this.kind] || 1, 'pilot'); } catch (e) { /* never into the air code */ }
         return r;
       };
     });
