@@ -58,7 +58,9 @@ window.WW = window.WW || {};
   // ---- tuning ----
   const BIG = { battleship: 1, cruiser: 1 }, CAPITAL = { battleship: 1, carrier: 1 };
   const CV_KEEP = 108;     // no surface ship closes inside this of a known enemy carrier (the carrier is never caught)
-  const PRESS_AGE = 60;    // a pressing ship with nothing in sight steams for last-known (non-carrier) contacts this old
+  const CV_LAIR = 230;      // the press does not run down ships under an enemy carrier's wing (it would corner the carrier)
+  const PRESS_AGE = 60;
+  const HOME_K = 0.35;     // ... nor into the enemy's home waters (its carrier band: 0.15-0.35 W from its edge)    // a pressing ship with nothing in sight steams for last-known (non-carrier) contacts this old
   const SUB_HELP = 70, SUB_HELP_R = 250; // a DD answers a known sub this close to an ally, from this far away
   const RAID_R = 300, RAID_CLOSE = 45;   // AA cover: cruisers (and the carrier group's battleship) close on a raided carrier
   const TDIR_T = 20;       // s between crossing-the-T orbit side choices (a battleship turns slowly)
@@ -69,6 +71,11 @@ window.WW = window.WW || {};
 
   function surfaceAI(ship, dt) {
     const a = ship.ai, st = ship.stats, t = ship.target;
+    a.ownWithdraw = true; // cripples: crippleHome below, after everything else
+    surfaceRole(ship, dt, a, st, t);
+    crippleHome(ship);
+  }
+  function surfaceRole(ship, dt, a, st, t) {
     // Destroyers hunt a sub contact inside SUB_HUNT, or at any range when no surface target is left.
     // A lost sub: run to its last-known position (datum) and give it up there if sonar finds nothing.
     // A sub already under attack stays the quarry while sonar holds it (re-attack, don't switch contacts).
@@ -188,10 +195,14 @@ window.WW = window.WW || {};
     a.pcT = now + 1; a.pc = null;
     if (!WW.intel) return null;
     let bd = 1e9;
-    for (const c of WW.intel.enemyShips(ship.nation)) {
+    const cs = WW.intel.enemyShips(ship.nation), cvs = [], W = WW.cfg.MAP_W, foeHome = ship.nation === 'USN' ? W : 0;
+    for (const c of cs) if (c.unit && c.unit.alive && c.unit.type === 'carrier' && now - c.seenAt <= PRESS_AGE) cvs.push(c);
+    for (const c of cs) {
       const u = c.unit;
       if (!u || !u.alive || u.submerged || u.type === 'carrier' || u.type === 'submarine' || now - c.seenAt > PRESS_AGE) continue;
       if (BIG[ship.type] && u.type === 'pt') continue;
+      if (cvs.some(k => WW.dist2(k.x, k.z, c.x, c.z) < CV_LAIR * CV_LAIR)) continue; // not into the enemy carrier's lair
+      if (Math.abs(c.x - foeHome) < W * HOME_K) continue;                             // nor into its home waters
       const d = WW.dist(ship.x, ship.z, c.x, c.z);
       if (d < bd) { bd = d; a.pc = c; }
     }
@@ -257,6 +268,33 @@ window.WW = window.WW || {};
       return;
     }
   }
+  // Cripple withdrawal (replaces the core's h.withdraw for surface ships): below WW.fleetGroups.CRIP hp, head home
+  // (behind the own carrier, else the own map edge) at full speed, pushed away from every known enemy that could
+  // shoot (contacts <= 45 s old within 1.2 x its gun range + 20), through the safest heading. Home first: a cripple
+  // that only ran from the nearest enemy could end up deep on the enemy's side, cornering the enemy carrier.
+  function crippleHome(ship) {
+    const crip = WW.fleetGroups ? WW.fleetGroups.CRIP : 0.35, a = ship.ai, now = WW.time.now;
+    if (ship.hp >= crip * ship.maxHp) return false;
+    let ax = 0, az = 0, n = 0;
+    if (WW.intel) for (const c of WW.intel.enemyShips(ship.nation)) {
+      const u = c.unit;
+      if (!u || !u.alive || u.submerged || now - c.seenAt > 45) continue;
+      const r = (u.stats.guns[0] ? u.stats.guns[0].range : 60) * 1.2 + 20, d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (d > r || d < 1) continue;
+      const w = 1.2 - d / r;
+      ax += (ship.x - c.x) / d * w; az += (ship.z - c.z) / d * w; n++;
+    }
+    const W = WW.cfg.MAP_W, east = ship.nation !== 'USN', cv = a.cv && a.cv !== ship && a.cv.alive ? a.cv : null;
+    const hx = cv ? cv.x + (east ? 60 : -60) : east ? W - 60 : 60, hz = cv ? cv.z : WW.clamp(ship.z, 120, WW.cfg.MAP_H - 120);
+    const hd = WW.dist(ship.x, ship.z, hx, hz);
+    if (hd > 30) { const k = n ? 0.7 : 1; ax += (hx - ship.x) / hd * k; az += (hz - ship.z) / hd * k; }
+    if (Math.abs(ax) + Math.abs(az) < 1e-3) return false;
+    const want = Math.atan2(az, ax);
+    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;
+    ship.throttle = hd > 30 || n ? 1 : 0.5;
+    a.withdrawing = true;
+    return true;
+  }
   // Never close inside CV_KEEP of a known enemy carrier (contact <= 10 s old): steer off it.
   function keepOffCarriers(ship) {
     if (!WW.intel) return;
@@ -264,8 +302,9 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const u = c.unit;
       if (!u || u.type !== 'carrier' || !u.alive || now - c.seenAt > 10) continue;
-      const d = WW.dist(ship.x, ship.z, c.x, c.z);
-      if (d < CV_KEEP) ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - c.x, 2 * ship.z - c.z, 1.5 * (1.2 - d / CV_KEEP) * 3);
+      const age = WW.time.now - c.seenAt, px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;
+      const d = WW.dist(ship.x, ship.z, px, pz);
+      if (d < CV_KEEP * 1.15) ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - px, 2 * ship.z - pz, d < CV_KEEP ? 6 : 1.5);
     }
   }
 

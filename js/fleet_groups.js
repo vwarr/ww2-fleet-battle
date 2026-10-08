@@ -74,6 +74,20 @@ window.WW = window.WW || {};
   // Station points. Offsets are (forward f, lateral l) along the axis of advance B.axis.h from the guide.
   var RING = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]];        // carrier escorts (radius ~80: SPACE.carrier is 70)
   var LINE = [0, -45, 45, -90, 90, -135, 135];                              // battle line, lateral slots
+  // Carrier station safety: no closer than 1.6 x gun range + 20 to any known enemy gun ship (contacts up to 60 s
+  // old): the station slides straight away from it (then back into the band x0..x1 and 80 off the north / south
+  // edges). Keeps a pressing or advancing side from leading its carrier toward the enemy's guns.
+  function cvSafe(B, p, x0, x1) {
+    if (!WW.intel) return;
+    var cs = WW.intel.enemyShips(B.nation), now = WW.time.now, H = WW.cfg.MAP_H;
+    for (var pass = 0; pass < 2; pass++) for (var i = 0; i < cs.length; i++) {
+      var c = cs[i], u = c.unit;
+      if (!u || !u.alive || u.submerged || u.type === 'carrier' || !u.stats.guns.length || now - c.seenAt > 60) continue;
+      var R = u.stats.guns[0].range * 1.6 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
+      if (d >= R || d < 1) continue;
+      p.x = WW.clamp(c.x + (p.x - c.x) / d * R, x0, x1); p.z = WW.clamp(c.z + (p.z - c.z) / d * R, 80, H - 80);
+    }
+  }
   function stations(B) {
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, h = B.axis.h, c = Math.cos(h), s = Math.sin(h);
     var lead = { search: 45, approach: 45, engage: 0, press: 35, withdraw: -45 }[B.posture] || 0;
@@ -102,8 +116,10 @@ window.WW = window.WW || {};
         // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
         // room to run in every direction
         // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
-        var lo = B.posture === 'withdraw' ? 0.08 : 0.15, hi = B.posture === 'withdraw' ? 0.1 : 0.35;
-        p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, 150, H - 150);
+        var wd = B.posture === 'withdraw', lo = wd ? 0.08 : 0.15, hi = wd ? 0.1 : 0.35;
+        if (wd) p.z = q.z; // straight home, not across the front
+        p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
+        cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
       var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q;
