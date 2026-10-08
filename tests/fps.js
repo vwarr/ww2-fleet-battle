@@ -9,6 +9,10 @@ require('fs').mkdirSync(require('path').join(__dirname, 'shots', 'rt'), { recurs
   const fps = await p.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); (function f(){ n++; if (performance.now()-t0 < 10000) requestAnimationFrame(f); else res(n/((performance.now()-t0)/1000)); })(); }));
   const font = await p.evaluate(async () => { await document.fonts.load('16px "Cormorant Garamond"'); await document.fonts.load('16px Nunito'); return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family).join(','); });
   await p.screenshot({ path: 'shots/realgpu.png' });
-  console.log('fps', fps.toFixed(1), 'font', font, 'errors', errs);
+  // map view (the plot table, plot_table.js): the 3D render is skipped once the plot has faded in
+  await p.evaluate(() => WW.cam.toggle()); await p.waitForTimeout(2000);
+  const mapFps = await p.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); (function f(){ n++; if (performance.now()-t0 < 6000) requestAnimationFrame(f); else res(n/((performance.now()-t0)/1000)); })(); }));
+  await p.screenshot({ path: 'shots/realgpu_map.png' });
+  console.log('fps', fps.toFixed(1), 'map fps', mapFps.toFixed(1), 'font', font, 'errors', errs);
   await b.close();
 })();
