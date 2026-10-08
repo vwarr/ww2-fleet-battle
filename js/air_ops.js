@@ -11,6 +11,7 @@
 window.WW = window.WW || {};
 (function () {
   const CAP_R = 35, LEASH = CAP_R * 1.5, LEASH2 = CAP_R * 4.5; // CAP orbit radius, chase leash (sim_behaviour LEASH_K), armed raid closing
+  const SNOOP_R = 320;         // CAP hunts a shadowing flying boat this far from its carrier (they rarely got home)
   const RAID_R = 120;          // armed enemy bomber this close to the carrier: under air attack
   const WARN_R = 260;          // raid picture radius for the fighter director (radar / lookouts decide what is in it)
   const RELIEF = 45;           // launch a relief when an on-station CAP fighter has less fuel than this (s)
@@ -195,7 +196,7 @@ window.WW = window.WW || {};
       const u = ct.unit;
       if (!u || !u.alive) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
+      if (dc > (u.kind === 'flyingboat' ? SNOOP_R : arm && inbound(u, c) ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
       else if (arm && u.kind === 'dive' && (u.phase || u.state === 'attack')) pr = 320;
@@ -214,7 +215,7 @@ window.WW = window.WW || {};
     const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z);
     if (d <= LEASH) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
-    if (f.kind === 'flyingboat') return d <= LEASH2;              // hunt a shadower out to the long leash
+    if (f.kind === 'flyingboat') return d <= SNOOP_R;             // hunt a shadower out to the snooper leash
     if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= LEASH2 * 0.75) return true;   // finish a damaged bomber turning for home
     return d <= LEASH2 && armed(f) && inbound(f, c);
   }

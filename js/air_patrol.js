@@ -12,18 +12,17 @@ window.WW = window.WW || {};
   'use strict';
   if (!WW.flyingBoats) { console.error('air_patrol.js must load after air_flyingboats.js'); return; }
   var FB = WW.flyingBoats;
-  // per nation (doctrine): standoff from the shadowed ship, time on station, search time, bombing
-  var DOC = {
-    USN: { standoff: 122, shadowT: 110, searchT: 150, bombs: 0, alt: 32 },
-    IJN: { standoff: 104, shadowT: 150, searchT: 160, bombs: 2, alt: 30 }
-  };
-  var FIRST = [15, 45], NEXT = [170, 260], MAX_ROUND = 3, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
+  // per nation: the doctrine (fleet_groups.js patrolStandoff / patrolShadowT / patrolEvery / patrolBombs, rolled per round)
+  var FIRST = [15, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 3, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
   var VAL = { carrier: 6, battleship: 5, cruiser: 3, destroyer: 1.5, pt: 0.3, submarine: 0.5 };
   var sched = {}, tick = 0, bombsOut = new Set();
 
   function reset() { sched = {}; tick = 0; bombsOut.clear(); }
   function battle() { return WW.game && WW.game.state === 'battle'; }
-  function doc(p) { return DOC[p.nation] || DOC.USN; }
+  function doc(p) {
+    var d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(p.nation) : null;
+    return { standoff: (d && d.patrolStandoff) || 115, shadowT: (d && d.patrolShadowT) || 120, searchT: SEARCH_T, bombs: d ? d.patrolBombs | 0 : 0, alt: ALT };
+  }
   function enemyEdgeX(n) { return n === 'USN' ? WW.cfg.MAP_W : 0; }
   function air(n, x, z) { return WW.threat ? WW.threat.danger(n, x, z, { air: true }) : 0; }
   function inMap(x, z) { return { x: WW.clamp(x, 20, WW.cfg.MAP_W - 20), z: WW.clamp(z, 20, WW.cfg.MAP_H - 20) }; }
@@ -64,7 +63,7 @@ window.WW = window.WW || {};
   // a lone ship for a Mavis to bomb: no other enemy ship within 90 of it, light AA, no fighters about
   function loneTarget(p) {
     if (!WW.intel || p.nation !== 'IJN' || !(p.bombs > 0)) return null;
-    var cs = WW.intel.enemyShips(p.nation, { fresh: 2 });
+    var cs = WW.intel.enemyShips(p.nation, { fresh: 2 }).slice();   // a copy: fighterNear() reuses intel's scratch array
     for (var i = 0; i < cs.length; i++) {
       var u = cs[i].unit; if (!u || !u.alive || u.sinking || u.submerged || u.type === 'carrier' || u.type === 'battleship' || u.type === 'pt') continue;
       if (WW.dist(p.x, p.z, u.x, u.z) > 160 || air(p.nation, u.x, u.z) > 9) continue;
@@ -147,7 +146,7 @@ window.WW = window.WW || {};
     var h = FB.hunted(p, HUNT_R + 25);
     p.calmT = h ? 0 : (p.calmT || 0) + dt;
     var hx = FB.edgeX(p.nation);
-    p.fly(hx, p.z + (p.z < WW.cfg.MAP_H / 2 ? -40 : 40), 7, dt, p.pt.speed * 1.12, 0.6);
+    p.fly(hx, p.z + (p.z < WW.cfg.MAP_H / 2 ? -40 : 40), 12, dt, p.pt.speed * 1.08, 0.6);
     if (p.calmT > CALM_T) {
       if (p.hurt || p.hp < p.maxHp * 0.6) return p.setState('return');
       p.setState(p.resume === 'shadow' && p.shadowOf ? 'shadow' : 'search');
@@ -161,7 +160,7 @@ window.WW = window.WW || {};
     var now = WW.game.roundTime, end = WW.game.deadline ? WW.game.deadline() : WW.cfg.ROUND_TIMEOUT;
     ['USN', 'IJN'].forEach(function (n) {
       var S = sched[n] || (sched[n] = { n: 0, at: WW.randRange(FIRST[0], FIRST[1]), up: null });
-      if (S.up && (S.up.removed || !S.up.alive)) { S.up = null; S.at = now + WW.randRange(NEXT[0], NEXT[1]); }
+      if (S.up && (S.up.removed || !S.up.alive)) { var ev = (WW.fleetCmd.doctrine(n) || {}).patrolEvery || 215; S.up = null; S.at = now + WW.randRange(ev * 0.8, ev * 1.2); }
       if (S.up || S.n >= MAX_ROUND || now < S.at || now > end - 90) return;
       if (WW.endgame && WW.endgame.broken && WW.endgame.broken(n)) return;   // a beaten side has other worries
       if (FB.count(n) >= (n === 'USN' ? 2 : 1)) return;
@@ -196,5 +195,5 @@ window.WW = window.WW || {};
   WW.on('airOrder', function (e) { if (e && e.order === 'redirect' && e.plane && e.plane.wave && e.plane.wave.badReport && !e.plane.wave.redirCount) { e.plane.wave.redirCount = 1; WW.intel.stats.wrongRedirects = WW.intel.stats.wrongRedirects + 1; } });
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
-  WW.patrol = { step: step, DOC: DOC, plan: plan };
+  WW.patrol = { step: step, doc: doc, plan: plan };
 })();
