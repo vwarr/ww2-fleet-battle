@@ -20,7 +20,7 @@ window.WW = window.WW || {};
     if (WW.scene) WW.scene.add(m.group); // real shadow maps now: no fake silhouette shadow
     return m;
   }
-  function release(m) { if (WW.scene) WW.scene.remove(m.group); (pool[m.key] = pool[m.key] || []).push(m); }
+  function release(m) { if (WW.airDeaths) WW.airDeaths.restore(m); if (WW.scene) WW.scene.remove(m.group); (pool[m.key] = pool[m.key] || []).push(m); }
 
   function deckInfo(c) {
     if (!v3) v3 = new THREE.Vector3();
@@ -68,6 +68,7 @@ window.WW = window.WW || {};
       // Badly hit: jettison the payload and turn for home (not mid-dive / mid-run).
       if (!this.crippled && this.hp < this.maxHp * 0.35 && (this.state === 'transit' || this.state === 'attack') && !this.phase) {
         this.crippled = true;
+        if (WW.airDeaths && WW.airDeaths.onCrippled(this)) return;
         if (WW.rand() < 0.6) {
           if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8); }
           this.state = 'return'; this.foe = null;
@@ -109,10 +110,12 @@ window.WW = window.WW || {};
       this.alive = false; this.state = 'falling'; WW.stats.planesLost++;
       WW.fx.explosion(this.x, this.y, this.z, 0.6);
       this.spin = (WW.rand() < 0.5 ? -1 : 1) * WW.randRange(1.5, 3); this.vy = Math.min(this.vy, -1);
+      if (WW.airDeaths) WW.airDeaths.onShotDown(this);
     }
     ditch() {
       if (!this.alive) return;
       this.alive = false; this.state = 'ditch'; WW.stats.planesLost++;
+      if (WW.airDeaths) WW.airDeaths.onDitch(this);
     }
 
     turnTo(want, dt, rate) {
@@ -142,6 +145,7 @@ window.WW = window.WW || {};
     update(dt) {
       this.t += dt;
       const fx = WW.fx;
+      if (this.deathMode && WW.airDeaths) { WW.airDeaths.updatePlane(this, dt); return; }
       if (this.state === 'falling') {
         this.vy -= 9 * dt; this.heading += this.spin * dt; this.turn = this.spin * 2; this.speed *= 1 - 0.3 * dt;
         this.trail(dt, true);
@@ -377,6 +381,7 @@ window.WW = window.WW || {};
       return p;
     },
     update(dt) {
+      if (WW.airDeaths) WW.airDeaths.update(dt);
       for (const ln of tracers) if (ln.visible) { if ((ln.life -= dt) <= 0) ln.visible = false; else ln.material.opacity = 0.5 * ln.life / ln.life0; }
       const now = WW.time.now;
       for (const s of WW.world.ships) {
@@ -398,6 +403,7 @@ window.WW = window.WW || {};
       for (const p of WW.world.planes) p.remove();
       WW.world.planes.length = 0;
       for (const ln of tracers) ln.visible = false;
+      if (WW.airDeaths) WW.airDeaths.clearAll();
     }
   };
 })();
