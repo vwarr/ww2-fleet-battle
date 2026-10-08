@@ -215,6 +215,10 @@ window.WW = window.WW || {};
       for (const m of S.group) if (ok(m) && g.indexOf(m) < 0) g.push(m);
       S.group = g; if (shot && shot.story && shot.group) shot.group = g;
     }
+    // the leader has landed (taken below): the mission is over, end on a wide shot
+    if (!ok(S.lead) && !S.ending && !S.fall && (S.lead.state === 'rollout' || S.lead.state === 'landing')) {
+      S.ending = 1; if (shot && shot.story && !shot.stage) shot.dur = Math.min(shot.dur, shot.t + 2);
+    }
     // the leader is down: stay on the fall (in place when we are filming it, no cut), then hand off (pick())
     if (!ok(S.lead) && !S.fall && !S.ending) {
       S.fall = { at: now, shown: false };

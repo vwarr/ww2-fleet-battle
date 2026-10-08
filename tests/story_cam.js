@@ -1,12 +1,12 @@
 // Story mode probe (camera_story.js): forces a story on a strike, steps it through its phases and saves a
 // screenshot ~2 s into each shot (tests/shots/story/), logs the shot sequence and timings, then checks the
 // protagonist-death hand-off (WW.airDeaths.force on the leader), the F key toggle and a freecam plane click.
-// Usage: BASE_URL=http://localhost:PORT/ node tests/story_cam.js [seed=3] [realSeconds=150] [story,forced,death,keys]
+// Usage: BASE_URL=http://localhost:PORT/ node tests/story_cam.js [seed=3] [realSeconds=150] [story,forced,death,keys,auto]
 const path = require('path'), fs = require('fs');
 const OUT = path.join(__dirname, 'shots', 'story');
 fs.mkdirSync(OUT, { recursive: true }); process.chdir(__dirname);
 const { chromium } = require('playwright');
-const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = (process.argv[4] || 'story,forced,death,keys').split(',');
+const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = (process.argv[4] || 'story,forced,death,keys,auto').split(',');
 (async () => {
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 960, height: 540 } });
@@ -155,6 +155,20 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
     return out;
   });
   console.log(stops.every(Boolean) ? 'PASS stops in map view / new round' : 'FAIL stops', stops);
+  }
+
+  // 6. the director starts stories by itself (every few minutes, not back-to-back)
+  if (WHICH.includes('auto')) {
+    const r = await p.evaluate(() => {
+      WW.camStory.stop(); WW.camStory.log.length = 0; __sim.setScale(1); WW.game.startRound();
+      __render = false; const out = [];
+      for (let i = 0; i < 300 * 30; i += 30) { __step(30); const s = WW.cam._shot(); if (WW.game.state !== 'battle') break; }
+      for (const e of WW.camStory.log) if (e.start || e.end) out.push((e.start ? 'START ' + e.lead + ' (' + e.mission + ')' : 'END') + ' @' + e.at.toFixed(0));
+      __render = true;
+      return { out, stats: WW.camStory.stats, state: WW.game.state, t: WW.game.roundTime };
+    });
+    console.log('[auto]', r.out.join(' | '), JSON.stringify(r.stats), r.state);
+    console.log(r.out.some(x => /^START/.test(x)) ? 'PASS auto story' : 'FAIL auto story');
   }
 
   // camera sanity over the whole recording
