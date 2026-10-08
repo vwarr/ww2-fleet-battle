@@ -1,0 +1,29 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d2a4a; }
+body { font-family: 'Press Start 2P', ui-monospace, Menlo, Consolas, monospace; color: #e8e4d0; }
+#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block;
+  image-rendering: pixelated; image-rendering: crisp-edges; }
+#hud { position: fixed; inset: 0; pointer-events: none; font-size: 8px; line-height: 1.5; }
+#hud .panel { position: absolute; left: 6px; top: 6px; padding: 4px 6px; pointer-events: auto; opacity: 0.85;
+  background: rgba(8, 20, 36, 0.45); border: 1px solid rgba(200, 192, 160, 0.6); box-shadow: 2px 2px 0 rgba(0,0,0,0.35); }
+#hud .panel:hover { opacity: 1; background: rgba(8, 20, 36, 0.75); }
+#hud .panel.setup { left: auto; right: 10px; max-width: 300px; }
+#hud .row { margin: 2px 0; white-space: pre; text-shadow: 1px 1px 0 #000; }
+#hud .row.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+#hud .title { color: #f0d060; }
+#hud .usn { color: #7fb2ff; }
+#hud .ijn { color: #ff7a6b; }
+#hud .dim { color: #a8a490; }
+#hud .small { font-size: 7px; }
+#hud .btn { font: inherit; font-size: 7px; color: #e8e4d0; background: #1c3350; border: 2px solid #8a8670;
+  padding: 2px 4px; margin-right: 3px; cursor: pointer; text-transform: uppercase; }
+#hud .btn:hover { background: #2a4a70; }
+#hud .btn.on { background: #e8c840; color: #10203a; border-color: #fff4b0; }
+#hud .btn.go { background: #2f6a2f; border-color: #8fd08f; }
+#hud .banner { display: none; position: absolute; left: 0; right: 0; top: 38%; text-align: center;
+  font-size: clamp(24px, 6vw, 64px); text-shadow: 4px 4px 0 #000, -2px -2px 0 #000; letter-spacing: 4px; }
+#hud .msg { display: none; position: absolute; left: 0; right: 0; bottom: 30px; text-align: center;
+  color: #ffd060; text-shadow: 2px 2px 0 #000; }
+#hud .bars { position: absolute; inset: 0; }
+#hud .hpbar { position: absolute; left: 0; top: 0; height: 3px; border: 1px solid #fff; background: #200;
+  display: none; will-change: transform; }
+#hud .hpbar .fill { height: 100%; width: 100%; }
