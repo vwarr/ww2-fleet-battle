@@ -1,6 +1,9 @@
 // ai_surface.js — surface combatant behaviour (battleship, cruiser, destroyer): formation stations from the fleet
-// commander (WW.fleetCmd), stand-off orbit at the doctrine's preferred range, torpedo spreads, and the destroyer's
-// sub hunt with depth charges (that block belongs to the depth-charge work).
+// commander (WW.fleetCmd); the battle line's kite at the doctrine's preferred range, crossing the enemy's T;
+// destroyer flotilla torpedo attacks (in pairs, from the flank, launch, turn away); the press (close on last-known
+// contacts late in the round); AA cover for a raided carrier; early torpedo combing and torpedo-boat angling for big
+// ships; a keep-off ring around enemy carriers; and the destroyer's sub hunt with depth charges (that block belongs
+// to the depth-charge work).
 // Registers WW.shipAI.roles.surface (the default role). Helpers: WW.shipAI.h (ships_ai.js).
 window.WW = window.WW || {};
 (function () {
@@ -51,14 +54,28 @@ window.WW = window.WW || {};
     if (--a.dcLeft <= 0) a.dcReload = DC_RELOAD;
   }
 
+
+  // ---- tuning ----
+  const BIG = { battleship: 1, cruiser: 1 }, CAPITAL = { battleship: 1, carrier: 1 };
+  const CV_KEEP = 108;     // no surface ship closes inside this of a known enemy carrier (the carrier is never caught)
+  const PRESS_AGE = 60;    // a pressing ship with nothing in sight steams for last-known (non-carrier) contacts this old
+  const SUB_HELP = 70, SUB_HELP_R = 250; // a DD answers a known sub this close to an ally, from this far away
+  const RAID_R = 300, RAID_CLOSE = 45;   // AA cover: cruisers (and the carrier group's battleship) close on a raided carrier
+  const TDIR_T = 20;       // s between crossing-the-T orbit side choices (a battleship turns slowly)
+  const BAND = 0.1;        // +-10% of the preferred range: hold a pure broadside there
+  const RUN_OUT = 14;      // s: a destroyer turns away after its torpedo spread
+  const WARN = { battleship: 150, cruiser: 120 }; // early torpedo warning horizon (side-wide intel tracks)
+  const REACT = { battleship: 2, cruiser: 1.2 };
+
   function surfaceAI(ship, dt) {
     const a = ship.ai, st = ship.stats, t = ship.target;
     // Destroyers hunt a sub contact inside SUB_HUNT, or at any range when no surface target is left.
     // A lost sub: run to its last-known position (datum) and give it up there if sonar finds nothing.
     // A sub already under attack stays the quarry while sonar holds it (re-attack, don't switch contacts).
+    // Mutual support: a sub known close to an ally is hunted from SUB_HELP_R away.
     const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) &&
       WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
-    if (st.depthCharges && (a.dcLeft > 0 || ds || (a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT || !t || t.type === 'submarine')))) {
+    if (st.depthCharges && (a.dcLeft > 0 || ds || (a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
       a.dcReload -= dt;
       if (a.dcLeft > 0) { dcPattern(ship, a, dt); return; }
       const fresh = !!ds || seen(ship, a.sub), s = ds || (fresh ? a.sub : a.subC);
@@ -67,10 +84,16 @@ window.WW = window.WW || {};
       return;
     }
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
-    if (!t) { if (o) followStation(ship, o, B); else H.idle(ship); return; }
-    if (o && H.unreachable(ship, t)) followStation(ship, o, B); // never run down a target that outruns us (a carrier)
-    else engage(ship, t, o, B);
-    torpedoes(ship, t, B);
+    if (aaCover(ship, t, o, B)) { /* steaming to the raided carrier */ }
+    else if (!t || (o && H.unreachable(ship, t))) { // nothing to shoot, or a carrier that outruns us
+      const pc = B && B.posture === 'press' ? pressContact(ship) : null;
+      if (pc) closeOn(ship, pc, B);
+      else if (o) followStation(ship, o, B); else H.idle(ship);
+    } else engage(ship, t, o, B);
+    if (t) torpedoes(ship, t, B);
+    if (ship.type === 'battleship') angleOnBoats(ship);
+    earlyComb(ship);
+    keepOffCarriers(ship);
   }
 
   // ---- seams for the battle-line / destroyer role work ----
@@ -83,40 +106,169 @@ window.WW = window.WW || {};
     else { want = B.axis.h; ship.throttle = 0.55; }
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, risk) : want;
   }
-  // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range); pressing
-  // closes in by the doctrine's close-quarters style, a withdrawing side opens out.
-  function prefRange(ship, B) {
+  // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range). Pressing
+  // closes in by the doctrine's close-quarters style (IJN closer), a withdrawing side opens out. Never inside
+  // CV_KEEP of a carrier.
+  function prefRange(ship, B, t) {
     const st = ship.stats, main = st.guns[0];
     let pref = main ? main.range * (B ? B.doctrine.rangeFrac : 0.8) : 60;
     if (st.torpedoes && ship.type === 'destroyer') pref = Math.min(pref, st.torpedoes.range * 0.6);
-    if (B && B.posture === 'press') pref *= 0.55 + 0.15 * (1 - B.doctrine.night); // press for a decision (IJN closer)
+    if (B && B.posture === 'press') pref *= 0.72 + 0.15 * (1 - B.doctrine.night);
     else if (B && B.posture === 'withdraw') pref *= 1.15;
+    if (t && t.type === 'carrier') pref = Math.max(pref, CV_KEEP + 5);
     return pref;
   }
-  // Gun fight: orbit the target at the preferred range (close in, open out, or circle), loosely tied to the
-  // formation station (escorts more tightly), then the safest heading for the type's risk tolerance.
-  // Next (role agents): crossing the T / broadside angling, focus-fire use (WW.fleetCmd.focusFor), flotilla attacks.
+  // Gun fight: orbit the target at the preferred range, holding a pure broadside within +-BAND of it. The orbit
+  // side is chosen to run across the target's bow (crossing the T: every turret bears, only its forward guns
+  // answer). Loosely tied to the formation station (escorts more tightly; not while pressing), then the safest
+  // heading for the type's risk. A destroyer with a capital target makes a torpedo attack instead (torpedoRun).
   function engage(ship, t, o, B) {
-    const a = ship.ai, d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t), pref = prefRange(ship, B);
-    let h;
-    if (d > pref * 1.2) { h = b; ship.throttle = 1; }
-    else if (d < pref * 0.65) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
-    else { h = b + a.orbitDir * (PI / 2 - WW.clamp((d - pref) / pref, -0.5, 0.5) * 1.2); ship.throttle = 0.8; }
-    if (o) {
+    const a = ship.ai, d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t), pref = prefRange(ship, B, t), now = WW.time.now;
+    if (ship.type === 'destroyer' && CAPITAL[t.type] && ship.stats.torpedoes) return torpedoRun(ship, t, o, B, d, b);
+    if (BIG[ship.type] && (a.tdFor !== t || now > a.tdT)) {
+      // we sit at angle rel from the target; orbitDir +1 swings rel clockwise (decreasing): pick the side that
+      // moves us toward its bow
+      const rel = b + PI, toBow = WW.angleDiff(rel, t.heading);
+      if (Math.abs(toBow) > 0.2 && t.speed > 0.5) a.orbitDir = toBow > 0 ? -1 : 1;
+      a.tdFor = t; a.tdT = now + TDIR_T;
+    }
+    let e = (d - pref) / pref, h;
+    e = Math.sign(e) * Math.max(0, Math.abs(e) - BAND);
+    if (d > pref * 1.3) { h = b + a.orbitDir * 0.3; ship.throttle = 1; }
+    else if (d < pref * 0.6) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
+    else { h = b + a.orbitDir * (PI / 2 - WW.clamp(e, -0.5, 0.5) * 1.4); ship.throttle = Math.abs(e) > 0.15 ? 1 : 0.8; }
+    if (o && !(B && B.posture === 'press' && o.role !== 'escort')) {
       const ds = WW.dist(ship.x, ship.z, o.sx, o.sz), esc = o.role === 'escort';
       if (ds > (esc ? 60 : 110)) h = blend(h, ship, o.sx, o.sz, esc ? 0.6 : 0.3);
-    } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
+    } else if (!o && a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
     ship.desiredHeading = WW.threat && B ? WW.threat.bestHeading(ship, h, B.doctrine.risk[ship.type] || 0.5, { k: 1 }) : h;
   }
+  // Destroyer torpedo attack on a battleship or carrier (scored only as a flotilla: another own DD near, see
+  // ships_ai.js score). Wait outside the launch distance until a second destroyer is on the same quarry, then
+  // run in from the flank (alternate sides by flotilla slot, so the pair come from different angles), launch
+  // beam-on at the doctrine's launch distance, then turn away for RUN_OUT s. Never inside the capital ship's
+  // secondaries, never inside CV_KEEP of a carrier: no ram-closing.
+  function torpedoRun(ship, t, o, B, d, b) {
+    const a = ship.ai, tp = ship.stats.torpedoes, now = WW.time.now;
+    const L = tp.range * (B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8), sec = t.stats.guns[1] || t.stats.guns[0];
+    const minD = Math.max(L * 0.8, (sec ? sec.range : 60) + 8, t.type === 'carrier' ? CV_KEEP : 0);
+    if (o && o.group === 'flotilla') a.orbitDir = o.slot % 2 ? -1 : 1;
+    let h;
+    ship.throttle = 1;
+    if (a.runOut > now) h = b + PI + a.orbitDir * 0.5;                       // spread away: open out
+    else if (a.torpReload > 0 || !mate(ship, t, L * 1.8)) { const R = L * 1.35; h = b + a.orbitDir * (d > R ? 0.6 : d < R * 0.85 ? 2.2 : PI / 2); ship.throttle = 0.85; }
+    else if (d > L) h = b + a.orbitDir * 0.45;                               // run in from the flank
+    else h = b + a.orbitDir * PI / 2;                                        // beam on: torpedoes() launches
+    if (d < minD) h = b + PI + a.orbitDir * 0.6;
+    ship.desiredHeading = WW.threat && B ? WW.threat.bestHeading(ship, h, B.doctrine.risk.destroyer || 0.5, { k: 0.6 }) : h;
+  }
+  // another own destroyer (fit, not hunting a sub) within r of the quarry: the flotilla attacks together
+  function mate(ship, t, r) {
+    for (const s of WW.world.ships) {
+      if (s === ship || !s.alive || s.nation !== ship.nation || s.type !== 'destroyer' || s.ai && s.ai.withdrawing) continue;
+      if (WW.dist2(s.x, s.z, t.x, t.z) < r * r) return true;
+    }
+    return false;
+  }
   // Torpedoes: launch inside (0.6 + 0.3 x doctrine torpedo emphasis) of torpedo range on a current detection
-  // (fireSpread holds fire when an ally is in the fan).
+  // (fireSpread holds fire when an ally is in the fan). A destroyer then turns away (torpedoRun).
   function torpedoes(ship, t, B) {
     const st = ship.stats, a = ship.ai;
     if (!st.torpedoes || a.torpReload > 0 || t.submerged) return;
     const d = WW.dist(ship.x, ship.z, t.x, t.z), k = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8;
-    if (d < st.torpedoes.range * k && d > 12 && seen(ship, t)) H.fireSpread(ship, t);
+    if (d < st.torpedoes.range * k && d > 12 && seen(ship, t) && H.fireSpread(ship, t) && ship.type === 'destroyer') a.runOut = WW.time.now + RUN_OUT;
+  }
+
+  // ---- press, support and safety layers ----
+  // Pressing with nothing in sight: the nearest last-known enemy that is worth a gun ship's run (never a carrier:
+  // a lone carrier is left to retire; battleships and cruisers ignore PT boats). Cached for 1 s.
+  function pressContact(ship) {
+    const a = ship.ai, now = WW.time.now;
+    if (a.pcT > now) return a.pc && a.pc.unit && a.pc.unit.alive ? a.pc : null;
+    a.pcT = now + 1; a.pc = null;
+    if (!WW.intel) return null;
+    let bd = 1e9;
+    for (const c of WW.intel.enemyShips(ship.nation)) {
+      const u = c.unit;
+      if (!u || !u.alive || u.submerged || u.type === 'carrier' || u.type === 'submarine' || now - c.seenAt > PRESS_AGE) continue;
+      if (BIG[ship.type] && u.type === 'pt') continue;
+      const d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (d < bd) { bd = d; a.pc = c; }
+    }
+    return a.pc;
+  }
+  function closeOn(ship, c, B) {
+    const age = Math.min(20, WW.time.now - c.seenAt), px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;
+    ship.throttle = 1;
+    const want = Math.atan2(pz - ship.z, px - ship.x);
+    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
+  }
+  // AA cover: while the commander reports an air raid on an own carrier, cruisers (and a battleship of the carrier
+  // group) within RAID_R that have nothing in gun range close on the carrier's AA umbrella.
+  function aaCover(ship, t, o, B) {
+    const R = B && B.airRaid, cv = R && R.carrier;
+    if (!cv || !cv.alive || ship.type === 'destroyer' || (ship.type === 'battleship' && !(o && o.group === 'carrier'))) return false;
+    const d = WW.dist(ship.x, ship.z, cv.x, cv.z);
+    if (d > RAID_R || d < RAID_CLOSE) return false;
+    if (t && WW.dist(ship.x, ship.z, t.x, t.z) <= ship.stats.guns[0].range) return false;
+    ship.throttle = 1;
+    const want = Math.atan2(cv.z - ship.z, cv.x - ship.x);
+    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
+    return true;
+  }
+  function subNearAlly(ship, a) {
+    if (a.subD > SUB_HELP_R) return false;
+    const c = a.subC;
+    for (const s of WW.world.ships) if (s !== ship && s.alive && s.nation === ship.nation && s.type !== 'submarine' && WW.dist2(s.x, s.z, c.x, c.z) < SUB_HELP * SUB_HELP) return true;
+    return false;
+  }
+  // Big ships: an enemy torpedo track seen anywhere by the side (escorts' sightings, WW.intel.torpedoes) that
+  // will pass close inside WARN: turn parallel early (a battleship needs ~7 s to swing 90 deg); the core comb
+  // (ships_ai.js, 70 units) then holds it.
+  function earlyComb(ship) {
+    const W = WARN[ship.type];
+    if (!W || !WW.intel || !WW.intel.torpedoes) return;
+    const T = WW.intel.torpedoes(ship.nation), L = ship.stats.length * 0.5 + 8, now = WW.time.now;
+    for (let i = 0; i < T.length; i++) {
+      const e = T[i];
+      if (now - e.firstSeenAt < REACT[ship.type]) continue;
+      const dt = now - e.seenAt, c = Math.cos(e.h), s = Math.sin(e.h);
+      const rx = ship.x - (e.x + c * e.speed * dt), rz = ship.z - (e.z + s * e.speed * dt);
+      const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
+      if (along < 0 || along > W || perp > L + along * 0.25) continue;
+      ship.desiredHeading = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
+      return;
+    }
+  }
+  // Battleship: a known torpedo boat (DD / PT, seen in the last 5 s) inside 1.1x its torpedo range with us in its
+  // bow arc: angle bow or stern on to it (a narrow target for the spread). Trades some broadside for safety.
+  function angleOnBoats(ship) {
+    if (!WW.intel) return;
+    const now = WW.time.now;
+    for (const c of WW.intel.enemyShips(ship.nation)) {
+      const u = c.unit;
+      if (!u || !u.alive || (u.type !== 'destroyer' && u.type !== 'pt') || now - c.seenAt > 5 || !u.stats.torpedoes) continue;
+      const d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (d > u.stats.torpedoes.range * 1.1) continue;
+      const toUs = Math.atan2(ship.z - c.z, ship.x - c.x);
+      if (Math.abs(WW.angleDiff(c.heading, toUs)) > 1.0) continue;
+      const b = toUs + PI, ax = Math.abs(WW.angleDiff(ship.desiredHeading, b)) < PI / 2 ? b : toUs; // bow on or stern on
+      ship.desiredHeading = Math.atan2(Math.sin(ship.desiredHeading) + 1.2 * Math.sin(ax), Math.cos(ship.desiredHeading) + 1.2 * Math.cos(ax));
+      return;
+    }
+  }
+  // Never close inside CV_KEEP of a known enemy carrier (contact <= 10 s old): steer off it.
+  function keepOffCarriers(ship) {
+    if (!WW.intel) return;
+    const now = WW.time.now;
+    for (const c of WW.intel.enemyShips(ship.nation)) {
+      const u = c.unit;
+      if (!u || u.type !== 'carrier' || !u.alive || now - c.seenAt > 10) continue;
+      const d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (d < CV_KEEP) ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - c.x, 2 * ship.z - c.z, 1.5 * (1.2 - d / CV_KEEP) * 3);
+    }
   }
 
   WW.shipAI.roles.surface = surfaceAI;
-  WW.shipAI.surface = { followStation, prefRange, engage, torpedoes }; // seams for the role agents
+  WW.shipAI.surface = { followStation, prefRange, engage, torpedoes, torpedoRun, pressContact }; // seams for the role agents
 })();

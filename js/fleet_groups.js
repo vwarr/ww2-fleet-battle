@@ -78,7 +78,9 @@ window.WW = window.WW || {};
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, h = B.axis.h, c = Math.cos(h), s = Math.sin(h);
     var lead = { search: 45, approach: 45, engage: 0, press: 35, withdraw: -45 }[B.posture] || 0;
     // guides: the main body's centroid, else the first group that has ships
-    var mg = centroid(G.main.members, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide);
+    // (withdrawing cripples are left out of the main guide: they would drag the battle line home with them)
+    var fitMain = G.main.members.filter(function (q) { var o = B.orders.get(q.id); return !o || o.role !== 'withdraw'; });
+    var mg = centroid(fitMain, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide);
     if (!mg) return;
     B.axis.x = mg.x; B.axis.z = mg.z;
     for (var k in G) if (k !== 'main' && !centroid(G[k].members, G[k].guide)) { G[k].guide.x = mg.x; G[k].guide.z = mg.z; }
