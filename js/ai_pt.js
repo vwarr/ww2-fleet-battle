@@ -17,8 +17,14 @@ window.WW = window.WW || {};
     FIRE_MAX: 50,
     EX_MAX: 9,        // acceptable path danger from ships other than the target (dps)
     PEN_RUN: 0.12, PEN_ABORT: 0.16, PEN_LURK: -0.06, // midline limits (x half-map)
+    DEEP: { PEN_RUN: 0.95, PEN_ABORT: 1.05, PEN_LURK: 0.85, PEN_HOME: 1.05 }, PEN_HOME: 0.02, // deep: PT_DEEP limits
+    GUN_R: 160, GUN_T: 40, GUN_OFF: 18, // skirmish: an enemy PT / surfaced sub this close, at most this long, beam offset
     RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 40, IDLE_THR: 0.9
   };
+  // Midline limits: PT_DEEP (the commander's ptDeep: no enemy gun ship seen this round, and a carrier known or a long
+  // search) lets the boats run deep; the danger field still steers them.
+  const deepOK = ship => { const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null; return !!(B && B.ptDeep); };
+  const lim = (ship, k) => (deepOK(ship) ? PT.DEEP[k] : PT[k]);
   function partner(ship) {
     const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null;
     const m = B && B.groups && B.groups.pt ? B.groups.pt.members : null;
@@ -50,20 +56,22 @@ window.WW = window.WW || {};
   }
   function lurkSpot(ship, L) {
     const a = ship.ai, o = order(ship), W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, n = ship.nation;
+    noteGhosts(ship);
+    // the commander's spot for this boat (fleet_search.js: one per pair, spread out), unless it is hot now
+    if (o && o.spot && ship.hp >= ship.maxHp * 0.35 && danger(n, o.spot.x, o.spot.z) <= 0.3 && !ghostNear(ship, o.spot.x, o.spot.z)) { L.lx = o.spot.x; L.lz = o.spot.z; return; }
     let bx, bz;
     if (o && isFinite(o.sx)) { bx = o.sx; bz = o.sz; }
     else { bx = (a.cn ? a.cx : ship.x) - homeX(ship) * 60; bz = WW.clamp((a.cn ? a.cz : ship.z) + a.orbitDir * 150, 40, Hh - 40); }
     if (ship.hp < ship.maxHp * 0.35) bx += homeX(ship) * 120; // cripple: stay home
-    const lim = W / 2 + homeX(ship) * -PT.PEN_LURK * W / 2;    // never lurk past this x
-    bx = ship.nation === 'USN' ? Math.min(bx, lim) : Math.max(bx, lim);
+    const lx = W / 2 + homeX(ship) * -lim(ship, 'PEN_LURK') * W / 2;    // never lurk past this x
+    bx = ship.nation === 'USN' ? Math.min(bx, lx) : Math.max(bx, lx);
     bx = WW.clamp(bx, 40, W - 40);
-    noteGhosts(ship);
     for (let k = 0; k < 4 && (danger(n, bx, bz) > 0.3 || ghostNear(ship, bx, bz)); k++) bx = WW.clamp(bx + homeX(ship) * 60, 40, W - 40); // out of known reach
     const ec = WW.intel && WW.intel.centre ? WW.intel.centre(n) : null;
     let best = { x: bx, z: bz }, bs = -danger(n, bx, bz) * 30 - (ghostNear(ship, bx, bz) ? 150 : 0);
     for (const c of coverPts()) {
       const dd = WW.dist(c.x, c.z, bx, bz);
-      if (dd > 150 || pen(ship, c.x) > PT.PEN_LURK) continue;
+      if (dd > 150 || pen(ship, c.x) > lim(ship, 'PEN_LURK')) continue;
       const dg = danger(n, c.x, c.z);
       let s = 25 - dd * 0.35 - dg * 30 - (dg > 0.3 ? 200 : 0) - WW.dist(c.x, c.z, ship.x, ship.z) * 0.05;
       if (ec) s -= WW.dist(c.x, c.z, ec.x, ec.z) * 0.08;
@@ -71,7 +79,7 @@ window.WW = window.WW || {};
       if (s > bs) { bs = s; best = c; }
     }
     const pr = L.pair.p && L.pair.p.ai && L.pair.p.ai.lt;
-    if (!L.pair.lead && pr && pr.lx !== undefined) { L.lx = pr.lx; L.lz = WW.clamp(pr.lz + 14, 20, Hh - 20); return; }
+    if (!L.pair.lead && pr && pr.lx !== undefined) { L.lx = pr.lx; L.lz = WW.clamp(pr.lz + 15, 20, Hh - 20); return; }
     L.lx = best.x; L.lz = best.z;
   }
   // A target of opportunity: { c, fx, fz, score } or null. Isolated, crippled, slow, or a DD / CA near land,
@@ -92,7 +100,7 @@ window.WW = window.WW || {};
     if (WW.dist(ship.x, ship.z, u.x, u.z) > PT.DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
     stats.checks++;
     if (dash > PT.DASH) { stats.far++; return null; }
-    if (pen(ship, f.x) > PT.PEN_RUN) { stats.deep++; return null; }
+    if (pen(ship, f.x) > lim(ship, 'PEN_RUN')) { stats.deep++; return null; }
     if (WW.terrain.depthAt(f.x, f.z) < 2) { stats.shoal++; return null; }
     let ex = 0;
     for (let k = 1; k <= 4; k++) {
@@ -123,6 +131,17 @@ window.WW = window.WW || {};
     }
     return best;
   }
+  // Skirmish: an enemy PT boat or surfaced sub (MG work) within GUN_R, not past the run limit, no other danger there.
+  function skirmish(ship) {
+    let best = null, bd = PT.GUN_R;
+    for (const c of contacts(ship, 3)) {
+      const u = c.unit, d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (u.submerged || !(u.type === 'pt' || u.type === 'submarine') || d >= bd || pen(ship, c.x) > lim(ship, 'PEN_RUN')) continue;
+      if (danger(ship.nation, c.x, c.z) - ownDps(u, 0) > PT.EX_MAX) continue;
+      bd = d; best = u;
+    }
+    return best;
+  }
   function nearestBig(ship) { // nearest known enemy gun ship that out-guns a PT (flee from it)
     let b = null, bd = 1e9, near = null, nd = 1e9;
     for (const c of contacts(ship, 30)) {
@@ -148,10 +167,12 @@ window.WW = window.WW || {};
   }
 
   const L0state = a => (a.lt ? a.lt.state : 'lurk');
+  // keep way on: a helm order past 1.2 rad cuts the speed (ships.js); a sweeping turn keeps it (same turn rate)
+  const sweep = ship => { ship.desiredHeading = ship.heading + WW.clamp(WW.angleDiff(ship.heading, ship.desiredHeading), -1.1, 1.1); };
   function ptAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now();
     const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, leg: 'fwd', legT: 0, pair: { p: null, lead: true } });
-    a.ownComb = L0state(a) !== 'lurk'; // combing a torpedo track would break a dash; at the lurk spot, comb
+    a.ownComb = L0state(a) !== 'lurk' && L0state(a) !== 'gun'; // combing a torpedo track would break a dash; at the lurk spot, comb
     a.ownWithdraw = true; // a crippled PT lurks at home and makes no runs (below) rather than the core's withdrawal
     mgTarget(ship);
     const jink = Math.sin(T * 1.7 + ship.id) * 0.45;
@@ -160,7 +181,7 @@ window.WW = window.WW || {};
     if (decide) { L.decT = 0.5; L.pair = partner(ship); }
     if (L.state === 'run') {
       const u = L.tgt, c = u && u.alive && WW.intel ? WW.intel.known(n, u) : null;
-      let abort = !c || age(c) > 6 || T - L.t0 > PT.RUN_MAX || pen(ship, ship.x) > PT.PEN_ABORT || ship.hp < L.hp0 - ship.maxHp * 0.3;
+      let abort = !c || age(c) > 6 || T - L.t0 > PT.RUN_MAX || pen(ship, ship.x) > lim(ship, 'PEN_ABORT') || ship.hp < L.hp0 - ship.maxHp * 0.3;
       if (!abort && decide) {
         // abort when the danger on the run spikes or a destroyer turns toward us
         const lx = ship.x + Math.cos(ship.heading) * 20, lz = ship.z + Math.sin(ship.heading) * 20;
@@ -181,7 +202,19 @@ window.WW = window.WW || {};
           if (H.fireSpread(ship, u) !== false) { L.state = 'out'; L.t0 = T; L.from = u; }
         } else if (d < 15) { L.state = 'out'; L.t0 = T; L.from = u; }
       }
-      if (L.state === 'run') return;
+      if (L.state === 'run') { sweep(ship); return; }
+    }
+    if (L.state === 'gun') { // close and fight with the MG: up the target's beam, then pace it
+      const u = L.tgt, c = u && u.alive && !u.sinking && !u.submerged && WW.intel ? WW.intel.known(n, u) : null;
+      if (!c || age(c) > 5 || T - L.t0 > PT.GUN_T || ship.hp < L.hp0 - ship.maxHp * 0.35 || pen(ship, ship.x) > lim(ship, 'PEN_ABORT')) { L.state = 'out'; L.t0 = T; L.from = null; }
+      else {
+        const sd = L.pair.lead ? 1 : -1, d = WW.dist(ship.x, ship.z, c.x, c.z);
+        const fx = c.x + Math.cos(c.heading + sd * PI / 2) * PT.GUN_OFF, fz = c.z + Math.sin(c.heading + sd * PI / 2) * PT.GUN_OFF;
+        ship.desiredHeading = d < 28 && WW.dist(ship.x, ship.z, fx, fz) < 10 ? c.heading : Math.atan2(fz - ship.z, fx - ship.x);
+        ship.throttle = d < 28 ? WW.clamp(0.5 + (u.speed || 0) / ship.stats.speed, 0.5, 1) : 1;
+        ship.target = u;
+        return;
+      }
     }
     const nb = decide || L.state !== 'lurk' ? nearestBig(ship) : L.nb;
     L.nb = nb;
@@ -193,12 +226,13 @@ window.WW = window.WW || {};
       let h = from ? Math.atan2(ship.z - from.z, ship.x - from.x) : (homeX(ship) < 0 ? PI : 0);
       const home = homeX(ship) < 0 ? PI : 0;
       const aw = h;
-      h += WW.clamp(WW.angleDiff(h, home), -0.25, 0.25) + jink * 0.4;
+      const inReach = nb && nb.near && nb.margin < 0; // inside a gun ship's reach: the shortest way out first
+      h += inReach ? jink * 0.15 : WW.clamp(WW.angleDiff(h, home), -0.25, 0.25) + jink * 0.4;
       // a hard reversal bleeds speed: take the nearest heading still well clear of the threat's bearing first
       if (Math.abs(WW.angleDiff(ship.heading, h)) > 1.2) h = aw + WW.clamp(WW.angleDiff(aw, ship.heading), -0.75, 0.75);
-      const deep = pen(ship, ship.x) > 0.02; // past the midline: home first, whatever the threat bearing
+      const deep = pen(ship, ship.x) > lim(ship, 'PEN_HOME'); // past the midline: home first, whatever the threat bearing
       if (deep) h = home + WW.clamp(WW.angleDiff(home, aw), -0.6, 0.6) + jink * 0.5;
-      ship.desiredHeading = h; ship.throttle = 1;
+      ship.desiredHeading = h; ship.throttle = 1; if (!deep) sweep(ship); // deep: the nav layer needs the real course home
       const el = T - L.t0, clear = (!nb || nb.margin > 60) && danger(n, ship.x, ship.z) < 1;
       if (!deep && ((el > PT.OUT_MIN && clear) || el > PT.OUT_MAX)) { L.state = 'lurk'; L.from = null; L.spotT = 0; }
       return;
@@ -216,6 +250,10 @@ window.WW = window.WW || {};
       }
       if (!tgt) { const o = opportunity(ship, L); if (o) { tgt = o.c.unit; L.side = o.side; } }
       if (tgt) { L.state = 'run'; L.tgt = tgt; L.t0 = T; L.hp0 = ship.hp; ship.target = tgt; return; }
+    }
+    if (decide && ship.hp >= ship.maxHp * 0.5) {
+      const g = skirmish(ship);
+      if (g) { L.state = 'gun'; L.tgt = g; L.t0 = T; L.hp0 = ship.hp; ship.target = g; return; }
     }
     // inside known gun reach with no run worth making: break off
     if (decide && nb && (nb.margin < (L.hot ? 60 : 25) || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
@@ -238,7 +276,7 @@ window.WW = window.WW || {};
     }
     // keep way on: come about in a sweeping turn (a > 1.2 rad helm order halves the speed, ships.js), so a heavy
     // ship that closes unseen finds the boat already moving, ready to bolt
-    ship.desiredHeading = ship.heading + WW.clamp(WW.angleDiff(ship.heading, ship.desiredHeading), -1.1, 1.1);
+    sweep(ship);
   }
 
   WW.shipAI.roles.pt = ptAI;

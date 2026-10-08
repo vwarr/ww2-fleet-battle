@@ -17,13 +17,16 @@ window.WW = window.WW || {};
   //   risk         per-type risk tolerance 0..1 for WW.threat.bestHeading (carrier 0: never into danger)
   //   damageControl  divides torpedo flooding, engine-room repair time and the chance an engine-room hit is for good
   //                (ship_speed.js); puts fires out sooner, spreads them less, and above 1.15 pumps flooding out and
-  //                patches minor damage (ship_fires.js); USN 1.3: its damage-control training was the better of the two
+  //                patches minor damage (ship_fires.js); USN 1.5: its damage-control training was the better of the two
   //   avgas        chance factor that a bomb on a loaded flight deck sets off the fuel and ordnance (ship_fires.js);
   //                USN 0.8: fuel lines drained and CO2-purged under attack, ordnance struck below
   //   escortCharge how readily the carrier's destroyers charge an enemy gun ship closing on it (ai_charge.js); USN 1
   //                (Samar), IJN 0.6
   //   rescue       (flag) destroyers pick up survivors of sunk ships and ditched aircrew, escort cripples home once
   //                broken, and the fleet leaves only with its survivors aboard (endgame.js, ai_endgame.js)
+  //   reportErr    air sighting reports (intel.js): position error per unit of the observer's range; misId: chance
+  //                to report the wrong type (cruiser -> carrier...). IJN 0.07 / 0.12: its observers were the better
+  //                trained early in the war; USN 0.09 / 0.18 (the Midway PBY and SBD reports)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
   //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
@@ -41,25 +44,34 @@ window.WW = window.WW || {};
   //   aaAmmo       AA ammunition factor (ship_supply.js; USN 1.25: deeper ready-use allowances); ddFuel: destroyer fuel
   //                factor (USN 1.1: longer legs); torpReloads: reload sets for destroyer / cruiser tubes (IJN 1, USN 0)
   // Torpedo performance per nation (range, speed, dud rate, wake sighting) is a stat table: core.js WW.TORPEDO_NATION.
+  //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
+  //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
+  //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
+  //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
+  //   (jointStrike, followUp and reserveFrac are not rolled: they are doctrine, not tuning)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.3, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
+      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
+      jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
-      pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true,
+      pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
+      jointStrike: true, followUp: 'deckload', reserveFrac: 0.4,
       ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
+  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, ringDD: 1, torpReloads: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
-    for (k in b) if (typeof b[k] === 'number') d[k] = b[k] * j();
+    for (k in b) if (typeof b[k] === 'number' && !FIXED[k]) d[k] = b[k] * j();
+    for (k in FIXED) d[k] = b[k];
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
-    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.ringDD = b.ringDD; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard; d.torpReloads = b.torpReloads;
+    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
     d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1);
     return d;
@@ -131,7 +143,8 @@ window.WW = window.WW || {};
     // guides: the main body's centroid, else the first group that has ships
     // (withdrawing cripples are left out of the main guide: they would drag the battle line home with them)
     var fitMain = G.main.members.filter(function (q) { var o = B.orders.get(q.id); return !o || o.role !== 'withdraw'; });
-    var mg = centroid(fitMain, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide);
+    var mg = centroid(fitMain, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide)
+      || centroid(G.pt.members, G.main.guide) || centroid(G.sub.members, G.main.guide); // a PT / sub-only side still gets stations
     if (!mg) return;
     B.axis.x = mg.x; B.axis.z = mg.z;
     for (var k in G) if (k !== 'main' && !centroid(G[k].members, G[k].guide)) { G[k].guide.x = mg.x; G[k].guide.z = mg.z; }
