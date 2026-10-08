@@ -160,7 +160,7 @@ window.WW = window.WW || {};
       el.round.textContent = 'Round ' + WW.stats.round + (g.state === 'battle' ? '   ' + Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') : '   ' + g.state);
       el.usn.textContent = sideLine('USN');
       el.ijn.textContent = sideLine('IJN');
-      el.info.textContent = 'Sunk ' + WW.stats.shipsSunk + '   planes lost ' + WW.stats.planesLost;
+      el.info.textContent = 'Sunk ' + WW.stats.shipsSunk + '   planes lost ' + WW.stats.planesLost + (WW.aces ? WW.aces.infoText() : '');
       el.speed.forEach((b, i) => b.classList.toggle('on', WW.time.scale === [1, 2, 4][i]));
       el.fsBtns.forEach((b, i) => { b.textContent = (i ? '' : '\u26f6 ') + (fsEl() ? 'Exit fullscreen' : 'Fullscreen'); });
       el.mode.textContent = g.state === 'setup' ? 'Back to auto' : g.mode === 'setup' ? 'Edit fleet' : 'Set up fleets';
