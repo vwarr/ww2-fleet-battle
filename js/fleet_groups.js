@@ -24,14 +24,17 @@ window.WW = window.WW || {};
   //                (Samar), IJN 0.6
   //   rescue       (flag) destroyers pick up survivors of sunk ships and ditched aircrew, escort cripples home once
   //                broken, and the fleet leaves only with its survivors aboard (endgame.js, ai_endgame.js)
+  //   reportErr    air sighting reports (intel.js): position error per unit of the observer's range; misId: chance
+  //                to report the wrong type (cruiser -> carrier...). IJN 0.07 / 0.12: its observers were the better
+  //                trained early in the war; USN 0.09 / 0.18 (the Midway PBY and SBD reports)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
+      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
-      pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true,
+      pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
