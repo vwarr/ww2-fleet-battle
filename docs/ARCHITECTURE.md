@@ -47,7 +47,7 @@ js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/ship_speed.js        WW.shipSpeed: damage slows ships (hull damage, torpedo flooding, engine-room hits)
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
 js/ai_threat.js         WW.threat: per-side danger field (grid), danger(), bestHeading()
-js/ai_threat_view.js    WW.threatView: debug overlay (key G): danger field + contact picture
+js/ai_threat_view.js    WW.threatView: debug overlay (WW.threatView.toggle(); key G only without the plot table)
 js/fleet_groups.js      WW.fleetGroups: doctrine tables, group assignment, formation stations
 js/fleet_cmd.js         WW.fleetCmd: per-side commander and blackboard (posture, groups, focus, strikes, sectors)
 js/ships_ai.js          WW.shipAI core: setup, retarget, guns / turrets, dispatch to the role files, shared helpers (WW.shipAI.h)
@@ -81,6 +81,10 @@ js/camera_story.js      WW.camStory: story mode: follow one squadron / division 
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
+js/war_diary.js         WW.diary: the war diary (clock times, sightings, key events; key L), ship names
+js/plot_table.js        WW.plot: plot table in map view (2D canvas chart; whose plot: key G; danger layer: key X)
+js/plot_tokens.js       WW.plotTokens: the plot's live layer (toy tokens, contacts, pencil, notes, strike tracks)
+js/aar_card.js          WW.aar: the after-action report card
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 ```
 
@@ -497,7 +501,7 @@ WW.threat = {
   - the AA channel: `aa.dps` out to `aa.range × 1.55`.
   A stale contact is moved along its last course for up to 20 s, and its reach grows by `age × speed × 0.5` (at most 40).
 - `bestHeading` samples 16 headings around `want`, looking `look` ahead (default speed × 9, 30 to 70) and half way. Each heading scores `cos(offset) − danger / DREF × k × (1 − risk) − edge − 0.15 × turn`. The result goes into `ship.desiredHeading`; `planNav` still steers around land.
-- Overlay (`ai_threat_view.js`, `WW.threatView.toggle()`, key **G**): visual only and off by default. G cycles off → USN picture → IJN picture. It tints the sea red where the guns and torpedoes reach and blue under the AA umbrella. It shows a ring at each enemy contact's last-known position: coloured while fresh, grey and fading with age. A label shows the side's posture. Use it with the map camera (C) to see each side's contact picture.
+- Overlay (`ai_threat_view.js`, `WW.threatView.toggle()`; key **G** only when the plot table is not loaded: the plot's danger layer, key X, replaces it): visual only and off by default. G cycles off → USN picture → IJN picture. It tints the sea red where the guns and torpedoes reach and blue under the AA umbrella. It shows a ring at each enemy contact's last-known position: coloured while fresh, grey and fading with age. A label shows the side's posture. Use it with the map camera (C) to see each side's contact picture.
 
 ### aircraft.js
 
@@ -646,3 +650,15 @@ All sim code (`WW.rand` only; the rescue and scuttle rules are deterministic apa
 `endRound` emits `victory` `{ winner, round, reason, loser }`. The caption shows "<winner> victory" for 9 s, with "<loser> fleet retires" as the subtitle after a retire, else the ships each side lost.
 
 `ui.js` shows the panels only in setup mode. In battle, `H` shows the panel. It also controls the captions, the tilt-shift bands (`T`) and fullscreen. There is no letterbox.
+
+### plot_table.js, plot_tokens.js, war_diary.js, aar_card.js (the plotting room)
+
+Visual / UI only: they read the sim and never write it, use `Math.random` only, and do nothing in sim-only mode (each file returns at once). Each wraps `WW.cam.update` (like air_captions.js) for its per-frame work, so main.js needs no hooks; ui.js has the keys `G`, `X`, `L`. Event handlers run inside the sim step: they only read, and catch their own errors.
+
+- **Plot table** (`WW.plot`, `WW.plotTokens`): in map view (`WW.cam.mode === 'map'`) during a battle or the victory pause, a full-screen 2D canvas (`#plot`, between `#game` and `#film`) shows a paper chart on a wooden table. The chart is cached per map and screen size: paper, a grid with edge letters and numbers, a compass rose, island outlines (marching squares on `terrain.depthAt` every 2 units, the 4-unit shoal line dotted), blue shallows, hatched land. Once the plot has faded in, `WW.post.render` is skipped (the 3D view is covered), so map view is cheaper than the director view; camera.js still grabs the last 3D frame for its cross-fade on the way out. Setup mode keeps the 3D overview (placement clicks raycast against it).
+  - Whose plot (`G`, `WW.plot.set(null | 'USN' | 'IJN')`): **Omniscient**: every ship and plane at its true position, both sides' strike tracks. A **side's plot**: its own ships and planes at their true positions; the enemy only from `WW.intel.contacts(side)`: a token of the reported type (`contact.reportedType` / `WW.intel.typeOf`, a pencilled "?" when `contact.misid`) at the last-known position, a wobbly pencil circle of radius min(50, age × speed × 0.5) + 6 + `contact.err` once the contact is older than `FRESH`, a dashed course arrow, fading to half strength as it ages; enemy plane contacts as markers fading over 10 s; the last 5 sighting notes (`WW.diary.notes(side)`, "1 CV, 072, 0639", pinned paper, stacked so they do not cover each other); range rings (100 / 200 / 300) round the side's carrier; ships it saw sink crossed out with their names.
+  - Tokens: painted wooden blocks, 14 + 2.1 × hull length units long, cached sprites per type, nation and scale (flight deck and island, turrets, a dark submarine). Planes: small painted crosses. Strike tracks (`WW.strike._waves()`): a pencil line from the carrier to the airborne wave, a dashed arrow to the target's position as that side knows it, an X on the target, the squadrons' names.
+  - Danger layer (`X`): the plot side's `WW.threat` field (red: guns and torpedoes, blue: AA), repainted when the commander rebuilds it. It replaces the `G` overlay of ai_threat_view.js, which keeps `WW.threatView.toggle()`.
+- **War diary** (`WW.diary`): entries `{ t, clock, text, pri 0..3, nation, kind }`, kept in time order, at most 160. Clock: `WW.dayNight.hourAt(roundTime)` when the night branch is present, else 0600 + roundTime / 120 h (one sim second is half a minute). Sources: `contact` (first) and `report` (flying boats) batched per side over 1.5 s into one sighting report with a bearing from the side's fleet centre and the observer ("Kingfisher from Northampton"); `misidResolved`, `airOrder` strikeAway, `shipHit` (first bomb or torpedo, below half hp), `deckHit`, `magazine`, `engineHit`, `shipSunk`, `shipScuttled`, `shipEscaped`, `escortCharge`, `rescue`, `ace`, `flyingBoat` lost, `admiralOrder` (its `text`), `victory`. Ship names: `ship.name`, else a period name by nation, type and order (carriers follow the air-group slots). The card (`#diary`) slides in at the right in map view; `L` toggles it per view (off in the director view by default). An entry of priority 2 or more flashes as a small caption through `WW.airCaptions.say` (its 15 s throttle; never over the victory card), only when the card is hidden. It emits `diaryEntry`.
+- **After-action report** (`WW.aar`): a snapshot at `victory` (winner and reason; per side: the admiral from `WW.admirals.of`, ships lost by name and type from the `shipSunk` / `shipScuttled` events, escaped ships, planes lost (every plane flown that is no longer alive), the ship of the day (sinkings credited to gun ships aiming at the victim within 1.3 × their longest weapon range, half a sinking to the carrier of a plane attacking it), the top pilot (`planeKill` this round); the 5 key moments from the diary). It shows 4.5 s after the victory caption, stays through the victory pause and on the ready screen until the next battle (auto mode: about 34 s of real time); a click hides it. `VICTORY_TIME` is unchanged.
+- Test: `node tests/plot_shots.js [seed] [seconds]` (render mode) shoots the three plots of one moment, the danger layer, the diary card and the report into tests/shots/plot/ and prints the diary.

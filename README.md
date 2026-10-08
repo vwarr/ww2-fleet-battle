@@ -75,11 +75,16 @@ During a battle, push `H` and click **Edit fleet** to go back to your fleets.
 | **Fullscreen** button | Show the game on the full screen. Click again (or push `Esc`) to go back. |
 | `M`, or the 🔊 / 🔇 **Sound** button | Set the sound on or off. The default is off. The game remembers your choice. If the sound was on last time, the button shows **Tap to start**: the first click or key press starts the sound (browsers need this). |
 | Volume slider in the panel | Set the sound volume. |
-| `C` | Change the camera: CINEMATIC (the director camera) or MAP (shows all of the map from above). |
+| `C` | Change the camera: CINEMATIC (the director camera) or MAP. In a battle, the map is the admiral's plot table: a paper chart on a wooden table, with the ships as small painted wooden tokens, the planes as small markers and the strikes as pencil lines. |
+| `G` | Choose whose plot (it also opens the plot table): OMNISCIENT (every ship at its true position), USN PLOT or IJN PLOT. A side's plot shows only what that side knows: enemy tokens at their last-known positions in the type that was reported (a scout can make a mistake), pencil circles that grow as a contact gets old, dashed course arrows, and pinned paper notes for the sighting reports ("2 CV, 040, 0714"). |
+| `X` | On the plot table, show or hide the danger layer: where the chosen side thinks the enemy guns and torpedoes reach (red) and where the enemy AA is (blue). |
+| `L` | Show or hide the war diary: a typed log of the battle with clock times (sightings, strikes, hits, sinkings, the admirals' orders). It shows at the side of the plot table; in the director view it is off until you push `L`. Important entries also show as a short caption. |
 | `F` | Follow the action: start a story now. The camera picks a squadron or a fighter division and follows its mission like a film: the launch, the form-up, the flight out, the attack and the flight home. Push `F` again to stop. The director also tells a story by itself every few minutes. |
 | `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
 | `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
+
+After each battle, an **action report** shows: the winner and how, each side's admiral, the ships and planes each side lost, the ship of the day and the top pilot, and the key moments from the war diary. It stays on the ready screen until the next battle (in auto battles, for about half a minute). Click it to hide it.
 | **1× / 2× / 4×** buttons | Set the game speed. These buttons are in the panel. |
 
 ### Free camera
@@ -140,6 +145,9 @@ The game does not show health bars.
 | `js/freecam.js` | The free camera (mouse and keys). |
 | `js/post.js` | The bloom and the soft tone curve. |
 | `js/ui.js` | The panels, the setup clicks, the captions and fullscreen. |
+| `js/plot_table.js`, `js/plot_tokens.js` | The plot table in map view: the chart, the tokens, the pencil marks and the notes (keys `G`, `X`). |
+| `js/war_diary.js` | The war diary (key `L`). |
+| `js/aar_card.js` | The action report after a battle. |
 | `js/main.js` | The renderer, the main loop and the rounds. |
 | `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. The simulation tests (`npm run test:ai`, `test:balance`, `test:determinism`) run the game in sim-only mode (`index.html?sim`: no rendering, the same results); add `--render` for the full game. Refer to `docs/ARCHITECTURE.md`, "Sim-only mode". |
 
