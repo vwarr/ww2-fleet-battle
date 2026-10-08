@@ -282,7 +282,8 @@ window.WW = window.WW || {};
     _i: {
       acquire: acquire, place: place, orient: orient, findHit: findHit, onHull: onHull,
       damage: damage, fx: fx, stat: stat, depthAt: depthAt, rnd: rnd, rr: rr,
-      G: G, M: M, buildShared: buildShared, updaters: updaters, shipUsable: shipUsable
+      G: G, M: M, buildShared: buildShared, updaters: updaters, shipUsable: shipUsable,
+      active: active // live projectiles (read-only outside combat: intel.js torpedo sightings)
     },
     _debug: function () { return { active: active.length, free: pool.length, total: active.length + pool.length }; }
   };

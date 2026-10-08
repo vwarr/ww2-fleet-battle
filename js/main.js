@@ -198,6 +198,7 @@ window.WW = window.WW || {};
     WW.time.dt = dt; WW.time.now += dt;
     call('terrain', 'update', dt);
     call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
+    call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
     call('air', 'update', dt);
     call('combat', 'update', dt);
