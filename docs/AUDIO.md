@@ -62,7 +62,8 @@ A good `ref` is the distance at which the sound should be at full level: about 7
 
 - **Throttle**: `minGap` (real seconds) per patch. A play inside the gap is skipped (`stats().throttled`).
   Throttles use real time, so at 4× the sound does not become 4× denser. A 3-gun salvo is one boom.
-- **Per-patch cap** (`max`): the oldest voice of that patch is stolen (a loop is never stolen by its own patch).
+- **Per-patch cap** (`max`): for one-shots the oldest voice of that patch is stolen. For loops the quietest voice of that patch is
+  stolen, but only when the new one is 1.5× louder (so two loops at similar distances do not flap). Example: 14 planes, `max: 8`: the 8 nearest have engines.
 - **Global cap** (48): the quietest voice is stolen (a one-shot's level falls over its duration; loops count 1.5× as loud).
   If the new sound is quieter than all of them, it is dropped (`stats().dropped`).
 - A stolen voice fades out in approximately 50 ms.
@@ -72,7 +73,7 @@ A good `ref` is the distance at which the sound should be at full level: about 7
 - Sound uses real time. `WW.time.scale` (1×, 2×, 4×) does not change pitch. Throttling keeps 4× clean.
 - Slow motion (`WW.time.warp` < 1): the engine smooths warp (≈ 0.25 s), then sets `WW.audio.pitch = warp^0.45`
   (0.5 → 0.73) and closes a low-pass on the sfx bus and reverb (0.5 → about 1.6 kHz). A new one-shot gets `p.rate × pitch`.
-  A loop gets `set({ rate })` when its rate changes. A patch must use `rate` if it wants the slow-motion pitch.
+  A loop gets `set({ rate })` from the engine when its effective rate (opts.rate × pitch × doppler) changes; `handle.set()` never forwards engine keys (x, y, z, at, vol, rate, ...) to the patch. A patch must use `rate` if it wants the slow-motion pitch.
 - The speed-of-sound delay is divided by `scale × warp`, so it stays in step with the picture.
 
 ## Writing a patch
@@ -133,6 +134,8 @@ subscribe to events with `WW.on`. Load-time code must not touch the AudioContext
 WW.audio.play('gun.big', { x, y, z, size: 1.2 });       // at a world position
 WW.audio.play('gun.big', { at: ship, vol: 0.8 });       // `at`: any object with x, (y), z
 WW.audio.play('ui.click', { ui: true });                // not positional
+const v = WW.audio.play('shell.whistle', { at: proj });  // returns a voice or null
+if (v) v.stop(0.05);                                    // end it early (fade s). Other voice fields are internal.
 // common opts: vol (1), rate (1), delay (s), sos (override the patch default), ref (override), duck (override)
 
 const h = WW.audio.loop('plane.engine.radial', { at: plane, doppler: true, vol: 0.7 });

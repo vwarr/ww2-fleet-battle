@@ -125,6 +125,26 @@ const PORT = +(process.env.PORT || 8794);
   });
   chk(`global cap: 300 plays -> max ${gcap.mx} voices (${gcap.stolen} stolen, ${gcap.dropped} dropped, ${gcap.culled} culled), peak ${gcap.peak.toFixed(3)}`, gcap.mx <= 48 && gcap.stolen + gcap.dropped > 0 && !gcap.nan && gcap.peak < 0.95 && gcap.errors === 0);
 
+  // ---- loop cap: the nearest loops win; voice.stop(); pan side ----
+  const lc = await p.evaluate(async () => {
+    const S = WW.audio.syn, L = WW.audio.listener, got = [];
+    WW.audio.register('test.hum', { max: 2, ref: 20, build(ctx, out, q) { const s = S.src(ctx, 'pink', q.t); const g = S.gain(ctx, 0.1, out); s.connect(g);
+      return { dur: Infinity, set(k) { got.push(Object.keys(k).join(',')); }, stop(t) { s.stop(t); } }; } });
+    const at = d => ({ x: L.x + L.rx * d, y: L.y + L.ry * d, z: L.z + L.rz * d });
+    const hs = [200, 150, 100].map(d => WW.audio.loop('test.hum', { at: at(d) }));
+    await new Promise(r => setTimeout(r, 1200));
+    const near = WW.audio.loop('test.hum', { at: at(10) });
+    await new Promise(r => setTimeout(r, 1200));
+    near.set({ vol: 0.9, rate: 1.1, foo: 1 });
+    const res = { near: !!near.voice, far: !!hs[0].voice, pan: near.voice ? near.voice.pan.pan.value : null, fwd: got.slice() };
+    hs.concat(near).forEach(h => h.stop(0.05));
+    const c = WW.camera.position, v = WW.audio.play('test.tone', { x: c.x, y: c.y, z: c.z });
+    const n0 = WW.audio.stats().voices; v.stop(0.02); res.stopped = WW.audio.stats().voices === n0 - 1;
+    return res;
+  });
+  chk('loop cap (max 2): nearest loop gets a voice, farthest lost it; pan right ' + (lc.pan || 0).toFixed(2) + '; set() forwards only patch keys ' + JSON.stringify(lc.fwd) + '; voice.stop works ' + lc.stopped,
+    lc.near && !lc.far && lc.pan > 0.3 && !lc.fwd.some(k => /vol|,?x|at/.test(k) && k !== 'foo' && !/^rate$/.test(k)) && lc.fwd.includes('foo') && lc.stopped);
+
   // ---- fps / draw time with sound on vs off during a heavy battle ----
   const fpsOf = () => p.evaluate(() => new Promise(res => { let n = 0, worst = 0, last = performance.now(); const t0 = last;
     (function f() { const t = performance.now(); worst = Math.max(worst, t - last); last = t; n++; if (t - t0 < 5000) requestAnimationFrame(f); else res({ fps: n / ((t - t0) / 1000), worst }); })(); }));

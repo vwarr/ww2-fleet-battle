@@ -24,7 +24,7 @@ window.WW = window.WW || {};
   const patches = Object.create(null), lastPlay = Object.create(null), hooks = [];
   const voices = [], dying = [], loops = [];
   const S = { played: 0, culled: 0, throttled: 0, stolen: 0, dropped: 0, errors: 0, nodes: 0, built: 0 };
-  let ctx = null, M = null, live = false, hidden = false, pending = false, enabled = false, volume = 0.7;
+  let ctx = null, M = null, live = false, hidden = !!document.hidden, pending = false, enabled = false, volume = 0.7;
   let slowF = 1, pitch = 1, lastLp = -1, offTimer = 0;
   const L = { x: 0, y: 50, z: 0, vx: 0, vy: 0, vz: 0, rx: 1, ry: 0, rz: 0, fx: 0, fy: 0, fz: -1, ok: false };
   const NULL_HANDLE = { set() { return this; }, stop() {}, alive: false, virtual: true };
@@ -182,14 +182,31 @@ window.WW = window.WW || {};
   }
   // make room for a new voice of patch `def` at `level`; false = the new one loses
   function room(def, name, level) {
-    let n = 0, oldest = null;
-    for (const v of voices) if (v.name === name) { n++; if (!oldest || v.t0 < oldest.t0) oldest = v; }
-    if (n >= def.max) { if (oldest.loop) return false; remove(oldest); S.stolen++; }
+    let n = 0, oldest = null, quiet = null, qe = 1e9;
+    const now = ctx.currentTime;
+    for (const v of voices) if (v.name === name) {
+      n++; if (!oldest || v.t0 < oldest.t0) oldest = v;
+      const e = estimate(v, now); if (e < qe) { qe = e; quiet = v; }
+    }
+    if (n >= def.max) {
+      // one-shots: steal the oldest; loops: steal the quietest only if clearly louder (no flapping)
+      const victim = oldest.loop ? (level > qe * 1.5 ? quiet : null) : oldest;
+      if (!victim) return false;
+      remove(victim); S.stolen++;
+    }
     if (voices.length < C.MAX_VOICES) return true;
-    const now = ctx.currentTime; let q = null, ql = 1e9;
+    let q = null, ql = 1e9;
     for (const v of voices) { const e = estimate(v, now) * (v.loop ? 1.5 : 1); if (e < ql) { ql = e; q = v; } }
     if (!q || ql >= level) return false;
     remove(q); S.stolen++; return true;
+  }
+  // play() returns the voice; voice.stop(fade) ends it early (e.g. a whistle at impact). Other fields are internal.
+  function stopVoice(fade) {
+    const v = this, i = voices.indexOf(v); if (i < 0 || !ctx) return;
+    voices.splice(i, 1);
+    const t = ctx.currentTime, f = fade == null ? 0.05 : Math.max(0.01, fade);
+    try { v.g.gain.cancelScheduledValues(t); v.g.gain.setTargetAtTime(0, t, f / 4); if (v.inst && v.inst.stop) v.inst.stop(t + f + 0.05); } catch (e) {}
+    v.end = t + f + 0.1; dying.push(v);
   }
   function remove(v) { const i = voices.indexOf(v); if (i >= 0) voices.splice(i, 1); drop(v); }
 
@@ -243,6 +260,7 @@ window.WW = window.WW || {};
       const v = makeVoice(name, def, o, level, pos && { x: pos.x, y: pos.y, z: pos.z }, ctx.currentTime + delay + 0.005);
       if (!v) return null;
       S.played++;
+      v.stop = stopVoice;
       const dk = o.duck != null ? o.duck : def.duck;
       if (dk > 0) duck(dk * Math.min(1, level * 1.5), 1.6, delay);
       return v;
@@ -258,8 +276,8 @@ window.WW = window.WW || {};
         Object.assign(this.p, q);
         const v = this.voice;
         if (v && v.inst && v.inst.set) {
-          let fwd = false; for (const k in q) if (!ENGINE_KEYS[k]) { fwd = true; break; }
-          if (fwd) try { v.inst.set(q); } catch (e) { S.errors++; }
+          let fwd = null; for (const k in q) if (!ENGINE_KEYS[k]) (fwd || (fwd = {}))[k] = q[k];
+          if (fwd) try { v.inst.set(fwd); } catch (e) { S.errors++; }
         }
         return this;
       },
