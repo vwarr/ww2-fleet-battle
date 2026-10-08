@@ -74,7 +74,7 @@ window.WW = window.WW || {};
   // Station points. Offsets are (forward f, lateral l) along the axis of advance B.axis.h from the guide.
   var RING = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]];        // carrier escorts (radius ~80: SPACE.carrier is 70)
   var LINE = [0, -45, 45, -90, 90, -135, 135];                              // battle line, lateral slots
-  // Carrier station safety: no closer than 1.6 x gun range + 20 to any known enemy gun ship (contacts up to 60 s
+  // Carrier station safety: no closer than 1.9 x gun range + 20 to any known enemy gun ship (contacts up to 60 s
   // old): the station slides straight away from it (then back into the band x0..x1 and 80 off the north / south
   // edges). Keeps a pressing or advancing side from leading its carrier toward the enemy's guns.
   function cvSafe(B, p, x0, x1) {
@@ -83,7 +83,7 @@ window.WW = window.WW || {};
     for (var pass = 0; pass < 2; pass++) for (var i = 0; i < cs.length; i++) {
       var c = cs[i], u = c.unit;
       if (!u || !u.alive || u.submerged || u.type === 'carrier' || !u.stats.guns.length || now - c.seenAt > 60) continue;
-      var R = u.stats.guns[0].range * 1.6 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
+      var R = u.stats.guns[0].range * 1.9 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
       if (d >= R || d < 1) continue;
       p.x = WW.clamp(c.x + (p.x - c.x) / d * R, x0, x1); p.z = WW.clamp(c.z + (p.z - c.z) / d * R, 80, H - 80);
     }
