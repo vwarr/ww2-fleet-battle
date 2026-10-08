@@ -3,7 +3,7 @@
 // 2. every aa.* / flak.* patch rendered offline: peak 0.05..1, sane duration, no NaN, not hissy (HF share), varies per play;
 //    WAVs saved to OUT (env AA_DEMOS)
 // 3. sound on (trusted key press) during air strikes: MINUTES_1X real minutes at 1x, MINUTES_4X at 4x:
-//    voices <= cap, each AA patch <= its max, 0 errors, master peak < -1 dBFS, no NaN; play/cull/throttle counts logged
+//    (half of 1x with the director camera, the rest with the camera on AA ships) voices <= cap, each AA patch <= its max, 0 errors, master peak < -1 dBFS, no NaN; play/cull/throttle counts logged
 // 4. a 20 s excerpt of the master output with the camera on the busiest AA ship, saved as a WAV
 const path = require('path'), fs = require('fs'), { spawn } = require('child_process');
 const { chromium } = require('playwright');
@@ -126,7 +126,7 @@ function wav(file, ch, rate, int16b64) { // interleaved 16-bit PCM
     }, 200);
   });
   // keep the battle in a strike: when AA goes quiet for a while, skip ahead to the next one
-  // director camera for the 1x run; for 4x the camera cycles over the busiest heavy / light AA ships of both sides
+  // director camera for the first half of the 1x run; then (and at 4x) the camera cycles over the busiest heavy / light AA ships of both sides
   async function watch(scale, minutes, follow) {
     await p.evaluate(s => __sim.setScale(s), scale);
     const end = Date.now() + minutes * 60000; let skips = 0, nat = 0;
@@ -143,12 +143,15 @@ function wav(file, ch, rate, int16b64) { // interleaved 16-bit PCM
     return skips;
   }
   const c0 = await p.evaluate(() => Object.assign({}, WW.audio.stats(), { aa: Object.assign({}, WW.audioAA) }));
-  const sk1 = await watch(1, M1);
+  const sk1 = await watch(1, M1 / 2);
+  const c1d = await p.evaluate(() => Object.assign({}, WW.audio.stats(), { aa: Object.assign({}, WW.audioAA) }));
+  const sk1f = await watch(1, M1 / 2, true);
   const c1 = await p.evaluate(() => Object.assign({}, WW.audio.stats(), { aa: Object.assign({}, WW.audioAA) }));
   const sk4 = await watch(4, M4, true);
   const c2 = await p.evaluate(() => Object.assign({}, WW.audio.stats(), { aa: Object.assign({}, WW.audioAA) }));
   const dl = (a, b) => { const o = {}; for (const k of ['played', 'culled', 'throttled', 'stolen', 'dropped', 'errors']) o[k] = b[k] - a[k]; for (const k of ['heavy', 'burst', 'light', 'tracer', 'frags', 'bedOnly']) o['aa.' + k] = b.aa[k] - a.aa[k]; return o; };
-  console.log(`1x ${M1} min (${sk1} skips to next strike):`, JSON.stringify(dl(c0, c1)));
+  console.log(`1x ${M1 / 2} min, director camera (${sk1} skips to next strike):`, JSON.stringify(dl(c0, c1d)));
+  console.log(`1x ${M1 / 2} min, camera on AA ships (${sk1f} skips):`, JSON.stringify(dl(c1d, c1)));
   console.log(`4x ${M4} min (${sk4} skips):`, JSON.stringify(dl(c1, c2)));
 
   // ---- 3b. tracer close pass: a light-AA stream aimed past the camera gets a whiz, one aimed elsewhere does not ----
