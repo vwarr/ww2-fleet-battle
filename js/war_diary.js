@@ -173,7 +173,7 @@ window.WW = window.WW || {};
   on('flyingBoat', e => e.order === 'lost' && e.plane && add(observer(e.plane) + ' patrol plane lost', 1, e.nation || e.plane.nation));
   on('admiralOrder', e => {
     if (!e.text) return;
-    const pri = { transfer: 3, flagLost: 3, leaderless: 3, strike: 2, retire: 2, press: 2, command: 1 }[e.order];
+    const pri = { transfer: 3, flagLost: 3, leaderless: 3, strike: 2, retire: 2, press: 2, pursue: 2, command: 1 }[e.order];
     add(e.text, pri === undefined ? 1 : pri, e.nation, { kind: 'admiral', order: e.order });
   });
   on('victory', d => {
