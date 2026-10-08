@@ -65,7 +65,7 @@ window.WW = window.WW || {};
   const order = ship => (WW.fleetCmd && WW.fleetCmd.order ? WW.fleetCmd.order(ship) : null);
 
   // ---------------- submarines ----------------
-  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 18, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3, DD_FIRE: 38, AIM_T: 6, SCUTTLE: 60 }; // DD_FIRE: a destroyer is a narrow, fast target: only close shots hit
+  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 100, REFRESH: 18, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3, DD_FIRE: 38, AIM_T: 6, SCUTTLE: 60 }; // DD_FIRE: a destroyer is a narrow, fast target: only close shots hit
   // The best ambush: { c, ax, az, score } — a point beside the target's predicted track (from its last-known
   // heading and speed) that the sub can reach before the target passes. Never a destroyer (that is cornered fire).
   function ambush(ship) {
