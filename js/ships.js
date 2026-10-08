@@ -115,19 +115,23 @@ window.WW = window.WW || {};
           const a = (k / 16) * TAU, d = this.clearance(a) + 0.5 * WW.terrain.depthAt(this.x + Math.cos(a) * 7, this.z + Math.sin(a) * 7);
           if (d > bd) { bd = d; this.escapeH = a; } // most open water for the whole hull (never off the map edge)
         }
-        this.escapeT = 3; this.escHold = 0;
+        this.escapeT = 3; this.escHold = 0; this.escAstern = false;
+      }
+      // A jammed swing (an end against the shallows or a wreck, turn rate 0 for 1 s): come about the other
+      // way instead, as an escape toward the clearest heading on the free side. An escape that jams again
+      // backs off astern first (bow run up on a shoal).
+      const dj = WW.angleDiff(this.heading, this.escapeT > 0 ? this.escapeH : this.navHeading);
+      this.escStall = Math.abs(dj) > 0.4 && Math.abs(this.turnRate) < 1e-3 && !(this.asternT > 0) ? (this.escStall || 0) + dt : 0;
+      if (this.escStall > 1 && this.escapeT > 0 && !this.escAstern) { this.asternT = 2.5; this.escAstern = true; this.escStall = 0; }
+      if (this.escStall > 1) {
+        this.escAstern = false;
+        let bc = -1;
+        for (const o of [1.2, 2, 2.8]) { const h = this.heading - Math.sign(dj) * o, c = this.clearance(h); if (c > bc) { bc = c; this.escapeH = wrap(h); } }
+        this.escStall = 0; this.escapeT = 3; this.escHold = 0;
       }
       if (this.escapeT > 0) { // swing to face it first (up to 15 s for a big hull), then go for escapeT s
         const off = Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.3;
         if (off && this.escHold < 15) this.escHold += dt; else this.escapeT -= dt;
-        // The swing jammed (an end against the shallows): come about the other way, toward the clearest heading.
-        this.escStall = off && Math.abs(this.turnRate) < 1e-3 ? (this.escStall || 0) + dt : 0;
-        if (this.escStall > 1) {
-          const sg = WW.angleDiff(this.heading, this.escapeH) > 0 ? -1 : 1;
-          let bc = -1;
-          for (const o of [1.2, 2, 2.8]) { const h = this.heading + sg * o, c = this.clearance(h); if (c > bc) { bc = c; this.escapeH = wrap(h); } }
-          this.escStall = 0;
-        }
         this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0; pivot = pivot && off;
       }
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
@@ -156,6 +160,11 @@ window.WW = window.WW || {};
       };
       this.turnRate = 0;
       const v = this.speed * dt, back = -0.35 * st.speed * dt;
+      if (this.asternT > 0) { // backing off a shoal / wreck, rudder toward the plan
+        this.asternT -= dt; this.speed = 0;
+        if (pose(h0 - turn * 0.5, back) || pose(h0, back)) return;
+        this.asternT = 0;
+      }
       for (const f of [1, 0.5]) if (pose(h0 + turn * f, v)) { this.turnRate = dt > 0 ? turn * f / dt : 0; this.blockedT = 0; return; }
       // Slow and the swing is blocked (an end would touch the shallows / map edge): turn in place, else go astern.
       if (Math.abs(turn) > 1e-4 && this.speed < st.speed * 0.3) {
