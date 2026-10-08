@@ -21,6 +21,7 @@ window.WW = window.WW || {};
       I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
       I.fx('splash', x, z, 0.8);
       I.stat('torpedoesFired');
+      if (WW.emit) WW.emit('weaponDropped', { kind: 'torpedo', proj: p, plane: owner || null }); // camera hand-off hook
       return p;
     } catch (e) { return null; }
   }
@@ -34,15 +35,17 @@ window.WW = window.WW || {};
       if (I.depthAt(p.x, p.z) < 1) {
         I.fx('splash', p.x, p.z, 1.2);
         if (I.depthAt(p.x, p.z) <= 0) I.fx('explosion', p.x, 0.5, p.z, 0.8);
+        if (WW.emit) WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: null });
         p.dead = true; return;
       }
       var hit = I.findHit(p.nation, p.x, p.z, 0.4, true, null);
       if (hit) {
         I.damage(hit, p.dmg, p.x, p.z, 'torpedo');
         if (!WW.damage) { I.fx('splash', p.x, p.z, 4); I.fx('explosion', p.x, 0.8, p.z, 2.5); }
+        if (WW.emit) WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: hit });
         p.dead = true; return;
       }
-      if (p.run >= p.range) { p.dead = true; return; }
+      if (p.run >= p.range) { if (WW.emit) WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: null }); p.dead = true; return; }
     }
     I.place(p, p.x, -0.2, p.z);
     p.wakeT -= dt;
@@ -84,6 +87,7 @@ window.WW = window.WW || {};
       p.dmg = ((WW.BOMB && WW.BOMB.dmg) || 180) * I.rr(0.85, 1.15);
       I.place(p, p.x, p.y, p.z); I.orient(p, vx, vy0, vz);
       I.stat('bombsDropped');
+      if (WW.emit) WW.emit('weaponDropped', { kind: 'bomb', proj: p, plane: plane, target: target || null }); // camera hand-off hook
       return p;
     } catch (e) { return null; }
   }
@@ -103,6 +107,7 @@ window.WW = window.WW || {};
     } else {
       I.fx('splash', p.x, p.z, 3);
     }
+    if (WW.emit) WW.emit('weaponImpact', { kind: 'bomb', proj: p, x: p.x, z: p.z, ship: hit || null });
     p.dead = true;
   }
 

@@ -70,10 +70,11 @@ window.WW = window.WW || {};
     }
     for (const p of WW.world.planes) {
       if (!p.alive) continue;
-      if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8, 'chase', p, { dur: dur(12, 14) });
-      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add(7.5, 'orbit', p.target, { r: p.target.stats.length * 1.4 + 22, dur: dur(13, 16), w: 0.05, hgt: 0.34 });
-      else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(5, 'chase', p, { dur: dur(10, 13) });
-      else if (p.state === 'transit' && p.ordnance) add(3, 'chase', p, { dur: dur(12, 15) });
+      const ace = (p.ace ? 3 : 0) + Math.min(2, (+p.kills || 0) * 0.5); // aces (if the game tracks them) draw the eye
+      if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8 + ace, 'chase', p, { dur: dur(12, 14) });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add(7.5 + ace, 'orbit', p.target, { r: p.target.stats.length * 1.4 + 22, dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
+      else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(6.5 + ace, 'ots', p, { dur: dur(10, 13) }); // over the shoulder (camera_action.js)
+      else if (p.state === 'transit' && p.ordnance) add(3 + ace, 'chase', p, { dur: dur(12, 15) });
     }
     (WW.camHooks || []).forEach(f => { try { f(add, dur); } catch (e) { /* never break the director */ } }); // air_aces.js, air_scouts.js
     return out;
@@ -136,9 +137,10 @@ window.WW = window.WW || {};
     snapNext = true; // cut (softened by a cross-fade, see afterRender)
   }
 
-  function shotGoal() {
+  function shotGoal(rdt) {
     const s = shot.subj, k = Math.min(1, shot.t / shot.dur);
     if (s && !gone(s)) pos(s, shot.last || (shot.last = new THREE.Vector3()));
+    if (WW.camAction && WW.camAction.goal(shot, gP, gL, rdt)) return; // bomb / torpedo hand-offs, over-the-shoulder
     const sp = shot.last;
     switch (sp ? shot.kind : 'wide') {
       case 'orbit': {
@@ -196,17 +198,21 @@ window.WW = window.WW || {};
     }
     v.y = need;
     // never sit inside or right next to a ship or plane (a mast filling the frame)
-    for (const s of WW.world.ships) {
-      if (s.removed) continue;
-      const R = s.stats.length * 0.5 + 7, dx = v.x - s.x, dz = v.z - s.z, d = Math.hypot(dx, dz);
-      if (d < R && v.y < 14) { const k = (d > 0.01 ? R / d : 1); v.x = s.x + (d > 0.01 ? dx : 1) * k; v.z = s.z + (d > 0.01 ? dz : 0) * k; }
-    }
+    clearHulls(v);
     for (const p of WW.world.planes) {
       if (p.removed) continue;
       const dx = v.x - p.x, dy = v.y - p.y, dz = v.z - p.z, d = Math.hypot(dx, dy, dz);
       if (d < 9 && d > 0.01) { const k = 9 / d; v.x = p.x + dx * k; v.y = p.y + dy * k; v.z = p.z + dz * k; }
     }
     v.y = Math.max(v.y, 4);
+  }
+
+  function clearHulls(v, top) {
+    for (const s of WW.world.ships) {
+      if (s.removed) continue;
+      const R = s.stats.length * 0.5 + 7, dx = v.x - s.x, dz = v.z - s.z, d = Math.hypot(dx, dz);
+      if (d < R && v.y < (top || 14)) { const k = (d > 0.01 ? R / d : 1); v.x = s.x + (d > 0.01 ? dx : 1) * k; v.z = s.z + (d > 0.01 ? dz : 0) * k; }
+    }
   }
 
   // Composition: aim so the subject sits in the middle band (slightly below centre, rule of thirds),
@@ -249,6 +255,7 @@ window.WW = window.WW || {};
       if (typeof document !== 'undefined') makeFade();
       WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; });
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
+      if (WW.camAction) WW.camAction.init();
     },
     resize() { if (camera) fitMap(); },
     afterRender() {
@@ -271,13 +278,18 @@ window.WW = window.WW || {};
       startShot({ kind: 'orbit', subj: { x, z, y: 0 }, r: (width || 100) * 0.55, dur: hold || 8, w: 0.06, pr: 99 });
       cam.update(0);
     },
+    // test hook: film a given candidate now, e.g. film({ kind: 'chase', subj: plane, dur: 14 })
+    film(c) { forced = true; startShot(Object.assign({ pr: 99, dur: 12 }, c)); },
+    _shot() { return shot; },
     snap() { forced = null; shot = null; snapNext = true; fadeReady = true; cam.update(0); },
     update(rdt) {
       if (!camera) return;
       const st = WW.game && WW.game.state;
+      const fc = WW.freecam && WW.freecam.active();
+      if (WW.camAction) WW.camAction.tick(rdt, st === 'battle' && cam.mode === 'director' && !fc); // slow motion only on director shots
       if (st === 'setup' || !st || cam.mode === 'map') {
         gP.set(W / 2, mapDist * Math.sin(OV_PITCH), mapTz + mapDist * Math.cos(OV_PITCH)); gL.set(W / 2, 0, mapTz);
-      } else if (WW.freecam && WW.freecam.active()) {
+      } else if (fc) {
         // the user has the camera: no cut, just ease from wherever we are; the director resumes later
         WW.freecam.goal(gP, gL, rdt);
         keepSane(gP, gL);
@@ -285,16 +297,19 @@ window.WW = window.WW || {};
       } else {
         manual = false;
         if (shot) shot.t += rdt;
-        if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && dull(shot.subj))) { forced = null; pickShot(); }
-        shotGoal();
+        if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && !shot.stage && dull(shot.subj))) { forced = null; pickShot(); }
+        shotGoal(rdt);
         keepSane(gP, gL);
-        if (shot.kind !== 'wide' && shot.last) compose(shot.last);
+        if (shot.kind !== 'wide' && (shot.aim || shot.last)) compose(shot.aim || shot.last);
       }
       if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)
       else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; }
       else {
-        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 : 0.9)));   // heavy easing for the director, crisp for the user
-        L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 : 1.3)));
+        // heavy easing for the director, crisp for the user; action shots set their own (crisper) rates
+        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 : (shot && shot.kP) || 0.9)));
+        L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 : (shot && shot.kL) || 1.3)));
+        // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)
+        if (!manual && !cam.isOverview() && P.y < 14) { _c.copy(P); clearHulls(_c, 14); P.lerp(_c, (1 - Math.exp(-rdt * 6)) * Math.min(1, (14 - P.y) / 4)); }
       }
       camera.position.copy(P);
       camera.lookAt(L);
