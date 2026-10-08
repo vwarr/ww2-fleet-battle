@@ -25,6 +25,7 @@ window.WW = window.WW || {};
   }
   const nav = (x, z, d) => WW.shipNav.nav(x, z, d), wreckAt = (x, z) => WW.shipNav.wreckAt(x, z); // ships_nav.js
   function wrap(a) { a %= TAU; return a < 0 ? a + TAU : a; }
+  const vr = (a, b) => a + (b - a) * Math.random(); // visual-only randomness (sinking booms, fires, wreck smoke): keeps WW.rand for the sim
 
   class Ship {
     constructor(type, nation, x, z, heading) {
@@ -315,8 +316,8 @@ window.WW = window.WW || {};
       });
       this.boomT -= dt;
       if (this.boomT <= 0 && this.sinkT < 5) {
-        this.boomT = WW.randRange(1.4, 2.8);
-        const p = this.toWorld(WW.randRange(-L * 0.4, L * 0.4), 0);
+        this.boomT = vr(1.4, 2.8);
+        const p = this.toWorld(vr(-L * 0.4, L * 0.4), 0);
         WW.fx.explosion(p[0], 1, p[1], WW.clamp(L / 12, 0.6, 1.8));
         WW.emit('shipBoom', { ship: this, x: p[0], y: 1, z: p[1], size: WW.clamp(L / 16, 0.5, 1.4) }); // sound hook
       }
@@ -324,9 +325,9 @@ window.WW = window.WW || {};
         this.fireT -= dt;
         if (this.fireT <= 0) {
           this.fireT = 0.12;
-          const p = this.toWorld(WW.randRange(-L * 0.3, L * 0.3), 0);
+          const p = this.toWorld(vr(-L * 0.3, L * 0.3), 0);
           WW.fx.fire(p[0], 0.8, p[1]);
-          if (WW.rand() < 0.4) WW.fx.smoke(p[0], 2, p[1], true, 1.5);
+          if (Math.random() < 0.4) WW.fx.smoke(p[0], 2, p[1], true, 1.5);
         }
       }
       if (!this.slickDone && this.sinkT > 3) { this.slickDone = true; WW.fx.oilSlick(this.x, this.z, L * 0.8); }
@@ -348,8 +349,8 @@ window.WW = window.WW || {};
       if (this.wreckT > 30 || this.wreckInfo.top < 0.3) return;
       this.smokeT -= dt;
       if (this.smokeT <= 0) {
-        this.smokeT = WW.randRange(0.6, 1.2) * (this.dmgSites.length ? 2.5 : 1); // lighter when hit sites smoke too
-        WW.fx.smoke(this.x + WW.randRange(-1, 1), Math.max(0.5, Math.min(this.wreckInfo.top, 4)), this.z + WW.randRange(-1, 1), true, 0.5);
+        this.smokeT = vr(0.6, 1.2) * (this.dmgSites.length ? 2.5 : 1); // lighter when hit sites smoke too
+        WW.fx.smoke(this.x + vr(-1, 1), Math.max(0.5, Math.min(this.wreckInfo.top, 4)), this.z + vr(-1, 1), true, 0.5);
       }
     }
 
@@ -418,6 +419,7 @@ window.WW = window.WW || {};
       for (const s of WW.world.ships) s.remove();
       for (const s of wreckShips) s.remove();
       WW.world.ships.length = 0; wreckShips.length = 0;
+      nextId = 1; // ids feed sim maths (ships_ai jink phase): same ids every round for a seeded replay
       if (WW.world.wrecks) WW.world.wrecks.length = 0; else WW.world.wrecks = [];
       if (WW.damage) WW.damage.clearAll();
     }

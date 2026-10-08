@@ -15,6 +15,7 @@ const N = +(process.argv[2] || 3), SEED0 = +(process.argv[3] || 1);
   for (let i = 0; i < N; i++) {
     const r = await p.evaluate(seed => {
       const G = WW.game; WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
+      G.composition = null; G.mode = 'auto'; // the page boots into setup with its own random fleets: start from this seed's fleets
       G.startRound({ keepMap: true });
       __sim.fastForward(20); // past the opening turns
       const S = {}, D = 0.5 * Math.PI / 180;

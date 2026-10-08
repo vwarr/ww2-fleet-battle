@@ -17,8 +17,10 @@ window.WW = window.WW || {};
   var BUDGET = 80;                // wanted site smoke puffs per sim second across all ships (+ fires ~2x)
   var WRECK_SMOKE = 30;           // seconds of residual smoke after a wreck settles
 
-  function pickWind() {
-    var a = R() * Math.PI * 2, s = rr(0.5, 0.9);
+  // The wind steers carriers (air_deck.js into-the-wind turns), so a round's wind comes from WW.rand.
+  function pickWind(rnd) {
+    rnd = rnd || R;
+    var a = rnd() * Math.PI * 2, s = 0.5 + 0.4 * rnd();
     WW.wind = { x: Math.cos(a) * s, z: Math.sin(a) * s, a: a };
   }
   pickWind();
@@ -238,7 +240,7 @@ window.WW = window.WW || {};
     clearAll: function () {
       for (var i = 0; i < burning.length; i++) if (burning[i].dmgSites) burning[i].dmgSites.length = 0;
       burning.length = 0; load = 1; demand = 0;
-      pickWind();
+      pickWind(WW.rand);
     },
     // site world position (tests)
     siteWorld: function (ship, i) { var s = ship.dmgSites && ship.dmgSites[i || 0]; if (!s) return null; var p = worldOf(ship, s); return { x: p.x, y: p.y, z: p.z }; },
