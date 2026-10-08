@@ -19,7 +19,7 @@ window.WW = window.WW || {};
   const sprites = new Map();
   let wrecks = [];
   const hash = o => { const v = o && (o.id || 0); return ((v * 2654435761) % 1000) / 1000; };
-  const tokLen = t => 12 + (WW.SHIP_TYPES[t] ? WW.SHIP_TYPES[t].length : 12) * 1.75;
+  const tokLen = t => 14 + (WW.SHIP_TYPES[t] ? WW.SHIP_TYPES[t].length : 12) * 2.1; // toy scale: about 2.5x the hull
 
   // ---------- token sprites ----------
   function hull(g, type, L, B) {
