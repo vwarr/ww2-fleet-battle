@@ -5,7 +5,7 @@
 window.WW = window.WW || {};
 (function () {
   const PI = Math.PI;
-  const SUB_MAX_DIVE = 45, SUB_SURFACE = 25; // a sub must surface after this long submerged, for this long
+  const SUB_MAX_DIVE = 45, SUB_SURFACE = 25, SUB_HUNTED = 20; // a sub must surface after this long submerged, for this long
   const H = WW.shipAI.h, bearing = H.bearing, seen = H.seen, lead = H.lead;
   const VAL = { carrier: 4, battleship: 3, cruiser: 2, destroyer: 1.2, submarine: 0.6, pt: 0 };
 
@@ -131,7 +131,8 @@ window.WW = window.WW || {};
     const tgt = L.amb ? L.amb.c.unit : null, d = tgt ? WW.dist(ship.x, ship.z, tgt.x, tgt.z) : 1e9;
     // ---- depth: air and batteries run out after SUB_MAX_DIVE s under water: surface for SUB_SURFACE s ----
     a.diveT = ship.submerged ? (a.diveT || 0) + dt : 0;
-    if (a.diveT > SUB_MAX_DIVE && !(a.forcedT > 0)) a.forcedT = SUB_SURFACE;
+    // hunted (a destroyer inside DD_SAFE) the crew stretches the air up to SUB_HUNTED s more rather than surface under it
+    if (a.diveT > SUB_MAX_DIVE + (L.ddD < SUB.DD_SAFE ? SUB_HUNTED : 0) && !(a.forcedT > 0)) a.forcedT = SUB_SURFACE;
     // Hard threats keep the boat down (and abort a surfacing). A destroyer out past DD_SAFE, or a target still
     // closing, only keeps it down while the air is fresh: with the clock past REFRESH it surfaces now, while it is
     // still safe, rather than be forced up later in the middle of a hunt.
