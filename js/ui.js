@@ -85,6 +85,10 @@ window.WW = window.WW || {};
     btn(ar, 'New map', () => WW.game.enterSetup(true));
     btn(ar, 'Start', startBattle, 'go');
     el.count = $('div', 'row dim small', el.setup);
+    el.adm = $('div', 'row small adm', el.setup); // the two admirals (admirals.js preview); click: other admirals
+    el.adm.style.cursor = 'pointer'; el.adm.title = 'Click for other admirals';
+    el.adm.addEventListener('click', () => { if (WW.admirals) WW.admirals.reroll(); });
+    WW.on('admiralsPreview', admLine);
     el.msg = $('div', 'msg', root);
 
     el.film = document.getElementById('film');
@@ -92,7 +96,10 @@ window.WW = window.WW || {};
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
     WW.on('roundStart', () => { s0 = Object.assign({}, WW.stats); hudPeek = false; });
     WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); });
-    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : lossLine(), 5, false));
+    WW.on('victory', d => {
+      const a = d.winner && WW.admirals && WW.admirals.of(d.winner), sub = d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : lossLine();
+      caption(a ? a.title + "'s task force victorious" : d.winner ? d.winner + ' victory' : 'Stalemate', a ? d.winner + ' victory  \u00b7  ' + sub : sub, 5, false);
+    });
 
     const canvas = document.getElementById('game');
     canvas.addEventListener('mousedown', onMouse);
@@ -114,6 +121,11 @@ window.WW = window.WW || {};
     const lost = n => (WW.endgame && WW.endgame.stats ? WW.endgame.stats.sunk[n] : WW.world.ships.filter(s => s.nation === n && !s.alive && !s.escaped).length); // sunk this round (escapes are not losses)
     const sh = k => k === 1 ? ' ship' : ' ships';
     return 'USN lost ' + lost('USN') + sh(lost('USN')) + '  \u00b7  IJN lost ' + lost('IJN') + sh(lost('IJN'));
+  }
+  function admLine() {
+    if (!el.adm || !WW.admirals) return;
+    const L = n => { const P = WW.admirals.preview(n); return P ? n + ': ' + P.full.replace(/^(Rear |Vice )?Adm\. /, 'Adm. ') + ' \u2014 ' + P.blurb : ''; };
+    el.adm.textContent = L('USN') + '\n' + L('IJN');
   }
   function say(text) { el.msg.textContent = text; msgTimer = 2.5; }
   // film-style caption: fades in, holds, fades out
