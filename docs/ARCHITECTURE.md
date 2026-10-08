@@ -411,7 +411,7 @@ Order = { ship, group, role, slot, sx, sz, t };
 | field | USN | IJN | used by |
 |---|---|---|---|
 | aggression | 0.5 | 0.65 | press threshold |
-| rangeFrac | 0.8 | 0.78 | battleship / cruiser preferred range (× main battery range) |
+| rangeFrac | 0.78 | 0.78 | battleship / cruiser preferred range (× main battery range) |
 | torpedo | 0.35 | 0.8 | launch distance (× torpedo range: 0.6 + 0.3 × torpedo) |
 | carrier | 0.8 | 0.55 | strike tempo (interval × (1.25 − 0.5 × carrier)) |
 | night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.72 + 0.15 × (1 − night))) |
