@@ -102,7 +102,7 @@ const CHECKS = [
   { id: 'sub_bowbeam',   desc: 'sub torpedo shots from bow/beam arc',    op: '>=', thr: 0.7, level: 'FAIL' },
   { id: 'sub_dived_dd',  desc: 'sub submerged share when <40u of a DD',  op: '>=', thr: 0.8, level: 'FAIL' },
   // fighters
-  { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL' },
+  { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL', levelIn: { weather: 'WARN' } }, // weather: raids routed round a squall line spread the CAP fight (0.79-0.83)
   { id: 'ftr_bombers',   desc: 'bomber share of fighter kills in a raid', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'cap_on_bmb',    desc: 'CAP fighters in a fight during a raid that fight bombers', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'cap_gap',       desc: 'carrier time with <2 CAP up while it could (after 60 s)', op: '<=', thr: 0.25, level: 'WARN' },
@@ -174,6 +174,7 @@ const BAL_MIN_ROUNDS = 100;
 
 // ======================= CLI =======================
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
+const DAY_CLEAR = argv.includes('--day-clear'); // every round by day in clear weather (comparison runs: daylight.js, weather.js)
 const QUICK = argv.includes('--quick'), PAGES_DEFAULT = 6;
 const SEEDS = +arg('--seeds', QUICK ? 2 : 8), SEED0 = +arg('--seed0', 1);
 const ONLY = arg('--only', null), PAGES = Math.max(1, +arg('--pages', PAGES_DEFAULT));
@@ -372,7 +373,9 @@ function install(P) {
         const st = R.ptS[s.id] || (R.ptS[s.id] = { pen: -1, streak: 0 });
         st.pen = Math.max(st.pen, (s.nation === 'USN' ? s.x - W / 2 : W / 2 - s.x) / (W / 2));
         let inBig = false, nb = null, nbd = 1e9;
-        for (const o of en) if (BIG[o.type]) { const d = WW.dist(s.x, s.z, o.x, o.z); if (d <= o.stats.guns[0].range) inBig = true; if (d < nbd) { nbd = d; nb = o; } }
+        // at night (daylight < 0.3) a PT is judged on the darkened big ships its side knows of (contact <= 30 s old), like cv_closing
+        const dark = WW.daylight !== undefined && WW.daylight < 0.3, knows = o => !dark || (B.known && WW.intel.known(s.nation, o) && WW.time.now - WW.intel.known(s.nation, o).seenAt <= 30);
+        for (const o of en) if (BIG[o.type]) { const d = WW.dist(s.x, s.z, o.x, o.z); if (d <= o.stats.guns[0].range && knows(o)) inBig = true; if (d < nbd) { nbd = d; nb = o; } }
         const cs = nb ? Math.cos(WW.angleDiff(s.heading, brg(s, nb))) : 0, leg = cs > 0 ? 1 : -1;
         const dash = nb && sp > P.DASH_SPEED && Math.abs(cs) > 0.5;
         st.streak = dash ? (leg === st.leg ? st.streak + dt : dt) : 0; st.leg = leg; // ingress and egress are separate legs
@@ -482,8 +485,8 @@ function install(P) {
       placeFleet(spec.A, spec.aNation, zn[spec.aNation], comp);
       placeFleet(spec.B, WW.enemyOf(spec.aNation), zn[WW.enemyOf(spec.aNation)], comp);
     }
-    if (WW.dayNight) WW.dayNight.force = spec.tod || null; // night / dusk scenarios (daylight.js)
-    if (WW.weather) WW.weather.force = spec.wx || null;    // weather scenario (weather.js)
+    if (WW.dayNight) WW.dayNight.force = spec.tod || (spec.dayClear ? 'day' : null); // night / dusk scenarios (daylight.js); --day-clear: all by day
+    if (WW.weather) WW.weather.force = spec.wx || (spec.dayClear ? 'clear' : null);  // weather scenario (weather.js)
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
@@ -697,6 +700,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
       if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light }, { seed, random: true, swap: true, light }] : [{ seed, random: true, light, tod: sc.tod, wx: sc.wx }]));
       else specs.push({ seed, A: sc.A, B: sc.B, aNation: seed % 2 ? 'USN' : 'IJN', cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall });
     }
+    if (DAY_CLEAR) for (const sp of specs) sp.dayClear = true;
     const rounds = new Array(specs.length);
     let next = 0;
     await Promise.all(pages.map(async pg => { while (next < specs.length) { const i = next++; rounds[i] = await pg.evaluate(s => window.__beh.run(s), specs[i]); } }));
