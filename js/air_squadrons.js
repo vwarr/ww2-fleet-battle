@@ -126,7 +126,7 @@ window.WW = window.WW || {};
     return r + ' ' + pl.name;
   }
 
-  function clear() { elems = []; }
+  function clear() { elems = []; nextEl = 1; } // element ids feed the escort weave phase: same ids every round
   if (WW.air) {
     const launch = WW.air.launch, upd = WW.air.update;
     WW.air.launch = function (cv, kind, target) {
