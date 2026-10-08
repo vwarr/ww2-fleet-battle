@@ -33,77 +33,12 @@ window.WW = window.WW || {};
   function fbm(x, z) { return vnoise(x, z) * 0.6 + vnoise(x * 2.1 + 17, z * 2.1 + 9) * 0.3 + vnoise(x * 4.3 + 5, z * 4.3 + 31) * 0.1; }
   const smooth = (a, b, x) => { const t = WW.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
-  // ---- features: islands, spits, sandbars, reefs ----
-  let features = [];
-  function addFeature(kind, cx, cz, rx, rz, rot, peak) {
-    features.push({ kind, cx, cz, rx, rz, c: Math.cos(rot), s: Math.sin(rot), peak, });
-  }
-  // pick a centre at least `gap` units from the main features already placed (keeps features separate)
-  const centres = [];
-  function spot(x0, x1, z0, z1, gap) {
-    let best = null, bestD = -1;
-    for (let k = 0; k < 40; k++) {
-      const x = rr(x0, x1), z = rr(z0, z1);
-      let d = 1e9;
-      for (const c of centres) d = Math.min(d, Math.hypot(x - c[0], z - c[1]));
-      if (d >= gap) { best = [x, z]; break; }
-      if (d > bestD) { bestD = d; best = [x, z]; }
-    }
-    centres.push(best);
-    return best;
-  }
-  // Features sit in the open sea between the two start zones (x 135 .. W - 135); counts scale with that area.
-  function makeFeatures() {
-    features = []; centres.length = 0;
-    const nIsl = 3 + Math.floor(rnd() * 4);
-    for (let i = 0; i < nIsl; i++) {
-      const [cx, cz] = spot(150, W - 150, 50, H - 50, 90), r = rr(10, 17);
-      addFeature('island', cx, cz, r * rr(0.7, 1.3), r * rr(0.6, 1.1), rr(0, Math.PI), rr(3, 8));
-      if (rnd() < 0.5) { // spit trailing off the island
-        const a = rr(0, Math.PI * 2), len = r * rr(1.1, 1.8);
-        addFeature('spit', cx + Math.cos(a) * len * 0.7, cz + Math.sin(a) * len * 0.7, len * 0.6, rr(1.8, 3), a, rr(0.5, 1.2));
-      }
-    }
-    const nSmall = 4 + Math.floor(rnd() * 5);
-    for (let i = 0; i < nSmall; i++) {
-      const [x, z] = spot(140, W - 140, 25, H - 25, 60);
-      addFeature('islet', x, z, rr(4, 7), rr(4, 7), rr(0, 3), rr(1.5, 3.5));
-    }
-    const nBar = 2 + Math.floor(rnd() * 3);
-    for (let i = 0; i < nBar; i++) {
-      const edge = rnd() < 0.35, top = rnd() < 0.5; // a bar may sit near the top/bottom edges anywhere
-      const [cx, cz] = edge ? spot(40, W - 40, top ? 10 : H - 35, top ? 35 : H - 10, 50) : spot(140, W - 140, 30, H - 30, 50);
-      addFeature('bar', cx, cz, rr(8, 18), rr(1.5, 2.5), rr(0, Math.PI), rr(-0.4, 0.4));
-    }
-    const nReef = 3 + Math.floor(rnd() * 4);
-    for (let i = 0; i < nReef; i++) {
-      const [x, z] = spot(130, W - 130, 20, H - 20, 50);
-      addFeature('reef', x, z, rr(5, 10), rr(3, 7), rr(0, 3), rr(-2.6, -1.4));
-    }
-  }
-
-  let radScale = 1;
-  // shelf: width (units) of the shallow ledge outside the coast; drop: width of the slope down to deep water
-  const SHELF = { island: [6, 20], islet: [4, 15], spit: [3, 9], bar: [2.5, 7], reef: [3, 10] }; // gentle shelves, no cliffs
-  function featureHeight(f, x, z) {
-    const dx = x - f.cx, dz = z - f.cz;
-    const u = dx * f.c + dz * f.s, v = -dx * f.s + dz * f.c;
-    const rx = f.rx * radScale, rz = f.rz * radScale, rmin = Math.min(rx, rz);
-    const sh = SHELF[f.kind];
-    let n = Math.sqrt((u / rx) * (u / rx) + (v / rz) * (v / rz));
-    if (n > (1 + (sh[0] + sh[1]) / rmin) / 0.75) return -99;
-    n *= 0.88 + 0.24 * vnoise(x * 0.05 + 40, z * 0.05 + 40); // gently wobbly, rounded coast
-    const shoreH = -0.7;
-    if (n < 1) {
-      if (f.peak < shoreH) return f.peak - 0.8 * n * n; // submerged reef: a gentle dome, no flat rim near the surface
-      // soft rounded lump; the blend with a linear term keeps a real slope at the waterline (clean foam line)
-      const k = 0.6 * smooth(1, 0.45, n) + 0.4 * WW.clamp((1 - n) / 0.55, 0, 1);
-      return shoreH + (f.peak - shoreH) * k;
-    }
-    const e = (n - 1) * rmin; // approx distance from the coast
-    if (e < sh[0]) return Math.min(f.peak, shoreH) - 2.8 * e / sh[0];
-    return WW.lerp(Math.min(f.peak, shoreH) - 2.8, -BASE_DEPTH - 4, smooth(sh[0], sh[0] + sh[1], e));
-  }
+  // ---- features: the island layout (terrain_islands.js) ----
+  let features = [], radScale = 1;
+  const TI = () => WW.terrainIslands;
+  const KIT = { rnd, rr: (a, b) => rr(a, b), vnoise: (x, z) => vnoise(x, z), smooth: (a, b, x) => smooth(a, b, x), BASE: BASE_DEPTH };
+  function makeFeatures() { features = TI().make(KIT).features; }
+  function featureHeight(f, x, z) { return TI().featureHeight(f, x, z, radScale); }
   // raw terrain height (negative = under water) anywhere, including outside the map
   function heightRaw(x, z) {
     let h = -BASE_DEPTH + (fbm(x * 0.012, z * 0.012) - 0.5) * 8;
@@ -117,7 +52,7 @@ window.WW = window.WW || {};
     }
     // small surface roughness
     h += (vnoise(x * 0.12, z * 0.12) - 0.5) * (h > 0 ? 0.4 : 0.5);
-    return h;
+    return TI().flatten(h, x, z); // the airfield pad: flat ground
   }
 
   function landFraction(step) {
@@ -215,7 +150,7 @@ window.WW = window.WW || {};
     let palms = 0, huts = 0;
     for (let tries = 0; tries < 12000 && palms < 120; tries++) {
       const x = rr(0, W), z = rr(0, H), h = -depthAt(x, z);
-      if (h < 0.6 || h > 4.5) continue;
+      if (h < 0.6 || h > 4.5 || TI().padDist(x, z) < 9) continue;
       const g = new THREE.Group();
       const tall = rr(1.6, 2.6);
       const trunk = new THREE.Mesh(shared.trunkGeo, shared.trunkMat);
@@ -232,7 +167,7 @@ window.WW = window.WW || {};
     }
     for (let tries = 0; tries < 6000 && huts < 14; tries++) {
       const x = rr(0, W), z = rr(0, H), h = -depthAt(x, z);
-      if (h < 1.2 || h > 3.5) continue;
+      if (h < 1.2 || h > 3.5 || TI().padDist(x, z) < 14) continue;
       const g = new THREE.Group();
       const body = new THREE.Mesh(shared.hutGeo, shared.hutMat); body.position.y = 0.55; g.add(body);
       const roof = new THREE.Mesh(shared.roofGeo, shared.roofMat); roof.position.y = 1.5; roof.rotation.y = Math.PI / 4; g.add(roof);
@@ -267,9 +202,9 @@ window.WW = window.WW || {};
     rs = (seed >>> 0) || 1;
     seedNoise();
     makeFeatures();
-    // tune feature size so land covers ~4-6.5% of the map
-    const target = rr(0.04, 0.065);
-    let lo = 0.3, hi = 3.2;
+    // tune the size of the free islands (not the atoll or the airfield island) so land covers ~4.5-7% of the map
+    const target = rr(0.045, 0.07);
+    let lo = 0.5, hi = 3;
     for (let it = 0; it < 9; it++) {
       radScale = (lo + hi) / 2;
       if (landFraction(10) > target) hi = radScale; else lo = radScale; // coarse samples: fast enough on the big map
@@ -299,5 +234,6 @@ window.WW = window.WW || {};
     return best;
   }
 
-  WW.terrain = { init() {}, generate, depthAt, isNavigable, randomSeaPoint, update, seed: 0, landFraction: 0 };
+  WW.terrain = { init() {}, generate, depthAt, isNavigable, randomSeaPoint, update, seed: 0, landFraction: 0,
+    get site() { return TI().site; }, padDist: (x, z) => TI().padDist(x, z), PAD_H: 1.2 };
 })(window.WW);
