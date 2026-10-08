@@ -130,7 +130,8 @@ const CHECKS = [
 ];
 const DOCTRINE_INFO = ['deck_hits', 'deck_safe', 'deck_planes', 'deck_chain', 'fires', 'fires_out_usn', 'fires_out_ijn', 'fire_kills', 'usn_repaired', 'magazines',
   'charges', 'charge_dds', 'charge_lost', 'charge_torp', 'charge_turned', 'charge_cv_sunk'];
-const INFO = [...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const BASE_INFO = ['base_neut', 'base_t_neut', 'base_raids', 'rw_closures', 'batteries_out', 'land_strikes', 'land_sorties', 'land_hits', 'bombard_runs', 'bombard_shells'];
+const INFO = [...BASE_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -147,6 +148,8 @@ const SCEN = [
   { name: 'lone_cripple', A: ['battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer'], B: ['battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer'], cripple: 1 },
   { name: 'asymmetric', A: ['carrier', 'battleship', 'battleship', 'cruiser', 'cruiser', ...rep('destroyer', 3), 'submarine', 'pt', 'pt'], B: ['cruiser', 'destroyer', 'destroyer'] },
   { name: 'mirror', random: true, mirror: true }, // random fleets, each run twice with USN/IJN swapped (nation bias)
+  // the fight for an island (island_base.js): a USN base and a USN carrier group against an IJN carrier striking force
+  { name: 'midway', A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
   // Balance gate: run only on request (--only balance --seeds 100 [--pages 4]). Light rounds: no behaviour sampling.
   { name: 'balance', random: true, light: true, optIn: true },
   { name: 'balance_mirror', random: true, mirror: true, light: true, optIn: true } // same fleet twice, sides swapped
@@ -431,7 +434,8 @@ function install(P) {
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
-    G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
+    G.baseChoice = spec.base || null; // the island base's owner (island_base.js); null: the round's WW.rand roll
+    G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
     R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9, brkN: 0, brkGun: 0, brkMin: 1e9 }, spd: [0, 0, 0, 0], spdN: [0, 0, 0, 0], pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
@@ -456,6 +460,7 @@ function install(P) {
       eg: WW.endgame && WW.endgame.stats ? JSON.parse(JSON.stringify(WW.endgame.stats)) : null, spd: R.spd, spdN: R.spdN,
       sf: WW.shipFires && WW.shipFires.stats ? JSON.parse(JSON.stringify(WW.shipFires.stats)) : null,
       ch: WW.charge && WW.charge.stats ? JSON.parse(JSON.stringify(WW.charge.stats)) : null,
+      base: WW.islandBase && WW.islandBase.stats ? Object.assign({ has: !!WW.islandBase.base }, WW.islandBase.stats) : null,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
@@ -492,7 +497,16 @@ function aggregate(rounds) {
   const avgOf = (f, k, n) => (rounds.length ? S(r => both(r[f], k, n)) / rounds.length : null);
   const share = k => (rounds.length ? rounds.filter(r => r.end === k).length / rounds.length : null);
   const spd = [0, 1, 2, 3].map(k => ratio(S(r => (r.spd ? r.spd[k] : 0)), S(r => (r.spdN ? r.spdN[k] : 0))));
+  const bases = rounds.filter(r => r.base && r.base.has), BS = f => S(r => (r.base && r.base.has ? f(r.base) : 0));
+  const perBase = f => (bases.length ? BS(f) / bases.length : null);
   return {
+    // island base (info): share of rounds with a base that saw it neutralized, median time to it, land strikes / hits,
+    // bombardment runs per base round
+    base_neut: bases.length ? bases.filter(r => r.base.neutralizedAt !== null).length / bases.length : null,
+    base_t_neut: med(bases.map(r => r.base.neutralizedAt).filter(v => v !== null)),
+    land_strikes: perBase(b => b.landStrikes), land_sorties: perBase(b => b.landSorties), land_hits: perBase(b => b.landHits),
+    bombard_runs: perBase(b => b.bombardRuns), bombard_shells: perBase(b => b.bombardShells), base_raids: perBase(b => b.raids),
+    rw_closures: perBase(b => b.closures), batteries_out: perBase(b => b.batteriesOut),
     rounds: rounds.length,
     deck_hits: avgOf('sf', 'deckHits'), deck_safe: avgOf('sf', 'deckSafe'), deck_planes: avgOf('sf', 'deckPlanes'), deck_chain: avgOf('sf', 'chain'),
     fires: avgOf('sf', 'started'), fires_out_usn: avgOf('sf', 'out', 'USN'), fires_out_ijn: avgOf('sf', 'out', 'IJN'), fire_kills: avgOf('sf', 'fireKills'),
@@ -584,7 +598,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     for (let i = 0; i < SEEDS; i++) {
       const seed = SEED0 + i, light = !!sc.light;
       if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light }, { seed, random: true, swap: true, light }] : [{ seed, random: true, light }]));
-      else specs.push({ seed, A: sc.A, B: sc.B, aNation: seed % 2 ? 'USN' : 'IJN', cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall });
+      else specs.push({ seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall, base: sc.base || null });
     }
     const rounds = new Array(specs.length);
     let next = 0;
@@ -615,9 +629,11 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
       console.log(`  balance: USN ${wins.USN} / IJN ${wins.IJN} / draw ${wins.draw} of ${rounds.length};  USN win rate on decided ${fmt(ratio(u, d))}  95% CI [${(M.usn_ci || []).join(', ')}]` +
         `;  ${(Date.now() - t0) / 1000 / rounds.length * PAGES >= 0 ? ((Date.now() - t0) / 1000 / rounds.length).toFixed(2) : ''} s wall/round (${PAGES} page${PAGES > 1 ? 's' : ''})` +
         (sc.mirror ? `;  same fleet won both sides in ${pairs(rounds)} of ${rounds.length >> 1} pairs` : ''));
+      const own = o => rounds.filter(r => (r.base && r.base.has ? r.base.owner : 'none') === o);
+      console.log('  by base owner: ' + ['USN', 'IJN', 'none'].map(o => { const L = own(o); return `${o} base: ${L.length} rounds, USN ${L.filter(r => r.winner === 'USN').length} / IJN ${L.filter(r => r.winner === 'IJN').length} / draw ${L.filter(r => !r.winner).length}`; }).join(';  '));
     }
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
-    else console.log('  info: ' + [...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
+    else console.log('  info: ' + [...BASE_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
   }
   console.log('\n=== SUMMARY ===');
   console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);
