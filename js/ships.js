@@ -254,9 +254,14 @@ window.WW = window.WW || {};
       this.wakeT -= dt;
       if (this.wakeT <= 0 && this.speed > 0.6) {
         if (this.type === 'submarine' && this.submerged) {
-          this.wakeT = 0.3;
+          // at periscope depth with an enemy ship within 110 (checked every 1 s): the periscope's feather, a thin
+          // white streak a little ahead of the hull's swirl (visual only)
+          this.periT = (this.periT || 0) - 0.3;
+          if (this.periT <= 0) { this.periT = 1; this.peri = WW.world.ships.some(o => o.alive && o.nation !== this.nation && !o.submerged && WW.dist2(o.x, o.z, this.x, this.z) < 12100); }
+          this.wakeT = this.peri ? 0.12 : 0.3;
           const p = this.toWorld(st.length * 0.1, 0);
           fx.wake(p[0], p[1], this.heading, 0.4);
+          if (this.peri) { const q = this.toWorld(st.length * 0.3, 0); fx.wake(q[0], q[1], this.heading, 0.3); }
         } else {
           this.wakeT = 0.12;
           const p = this.toWorld(-st.length * 0.45, 0);

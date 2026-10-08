@@ -34,15 +34,18 @@ window.WW = window.WW || {};
   //                running ahead as pickets and bait (IJN 0.33: Kido Butai's vanguard at Santa Cruz); 0: cvStandoff
   //   zigzag       zigzag plan scale under sub threat (fleet_formation.js; both navies zigzagged)
   //   subLine      (flag) submarines form a patrol line across the enemy's predicted approach (IJN; USN subs
-  //                patrol the flank) - see ai_sub_roles.js for the sub doctrine (subCV, lifeguard)
+  //                patrol the flank)
+  //   subCV        sub ambush weight of a carrier contact (IJN 2.2: carriers above all); subNear: the time scale (s) of
+  //                the reach discount (USN 25: the nearest worthwhile target); subShadow (flag, IJN): shadow what it
+  //                cannot get ahead of; lifeguard (flag, USN): surfaced boats pick up survivors and aircrew (ai_sub_roles.js)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.3, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
-      ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false,
+      ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true,
-      ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true,
+      ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
@@ -51,7 +54,7 @@ window.WW = window.WW || {};
     for (k in b) if (typeof b[k] === 'number') d[k] = b[k] * j();
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
-    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.ringDD = b.ringDD;
+    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.ringDD = b.ringDD; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
     d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1);
     return d;

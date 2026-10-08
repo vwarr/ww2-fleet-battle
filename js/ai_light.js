@@ -84,9 +84,12 @@ window.WW = window.WW || {};
       }
       let iso = 1;
       for (const q of contacts(ship, 20)) if (q.unit.type === 'destroyer' && WW.dist(q.x, q.z, c.x, c.z) < 80) { iso = 0.45; break; }
-      const k = w * iso * (u.hp < u.maxHp * 0.5 ? 1.4 : 1) * (u.stats.speed < 5 ? 1.15 : 1);
-      const s = pick ? k / (1 + pick.t / 40) : k * 0.2 / (1 + WW.dist(ship.x, ship.z, x0, z0) / 100);
-      if (!best || s > best.score) best = { c, score: s, ax: pick ? pick.ax : x0, az: pick ? pick.az : z0 };
+      // the navy's sub doctrine (ai_sub_roles.js): IJN carriers above all, USN the nearest worthwhile target;
+      // a contact it cannot get ahead of: IJN shadows it from off its quarter, USN closes its position
+      const R = WW.subRoles, k = w * iso * (u.hp < u.maxHp * 0.5 ? 1.4 : 1) * (u.stats.speed < 5 ? 1.15 : 1) * (R ? R.weight(ship, u.type) : 1);
+      const s = pick ? k / (1 + pick.t / (R ? R.nearT(ship) : 40)) : k * 0.2 / (1 + WW.dist(ship.x, ship.z, x0, z0) / 100);
+      const shd = !pick && R ? R.shadowPoint(ship, c, x0, z0, side) : null;
+      if (!best || s > best.score) best = { c, score: s, ax: pick ? pick.ax : shd ? shd.ax : x0, az: pick ? pick.az : shd ? shd.az : z0, shadow: !!shd };
     }
     return best;
   }
@@ -141,6 +144,7 @@ window.WW = window.WW || {};
     if (a.forcedT > 0) { a.forcedT -= dt; ship.wantSurface = true; }
     else ship.wantSurface = !hard && (!soft || a.diveT > SUB.REFRESH);
     a.evadeT -= dt;
+    if (WW.subRoles && WW.subRoles.lifeguard(ship, dt, L)) return; // USN: surfaced, picking up survivors or aircrew
     const away = (o) => Math.atan2(ship.z - o.z, ship.x - o.x);
     // ---- cornered: a destroyer hunting the boat (inside sonar range) or bearing down on it is the one exception
     // to "never a destroyer". The boat stays deep and slow with its bow on that one destroyer, so a spread is ready
@@ -182,7 +186,9 @@ window.WW = window.WW || {};
       ship.desiredHeading = h; ship.throttle = 0.45;
       return;
     }
+    if (L.amb && L.amb.shadow && WW.dstat) WW.dstat('subShadowT', n, dt);
     if (!tgt) { // patrol the commander's station (the flank of the enemy's approach), else ahead of our own fleet
+      if (WW.dstat) WW.dstat('subPatrolT', n, dt);
       const o = order(ship);
       let sx = o && isFinite(o.sx) ? o.sx : (a.cn ? a.cx : ship.x) - homeX(ship) * 220, sz = o && isFinite(o.sz) ? o.sz : (a.cn ? a.cz : ship.z) + a.orbitDir * 100;
       sx = WW.clamp(sx, 40, WW.cfg.MAP_W - 40); sz = WW.clamp(sz, 40, WW.cfg.MAP_H - 40);
