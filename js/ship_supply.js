@@ -1,5 +1,5 @@
 // ship_supply.js - WW.supply: ammunition and fuel (sim code, no randomness). Load after ships.js.
-// Each ship carries, from SUPPLY[type] x the nation's factors (NATION, doctrine-style stat levers):
+// Each ship carries, from SUPPLY[type] x the side's doctrine factors (fleet_groups.js: aaAmmo, ddFuel, torpReloads):
 //   main   rounds for the main battery, counted in turret shots (one fireShell). Below LOW the guns hold fire past
 //          CONSERVE x range (no long-range shooting); empty: the main battery is silent (secondaries and AA go on).
 //   aa     AA ammunition in battery-seconds (a heavy salvo uses HEAVY_USE, a light-AA tick LIGHT_USE). Below LOW the
@@ -15,26 +15,23 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var SUPPLY = {
-    carrier:    { main: 400, aa: 300 },
-    battleship: { main: 90, aa: 270 },
-    cruiser:    { main: 165, aa: 270, torp: 1 },
-    destroyer:  { main: 220, aa: 200, torp: 1, fuel: 430 },
+    carrier:    { main: 400, aa: 260 },
+    battleship: { main: 80, aa: 230 },
+    cruiser:    { main: 150, aa: 230, torp: 1 },
+    destroyer:  { main: 200, aa: 170, torp: 1, fuel: 380 },
     submarine:  { main: 0, aa: 0, torp: 7 },
     pt:         { main: 1e9, aa: 1e9, torp: 2 }
   };
-  // per-nation factors / loads: USN deeper AA magazines (the 5"/38 and 40 mm ready-use allowances) and longer-legged
-  // destroyers; IJN destroyer and cruiser reloads for the Long Lance
-  var NATION = {
-    USN: { main: 1, aa: 1.25, fuel: 1.1, torp: { destroyer: 1, cruiser: 1 } },
-    IJN: { main: 1, aa: 1, fuel: 1, torp: { destroyer: 2, cruiser: 2 } }
-  };
+  // per-nation factors come from the side's doctrine (fleet_groups.js BASE): aaAmmo (USN 1.25: deeper AA ready-use
+  // allowances), ddFuel (USN 1.1: longer-legged destroyers), torpReloads (reload sets for DD / CA tubes: IJN 1, USN 0)
+  function doc(n) { return (WW.fleetCmd && WW.fleetCmd.doctrine(n)) || {}; }
   var LOW = 0.2, CONSERVE = 0.8, LOW_AA = 0.6, HEAVY_USE = 1.1, LIGHT_USE = 0.25, ECON = 0.6, CRIT = 0.08, CRIT_THR = 0.45;
 
   function sup(ship) {
     var s = ship.sup; if (s) return s;
-    var b = SUPPLY[ship.type] || {}, n = NATION[ship.nation] || NATION.USN;
-    var torp = b.torp ? (n.torp[ship.type] || b.torp) : 0;
-    s = ship.sup = { main: (b.main || 0) * n.main, aa: (b.aa || 0) * n.aa, torp: torp, fuel: b.fuel ? b.fuel * n.fuel : 0, flags: {} };
+    var b = SUPPLY[ship.type] || {}, d = doc(ship.nation);
+    var torp = b.torp ? b.torp + (ship.type === 'destroyer' || ship.type === 'cruiser' ? d.torpReloads || 0 : 0) : 0;
+    s = ship.sup = { main: b.main || 0, aa: (b.aa || 0) * (d.aaAmmo || 1), torp: torp, fuel: b.fuel ? b.fuel * (d.ddFuel || 1) : 0, flags: {} };
     s.main0 = s.main; s.aa0 = s.aa; s.fuel0 = s.fuel;
     return s;
   }
@@ -81,5 +78,5 @@ window.WW = window.WW || {};
   }
   function share(ship, k) { var s = ship.sup; return !s ? 1 : s[k + '0'] ? s[k] / s[k + '0'] : 1; }
 
-  WW.supply = { SUPPLY: SUPPLY, NATION: NATION, LOW: LOW, sup: sup, shell: shell, aa: aa, torpFired: torpFired, torpLeft: torpLeft, fuel: fuel, spent: spent, share: share };
+  WW.supply = { SUPPLY: SUPPLY, LOW: LOW, sup: sup, shell: shell, aa: aa, torpFired: torpFired, torpLeft: torpLeft, fuel: fuel, spent: spent, share: share };
 })();
