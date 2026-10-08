@@ -52,9 +52,9 @@ window.WW = window.WW || {};
     var n = B.nation, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, home = n === 'USN' ? 1 : -1, G = B.groups;
     var others = G.main.members.length + G.screen.members.length + G.flotilla.members.length + G.carrier.members.length;
     var gx = B.axis.x, gz = B.axis.z;
-    var bx = others ? gx + home * 60 : xAt(n, -0.36);
-    bx += home * B.sweepT * SWEEP_V;
-    var lim = B.ptDeep ? PEN_DEEP : B.sweep ? PEN_SWEEP : PEN_LURK;
+    var bx = others ? gx + home * 60 : xAt(n, -0.5);
+    if (!B.heavySeen) bx += home * B.sweepT * SWEEP_V;   // a gun ship seen this round: wait for it at the line (its reach outranges a PT's eye)
+    var lim = B.ptDeep ? PEN_DEEP : B.sweep && !B.heavySeen ? PEN_SWEEP : PEN_LURK;
     if (pen(n, bx) > lim) bx = xAt(n, lim);
     var sp = P > 1 ? Math.min(LANE, (H - 120) / (P - 1)) : 0;
     var bz = P > 1 ? (others ? gz : H / 2) + (k - (P - 1) / 2) * sp : gz + (B.nation === 'USN' ? 1 : -1) * LANE * 0.6;

@@ -167,6 +167,8 @@ window.WW = window.WW || {};
   }
 
   const L0state = a => (a.lt ? a.lt.state : 'lurk');
+  // keep way on: a helm order past 1.2 rad cuts the speed (ships.js); a sweeping turn keeps it (same turn rate)
+  const sweep = ship => { ship.desiredHeading = ship.heading + WW.clamp(WW.angleDiff(ship.heading, ship.desiredHeading), -1.1, 1.1); };
   function ptAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now();
     const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, leg: 'fwd', legT: 0, pair: { p: null, lead: true } });
@@ -200,7 +202,7 @@ window.WW = window.WW || {};
           if (H.fireSpread(ship, u) !== false) { L.state = 'out'; L.t0 = T; L.from = u; }
         } else if (d < 15) { L.state = 'out'; L.t0 = T; L.from = u; }
       }
-      if (L.state === 'run') return;
+      if (L.state === 'run') { sweep(ship); return; }
     }
     if (L.state === 'gun') { // close and fight with the MG: up the target's beam, then pace it
       const u = L.tgt, c = u && u.alive && !u.sinking && !u.submerged && WW.intel ? WW.intel.known(n, u) : null;
@@ -224,12 +226,13 @@ window.WW = window.WW || {};
       let h = from ? Math.atan2(ship.z - from.z, ship.x - from.x) : (homeX(ship) < 0 ? PI : 0);
       const home = homeX(ship) < 0 ? PI : 0;
       const aw = h;
-      h += WW.clamp(WW.angleDiff(h, home), -0.25, 0.25) + jink * 0.4;
+      const inReach = nb && nb.near && nb.margin < 0; // inside a gun ship's reach: the shortest way out first
+      h += inReach ? jink * 0.15 : WW.clamp(WW.angleDiff(h, home), -0.25, 0.25) + jink * 0.4;
       // a hard reversal bleeds speed: take the nearest heading still well clear of the threat's bearing first
       if (Math.abs(WW.angleDiff(ship.heading, h)) > 1.2) h = aw + WW.clamp(WW.angleDiff(aw, ship.heading), -0.75, 0.75);
       const deep = pen(ship, ship.x) > lim(ship, 'PEN_HOME'); // past the midline: home first, whatever the threat bearing
       if (deep) h = home + WW.clamp(WW.angleDiff(home, aw), -0.6, 0.6) + jink * 0.5;
-      ship.desiredHeading = h; ship.throttle = 1;
+      ship.desiredHeading = h; ship.throttle = 1; if (!deep) sweep(ship); // deep: the nav layer needs the real course home
       const el = T - L.t0, clear = (!nb || nb.margin > 60) && danger(n, ship.x, ship.z) < 1;
       if (!deep && ((el > PT.OUT_MIN && clear) || el > PT.OUT_MAX)) { L.state = 'lurk'; L.from = null; L.spotT = 0; }
       return;
@@ -273,7 +276,7 @@ window.WW = window.WW || {};
     }
     // keep way on: come about in a sweeping turn (a > 1.2 rad helm order halves the speed, ships.js), so a heavy
     // ship that closes unseen finds the boat already moving, ready to bolt
-    ship.desiredHeading = ship.heading + WW.clamp(WW.angleDiff(ship.heading, ship.desiredHeading), -1.1, 1.1);
+    sweep(ship);
   }
 
   WW.shipAI.roles.pt = ptAI;

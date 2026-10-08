@@ -6,8 +6,8 @@
 // bearing (USN radar sees raids at 250, IJN lookouts ~170: intel.js SEE_PLANE_NATION); it engages torpedo bombers on
 // a run > dive bombers in the wheel > other armed bombers > fighters, only within LEASH of the carrier (2x for an
 // armed bomber closing on the fleet). Escorts recall when their carrier is under air attack. Bombers jettison and
-// go home when badly hurt, or when a fighter is on them and no escort is near (bomber). Scouts fly the commander's
-// search sectors and keep clear of known enemy carriers' CAP. Load after air_strikes.js. Sim code: WW.rand only.
+// go home when badly hurt, or when a fighter is on them and no escort is near (bomber). Search flights and scouts: air_search.js.
+// Load after air_strikes.js. Sim code: WW.rand only.
 window.WW = window.WW || {};
 (function () {
   const CAP_R = 35, LEASH = CAP_R * 1.5, LEASH2 = CAP_R * 4.5; // CAP orbit radius, chase leash (sim_behaviour LEASH_K), armed raid closing
@@ -82,7 +82,7 @@ window.WW = window.WW || {};
   function capState(cv) {
     let on = 0, low = 0, coming = 0;
     for (const p of WW.world.planes) {
-      if (!p.alive || p.carrier !== cv || p.kind !== 'fighter' || p.target) continue;
+      if (!p.alive || p.carrier !== cv || p.kind !== 'fighter' || p.target || p.search) continue;
       if (p.state === 'takeoff') coming++;
       else if (up(p)) { if (p.fuel > RELIEF) on++; else low++; }
     }
@@ -95,7 +95,7 @@ window.WW = window.WW || {};
     if (a.capT <= 0) {
       a.capT = 1;
       const want = Math.min(4, capWanted(cv));
-      const s = capState(cv), queued = a.queue.filter(q => q.kind === 'fighter' && !q.target).length;
+      const s = capState(cv), queued = a.queue.filter(q => q.kind === 'fighter' && !q.target && !q.search).length;
       let need = want - s.on - s.coming - queued;
       if (need > 0 && hg.fighter > 0) {
         need = Math.min(need, hg.fighter);
@@ -105,6 +105,7 @@ window.WW = window.WW || {};
       }
       if (attacked) recall(cv);
     }
+    if (WW.search) WW.search.plan(cv, dt); // search flights while nothing is known (air_search.js)
     // strikes: only on a known target, and not while the carrier is under air attack (fighters first)
     a.strikeT -= dt;
     a.lholdT = attacked ? (a.lholdT || 0) + dt : 0;
@@ -139,7 +140,8 @@ window.WW = window.WW || {};
     let tgt = q.target;
     if (tgt && (!tgt.alive || tgt.submerged)) tgt = pickTarget(cv);
     if (q.target && !tgt) return;
-    if (WW.air.launch(cv, q.kind, tgt)) a.launchT = 1.5;
+    const p = WW.air.launch(cv, q.kind, tgt);
+    if (p) { a.launchT = 1.5; if (q.search && WW.search) WW.search.begin(p); }
   }
   // Own carrier under air attack: escorts in range with the fuel to get back recall to defend it.
   function recall(cv) {
@@ -239,31 +241,7 @@ window.WW = window.WW || {};
     if (WW.emit) WW.emit('airOrder', { carrier: pl.carrier, order: 'jettison', plane: pl, squadron: pl.squadron || null });
   }
 
-  // ---------- scouts: the commander's search sectors, clear of known enemy carriers ----------
-  if (WW.Scout) {
-    const P = WW.Scout.prototype, plan0 = P.plan;
-    P.plan = function () {
-      plan0.call(this);
-      try {
-        const fc = WW.fleetCmd;
-        if (fc && fc.scoutPoint) {
-          const sp = fc.scoutPoint(this.nation, this.x, this.z);
-          if (sp && this.legs && this.legs.length) { // sweep round the sector: 4 legs, 70 out
-            const b = Math.atan2(this.z - sp.z, this.x - sp.x);
-            this.legs = [-90, -30, 30, 90].map(a => ({ x: WW.clamp(sp.x + Math.cos(b + a * Math.PI / 180) * 70, 12, WW.cfg.MAP_W - 12), z: WW.clamp(sp.z + Math.sin(b + a * Math.PI / 180) * 70, 12, WW.cfg.MAP_H - 12) }));
-          }
-        }
-        if (!this.legs || !WW.intel) return;
-        for (const c of WW.intel.enemyShips(this.nation)) {   // known enemy carrier: its CAP is there; look from 110 out
-          if (c.unit.type !== 'carrier') continue;
-          for (const w of this.legs) {
-            const d = WW.dist(w.x, w.z, c.x, c.z);
-            if (d < 110) { const k = 110 / Math.max(1, d); w.x = WW.clamp(c.x + (w.x - c.x) * k, 12, WW.cfg.MAP_W - 12); w.z = WW.clamp(c.z + (w.z - c.z) * k, 12, WW.cfg.MAP_H - 12); }
-          }
-        }
-      } catch (e) { /* keep the original legs */ }
-    };
-  }
+  // scouts: search sectors, shadowing and the way home live in air_search.js (WW.search)
 
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
