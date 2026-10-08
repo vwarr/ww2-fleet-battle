@@ -6,6 +6,7 @@ window.WW = window.WW || {};
   const BASE_SPEED = 0.5;     // calm pace: the UI's 1x runs the simulation at half speed
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
+  const SUB_CLOSE = 150;      // ... and starts this long after first contact (time to close: a sub makes 3.5 u/s)
   const SUB_SEARCH = 240;     // a subs-only side that never made contact: the stall ends the round after this long
   // start zones hug the west / east edges; the open sea between them is the approach
   const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: W - 115, x1: W - 15, cx: W - 65, heading: Math.PI } };
@@ -136,7 +137,7 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.endReason = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null;
+      game.winner = null; game.endReason = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.lastHit = 0;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
@@ -176,6 +177,8 @@ window.WW = window.WW || {};
   WW.game = game;
   WW.on('shipSunk', () => { game.lastSink = game.roundTime; });
   WW.on('contact', () => { if (game.state === 'battle' && game.contactT === null) game.contactT = game.roundTime; }); // the sides first met
+  const act = () => { if (game.state === 'battle') game.lastHit = game.roundTime; }; // the stall clock restarts on any attack
+  WW.on('shipHit', act); WW.on('weaponDropped', act);
 
   // How a round ends (updateGame):
   //  - a side is out when it has no carrier, battleship, cruiser or destroyer left afloat (its submarines and PT boats
@@ -206,12 +209,12 @@ window.WW = window.WW || {};
   function updateGame(dt) {
     if (game.state === 'battle') {
       game.roundTime += dt;
-      // A side left with only submarines, and no sinking for SUB_STALL s since the sides met, ends the round (no sub
-      // hide-and-seek). The clock starts at first contact (the big map takes longer than SUB_STALL to cross); with no
-      // contact at all, the round ends after SUB_SEARCH s.
+      // A side left with only submarines ends the round when nothing has been sunk, hit or attacked (a weapon dropped or fired) for SUB_STALL s since the
+      // sides met (no sub hide-and-seek). The clock starts SUB_CLOSE s after first contact (the big map takes longer
+      // than SUB_STALL to cross) and restarts at every attack; with no contact at all, the round ends after SUB_SEARCH s.
       const subOnly = n => (call('ships', 'alive', n) || []).every(s => s.type === 'submarine');
       const stalled = (subOnly('USN') || subOnly('IJN')) && (game.contactT === null ? game.roundTime > SUB_SEARCH
-        : game.roundTime - Math.max(game.lastSink, game.contactT) > SUB_STALL);
+        : game.roundTime - Math.max(game.lastSink, game.lastHit || 0, game.contactT + SUB_CLOSE) > SUB_STALL);
       const oU = out('USN'), oJ = out('IJN');
       if (oU || oJ) {
         if (oU && oJ) { const tu = game.tonnage('USN'), tj = game.tonnage('IJN'); game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'kill'); }

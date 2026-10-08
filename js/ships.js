@@ -108,6 +108,15 @@ window.WW = window.WW || {};
       this.navT -= dt;
       if (this.navT <= 0) { this.navT = 0.2 + WW.rand() * 0.1; this.planNav(want); }
 
+      // Watchdog: dead in the water for 6 s with way ordered (pinned on a flat at minimum depth, nothing in the plan
+      // moves it): back off astern, then come about toward the deepest water.
+      this.deadT = this.speed < 0.3 && this.throttle > 0.4 && !(this.asternT > 0) && !(this.escapeT > 0) ? (this.deadT || 0) + dt : 0;
+      if (this.deadT > 6) {
+        this.deadT = 0; this.asternT = 2.5;
+        let bd = -1e9;
+        for (let k = 0; k < 16; k++) { const a = (k / 16) * TAU, d = WW.terrain.depthAt(this.x + Math.cos(a) * 8, this.z + Math.sin(a) * 8); if (d > bd) { bd = d; this.escapeH = a; } }
+        this.escapeT = 4; this.escHold = 0; this.escAstern = true;
+      }
       // Turn (slower at low speed, but never zero so a stopped ship can come about).
       let pivot = this.clearAhead < 3; // nose against shallows: stop and come about
       // Stuck pivoting (every heading looks shallow with the planning margin): head for deeper water.
