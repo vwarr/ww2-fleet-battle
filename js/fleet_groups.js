@@ -16,7 +16,7 @@ window.WW = window.WW || {};
   //   pressRatio   known strength ratio needed to press late in the round; withdrawRatio: below it, withdraw
   //   risk         per-type risk tolerance 0..1 for WW.threat.bestHeading (carrier 0: never into danger)
   var BASE = {
-    USN: { aggression: 0.5, rangeFrac: 0.78, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
+    USN: { aggression: 0.5, rangeFrac: 0.82, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
