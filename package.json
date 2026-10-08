@@ -13,6 +13,7 @@
     "test:deaths": "bash tests/run.sh deaths.js",
     "test:realtime": "node tests/realtime.js",
     "test:audio": "node tests/audio.js",
+    "test:audio-aa": "node tests/audio_aa.js",
     "test:audio-amb": "node tests/audio_amb.js",
     "shots": "bash tests/run.sh peek.js"
   },
