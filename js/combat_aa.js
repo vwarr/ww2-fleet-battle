@@ -153,7 +153,9 @@ window.WW = window.WW || {};
     if (p.mesh) p.mesh.visible = true;
     I().place(p, p.x0 + p.vx * tt, p.y0 + p.vy0 * tt, p.z0 + p.vz * tt);
     var f = Math.min(1, (p.life - tt) / (p.life * 0.35));
-    if (p.mesh) p.mesh.scale.set(p.len * f, p.w * (0.5 + 0.5 * f), p.w * (0.5 + 0.5 * f));
+    // fade out rounds that pass right by the camera (close chase / over-the-shoulder shots), else they fill the frame
+    var cp = WW.camera && WW.camera.position, mp = p.mesh && p.mesh.position, k = cp && mp ? Math.min(1, Math.max(0, (mp.distanceTo(cp) - 6) / 14)) : 1;
+    if (p.mesh) { p.mesh.visible = k > 0.03; p.mesh.scale.set(p.len * f * k, p.w * (0.5 + 0.5 * f) * k, p.w * (0.5 + 0.5 * f) * k); }
   }
   // one round = a solid hot core + a wider additive glow sheath on the same path (two pooled projectiles)
   function tracerRound(ci, mat, sx, sy, sz, vx, vy, vz, delay, life) {

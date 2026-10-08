@@ -10,6 +10,7 @@
     "test:gpu": "bash tests/run.sh fps.js",
     "test:freecam": "node tests/freecam_test.js",
     "test:action": "bash tests/run.sh action_cam.js",
+    "test:deaths": "bash tests/run.sh deaths.js",
     "test:realtime": "node tests/realtime.js",
     "shots": "bash tests/run.sh peek.js"
   },
