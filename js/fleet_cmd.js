@@ -10,6 +10,7 @@ window.WW = window.WW || {};
   var TICK = 2;
   var NATIONS = ['USN', 'IJN'];
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
+  var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
   var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
@@ -24,7 +25,7 @@ window.WW = window.WW || {};
 
   function newSide(n) {
     var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
-      strength: { own: 0, known: 0, ratio: 1 }, doctrine: WW.fleetGroups.rollDoctrine(n),
+      strength: { own: 0, known: 0, ratio: 1 }, fit: 0, hadFit: false, brokenAt: 0, doctrine: WW.fleetGroups.rollDoctrine(n),
       axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
       groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
@@ -61,7 +62,14 @@ window.WW = window.WW || {};
     // ---- posture ----
     var T = WW.cfg.ROUND_TIMEOUT, rt = WW.game ? WW.game.roundTime : 0, prev = B.posture;
     B.timeLeft = T - rt; B.late = rt > T * LATE;
-    if (!cs.length) B.posture = 'search';
+    // Broken: no battleship, cruiser or destroyer left in fighting shape (hp >= CRIP). The side breaks off,
+    // whatever the (fogged) strength ratio says; main.js ends the round when it has got clear ("retires").
+    var fit = 0, crip = WW.fleetGroups.CRIP;
+    for (i = 0; i < ships.length; i++) { s = ships[i]; if (s.alive && !s.sinking && s.nation === B.nation && GUNSHIP[s.type] && s.hp >= crip * s.maxHp) fit++; }
+    B.fit = fit; if (fit) B.hadFit = true;   // a side that never had gun ships (a PT / sub raid) never "breaks"
+    if (fit) B.brokenAt = 0; else if (B.hadFit && !B.brokenAt) B.brokenAt = now;
+    if (rt > 60 && B.brokenAt) B.posture = 'withdraw';
+    else if (!cs.length) B.posture = 'search';
     else if (rt > 60 && B.strength.ratio < d.withdrawRatio) B.posture = 'withdraw';
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression)) B.posture = 'press';
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';

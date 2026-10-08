@@ -134,7 +134,7 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0;
+      game.winner = null; game.endReason = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
@@ -164,13 +164,40 @@ window.WW = window.WW || {};
     randomComposition, minSpacing,
     spawnComposition,
     tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0); },
-    endRound(winner) {
-      game.state = 'victory'; game.winner = winner; game.victoryTime = 0;
-      WW.emit('victory', { winner, round: WW.stats.round });
+    // reason: 'kill' (a side annihilated) | 'retire' (loser broke off: see retiring) | 'time' | 'stall'
+    endRound(winner, reason, loser) {
+      game.state = 'victory'; game.winner = winner; game.victoryTime = 0; game.endReason = reason || 'time';
+      WW.emit('victory', { winner, round: WW.stats.round, reason: game.endReason, loser: loser || null });
     }
   };
   WW.game = game;
   WW.on('shipSunk', () => { game.lastSink = game.roundTime; });
+
+  // A side "retires" (the other side wins) when its commander has broken off (posture 'withdraw' with no battleship,
+  // cruiser or destroyer left in fighting shape, for RETIRE_HOLD s) and every ship it has left (subs aside) has got
+  // clear: out of the enemy's sight for RETIRE_LOST s, or back in its own start band at its home map edge.
+  // Returns the retiring nation or null (both sides at once: neither; the time limit decides).
+  const RETIRE_HOLD = 20, RETIRE_LOST = 25, RETIRE_MIN = 120, HOME_BAND = 120;
+  function retiring() {
+    if (!WW.fleetCmd || !WW.intel || game.roundTime < RETIRE_MIN) return null;
+    let out = null;
+    for (const n of ['USN', 'IJN']) {
+      const B = WW.fleetCmd.side(n);
+      if (!B || B.posture !== 'withdraw' || !B.brokenAt || WW.time.now - B.brokenAt < RETIRE_HOLD) continue;
+      const foe = WW.enemyOf(n), home = SIDE[n].heading === 0 ? 0 : W;
+      let clear = true;
+      for (const s of WW.world.ships) {
+        if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
+        if (Math.abs(s.x - home) < HOME_BAND) continue;
+        const c = WW.intel.known(foe, s);
+        if (c && WW.time.now - c.seenAt < RETIRE_LOST) { clear = false; break; }
+      }
+      if (!clear) continue;
+      if (out) return null;
+      out = n;
+    }
+    return out;
+  }
 
   function updateGame(dt) {
     if (game.state === 'battle') {
@@ -179,10 +206,13 @@ window.WW = window.WW || {};
       // A side left with only submarines, and no sinking for SUB_STALL s, ends the round (no sub hide-and-seek).
       const subOnly = n => (call('ships', 'alive', n) || []).every(s => s.type === 'submarine');
       const stalled = game.roundTime - game.lastSink > SUB_STALL && (subOnly('USN') || subOnly('IJN'));
-      if (u === 0 || j === 0) game.endRound(u > 0 ? 'USN' : j > 0 ? 'IJN' : null);
+      let ret = null;
+      try { ret = retiring(); } catch (e) { ret = null; }
+      if (u === 0 || j === 0) game.endRound(u > 0 ? 'USN' : j > 0 ? 'IJN' : null, 'kill');
+      else if (ret) game.endRound(WW.enemyOf(ret), 'retire', ret);
       else if (game.roundTime >= WW.cfg.ROUND_TIMEOUT || stalled) {
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
-        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null);
+        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, stalled ? 'stall' : 'time');
       }
     } else if (game.state === 'victory') {
       game.victoryTime += dt;

@@ -64,7 +64,7 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
           }
         }
       }
-      const end = G.state === 'battle' ? 'cap' : (WW.world.ships.some(s => s.alive && s.nation === 'USN') && WW.world.ships.some(s => s.alive && s.nation === 'IJN')) ? 'time' : 'kill';
+      const end = G.state === 'battle' ? 'cap' : G.endReason === 'retire' ? 'retire' : (WW.world.ships.some(s => s.alive && s.nation === 'USN') && WW.world.ships.some(s => s.alive && s.nation === 'IJN')) ? 'time' : 'kill';
       const d = k => WW.stats[k] - s0[k];
       const out = { seed, winner: G.winner, end, len: +G.roundTime.toFixed(0), contact, heavy, sunk, comp,
         cvMin: Object.values(cv).map(v => +v.toFixed(0)), stuck, nan,
@@ -84,8 +84,8 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
   const cvs = rounds.flatMap(r => r.cvMin);
   console.log('---');
   console.log(`USN ${rounds.filter(r => r.winner === 'USN').length}  IJN ${rounds.filter(r => r.winner === 'IJN').length}  draw ${rounds.filter(r => !r.winner).length}` +
-    `   ends: kill ${rounds.filter(r => r.end === 'kill').length} time ${rounds.filter(r => r.end === 'time').length}`);
-  console.log(`avg length ${avg(r => r.len)}s  avg first contact ${avg(r => r.contact || 0)}s (heavy ${avg(r => r.heavy || 0)}s)  avg sunk ${avg(r => r.sunk.length)}  avg torps ${avg(r => r.torps)}  planes lost ${avg(r => r.lost)}`);
+    `   ends: kill ${rounds.filter(r => r.end === 'kill').length} retire ${rounds.filter(r => r.end === 'retire').length} time ${rounds.filter(r => r.end === 'time').length}`);
+  console.log(`avg length ${avg(r => r.len)}s  median ${rounds.map(r => r.len).sort((a, b) => a - b)[rounds.length >> 1]}s  avg first contact ${avg(r => r.contact || 0)}s (heavy ${avg(r => r.heavy || 0)}s)  avg sunk ${avg(r => r.sunk.length)}  avg torps ${avg(r => r.torps)}  planes lost ${avg(r => r.lost)}`);
   const avgN = f => { const v = rounds.map(f).filter(x => x !== null && x !== undefined); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : '-'; };
   console.log(`first sighting: USN ${avgN(r => r.sightUSN)}s  IJN ${avgN(r => r.sightIJN)}s   first fire at a ship ${avgN(r => r.fire)}s   shots at unseen targets ${rounds.reduce((s, r) => s + r.blind, 0)} / ${rounds.reduce((s, r) => s + r.shotsAtShips, 0)}`);
   console.log(`carrier closest approach to enemy gun ships: median ${cvs.sort((a, b) => a - b)[cvs.length >> 1]}  min ${Math.min(...cvs)}`);

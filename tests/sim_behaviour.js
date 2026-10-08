@@ -412,7 +412,7 @@ function install(P) {
     for (const k in R.ddP) if (R.ddP[k].in && !R.ddP[k].done) R.dd.missed++;
     const alive = n => WW.world.ships.some(s => s.alive && s.nation === n);
     const out = { seed: spec.seed, aNation: spec.aNation || null, swap: !!spec.swap, winner: G.winner, len: +G.roundTime.toFixed(0),
-      end: G.state === 'battle' ? 'cap' : alive('USN') && alive('IJN') ? 'time' : 'kill', comp: types,
+      end: G.state === 'battle' ? 'cap' : G.endReason === 'retire' ? 'retire' : alive('USN') && alive('IJN') ? 'time' : 'kill', comp: types,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
@@ -518,7 +518,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     const wall = ((Date.now() - t0) / 1000).toFixed(1);
     const wins = { USN: 0, IJN: 0, draw: 0, A: 0, B: 0 };
     for (const r of rounds) { wins[r.winner || 'draw']++; if (r.aNation && r.winner) wins[r.winner === r.aNation ? 'A' : 'B']++; }
-    console.log(`\n== ${sc.name}  (${rounds.length} rounds, ${wall}s)  USN ${wins.USN} IJN ${wins.IJN} draw ${wins.draw}${sc.A ? `  fleetA ${wins.A} fleetB ${wins.B}` : ''}  len ${M.len_min}/${M.len_med}/${M.len_max}s`);
+    console.log(`\n== ${sc.name}  (${rounds.length} rounds, ${wall}s)  USN ${wins.USN} IJN ${wins.IJN} draw ${wins.draw}${sc.A ? `  fleetA ${wins.A} fleetB ${wins.B}` : ''}  len ${M.len_min}/${M.len_med}/${M.len_max}s  ends ${['kill', 'retire', 'time', 'cap'].map(k => k + ' ' + rounds.filter(r => r.end === k).length).join(' ')}`);
     const rows = [];
     for (const c of CHECKS) {
       if (c.intel && M.unseen_shots === null) { if (sc.light) continue; if (!c.only || c.only.includes(sc.name)) rows.push([c.id, M.intel_on ? `intel API err ${M.intel_err}` : 'no WW.intel', fmtThr(c), 'SKIP']); continue; }
