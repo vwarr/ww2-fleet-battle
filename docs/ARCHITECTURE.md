@@ -52,7 +52,8 @@ js/fleet_cmd.js         WW.fleetCmd: per-side commander and blackboard (posture,
 js/ships_ai.js          WW.shipAI core: setup, retarget, guns / turrets, dispatch to the role files, shared helpers (WW.shipAI.h)
 js/ai_surface.js        WW.shipAI.roles.surface: battleship / cruiser / destroyer behaviour, destroyer sub hunt
 js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (CAP queue, strikes, launches), pickStrikeTarget
-js/ai_light.js          WW.shipAI.roles.submarine / .pt: submarine and PT boat behaviour
+js/ai_light.js          WW.shipAI.roles.submarine: submarine behaviour; WW.lightAI.h helpers shared with ai_pt.js
+js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_light.js)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
 js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spotting
@@ -263,7 +264,7 @@ WW.shipAI = {
 - Spacing: each type has a personal space (carrier 70, battleship and cruiser 35, destroyer 20, PT boat and submarine 12). Escorts stay 50 to 80 units from their carrier.
 - After all ships move, `WW.shipNav.resolve` pushes overlapping hulls apart. The lighter ship moves more. Wrecks above the water and sinking ships do not move.
 - Sinking takes approximately 8 s. The ship moves at most 15 units and does not go into another wreck or onto land. The wreck stays on the seabed until the next round. In shallow water, one end of the wreck stays above the water.
-- A submarine must come to the surface for 25 s after 45 s under water. A submerged submarine casts no shadow.
+- A submarine must come to the surface for 25 s after 45 s under water (`ai_light.js`). A submerged submarine casts no shadow.
 - Ship AI, per step: `ships_ai.js` retargets every 1 to 1.5 s, runs the role (`roles[type]`, else `roles.surface`), then the shared overrides `withdraw` (unless `ship.ai.ownWithdraw`) and `comb` (unless `ship.ai.ownComb`), then the guns. Roles write only `ship.desiredHeading` and `ship.throttle`, plus their own state on `ship.ai`.
 - **Target score** (`h.score`): `ROLE_W[type][target] × VALUE[target] × pHit × finishBonus × WW.fleetCmd.assignment − exposure`. Only fresh contacts count.
   - pHit falls with range, rises when the target is broadside on, and is ×0.8 on a plane or scout sighting.
@@ -296,7 +297,18 @@ WW.shipAI = {
   - It handles its own cripple withdrawal (`ownWithdraw`).
   - CAP: `capWanted(carrier)` (one more fighter when detected raiders are within 200 and fewer than 3 are up).
   - Strikes: `strikeTarget(carrier)` returns `WW.fleetCmd.strikeOrder(carrier).target` unless it is on hold. The strike interval is 35 to 55 s × (1.25 − 0.5 × `doctrine.carrier`).
-- PT boats and submarines: `ai_light.js`.
+- **PT boats** (`ai_pt.js`, state in `ship.ai.lt`, tuning in `WW.lightAI.PT`): hit and run only.
+  - **Lurk**: the commander's PT station (own flank), pulled to an island cover point within 150 of it (deep water beside land that blocks line of sight; `coverPts()`, sampled once per map). The spot stays at least 0.06 half-map inside the own half and outside known gun reach: `WW.threat` danger, plus heavy ships seen this round and since lost (`ghosts`, kept 240 s, moved along their last course). The wing of a pair lurks 14 beside its leader. At the spot a PT patrols in legs: out stern-on to the enemy at 0.9 throttle, back to the spot at 0.5.
+  - **Target of opportunity**, checked every 0.5 s with tubes loaded and hp ≥ 35%: a fresh contact (not a PT) that is isolated (no other enemy gun ship within 75), crippled (< 50% hp), slow (stats speed < 6 or making < 2.5), or a DD / CA within 30 of land. The firing point is 38 off the target's beam, from an 8 s look-ahead on its track; the pair splits bow-ward / aft-ward, and the far beam is used when it is clearer. The run needs the target within `DASH + FIRE`, a dash ≤ 130, the firing point ≤ 0.12 half-map past the midline, and danger along the path minus the target's own share (`ownDps`) ≤ `EX_MAX` 9 (× 1.6 crippled, × 1.4 near land, × 1.2 isolated). `WW.lightAI.stats` counts the refusals.
+  - **Pairs**: the partner (`WW.fleetCmd` PT group, paired by slot, else the nearest own PT) joins a running mate's target from the other beam when its own path check passes.
+  - **Run**: full speed to the firing point, then the bow on the lead point; it fires inside 50 when the core fan check and a local land check along the track pass. It aborts on a lost contact, after 24 s, past 0.16 half-map, after losing 30% hp, when the path danger spikes past 2.2 × `EX_MAX`, or when a fresh DD within 80 turns its bow toward the PT.
+  - **Break off** (`out` after a run, `flee` from a known gun ship within 25 of its reach or any known danger > 0.6 while lurking): full speed straight away from the closest threat, leaning ±0.25 toward home with a ±0.18 jink, through the smaller turn first. Past the midline, home comes first. It returns to the spot once clear.
+  - MG: only at PT boats, surfaced subs, or a DD within 25 (`calTarget` is rewritten every step). The PT handles its own cripples (`ownWithdraw`) and combs torpedo tracks only while lurking (`ownComb` otherwise).
+- **Submarines** (`ai_light.js`, state in `ship.ai.ls`, tuning in `WW.lightAI.SUB`):
+  - **Ambush**: every 0.5 s, the best contact up to 30 s old (CV 4, BB 3, CA 2; never a DD or PT; × 0.45 when a DD is within 80 of it, × 1.4 crippled, × 1.15 slow). The sub goes to a point 55 off the target's predicted track (from its last-known heading and speed) that it can reach before the target gets there. There it waits slowly, bow on the lead point. It fires inside 82 (not under 22) only from the target's bow or beam (angle on the bow < 115°), with the fan and land check.
+  - **After firing** (`evadeT` 14 s): submerged, throttle 0.45, turned away from the target or a DD within 90.
+  - **Depth**: down while a DD is known within 90, a plane within 125, a gun ship within 80, after a shot, or while closing a target within 105 with fresh air. A DD within 130 or a target within 105 keeps it down only until 18 s of dive time; then it surfaces to refresh while still unseen. Otherwise it runs surfaced. A surfacing aborts when any of these appears. The existing limit stands: 45 s under water forces 25 s on the surface.
+  - **Destroyers**: headings go through `ddSteer`, which keeps 85 from every known DD's position and its position 8 s ahead. A DD inside sonar range (65), or one bearing down within 90, is "cornered" fire, the one time a sub targets a DD. With the tubes nearly ready, the sub holds its bow on that DD and fires inside 38. Otherwise it goes slow (0.3) and turns away. With the air running low and a gun ship within 130, it opens the distance before the forced surfacing; when forced up, it runs from the nearest threat. Crippled (< 35% hp) and forced up within 60 of a hunter, the crew scuttles her.
 - The AI sees the enemy only through `WW.intel` (below). A ship's target and its per-calibre gun targets are fresh contacts, and guns and torpedoes fire only while `WW.intel.visible` is true. A destroyer that loses a sub runs to its last-known position and gives it up there. With no fresh target, a ship goes to the nearest last-known contact; with none, it searches toward the enemy's half of the map (the half away from its own fleet), then sweeps north and south.
 
 ### intel.js
