@@ -191,7 +191,7 @@ window.WW = window.WW || {};
   const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   function render() {
     const L = entries.slice(mapView() ? -SHOW : -7);
-    el.sub.textContent = 'Round ' + (WW.stats ? WW.stats.round : round) + ' · ' + (battle() ? clock() + ' hrs' : '');
+    el.sub.textContent = battle() ? clock() + ' hrs' : '';
     el.body.innerHTML = L.map((e, i) => '<div class="de p' + e.pri + (i === L.length - 1 ? ' last' : '') + '"><b>' + e.clock + '</b>' +
       (e.nation ? '<i class="' + e.nation.toLowerCase() + '">' + e.nation + '</i>' : '<i></i>') + '<span>' + esc(e.text) + '</span></div>').join('');
   }
