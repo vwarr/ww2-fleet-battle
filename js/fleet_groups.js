@@ -32,12 +32,26 @@ window.WW = window.WW || {};
   //                trained early in the war; USN 0.09 / 0.18 (the Midway PBY and SBD reports)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
+  //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
+  //                ring (~80). USN 35: the 1942 circular screen, the AA umbrella over the carrier
+  //   ringDD       destroyers per carrier in its ring (at least one); ringBB (flag): a side with two or more
+  //                battleships gives one to the carrier's ring (USN: North Carolina with Enterprise, Eastern Solomons)
+  //   vanguard     search / approach / engage: the carriers hold this x map width behind the main body, the surface force
+  //                running ahead as pickets and bait (IJN 0.33: Kido Butai's vanguard at Santa Cruz); 0: cvStandoff
+  //   zigzag       zigzag plan scale under sub threat (fleet_formation.js; both navies zigzagged)
+  //   subLine      (flag) submarines form a patrol line across the enemy's predicted approach (IJN; USN subs
+  //                patrol the flank)
+  //   subCV        sub ambush weight of a carrier contact (IJN 2.2: carriers above all); subNear: the time scale (s) of
+  //                the reach discount (USN 25: the nearest worthwhile target); subShadow (flag, IJN): shadow what it
+  //                cannot get ahead of; lifeguard (flag, USN): surfaced boats pick up survivors and aircrew (ai_sub_roles.js)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
+      ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
+      ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
@@ -46,6 +60,7 @@ window.WW = window.WW || {};
     for (k in b) if (typeof b[k] === 'number') d[k] = b[k] * j();
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
+    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.ringDD = b.ringDD; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
     d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1); d.searchlight = WW.clamp(d.searchlight, 0, 1);
     return d;
@@ -68,18 +83,22 @@ window.WW = window.WW || {};
       o.group = g; o.role = s.hp < CRIP * s.maxHp && s.type !== 'submarine' ? 'withdraw' : role; o.slot = G[g].members.length - 1; o.t = B.t;
       B.orders.set(s.id, o);
     };
+    // carrier escorts (fleet_formation.js ringCounts: doctrine ringBB / ringDD): big ships first, so the first ring
+    // slot (on the threat axis) gets the heaviest AA
+    var rc = WW.formation ? WW.formation.ringCounts(B, cvs.length, bbs.length, cas.length, dds.length) : { bb: 0, ca: cvs.length && cas.length > 1 ? 1 : 0, dd: cvs.length ? 1 : 0 };
     cvs.forEach(function (s) { put(s, 'carrier', 'carrier'); });
-    bbs.forEach(function (s) { put(s, 'main', 'line'); });
-    cas.forEach(function (s, n) { if (cvs.length && n === 0 && cas.length > 1) put(s, 'carrier', 'escort'); else put(s, 'main', 'line'); });
+    bbs.forEach(function (s, n) { if (n < rc.bb) put(s, 'carrier', 'escort'); else put(s, 'main', 'line'); });
+    cas.forEach(function (s, n) { if (n < rc.ca) put(s, 'carrier', 'escort'); else put(s, 'main', 'line'); });
     var fl = 0;
     dds.forEach(function (s, n) {
-      if (cvs.length && n === 0) put(s, 'carrier', 'escort');
+      if (n < rc.dd) put(s, 'carrier', 'escort');
       else if (G.screen.members.length === 0 || fl >= B.doctrine.flotilla) put(s, 'screen', 'asw');
       else { put(s, 'flotilla', 'torpedo'); fl++; }
     });
     pts.forEach(function (s) { put(s, 'pt', 'ambush'); });
     subs.forEach(function (s) { put(s, 'sub', 'patrol'); });
     B.orders.forEach(function (o, id) { if (!o.ship.alive) B.orders.delete(id); });
+    if (WW.formation) WW.formation.tagRing(B, cvs);
   }
 
   function centroid(list, out) {
@@ -108,6 +127,8 @@ window.WW = window.WW || {};
   function stations(B) {
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, h = B.axis.h, c = Math.cos(h), s = Math.sin(h);
     var lead = { search: 45, approach: 45, engage: 0, press: 35, pursue: 60, withdraw: -45 }[B.posture] || 0;
+    var van = WW.formation ? WW.formation.vanguardBack(B, 0) > 0 : false; // IJN vanguard: the line pushes on ahead
+    if (van && B.posture !== 'engage') lead += 35;
     // guides: the main body's centroid, else the first group that has ships
     // (withdrawing cripples are left out of the main guide: they would drag the battle line home with them)
     var fitMain = G.main.members.filter(function (q) { var o = B.orders.get(q.id); return !o || o.role !== 'withdraw'; });
@@ -123,6 +144,7 @@ window.WW = window.WW || {};
     G.main.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead, LINE[i % LINE.length])); });
     // carriers: cvStandoff behind the main body (never ahead of it); escorts in a ring around the first carrier
     var back = B.doctrine.cvStandoff * (B.posture === 'search' ? 0.8 : 1);
+    if (WW.formation) back = WW.formation.vanguardBack(B, back); // IJN: the surface vanguard well ahead of the carriers
     var ci = 0;
     G.carrier.members.forEach(function (q) {
       if (q.type === 'carrier') {
@@ -133,15 +155,15 @@ window.WW = window.WW || {};
         // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
         // room to run in every direction
         // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
-        var wd = B.posture === 'withdraw', lo = wd ? 0.08 : 0.15, hi = wd ? 0.1 : 0.35;
+        var wd = B.posture === 'withdraw', lo = wd || van ? 0.08 : 0.15, hi = wd ? 0.1 : 0.35;
         if (wd) p.z = q.z; // straight home, not across the front
         p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
         cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
-      var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; // the flagship's escorts close in
-      set(q, at(g.x, g.z, r[0] * rk, r[1] * rk));
+      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // the flagship's escorts close in
     });
+    if (WW.formation) { WW.formation.ringStations(B, set, at); WW.formation.zigzag(B); }
     G.screen.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });
     G.flotilla.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + 30, (i % 2 ? -1 : 1) * (110 + 25 * (i >> 1)))); });
     // PT boats: own-side flanks, never past the midline; subs: out on the flank of the enemy's approach
@@ -149,7 +171,11 @@ window.WW = window.WW || {};
       var p = at(mg.x, mg.z, 60, (i % 2 ? -1 : 1) * (150 + 30 * (i >> 1)));
       p.x = ownX === 0 ? Math.min(p.x, half - 40) : Math.max(p.x, half + 40); set(q, p);
     });
-    G.sub.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
+    // subs: out on the flank of the enemy's approach; doctrine subLine (IJN): a patrol line across it, 90 apart,
+    // a little over half way to the enemy's known centre (220 ahead with none known)
+    var nsub = G.sub.members.length, ec = B.enemyCentre;
+    var sf = B.doctrine.subLine && ec ? WW.clamp(0.55 * WW.dist(mg.x, mg.z, ec.x, ec.z), 160, 320) : 220;
+    G.sub.members.forEach(function (q, i) { set(q, B.doctrine.subLine ? at(mg.x, mg.z, sf, (i - (nsub - 1) / 2) * 90) : at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
     // withdrawing ships: behind their own carrier (or the main body)
     B.orders.forEach(function (o) {
       if (o.role !== 'withdraw' || o.ship.type === 'carrier') return; // a carrier keeps its own (safe) station

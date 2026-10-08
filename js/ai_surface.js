@@ -92,6 +92,7 @@ window.WW = window.WW || {};
     }
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
     if (aaCover(ship, t, o, B)) { /* steaming to the raided carrier */ }
+    else if (ringHold(o, B)) followStation(ship, o, B); // AA ring escort: holds its ring station and shoots from it
     else if (!t || (o && H.unreachable(ship, t)) || homeWaters(ship, t, B)) { // nothing to shoot, a carrier that outruns us
       const pur = B && B.posture === 'pursue' && WW.endgameAI;
       const pc = pur ? WW.endgameAI.pursueContact(ship, B) : B && B.posture === 'press' ? pressContact(ship) : null;
@@ -107,12 +108,21 @@ window.WW = window.WW || {};
   // ---- seams for the battle-line / destroyer role work ----
   // No target: keep the commander's formation station (group guide + offset along the axis of advance),
   // through the safest heading for the type's risk tolerance. Close to the station: steam along the axis.
+  // A ring escort (doctrine ringR, fleet_formation.js) keeps its live station on its carrier instead, matching the
+  // carrier's course and speed. Under sub threat the formation zigzags: B.zig is added to the course (shared plan).
   function followStation(ship, o, B) {
-    const d = WW.dist(ship.x, ship.z, o.sx, o.sz), risk = B.doctrine.risk[ship.type] || 0.5;
+    if (o.role === 'escort' && o.ringR > 0 && WW.formation && WW.formation.ringKeep(ship, o, B)) return;
+    const d = WW.dist(ship.x, ship.z, o.sx, o.sz), risk = B.doctrine.risk[ship.type] || 0.5, zig = B.zig || 0;
     let want;
-    if (d > 20) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x); ship.throttle = WW.clamp(d / 60, 0.55, 1); }
-    else { want = B.axis.h; ship.throttle = 0.55; }
+    if (d > 20) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + zig * WW.clamp(1.6 - d / 100, 0, 1); ship.throttle = WW.clamp(d / 60, 0.55, 1); }
+    else { want = B.axis.h + zig; ship.throttle = 0.55; }
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, risk) : want;
+  }
+  // A carrier's AA-ring escort (doctrine ringR) keeps the ring whatever it is shooting at, while its carrier lives
+  // and the side is not pressing, pursuing or withdrawing (fleet_formation.js; the escort charge is ai_charge.js).
+  function ringHold(o, B) {
+    return !!(o && B && o.role === 'escort' && o.ringR > 0 && o.ringCv && o.ringCv.alive && !o.ringCv.sinking &&
+      B.posture !== 'press' && B.posture !== 'pursue' && B.posture !== 'withdraw');
   }
   // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range). Pressing
   // closes in by the doctrine's close-quarters style (IJN closer), a withdrawing side opens out. Never inside
