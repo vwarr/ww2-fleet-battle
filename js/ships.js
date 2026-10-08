@@ -136,7 +136,7 @@ window.WW = window.WW || {};
         if (off && this.escHold < 15) this.escHold += dt; else this.escapeT -= dt;
         this.navHeading = this.escapeH; this.navT = 0.3; this.pivotT = 0; pivot = pivot && off;
       }
-      const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
+      const sf = pivot ? 1.5 : WW.clamp(this.speed / (st.speed * Math.max(0.5, this.speedK)), 0.4, 1); // rudder bite: share of what she can make now
       const diff = WW.angleDiff(this.heading, this.navHeading);
       // Helm: rate ∝ heading error (full rate past BAND), and the rudder takes HELM s to swing hard over.
       const maxR = st.turn * sf, cmd = maxR * WW.clamp(diff / BAND, -1, 1);

@@ -18,15 +18,57 @@ window.WW = window.WW || {};
   let waves = [], grps = new Map();
 
   // ---------- waves ----------
-  // carrierAI hook: a strike was queued; count its planes so the wave knows who to wait for.
-  function newWave(carrier, target, queue) {
-    const w = { carrier, target, nation: carrier.nation, pend: { fighter: 0, dive: 0, torpedo: 0 }, pendN: 0,
+  // Form-up by doctrine (WW.fleetCmd doctrine: jointStrike, followUp). A carrier's first strike (its first deck load)
+  // forms up over the carrier: 'group' (by air group, USN) or 'joint' (IJN: the first loads of all the side's carriers
+  // form up together and fly as one strike behind the lead carrier's wave). Later strikes: 'deckload' (IJN: the load
+  // goes once it is all up, no orbit) or 'squadron' (USN: each squadron is its own wave and goes as soon as its
+  // first plane is up; the escorts ride with the torpedo squadron). Form-up time comes out of the planes' fuel.
+  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'];
+  const ST = { forms: [] }; // { nation, first, mode, formT } per wave at departure
+  function mk(carrier, target, mode, first) {
+    return { carrier, target, nation: carrier.nation, pend: { fighter: 0, dive: 0, torpedo: 0 }, pendN: 0, mode, first,
       members: [], t0: WW.time.now, t1: -1, lt: WW.time.now, go: false, done: false,
       ang: WW.rand() * PI * 2, dir: WW.rand() < 0.5 ? -1 : 1, x: carrier.x, z: carrier.z, h: 0, dT: 1e9 };
-    for (const q of queue) if (q.target === target && w.pend[q.kind] !== undefined) { w.pend[q.kind]++; w.pendN++; }
+  }
+  // carrierAI hook: a strike was queued; count its planes so the wave(s) know who to wait for.
+  function newWave(carrier, target, queue, opts) {
+    const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(carrier.nation) : null, a = carrier.ai || {};
+    const first = !a.struck, mode = !d ? 'group' : first ? (d.jointStrike ? 'joint' : 'group') : d.followUp || 'group';
+    a.struck = true;
     for (let i = waves.length - 1; i >= 0; i--) if (waves[i].done || waves[i].carrier === carrier) waves.splice(i, 1);
-    waves.push(w);
-    return w;
+    const out = [];
+    if (mode === 'squadron') { // one wave per bomber squadron; fighters escort the torpedo squadron (else the dive bombers)
+      const n = { fighter: 0, dive: 0, torpedo: 0 };
+      for (const q of queue) if (q.target === target && n[q.kind] !== undefined) n[q.kind]++;
+      for (const k of SQ_KINDS) {
+        if (!n[k]) continue;
+        const w = mk(carrier, target, mode, first); w.pend[k] = n[k]; w.pendN = n[k];
+        if (!out.length && n.fighter) { w.pend.fighter = n.fighter; w.pendN += n.fighter; }
+        out.push(w);
+      }
+    }
+    if (!out.length) {
+      const w = mk(carrier, target, mode, first);
+      for (const q of queue) if (q.target === target && w.pend[q.kind] !== undefined) { w.pend[q.kind]++; w.pendN++; }
+      out.push(w);
+    }
+    for (const w of out) { if (opts && opts.reserve) w.reserve = true; waves.push(w); }
+    if (mode === 'joint') for (const s of WW.world.ships) // Kido Butai: the other carriers spot their first deck loads now
+      if (s !== carrier && s.alive && s.hangar && s.nation === carrier.nation && s.ai && !s.ai.struck && s.ai.strikeT > 2) s.ai.strikeT = 2;
+    return out[0];
+  }
+  function depart(w, now) {
+    w.go = true; w.goT = now;
+    const formT = w.t1 >= 0 ? now - w.t1 : 0;
+    ST.forms.push({ nation: w.nation, first: w.first, mode: w.mode, formT: +formT.toFixed(1) });
+    if (WW.emit) WW.emit('waveGo', { carrier: w.carrier, nation: w.nation, first: w.first, mode: w.mode, formT, reserve: !!w.reserve, target: w.target });
+  }
+  // Ready to leave the carrier, by form-up mode.
+  function ready(w, formed, now) {
+    const up = w.t1 >= 0, all = w.pendN <= 0, late = (up && now - w.t1 > FORM_WAIT) || now - w.t0 > FORM_WAIT + 25;
+    if (w.mode === 'squadron') return up;
+    if (w.mode === 'deckload') return (up && all) || late;
+    return (all && formed && up) || late;
   }
   // First call from a launched plane once airborne: join this carrier's forming wave if a slot is pending.
   function claim(pl) {
@@ -59,7 +101,24 @@ window.WW = window.WW || {};
     if (!w.go) { // orbit over the carrier while the deck launches the rest of the wave
       w.ang += (GUIDE_V * 0.85 / FORM_R) * dt * w.dir;
       w.x = c.x + Math.cos(w.ang) * FORM_R; w.z = c.z + Math.sin(w.ang) * FORM_R; w.h = w.ang + w.dir * PI / 2;
-      if ((w.pendN <= 0 && formed && w.t1 >= 0) || (w.t1 >= 0 && now - w.t1 > FORM_WAIT) || now - w.t0 > FORM_WAIT + 25) w.go = true;
+      w.ok = ready(w, formed, now);
+      if (w.mode !== 'joint') { if (w.ok) depart(w, now); return; }
+      // joint: every first deck load of the side forming now is ready (or the joint wait ran out): all go together
+      const J = waves.filter(q => q.mode === 'joint' && q.nation === w.nation && !q.go && !q.done);
+      if (J.indexOf(w) < 0) J.push(w);
+      const t0 = Math.min.apply(null, J.map(q => q.t0));
+      if (J.every(q => q.ok) || now - t0 > FORM_WAIT + 25 + JOINT_WAIT) {
+        const lead = J.reduce((a, q) => (q.carrier.id < a.carrier.id ? q : a), J[0]);
+        J.forEach((q, i) => { q.lead = q === lead ? null : lead; q.slot = i; depart(q, now); });
+      }
+      return;
+    }
+    if (w.lead && !w.lead.done && w.lead.go && w.lead.target === w.target && w.lead.dT > 160) { // joint strike: fly on the lead's wave
+      const L = w.lead, c2 = Math.cos(L.h), s2 = Math.sin(L.h), sd = (w.slot & 1 ? 1 : -1) * (35 + 15 * (w.slot >> 1));
+      w.x += WW.clamp(L.x - c2 * 20 - s2 * sd - w.x, -GUIDE_V * 1.3 * dt, GUIDE_V * 1.3 * dt);
+      w.z += WW.clamp(L.z - s2 * 20 + c2 * sd - w.z, -GUIDE_V * 1.3 * dt, GUIDE_V * 1.3 * dt);
+      w.h = L.h; w.dT = L.dT;
+      if (WW.cag) WW.cag.waveTick(w);
       return;
     }
     let t = w.target;
@@ -83,7 +142,6 @@ window.WW = window.WW || {};
     pl.slotD = d;
     const v = d > 30 && ea > 0 ? pl.pt.speed * 1.25 : WW.clamp(GUIDE_V + ea * 0.7, GUIDE_V * 0.75, pl.pt.speed * 1.25);
     pl.fly(sx + c * la, sz + sn * la, alt, dt, v, 1.4);
-    if (!w.go) pl.fuel += dt; // circling over our own deck does not count against the sortie
   }
   // Formation flight for a wave member. Returns true while the plane is still in formation.
   function formation(pl, dt) {
@@ -309,8 +367,8 @@ window.WW = window.WW || {};
   // fighter() hook (has a strike target, no foe): weave over the forming / transiting wave.
   function escort(pl, dt) { return formation(pl, dt); }
 
-  function reset() { waves = []; grps = new Map(); }
+  function reset() { waves = []; grps = new Map(); ST.forms = []; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
-  WW.strike = { newWave, dive, torp, escort, reset, TOP, _waves: () => waves };
+  WW.strike = { newWave, dive, torp, escort, reset, TOP, stats: ST, _waves: () => waves };
 })();
