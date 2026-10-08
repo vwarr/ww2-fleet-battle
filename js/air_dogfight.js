@@ -71,9 +71,10 @@ window.WW = window.WW || {};
       any = true;
       s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
       const sp = Math.hypot(s.vx, s.vy, s.vz) || 1;
-      const L = s.flash ? 1.1 + Math.random() * 0.5 : Math.min(5, sp * s.age * 0.9 + 0.8), W = s.flash ? 1.0 : 0.9;
       v3a.set(s.vx / sp, s.vy / sp, s.vz / sp);                          // along the path
       v3c.set(cam.x - s.x, cam.y - s.y, cam.z - s.z);                    // toward the camera
+      const k = Math.max(1, v3c.length() / 30);                          // keep a readable size on screen when far away
+      const L = (s.flash ? 1.1 + Math.random() * 0.5 : Math.min(5, sp * s.age * 0.9 + 0.8)) * Math.sqrt(k), W = s.flash ? 0.8 * Math.sqrt(k) : 0.9 * k;
       v3b.crossVectors(v3c, v3a); if (v3b.lengthSq() < 1e-6) v3b.set(0, 1, 0); v3b.normalize(); // across, in view
       v3c.crossVectors(v3a, v3b);
       m4.makeBasis(v3d.copy(v3a).multiplyScalar(L), v3b.multiplyScalar(W), v3c);
