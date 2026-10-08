@@ -84,10 +84,10 @@ window.WW = window.WW || {};
     var gx = WW.clamp(x / CELL, 0, nx - 1.001), gz = WW.clamp(z / CELL, 0, nz - 1.001), i = gx | 0, j = gz | 0, fx = gx - i, fz = gz - j, o = j * nx + i;
     return (ch[o] * (1 - fx) + ch[o + 1] * fx) * (1 - fz) + (ch[o + nx] * (1 - fx) + ch[o + nx + 1] * fx) * fz;
   }
-  // 0..1.5 penalty for a point inside the EDGE band of the map.
+  // 0..1.5 penalty for a point inside the EDGE band of the map; a point off the map scores 3 and more.
   function edge(x, z) {
     var m = Math.min(x, WW.cfg.MAP_W - x, z, WW.cfg.MAP_H - z);
-    return m >= EDGE ? 0 : 1.5 * (EDGE - Math.max(0, m)) / EDGE;
+    return m >= EDGE ? 0 : m >= 0 ? 1.5 * (EDGE - m) / EDGE : 3 - m / 10; // off the map: never
   }
   // Heading near `want` with the best goal pull - danger x (1 - risk) - edge, sampled `look` units ahead
   // (and half way). risk 0: avoid all known danger; 1: ignore it. opts: { look, air, k (danger weight) }.
