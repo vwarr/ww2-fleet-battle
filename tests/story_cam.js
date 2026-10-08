@@ -220,8 +220,9 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
 
   // 8. lead time: how long before each bomb / torpedo release the camera was already on that strike
   if (WHICH.includes('lead')) {
+    await p.evaluate(t => { window.__TRACE = t; }, !!process.env.TRACE);
     const r = await p.evaluate((secs) => {
-      WW.camStory.stop(); WW.freecam.release(); WW.game.startRound(); __sim.setScale(2); __render = false;
+      WW.camStory.stop(); WW.freecam.release(); WW.game.startRound(); __sim.setScale(2); __render = false; if (window.__TRACE) window.__trace = [];
       const since = new Map(), drops = [];
       const onW = () => { const s = WW.cam._shot(), st = WW.camStory.story(), set = new Set();
         const add = o => { if (o && o.wave) set.add(o.wave); };
@@ -233,12 +234,15 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
         const on = onW();
         for (const w of [...since.keys()]) if (!on.has(w)) since.delete(w);
         for (const w of on) if (!since.has(w)) since.set(w, __fakeT / 1000);
+        if (i % 150 === 0 && window.__trace) { const st = WW.camStory.story(), sh = WW.cam._shot(), t = WW.camFinder.list()[0];
+          __trace.push(`sim ${WW.time.now.toFixed(0)} shot ${sh ? sh.kind + '/' + (sh.sk || '') + ' t' + sh.t.toFixed(0) + '/' + sh.dur.toFixed(0) : '-'} story ${st ? st.lead.kind + (st.begun ? '' : ' (waiting)') + (st.item ? ' imm' : '') : '-'} top ${t ? t.kind + ' ' + t.etaReal.toFixed(0) + 's ' + t.score.toFixed(1) : '-'}`); }
       }
       __render = true;
-      return { drops, rate: WW.camFinder.rate(), stories: WW.camStory.stats };
+      return { trace: window.__trace || [], drops, rate: WW.camFinder.rate(), stories: WW.camStory.stats };
     }, SECS * 2);
     // one entry per wave and kind (the first release)
     const seen = new Set(), first = r.drops.filter(d => { const k = d.sq + d.kind; if (seen.has(k)) return false; seen.add(k); return true; });
+    if (r.trace.length) console.log(r.trace.join('\n'));
     console.log('[lead] sim rate ' + r.rate.toFixed(2) + ' sim s per real s; stories ' + JSON.stringify(r.stories));
     for (const d of first) console.log(`   ${d.sq} ${d.kind} at sim ${d.sim.toFixed(0)}: ` + (d.lead === null ? 'NOT on camera' : `camera on the strike ${d.lead.toFixed(1)} real s before (${(d.lead * r.rate).toFixed(1)} sim s)`));
     const ok10 = first.filter(d => d.lead !== null && d.lead >= 10).length;

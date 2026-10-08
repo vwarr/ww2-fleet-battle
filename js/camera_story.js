@@ -31,6 +31,18 @@ window.WW = window.WW || {};
     const el = ms.find(m => m.kind === pickK && m.wing === 0 && m.ordnance) || ms.find(m => m.wing === 0 && m.ordnance && m.kind !== 'fighter');
     return Math.random() < 0.4 && ok(w.cag) ? w.cag : el || (ok(w.cag) ? w.cag : null);
   }
+  // how much an imminent finder item is worth as a story: attacks on ships beat fighters closing in
+  const ATTACK = { strike: 1.5, push: 1.6, anvil: 1.6, bandits: 0.8 };
+  function imm(it) { return 10 + it.drama * (ATTACK[it.kind] || 1) + 2 * it.score / Math.max(0.1, it.drama); }
+  function bestImminent(not) {
+    let b = null;
+    if (WW.camFinder) for (const it of WW.camFinder.list()) {
+      const p = it.subj;
+      if (!p || !p.pt || !airborne(p) || it.etaReal < 8 || it.etaReal > 45 || (not && not(p))) continue;
+      if (!b || imm(it) > imm(b)) b = it;
+    }
+    return b;
+  }
   // the best arc right now: { lead, score, mission }
   function bestArc() {
     let best = null;
@@ -44,7 +56,7 @@ window.WW = window.WW || {};
     if (WW.camFinder) for (const it of WW.camFinder.list()) {
       const p = it.subj;
       if (!p || !p.pt || !airborne(p) || it.etaReal < 8 || it.etaReal > 45) continue;
-      add(p, 10 + it.drama + 2 * it.score / Math.max(0.1, it.drama), p.kind === 'fighter' ? 'cap' : 'strike');
+      add(p, imm(it), p.kind === 'fighter' ? 'cap' : 'strike');
       if (best && best.lead === p) best.item = it;
     }
     for (const w of wavesNow()) {
@@ -267,6 +279,18 @@ window.WW = window.WW || {};
     if (shot && shot.story && !shot.stage && !S.fall && !shot.cutaway && ok(S.lead) && shot.t > 2.5) {
       const ph = phaseOf(S.lead);
       if (ph !== S.phase && (ph === 'attack' || ph === 'bandits' || ph === 'after' || S.phase === 'launch')) shot.dur = Math.min(shot.dur, shot.t);
+    }
+    // an automatic story gives way to a better attack about to happen elsewhere (a CAP circle must not hide a strike)
+    if (!S.user && shot && shot.story && !shot.stage && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 12 && (S.swT = (S.swT || 0) - rdt) <= 0) {
+      S.swT = 2;
+      const mine = WW.camFinder && WW.camFinder.about(S.lead), my = mine && mine.etaReal >= 0 && mine.etaReal < 60 ? imm(mine) : 0;
+      const b = bestImminent(p => p === S.lead || S.group.indexOf(p) >= 0 || (p.wave && p.wave === S.lead.wave));
+      if (b && imm(b) > my + 1.5) {
+        log.push({ switch: (b.subj.squadron ? b.subj.squadron.short : b.subj.kind) + ' ' + b.kind, at: now });
+        start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false);
+        S.begun = false; if (shot.t > 2) shot.dur = Math.min(shot.dur, shot.t);
+        return;
+      }
     }
     if (S.cutaway && shot && shot.story && !shot.stage && shot.t > 3 && !shot.cutaway && S.phase !== 'attack' && !S.fall) shot.dur = Math.min(shot.dur, shot.t);
     // the title card, through the air-caption throttle
