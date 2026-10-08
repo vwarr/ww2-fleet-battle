@@ -173,14 +173,14 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
 
   // camera sanity over the whole recording
   const rec = await p.evaluate(() => __rec.slice());
-  let minG = 99, minH = 99, out = 0, nsub = 0, maxRot = 0, rotAt = '';
+  const offBy = {}; let minG = 99, minH = 99, out = 0, nsub = 0, maxRot = 0, rotAt = '';
   const ang = (a, c) => Math.acos(Math.min(1, a.fx * c.fx + a.fy * c.fy + a.fz * c.fz));
   rec.forEach((f, i) => {
     minG = Math.min(minG, f.ground); minH = Math.min(minH, f.hull);
-    if (f.sk !== '-' && f.sk !== 'high') { nsub++; if (Math.abs(f.nx) > 0.6 || Math.abs(f.ny) > 0.6) out++; }
+    if (f.sk !== '-' && f.sk !== 'high') { nsub++; if (Math.abs(f.nx) > 0.6 || Math.abs(f.ny) > 0.6) { out++; offBy[f.sk] = (offBy[f.sk] || 0) + 1; } }
     if (i > 4 && f.id && rec[i - 4].id === f.id && rec[i - 1].sk === f.sk && f.t - rec[i - 1].t < 0.25) { const w = ang(f, rec[i - 1]) / Math.max(1e-3, f.t - rec[i - 1].t); if (w > maxRot) { maxRot = w; rotAt = f.sk + ' @' + f.t.toFixed(1); } }
   });
-  console.log(`[camera] frames ${rec.length}, min height over ground ${minG.toFixed(1)}, min hull clearance (below 14) ${minH.toFixed(1)}, subject off-frame ${out}/${nsub}, max view rotation ${maxRot.toFixed(2)} rad/s (${rotAt})`);
+  console.log(`[camera] frames ${rec.length}, min height over ground ${minG.toFixed(1)}, min hull clearance (below 14) ${minH.toFixed(1)}, subject off-frame ${out}/${nsub} ${JSON.stringify(offBy)}, max view rotation ${maxRot.toFixed(2)} rad/s (${rotAt})`);
   console.log('errors', errs.length, errs.slice(0, 5).join(' / '));
   await b.close();
 })();

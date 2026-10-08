@@ -140,7 +140,7 @@ window.WW = window.WW || {};
   function mk(sk, L, d, hard) {
     S.last = sk; S.shots++;
     const c = sk === 'afots' ? { kind: 'ots', subj: L, dur: d, story: true, hard }
-      : { kind: 'story', sk, subj: L, group: S.group, nation: S.nation, dur: d, story: true, hard, kP: sk === 'high' || sk === 'side' ? 2.5 : sk === 'water' ? 3 : 4.5, kL: sk === 'high' ? 2 : 4.5 };
+      : { kind: 'story', sk, subj: L, group: S.group, nation: S.nation, dur: d, story: true, hard, kP: sk === 'high' || sk === 'side' ? 2.5 : sk === 'water' ? 3 : sk === 'ots' ? 6 : 4.5, kL: sk === 'high' ? 2 : 4.5 };
     if (sk === 'chase' && S.phase === 'attack') c.back = 18;
     log.push({ sk, kind: c.kind, phase: S.phase, at: wall(), dur: +d.toFixed(1), hard: !!hard, lead: L.kind + (L.wing ? ' wing' + L.wing : ' lead') });
     if (log.length > 200) log.shift();

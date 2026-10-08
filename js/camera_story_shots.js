@@ -86,7 +86,8 @@ window.WW = window.WW || {};
           if (T) shot.tP = (shot.tP || V()).set(T.x, 2, T.z);
           const tp = shot.tP || _t.set(L.x + Math.cos(L.heading) * 100, 0, L.z + Math.sin(L.heading) * 100);
           _t.set(tp.x - L.x, 0, tp.z - L.z);
-          const want = Math.atan2(_t.z, _t.x), h = smoothH(shot, want, rdt, 1.0);
+          const tw = Math.atan2(_t.z, _t.x), off = WW.clamp(WW.angleDiff(L.heading, tw), -0.6, 0.6); // over the shoulder: never far off the plane's own heading (anvil turns)
+          const h = smoothH(shot, L.heading + off, rdt, 1.4);
           _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
           gP.set(L.x - _f.x * 15 + _r.x * shot.side * 4, ly + 5.5, L.z - _f.z * 15 + _r.z * shot.side * 4);
           const d = Math.min(_t.length(), 160);
