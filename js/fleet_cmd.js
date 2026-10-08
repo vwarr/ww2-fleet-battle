@@ -179,7 +179,7 @@ window.WW = window.WW || {};
         var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > RANGE) continue;
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
-        var sc = dfd * Math.max(STRIKE_V[u.type], dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
+        var sc = dfd * Math.max(STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
         if (pur) sc *= runaway(B, u, c);
         if (sc > bs) { bs = sc; best = u; bc = c; }
       }

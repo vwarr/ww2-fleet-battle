@@ -87,7 +87,7 @@ window.WW = window.WW || {};
   function raft(x, z, life, dye) {
     if (!init()) return null;
     var r = oldest(rafts);
-    r.alive = true; r.t = 0; r.life = life || rr(28, 40); r.x = x; r.z = z; r.ph = R() * 6.28; r.dyeOn = dye !== false;
+    r.alive = true; r.boarded = false; r.t = 0; r.life = life || rr(28, 40); r.x = x; r.z = z; r.ph = R() * 6.28; r.dyeOn = dye !== false;
     r.g.visible = true; r.g.position.set(x, 0, z); r.g.rotation.set(0, R() * 6.28, 0); r.who.visible = true;
     r.dye.visible = r.dyeOn; r.dye.scale.set(0.3, 1, 0.3); r.dye.position.set(x, 0.06, z);
     if (WW.fx) WW.fx.splash(x, z, 0.4);
@@ -144,6 +144,13 @@ window.WW = window.WW || {};
       var r = rafts[i]; if (!r.alive) continue;
       r.t += dt;
       r.x += wind.x * 0.25 * dt; r.z += wind.z * 0.25 * dt;
+      if (!r.boarded && r.life - r.t < 4 && WW.flyingBoats && WW.flyingBoats.awaiting(r.x, r.z, 40)) r.life += dt;   // a Catalina is coming: stay afloat
+      var fb = WW.flyingBoats && !r.boarded && r.t > 1 && r.life - r.t > 3 ? WW.flyingBoats.landedNear(null, r.x, r.z, 70) : null;
+      if (fb) {   // a Catalina is down beside them: paddle to it and climb aboard
+        var fdx = fb.x - r.x, fdz = fb.z - r.z, fd = Math.hypot(fdx, fdz) || 1;
+        if (fd > 3.2) { r.x += fdx / fd * 1.1 * dt; r.z += fdz / fd * 1.1 * dt; r.life = Math.max(r.life, r.t + 8); }
+        else { r.boarded = true; r.life = r.t + 2.6; r.who.visible = false; WW.flyingBoats.boarded(fb, 1); }
+      }
       var left = r.life - r.t, sink = left < 3 ? (3 - Math.max(0, left)) / 3 : 0;
       r.g.position.set(r.x, 0.06 + Math.sin(r.t * 1.7 + r.ph) * 0.05 - sink * 0.6, r.z);
       r.g.rotation.x = Math.sin(r.t * 1.3 + r.ph) * 0.07; r.g.rotation.z = Math.cos(r.t * 1.1 + r.ph) * 0.06;

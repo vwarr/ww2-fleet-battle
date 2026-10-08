@@ -395,6 +395,7 @@ window.WW = window.WW || {};
     return { group: g, prop: prop, payload: payload, wingL: wings[0], wingR: wings[1], brakes: brakes,
       blades: blades, disc: disc, fx: t.fx, name: t.name };
   }
-  if (WW.models) { WW.models.buildPlane = buildPlane; WW.models.PLANE_TYPES = TYPES; }
+  if (WW.models) { WW.models.buildPlane = buildPlane; WW.models.PLANE_TYPES = TYPES;   // _planeKit: the lofting kit (models_flyingboats.js)
+    WW.models._planeKit = { tube: tube, bodyRings: bodyRings, smooth: smooth, surface: surface, chordAt: chordAt, bake: bake, mark: mark, meshOf: meshOf, twoTone: twoTone, discMat: discMat, init: function () { M = WW.models; soft = M._soft; } }; }
   else console.error('models_planes.js must load after models.js');
 })();
