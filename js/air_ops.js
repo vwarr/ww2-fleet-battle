@@ -167,7 +167,7 @@ window.WW = window.WW || {};
       else if (arm && u.kind === 'dive' && (u.phase || u.state === 'attack')) pr = 320;
       else if (arm) pr = 220;
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
-      else pr = 40;
+      else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
       const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4;
       if (s > bs) { bs = s; best = u; }
     }
@@ -179,6 +179,7 @@ window.WW = window.WW || {};
     const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z);
     if (d <= LEASH) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
+    if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= LEASH2 * 0.75) return true;   // finish a damaged bomber turning for home
     return d <= LEASH2 && armed(f) && inbound(f, c);
   }
   function fighter(pl, dt) {
@@ -222,13 +223,13 @@ window.WW = window.WW || {};
 
   // ---------- bombers: jettison and go home ----------
   // Every step for an armed dive / torpedo bomber in transit or attack (aircraft.js update). Deterministic: < 35% hp,
-  // or a fighter on its tail for 2 s while below 70% hp with no friendly fighter within 45.
+  // or a fighter on its tail for 3 s while below 55% hp with no friendly fighter within 45.
   function bomber(pl, dt) {
     if (!pl.ordnance || pl.phase || (pl.state !== 'transit' && pl.state !== 'attack')) return;
     const s = pl.df, hpf = pl.hp / pl.maxHp;
     pl.chasedT = s && s.from && s.from.alive ? (pl.chasedT || 0) + dt : 0;
     let go = hpf < 0.35;
-    if (!go && pl.chasedT > 2 && hpf < 0.7) {
+    if (!go && pl.chasedT > 3 && hpf < 0.55) {
       go = true;
       for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.nation === pl.nation && WW.dist(q.x, q.z, pl.x, pl.z) < 45) { go = false; break; }
     }

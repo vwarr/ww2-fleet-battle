@@ -51,7 +51,7 @@ window.WW = window.WW || {};
       // close fast, then throttle back inside ~30 to stay on the gun line longer (a slower fighter also turns tighter)
       K.energy(p, dt, diving ? pt.dive : dist > 30 ? pt.speed : Math.max(f.speed + 5, pt.speed * 0.62));
       const el = Math.abs(Math.atan2(P.y - p.y, dh) - Math.atan2(p.vy, Math.max(1, p.speed)));
-      can = dist < K.RANGE && Math.abs(ang) < 0.14 && el < 0.14;
+      can = dist < K.RANGE && Math.abs(ang) < 0.2 && el < 0.18;
       s.ipAng = ang; s.ipEl = el; s.ipD = dist;                // for tests / tuning
       keep = dist < K.RANGE && Math.abs(ang) < 0.3;
       const aspect = Math.abs(WW.angleDiff(p.heading, Math.atan2(f.z - p.z, f.x - p.x)));

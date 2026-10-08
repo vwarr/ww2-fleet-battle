@@ -11,7 +11,7 @@ window.WW = window.WW || {};
   const RANGE = 28;        // no firing beyond this (open fire inside ~2x convergence)
   const WING = 1.25;       // wing-gun offset from the centre line (scaled model)
   const DMG = 0.75;        // damage per hitting round (times the type's pt.gun)
-  const BOMBER_K = 2.2;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
+  const BOMBER_K = 3.5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const N = 240;           // tracer pool size (oldest round is reused)
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
