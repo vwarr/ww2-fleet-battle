@@ -100,7 +100,7 @@ const CHECKS = [
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
-const INFO = ['first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = ['first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -217,6 +217,7 @@ function install(P) {
     if (o && o.kind && !o.stats) R.air.drops++;              // a plane (bomb or aerial torpedo)
     if (e.kind !== 'torpedo' || !e.proj) return;
     const p = e.proj; R.torps.push({ p, nation: p.nation, best: {}, done: false });
+    if (o && (o.type === 'pt' || o.type === 'submarine')) R.th[o.type].fired++; // torpedo hit rate per launcher type
     if (!o || !o.stats) return;                              // ship-fired
     const k = o.id, fresh = t - (R.lastSpread[k] === undefined ? -99 : R.lastSpread[k]) > 2;
     R.lastSpread[k] = t;
@@ -240,6 +241,7 @@ function install(P) {
   const parallel = (h, th) => { let a = Math.abs(WW.angleDiff(h, th)); a = Math.min(a, PI - a); return a < P.TORP_PAR * D2R; };
   WW.on('weaponImpact', e => {
     if (!R || !e || e.kind !== 'torpedo') return;
+    const ow = e.proj && e.proj.owner; if (e.ship && ow && (ow.type === 'pt' || ow.type === 'submarine')) R.th[ow.type].hit++;
     const tr = R.torps.find(q => q.p === e.proj && !q.done); if (!tr) return;
     if (e.ship) tr.best[e.ship.id] = { d: 0, par: parallel(e.ship.heading, e.proj.h) };
     finishTorp(tr);
@@ -352,7 +354,7 @@ function install(P) {
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9 }, pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
@@ -374,7 +376,7 @@ function install(P) {
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
-      cr: R.cr, lc: R.lc, torp: R.torp, air: R.air };
+      cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: R.air };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
     R = null;
     return out;
@@ -412,6 +414,7 @@ function aggregate(rounds) {
     focus: focus.length ? focus.reduce((a, b) => a + b, 0) / focus.length : null, broadside: ratio(S(r => r.big.broad), S(r => r.big.shots)),
     unseen_shots: intelOn && !S(r => r.intel.err) ? S(r => r.intel.unseen) : null, intel_err: S(r => r.intel.err), intel_on: intelOn,
     crip_away: ratio(S(r => r.cr.away), S(r => r.cr.n)), lc_away: ratio(S(r => r.lc.away), S(r => r.lc.n)),
+    pt_torp_hit: ratio(S(r => r.th.pt.hit), S(r => r.th.pt.fired)), sub_torp_hit: ratio(S(r => r.th.submarine.hit), S(r => r.th.submarine.fired)),
     torp_parallel: ratio(S(r => r.torp.par), S(r => r.torp.passes)), torp_passes: S(r => r.torp.passes),
     usn_share: ratio(decided.filter(r => r.winner === 'USN').length, decided.length),
     bal_usn: ratio(rounds.filter(r => r.winner === 'USN').length, rounds.length), bal_ijn: ratio(rounds.filter(r => r.winner === 'IJN').length, rounds.length),
