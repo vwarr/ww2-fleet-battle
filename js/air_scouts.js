@@ -202,6 +202,7 @@ window.WW = window.WW || {};
       if (!SHIPS[s.type] || !s.alive || s.sinking) continue;
       var sc = s._scout || (s._scout = { sorties: 0, nextT: WW.randRange(5, 25), plane: null });
       if (sc.plane || sc.sorties >= MAX_SORTIES || g.roundTime < sc.nextT) continue;
+      if (WW.dayNight && !WW.dayNight.canFly()) continue; // no flying after dusk (daylight.js)
       if (!enemyAlive(s.nation) || g.roundTime > WW.cfg.ROUND_TIMEOUT - SEARCH_T) { sc.sorties = MAX_SORTIES; continue; }
       sc.plane = launch(s); sc.sorties++;
     }

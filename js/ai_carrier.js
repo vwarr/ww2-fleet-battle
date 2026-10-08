@@ -38,7 +38,7 @@ window.WW = window.WW || {};
       const o = c.unit;
       if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || WW.time.now - c.seenAt > FLEE_AGE) continue;
       const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
-      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD);
+      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / (Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD) * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
       if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;
       if (d < (ship.ai.thrD || 1e9) || ship.ai.thrT !== WW.time.now) { ship.ai.thrD = d; ship.ai.thrT = WW.time.now; ship.ai.thrB = Math.atan2(cz - ship.z, cx - ship.x); } // nearest known gun ship's bearing
       if (d < r * FLEE_K + CONE_PAD) cone.push(Math.atan2(cz - ship.z, cx - ship.x)); // never steer toward it (see carrierAI)
@@ -62,6 +62,11 @@ window.WW = window.WW || {};
       want = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
     ship.desiredHeading = want;
+    // Hunted (a known gun ship close), the carrier makes for the nearest rain squall: cover from eyes and planes (weather.js)
+    if (WW.weather && (fl !== null || WW.time.now - (a.cvWary || -1e9) < 10)) {
+      const sh = WW.weather.shelter(ship.x, ship.z, 220, 25);
+      if (sh && WW.dist(ship.x, ship.z, sh.x, sh.z) > 20) { ship.desiredHeading = blend(ship.desiredHeading, ship, sh.x, sh.z, 0.5); WW.weather.stats.shelter = (WW.weather.stats.shelter || 0) + dt; }
+    }
     const here = WW.threat ? WW.threat.danger(ship.nation, ship.x, ship.z) : 0;
     // Into the wind while launching / recovering (air_deck.js), only with no danger near, on (or near) station and
     // clear of the map edges (a long run downwind of the station otherwise ends pinned on the edge).

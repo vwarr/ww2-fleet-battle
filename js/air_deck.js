@@ -350,10 +350,12 @@ window.WW = window.WW || {};
       D.lq.splice(D.lq.indexOf(p), 1);
       const w = c.toWorld(p.lx, p.lz); p.x = w[0]; p.z = w[1]; p.y = D.dy + P().deckY;
       // A bad trap (ship swinging, crippled plane, forced in after wave-offs) can go over the side (deaths agent).
-      const tr = c.turnRate || 0, bad = Math.max(p.crippled ? 0.25 : 0, Math.abs(tr) > 0.18 ? 0.35 : 0, p.waveOffs >= 3 ? 0.3 : 0);
+      const nr = WW.dayNight ? WW.dayNight.landRisk() : 0; // a night landing (daylight.js)
+      if (nr) WW.dayNight.stats.nightLandings++;
+      const tr = c.turnRate || 0, bad = Math.max(p.crippled ? 0.25 : 0, Math.abs(tr) > 0.18 ? 0.35 : 0, p.waveOffs >= 3 ? 0.3 : 0, nr);
       const ad = WW.airDeaths;
       if (bad > 0 && ad && typeof ad.slideOff === 'function' && WW.rand() < bad &&
-          ad.slideOff(p, tr > 0.18 ? -1 : tr < -0.18 ? 1 : undefined)) return;
+          ad.slideOff(p, tr > 0.18 ? -1 : tr < -0.18 ? 1 : undefined)) { if (nr) WW.dayNight.stats.nightLandingLoss++; return; }
       WW.stats.planesLanded++;
     },
     rollout(p, dt) {

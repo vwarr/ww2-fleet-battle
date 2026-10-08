@@ -122,6 +122,7 @@ window.WW = window.WW || {};
     if (st.torpedoes && ship.type === 'destroyer') pref = Math.min(pref, st.torpedoes.range * 0.6);
     if (B && B.posture === 'press') pref *= 0.72 + 0.15 * (1 - B.doctrine.night);
     else if (B && B.posture === 'withdraw') pref *= 1.15;
+    if (B && WW.nightOps) pref *= WW.nightOps.rangeK(B); // the night-fighting side closes in the dark
     if (t && t.type === 'carrier') pref = Math.max(pref, CV_KEEP + 5);
     return pref;
   }
@@ -157,7 +158,7 @@ window.WW = window.WW || {};
   // secondaries, never inside CV_KEEP of a carrier: no ram-closing.
   function torpedoRun(ship, t, o, B, d, b) {
     const a = ship.ai, tp = ship.stats.torpedoes, now = WW.time.now;
-    const L = tp.range * (B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8), sec = t.stats.guns[1] || t.stats.guns[0];
+    const L = tp.range * (B && WW.nightOps ? WW.nightOps.torpK(B, 0.6 + 0.3 * B.doctrine.torpedo) : B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8), sec = t.stats.guns[1] || t.stats.guns[0];
     const minD = Math.max(L * 0.8, (sec ? sec.range : 60) + 8, t.type === 'carrier' ? CV_KEEP : 0);
     if (o && o.group === 'flotilla') a.orbitDir = o.slot % 2 ? -1 : 1;
     let h;
@@ -182,7 +183,7 @@ window.WW = window.WW || {};
   function torpedoes(ship, t, B) {
     const st = ship.stats, a = ship.ai;
     if (!st.torpedoes || a.torpReload > 0 || t.submerged) return;
-    const d = WW.dist(ship.x, ship.z, t.x, t.z), k = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8;
+    const d = WW.dist(ship.x, ship.z, t.x, t.z), k0 = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8, k = B && WW.nightOps ? WW.nightOps.torpK(B, k0) : k0; // night: longer reach
     if (d < st.torpedoes.range * k && d > 12 && seen(ship, t) && H.fireSpread(ship, t) && ship.type === 'destroyer') a.runOut = WW.time.now + RUN_OUT;
   }
 
@@ -297,6 +298,8 @@ window.WW = window.WW || {};
     const hx = cv ? cv.x + (east ? 60 : -60) : east ? W - 60 : 60, hz = cv ? cv.z : WW.clamp(ship.z, 120, WW.cfg.MAP_H - 120);
     const hd = WW.dist(ship.x, ship.z, hx, hz);
     if (hd > 30) { const k = n ? 0.7 : 1; ax += (hx - ship.x) / hd * k; az += (hz - ship.z) / hd * k; }
+    const sh = n && WW.weather ? WW.weather.shelter(ship.x, ship.z, 160, 20) : null; // hide in a rain squall (weather.js)
+    if (sh) { const sd = WW.dist(ship.x, ship.z, sh.x, sh.z); if (sd > 15) { ax += (sh.x - ship.x) / sd * 0.8; az += (sh.z - ship.z) / sd * 0.8; } }
     if (Math.abs(ax) + Math.abs(az) < 1e-3) return false;
     const want = Math.atan2(az, ax);
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;

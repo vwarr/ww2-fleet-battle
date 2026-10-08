@@ -109,11 +109,16 @@ const CHECKS = [
   { id: 'bal_usn',       desc: 'USN wins / all rounds',                 op: 'in', thr: [0.45, 0.55], level: 'FAIL', only: ['balance', 'balance_mirror'], balance: true },
   { id: 'bal_ijn',       desc: 'IJN wins / all rounds',                 op: 'in', thr: [0.45, 0.55], level: 'FAIL', only: ['balance', 'balance_mirror'], balance: true },
   { id: 'len_med',       desc: 'median round length (sim s)',           op: 'in', thr: [300, 420], level: 'WARN', only: ['standard', 'mirror', 'balance', 'balance_mirror'] },
+  // night and weather (daylight.js, night_ops.js, weather.js)
+  { id: 'dark_launch',   desc: 'carrier / scout launches after dusk',   op: '==', thr: 0, level: 'FAIL' },
+  { id: 'night_torps',   desc: 'night torpedo spreads per round',       op: '>=', thr: 0.5, level: 'WARN', only: ['night', 'dusk'] },
+  { id: 'star_shells',   desc: 'star shells per round',                 op: '>=', thr: 1, level: 'WARN', only: ['night', 'dusk'] },
+  { id: 'wx_detect',     desc: 'first-sighting range in rain / clear',   op: '<=', thr: 0.85, level: 'WARN', only: ['weather'] },
   { id: 'stuck',         desc: 'stuck ships',  op: '==', thr: 0, level: 'FAIL' },
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
-const INFO = ['cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = ['tod', 'det_day', 'det_dusk', 'det_night', 'det_radar', 'det_flash', 'night_torps_n', 'searchlights', 'radar_sights', 'night_land', 'night_land_loss', 'recalls', 'wx_det_rain', 'wx_det_clear', 'dive_holds', 'dive_aborts', 'cv_shelter', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -130,6 +135,9 @@ const SCEN = [
   { name: 'lone_cripple', A: ['battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer'], B: ['battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer'], cripple: 1 },
   { name: 'asymmetric', A: ['carrier', 'battleship', 'battleship', 'cruiser', 'cruiser', ...rep('destroyer', 3), 'submarine', 'pt', 'pt'], B: ['cruiser', 'destroyer', 'destroyer'] },
   { name: 'mirror', random: true, mirror: true }, // random fleets, each run twice with USN/IJN swapped (nation bias)
+  { name: 'night', random: true, tod: 'night' },   // a standard fleet, fought at night from the start (daylight.js)
+  { name: 'dusk', random: true, tod: 120 },        // dusk begins 120 s in, dark by 270 s: carriers recover, then a night action
+  { name: 'weather', random: true, wx: 'line' },   // a squall line crosses mid-map ~140 s in (weather.js)
   // Balance gate: run only on request (--only balance --seeds 100 [--pages 4]). Light rounds: no behaviour sampling.
   { name: 'balance', random: true, light: true, optIn: true },
   { name: 'balance_mirror', random: true, mirror: true, light: true, optIn: true } // same fleet twice, sides swapped
@@ -270,8 +278,27 @@ function install(P) {
     finishTorp(tr);
   });
 
+  // ---- detection ranges (night / weather): the distance at which a ship acquires an enemy ship (not seen for > 3 s,
+  // now seen by a ship observer), binned by daylight (day > 0.8, dusk, night < 0.3), radar, and rain on the line ----
+  function detect() {
+    if (!WW.intel) return;
+    const tn = WW.time.now, dl = WW.daylight === undefined ? 1 : WW.daylight;
+    for (const n of ['USN', 'IJN']) for (const c of WW.intel.enemyShips(n)) {
+      const k = n + ':' + c.unit.id, v = tn - c.seenAt <= 0.6, was = R.vis[k];
+      R.vis[k] = v;
+      if (!v || was || !c.by || !c.by.stats || !c.by.alive || c.quality === 'sonar') continue;
+      const d = Math.round(WW.dist(c.by.x, c.by.z, c.unit.x, c.unit.z));
+      if (c.quality === 'radar') R.det.radar.push(d);
+      else if (c.unit.firedAt > tn - 6 || c.unit.searchOn) R.det.flash.push(d); // gun flash / searchlight
+      else {
+        (dl > 0.8 ? R.det.day : dl > 0.3 ? R.det.dusk : R.det.night).push(d);
+        if (WW.weather && WW.weather.cells.length && dl > 0.8) (WW.weather.along(c.by.x, c.by.z, c.unit.x, c.unit.z) > 0.3 ? R.det.rain : R.det.clear).push(d);
+      }
+    }
+  }
   // ---- one sample ----
   function sample(dt) {
+    detect();
     const t = now(), all = WW.world.ships, L = all.filter(live), W = WW.cfg.MAP_W;
     const enemies = s => L.filter(o => o.nation !== s.nation);
     for (const s of L) {
@@ -406,12 +433,16 @@ function install(P) {
       placeFleet(spec.A, spec.aNation, zn[spec.aNation], comp);
       placeFleet(spec.B, WW.enemyOf(spec.aNation), zn[WW.enemyOf(spec.aNation)], comp);
     }
+    if (WW.dayNight) WW.dayNight.force = spec.tod || null; // night / dusk scenarios (daylight.js)
+    if (WW.weather) WW.weather.force = spec.wx || null;    // weather scenario (weather.js)
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
+    const snap = () => JSON.parse(JSON.stringify({ d: WW.dayNight ? WW.dayNight.stats : {}, n: WW.nightOps ? WW.nightOps.stats : {}, w: WW.weather ? WW.weather.stats : {} }));
+    const s0 = snap();
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { vis: {}, det: { day: [], dusk: [], night: [], radar: [], flash: [], rain: [], clear: [] }, th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9 }, pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
@@ -437,6 +468,9 @@ function install(P) {
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
       cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
+    const s1 = snap(), dlt = (a, b) => (typeof a === 'number' ? a - (b || 0) : Object.fromEntries(Object.keys(a).map(k => [k, dlt(a[k], b && b[k])])));
+    out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
+    out.det = R.det;
     out.dmg = R.dmg; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
@@ -492,10 +526,25 @@ function aggregate(rounds) {
     first_fire: firsts('firstFire'), first_contact: firsts('firstContact'), first_sight: firsts('firstSight'),
     sub_killed_by: (() => { const k = {}; for (const r of rounds) for (const n in r.dd.kinds) k[n] = (k[n] || 0) + r.dd.kinds[n]; return Object.entries(k).map(e => e.join(':')).join(',') || null; })(),
     stuck_who: C(r => r.stuckWho.map(w => 's' + r.seed + ':' + w)).join(' ') || null,
-    stuck: S(r => r.stuck), nan: S(r => r.nan)
+    stuck: S(r => r.stuck), nan: S(r => r.nan),
+    // night / weather (daylight.js, night_ops.js, weather.js)
+    tod: (() => { const k = { day: 0, dusk: 0, night: 0 }; for (const r of rounds) if (r.night) k[r.night.dlEnd < 0.3 ? (r.night.tod === 'night' ? 'night' : 'dusk') : 'day']++; return `d${k.day}/k${k.dusk}/n${k.night}`; })(),
+    dark_launch: rounds.length && rounds[0].night ? S(r => r.night.d.launchesDark || 0) : null,
+    night_torps: rounds.length && rounds[0].night ? S(r => (r.night.d.nightTorps.USN || 0) + (r.night.d.nightTorps.IJN || 0)) / rounds.length : null,
+    night_torps_n: rounds.length && rounds[0].night ? `U${S(r => r.night.d.nightTorps.USN || 0)}/J${S(r => r.night.d.nightTorps.IJN || 0)}` : null,
+    star_shells: rounds.length && rounds[0].night ? S(r => r.night.n.starShells.USN + r.night.n.starShells.IJN) / rounds.length : null,
+    searchlights: rounds.length && rounds[0].night ? `U${S(r => r.night.n.searchlights.USN)}/J${S(r => r.night.n.searchlights.IJN)}` : null,
+    radar_sights: rounds.length && rounds[0].night ? S(r => r.night.n.radarSights) : null,
+    night_land: rounds.length && rounds[0].night ? S(r => r.night.d.nightLandings) : null, night_land_loss: rounds.length && rounds[0].night ? S(r => r.night.d.nightLandingLoss) : null,
+    recalls: rounds.length && rounds[0].night ? S(r => r.night.d.recalls) : null,
+    det_day: med(C(r => r.det ? r.det.day : [])), det_dusk: med(C(r => r.det ? r.det.dusk : [])), det_night: med(C(r => r.det ? r.det.night : [])), det_radar: med(C(r => r.det ? r.det.radar : [])), det_flash: med(C(r => r.det ? r.det.flash : [])),
+    wx_det_rain: med(C(r => r.det ? r.det.rain : [])), wx_det_clear: med(C(r => r.det ? r.det.clear : [])),
+    wx_detect: (() => { const a = med(C(r => r.det ? r.det.rain : [])), b = med(C(r => r.det ? r.det.clear : [])); return a && b ? a / b : null; })(),
+    dive_holds: rounds.length && rounds[0].night ? S(r => r.night.w.diveHolds) : null, dive_aborts: rounds.length && rounds[0].night ? S(r => r.night.w.diveAborts) : null,
+    cv_shelter: rounds.length && rounds[0].night ? Math.round(S(r => r.night.w.shelter || 0)) : null
   };
 }
-const LIGHT_CHECKS = ['bal_usn', 'bal_ijn', 'len_med', 'nan', 'errors']; // light (balance) rounds sample nothing else
+const LIGHT_CHECKS = ['bal_usn', 'bal_ijn', 'len_med', 'nan', 'errors', 'dark_launch']; // light (balance) rounds sample nothing else
 function judge(c, v, scen, nRounds) {
   if (c.only && !c.only.includes(scen)) return null;
   if (SCEN.find(s => s.name === scen && s.light) && !LIGHT_CHECKS.includes(c.id)) return null;
@@ -540,7 +589,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     const t0 = Date.now(), e0 = errs.length, specs = [];
     for (let i = 0; i < SEEDS; i++) {
       const seed = SEED0 + i, light = !!sc.light;
-      if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light }, { seed, random: true, swap: true, light }] : [{ seed, random: true, light }]));
+      if (sc.random) specs.push(...(sc.mirror ? [{ seed, random: true, light }, { seed, random: true, swap: true, light }] : [{ seed, random: true, light, tod: sc.tod, wx: sc.wx }]));
       else specs.push({ seed, A: sc.A, B: sc.B, aNation: seed % 2 ? 'USN' : 'IJN', cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall });
     }
     const rounds = new Array(specs.length);
@@ -572,6 +621,9 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
       console.log(`  balance: USN ${wins.USN} / IJN ${wins.IJN} / draw ${wins.draw} of ${rounds.length};  USN win rate on decided ${fmt(ratio(u, d))}  95% CI [${(M.usn_ci || []).join(', ')}]` +
         `;  ${(Date.now() - t0) / 1000 / rounds.length * PAGES >= 0 ? ((Date.now() - t0) / 1000 / rounds.length).toFixed(2) : ''} s wall/round (${PAGES} page${PAGES > 1 ? 's' : ''})` +
         (sc.mirror ? `;  same fleet won both sides in ${pairs(rounds)} of ${rounds.length >> 1} pairs` : ''));
+      const dk = rounds.filter(r => r.night && r.night.dlEnd < 0.3), wx = rounds.filter(r => r.night && r.night.wx !== 'clear');
+      console.log(`  night / weather: ${M.tod} (day/dusk/night by the end), dark rounds ${dk.length}: USN ${dk.filter(r => r.winner === 'USN').length} IJN ${dk.filter(r => r.winner === 'IJN').length};` +
+        `  weather rounds ${wx.length}: USN ${wx.filter(r => r.winner === 'USN').length} IJN ${wx.filter(r => r.winner === 'IJN').length};  dark launches ${M.dark_launch}`);
     }
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
   }

@@ -65,6 +65,7 @@ window.WW = window.WW || {};
       const h = want + o;
       let c = 0;
       for (const r of [30, 60]) c += aaAt(w.nation, w.x + Math.cos(h) * r, w.z + Math.sin(h) * r, t);
+      if (WW.weather) for (const r of [40, 80]) c += WW.weather.cover(w.x + Math.cos(h) * r, w.z + Math.sin(h) * r) * 8; // round the worst of a squall
       c += Math.abs(o) * 6;
       if (c < bc - 0.5) { bc = c; best = h; }
     }
@@ -86,8 +87,16 @@ window.WW = window.WW || {};
     return L;
   }
   // dive(): may this dive bomber peel off now?
+  const CLOUD_WAIT = 18;
   function diveOK(pl, t, g) {
     const now = WW.time.now;
+    // Low cloud over the target (weather.js): no push-over without a clear view. Wait up to CLOUD_WAIT s for a gap,
+    // then the bomber gives up and takes its bomb home.
+    if (WW.weather && WW.weather.cover(t.x, t.z) > WW.weather.LOW) {
+      if (!pl.cloudT) { pl.cloudT = now; WW.weather.stats.diveHolds++; }
+      if (now - pl.cloudT > CLOUD_WAIT) { pl.state = 'return'; pl.target = null; WW.weather.stats.diveAborts++; }
+      return false;
+    }
     if (g.vb0 === undefined || now - g.vb0 > 90) { g.vb0 = now; g.held = false; }
     if (now - g.goT < 15 || now - g.vb0 > VB_HOLD) return true;
     const vt = armedOn(pl.nation, t, 'torpedo').filter(p => WW.dist(p.x, p.z, t.x, t.z) < 260);
