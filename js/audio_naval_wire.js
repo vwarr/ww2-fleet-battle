@@ -92,6 +92,7 @@ window.WW = window.WW || {};
   WW.on('weaponImpact', e => {
     if (!A.live || !e || e.kind !== 'torpedo') return;
     for (let i = runs.length - 1; i >= 0; i--) if (runs[i].p === e.proj) { runs[i].h.stop(0.15); runs.splice(i, 1); }
+    if (e.ship && e.dud) A.play('torp.dud', { x: e.x, y: 0, z: e.z });
     if (!e.ship) A.play(WW.terrain && WW.terrain.depthAt(e.x, e.z) <= 0 ? 'shell.land' : 'torp.fizz', { x: e.x, y: 0, z: e.z, size: 0.8 });
   });
   function pollRuns() {

@@ -15,7 +15,13 @@ window.WW = window.WW || {};
       I.buildShared();
       var p = I.acquire('torp', I.G.torp, I.M.torp);
       p.x = x; p.z = z; p.h = heading || 0; p.nation = nation; p.owner = owner || null;
-      p.sp = (WW.TORPEDO && WW.TORPEDO.speed) || 14;
+      // the launcher's nation torpedo (core.js WW.TORPEDO_NATION): a ship's own stats, a plane's 'air' entry
+      var q = owner && owner.stats && owner.stats.torpedoes ? owner.stats.torpedoes : WW.torpSpec ? WW.torpSpec(nation, 'air') : {};
+      p.sp = q.speed || (WW.TORPEDO && WW.TORPEDO.speed) || 14;
+      p.sight = q.sight || 1;                      // intel.js: how close a ship must be to see the track
+      p.dud = q.dud > 0 && WW.rand() < q.dud;      // rolled at launch (seeded): a dud hits with a clang and no damage
+      p.src = owner && owner.stats ? 'Ship' : 'Air';
+      if (WW.dstat) WW.dstat('torpFired' + p.src, nation);
       p.range = range || 100; p.run = 0; p.wakeT = 0;
       p.dmg = ((WW.TORPEDO && WW.TORPEDO.dmg) || 220) * I.rr(0.9, 1.1);
       I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
@@ -39,7 +45,14 @@ window.WW = window.WW || {};
         p.dead = true; return;
       }
       var hit = I.findHit(p.nation, p.x, p.z, 0.4, true, null);
+      if (hit && p.dud) { // a dud: it hits the hull and does not go off (fx only; no damage)
+        I.fx('splash', p.x, p.z, 1); I.fx('sparks', p.x, 0.6, p.z);
+        if (WW.dstat) WW.dstat('torpDud' + p.src, p.nation);
+        if (WW.emit) { WW.emit('torpedoDud', { proj: p, ship: hit, x: p.x, z: p.z }); WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: hit, dud: true }); }
+        p.dead = true; return;
+      }
       if (hit) {
+        if (WW.dstat) WW.dstat('torpHit' + p.src, p.nation);
         I.damage(hit, p.dmg, p.x, p.z, 'torpedo');
         if (!WW.damage) { I.fx('splash', p.x, p.z, 4); I.fx('explosion', p.x, 0.8, p.z, 2.5); }
         if (WW.emit) WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: hit });
@@ -48,8 +61,12 @@ window.WW = window.WW || {};
       if (p.run >= p.range) { if (WW.emit) WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: null }); p.dead = true; return; }
     }
     I.place(p, p.x, -0.2, p.z);
+    // the track on the water: a steam torpedo leaves a bubbly white streak, an oxygen one (sight < 1) a faint trace
     p.wakeT -= dt;
-    if (p.wakeT <= 0) { p.wakeT = 0.1; I.fx('wake', p.x, p.z, p.h, 0.5); }
+    if (p.wakeT <= 0) {
+      if (p.sight < 1) { p.wakeT = 0.25; I.fx('wake', p.x, p.z, p.h, 0.4, true); }
+      else { p.wakeT = 0.1; I.fx('wake', p.x, p.z, p.h, 0.7); if (p.run % 3 < 1) I.fx('torpBubbles', p.x, p.z, p.h); }
+    }
   }
 
   // ---------- bombs ----------

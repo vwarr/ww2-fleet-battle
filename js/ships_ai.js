@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // inside the fan out to the torpedoes' range: the friendly-fire check along the spread.
   function fireSpread(ship, t, range) {
     const tp = ship.stats.torpedoes, n = tp.count;
-    const p = lead(ship, t, WW.TORPEDO.speed), b = Math.atan2(p.z - ship.z, p.x - ship.x);
+    const p = lead(ship, t, tp.speed || WW.TORPEDO.speed), b = Math.atan2(p.z - ship.z, p.x - ship.x);
     const spread = n > 2 ? 0.07 : 0.05, half = spread * (n - 1) / 2 + 0.08, R = range || tp.range;
     for (const o of WW.world.ships) {
       if (o === ship || !o.alive || o.nation !== ship.nation || o.submerged) continue;
@@ -39,6 +39,7 @@ window.WW = window.WW || {};
     const ox = ship.x + Math.cos(b) * off, oz = ship.z + Math.sin(b) * off;
     for (let i = 0; i < n; i++) WW.combat.fireTorpedo(ship, ox, oz, b + (i - (n - 1) / 2) * spread, ship.nation, R);
     ship.ai.torpReload = tp.reload * WW.randRange(0.9, 1.2);
+    if (WW.supply) WW.supply.torpFired(ship); // reload sets (ship_supply.js): out of torpedoes, the tubes stay empty
     return true;
   }
 
@@ -182,7 +183,7 @@ window.WW = window.WW || {};
       ts.t.obj.rotation.y = -ts.aim;
       if (tgt && ts.reload <= 0 && d <= ts.gun.range && Math.abs(WW.angleDiff(ts.aim, rel)) < 0.12) {
         if (!mw) { ship.group.updateMatrixWorld(true); mw = true; }
-        WW.combat.fireShell(ship, ts.t, tgt, ts.gun.cal);
+        if (!WW.supply || WW.supply.shell(ship, ts.gun, d)) WW.combat.fireShell(ship, ts.t, tgt, ts.gun.cal); // main-battery ammunition (ship_supply.js)
         ts.reload = ts.gun.reload * WW.randRange(0.9, 1.15);
       }
     }
@@ -249,6 +250,7 @@ window.WW = window.WW || {};
       const px = e.x + c * e.speed * dt, pz = e.z + s * e.speed * dt, rx = ship.x - px, rz = ship.z - pz;
       const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
       if (along < -2 || along > 70 || perp > L + along * 0.12) continue; // passed, too far, or missing wide
+      if (WW.dstat && e.proj) { WW.dstat('combN', e.proj.nation); WW.dstat('combD', e.proj.nation, along); } // metric: by the torpedo's nation
       a.combH = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
       a.combUntil = now + along / Math.max(1, e.speed) + 1.5;
       ship.desiredHeading = a.combH;

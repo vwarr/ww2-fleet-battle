@@ -273,7 +273,8 @@ window.WW = window.WW || {};
           var sc = d3 * (pl.kind === 'fighter' ? 1.7 : 1) * (pl.ordnance ? 0.8 : 1);   // bombers with ordnance first
           if (sc < bs) { bs = sc; best = pl; }
         }
-        if (best) heavySalvo(s, best, aa.dps * hs);
+        var ak = best && WW.supply ? WW.supply.aa(s, true) : 1;   // AA ammunition (ship_supply.js): weaker when low
+        if (best && ak > 0) heavySalvo(s, best, aa.dps * hs * ak);
       }
       if (tm.l <= 0) {
         tm.l += LIGHT.interval; if (tm.l <= 0) tm.l = LIGHT.interval * rnd();
@@ -285,11 +286,13 @@ window.WW = window.WW || {};
           if (dd < bd && detected(s, p2)) { bd = dd; lt = p2; }
         }
         if (!lt) continue;
+        var lk = WW.supply ? WW.supply.aa(s, false) : 1;
+        if (lk <= 0) continue;
         var frac = Math.sqrt(bd) / aa.range;
         var hc = LIGHT.hitK * (1.4 - 0.8 * frac) * (lt.kind === 'fighter' ? 0.6 : 1) * exposure(lt);
-        var hit = rnd() < hc;
+        var hit = rnd() < hc * lk;
         if (hit) hitPlane(lt, aa.dps * (1 - hs) * LIGHT.interval * LIGHT.dmgK, s, 'lightKills');
-        tracerStream(s, lt, hit);   // visual only: every light-AA tick shows a stream
+        if (lk >= 1 || hit || Math.random() < lk * 0.6) tracerStream(s, lt, hit);   // visual only: every light-AA tick shows a stream (fewer when its ammunition runs low)
         WW.emit('aaLightFired', { ship: s, target: lt, hit: hit });   // sound (audio_aa.js)
       }
     }

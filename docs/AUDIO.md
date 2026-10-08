@@ -160,7 +160,7 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 | `shipBoom` (damage.js, ships.js) | `{ ship, x, y, z, size }` | `ship.boom` |
 | `shipSunk` | ship | `ship.magazine` (ducks) and `ship.sink`; when the wreck settles the sink voice fades and `ship.settle` plays |
 | `weaponDropped` kind torpedo | | `torp.launch` (ship, PT or sub tube; not for plane drops), a `torp.run` loop that follows the torpedo |
-| `weaponImpact` kind torpedo | | stops `torp.run`; a miss: `torp.fizz` |
+| `weaponImpact` kind torpedo | `{ kind, proj, x, z, ship, dud }` | stops `torp.run`; a miss: `torp.fizz`; a dud on a hull (`dud: true`, USN torpedoes): `torp.dud`, a clunk and a ring with no explosion |
 | `dcDropped`, `dcBlast` (combat_weapons.js) | `{ x, z }` | `dc.splash`, `dc.blast` (the sim's fuse is the delay) |
 | polled (audio_naval_wire.js, 4 Hz, only while on) | | `ship.engine` loops for the 3 nearest moving ships within 150 units, `ship.engine.pt` for the 2 nearest PT boats within 110; `fire.ship` per burning ship (`n` = burning sites); `sub.dive` / `sub.surface` when a sub's `wantSurface` flips |
 | `weaponDropped`, `weaponImpact` | see ARCHITECTURE.md | from a plane: `bomb.release` + `bomb.whistle` loop (stopped at impact), `plane.torpdrop` `bomb.blast` on a bomb impact (ship hit or miss) |
