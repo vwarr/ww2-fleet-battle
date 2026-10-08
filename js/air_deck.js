@@ -16,8 +16,8 @@ window.WW = window.WW || {};
     const dx = x - c.x, dz = z - c.z, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
     return [dx * ch + dz * sh, -dx * sh + dz * ch];
   }
-  function lenOf(kind) { return ({ fighter: 2.48, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * P().scale; }
-  // Wing fold: wingL / wingR pivot at the wing root; rotation.x lifts the tip (side from the pivot's z).
+  function lenOf(kind) { return ({ fighter: 2.66, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * P().scale; }
+  // Wing fold: wingL / wingR pivot at the wing root (Corsair: at the gull knee, outer panels fold up over the top); rotation.x lifts the tip (side from the pivot's z).
   function setFold(m, f) {
     if (!m.wingL || !m.wingR) return;
     const a = FOLD * f * f * (3 - 2 * f);

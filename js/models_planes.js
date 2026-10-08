@@ -1,8 +1,8 @@
 // models_planes.js (owner B) - six named carrier types in the chubby toon style. Load after models.js.
-// USN: F4F Wildcat (fighter), SBD Dauntless (dive), TBD Devastator (torpedo)
+// USN: F4U Corsair (fighter), SBD Dauntless (dive), TBD Devastator (torpedo)
 // IJN: A6M Zero (fighter), D3A Val (dive), B5N Kate (torpedo)
 // Every part is lofted with baked vertex colours (paint x soft AO) and merged into a few meshes that all
-// share ONE toon material: body, wingL, wingR (pivots at the wing roots), prop blades, prop disc, payload,
+// share ONE toon material: body, wingL, wingR (pivots at the wing roots, or the Corsair's gull knees), prop blades, prop disc, payload,
 // and the dive-brake flaps. Geometry is built once per kind+nation and shared by every pooled plane.
 window.WW = window.WW || {};
 (function () {
@@ -11,8 +11,9 @@ window.WW = window.WW || {};
   // ---- paint ----
   var US = { top: 0x5f7d9c, belly: 0xd6dadd, cowl: 0x5f7d9c, lip: 0x3e4a58, spin: 0x5f7d9c, blade: 0x3a3d42, tip: 0xe8c450,
     glass: 0x4a7392, frame: 0x55687c, mark: 'star' };
-  var PAINT = {
-    'fighter|USN': US, 'dive|USN': US, 'torpedo|USN': US,
+  var PAINT = {   // Corsair: overall sea blue, a shade lighter underneath, star-and-bar
+    'fighter|USN': { top: 0x3d5a84, belly: 0x51709a, cowl: 0x3d5a84, lip: 0x323d4c, spin: 0x3d5a84, blade: 0x3a3d42, tip: 0xe8c450,
+      glass: 0x4a7392, frame: 0x3a5272, mark: 'star', bars: true }, 'dive|USN': US, 'torpedo|USN': US,
     'fighter|IJN': { top: 0xcac6b0, belly: 0xd8d6c8, cowl: 0x2f343b, lip: 0x24282e, spin: 0xbfbdb2, blade: 0x6e6252, tip: 0xc85448,
       glass: 0x4a7392, frame: 0x6a6c64, mark: 'disc' },
     'dive|IJN': { top: 0x76845a, belly: 0xcfccb8, cowl: 0x2f343b, lip: 0x24282e, spin: 0xbfbdb2, blade: 0x6e6252, tip: 0xc85448,
@@ -23,14 +24,16 @@ window.WW = window.WW || {};
   // ---- shapes (model units, nose on +x, centre line y = 0). body: [x, half width, half height, centre y] tail -> nose.
   // wing: qc = quarter-chord x at the root, y, chord root/tip, semi-span from the pivot z0, dih (rise per unit span),
   //       sweep (quarter-chord moves aft per unit of s), tip: 'square' | 'round' | 'ellipse', t = thickness/chord.
+  //       gull: inverted gull wing - the inner panel (fixed to the body) runs down at anh (rise per unit span) to the
+  //       knee at gull * semi; the outer panel (wingL / wingR, pivot at the knee, folds up) rises at dih.
   var TYPES = {
-    'fighter|USN': { name: 'F4F Wildcat', cowlX: 0.6, exhX: 0.56,
-      body: [[-1.12, 0.03, 0.05, 0.11], [-0.82, 0.1, 0.14, 0.08], [-0.35, 0.2, 0.26, 0.04], [0.1, 0.29, 0.34, 0.02], [0.55, 0.35, 0.37, 0], [0.88, 0.36, 0.36, 0], [1.1, 0.32, 0.32, 0]],
-      canopy: { x0: 0.08, x1: 0.56, w: 0.16, h: 0.18, frames: 2 },
-      wing: { qc: 0.48, y: -0.04, root: 0.8, tip: 0.52, semi: 1.14, z0: 0.3, dih: 0.03, sweep: 0.08, tip_: 'square', t: 0.15 },
-      tail: { qc: -0.84, y: 0.08, root: 0.38, tip: 0.24, semi: 0.48, tip_: 'square' },
-      fin: { qc: -0.9, y: 0.12, root: 0.46, tip: 0.3, semi: 0.42, tip_: 'square' },
-      wheels: true, prop: 0.5 },
+    'fighter|USN': { name: 'F4U Corsair', cowlX: 0.86, exhX: 0.8,   // long nose, cockpit far aft, big prop
+      body: [[-1.24, 0.03, 0.05, 0.12], [-0.92, 0.1, 0.14, 0.08], [-0.42, 0.21, 0.27, 0.04], [0.1, 0.28, 0.31, 0.01], [0.6, 0.31, 0.32, 0], [0.96, 0.33, 0.33, 0], [1.18, 0.3, 0.3, 0]],
+      canopy: { x0: -0.5, x1: -0.02, w: 0.15, h: 0.19, frames: 2 },
+      wing: { qc: 0.3, y: -0.15, root: 0.86, tip: 0.44, semi: 1.26, z0: 0.24, gull: 0.36, anh: -0.62, dih: 0.22, sweep: 0.05, tip_: 'round', t: 0.17 },
+      tail: { qc: -0.98, y: 0.07, root: 0.4, tip: 0.24, semi: 0.56, tip_: 'round' },
+      fin: { qc: -1.04, y: 0.1, root: 0.56, tip: 0.26, semi: 0.56, tip_: 'round' },
+      inlets: true, markX: -0.72, prop: 0.6 },
     'dive|USN': { name: 'SBD Dauntless', cowlX: 0.82, exhX: 0.78,
       body: [[-1.26, 0.03, 0.05, 0.12], [-0.92, 0.1, 0.14, 0.09], [-0.3, 0.2, 0.25, 0.05], [0.3, 0.27, 0.31, 0.02], [0.8, 0.3, 0.32, 0], [1.1, 0.29, 0.29, 0], [1.22, 0.25, 0.25, 0]],
       canopy: { x0: -0.42, x1: 0.58, w: 0.15, h: 0.18, frames: 4 },
@@ -129,6 +132,7 @@ window.WW = window.WW || {};
     var c = o.root + (o.tip - o.root) * s, k = 1;
     if (o.tip_ === 'square') k = s < 0.93 ? 1 : Math.sqrt(Math.max(0, 1 - Math.pow((s - 0.93) / 0.07, 2)));
     else if (o.tip_ === 'round') k = s < 0.68 ? 1 : Math.sqrt(Math.max(0, 1 - Math.pow((s - 0.68) / 0.32, 2)));
+    else if (o.tip_ === 'cut') k = 1;   // gull inner panel: full chord to the knee
     else { c = o.root; k = Math.sqrt(Math.max(0, 1 - s * s)); }
     return { c: c * k, t: (o.t || 0.13) * c * Math.sqrt(k) };
   }
@@ -143,11 +147,19 @@ window.WW = window.WW || {};
     }
     return r;
   }
-  function surface(o, side, paint, inset, lo) {
-    var rings = [], NS = lo ? 7 : 11, N = lo ? 10 : 14;
+  function surface(o, side, paint, inset, lo, NS) {
+    var rings = [], N = lo ? 10 : 14, cut = o.tip_ === 'cut';
+    NS = NS || (lo ? 7 : 11);
     rings.push(airfoil(o, 0, -(inset || 0), side, paint, N));
-    for (var i = 0; i <= NS; i++) { var s = 1 - Math.pow(1 - i / NS, 1.25); rings.push(airfoil(o, s, s * o.semi, side, paint, N)); }
-    return tube(rings, true, false);
+    for (var i = 0; i <= NS; i++) { var s = cut ? i / NS : 1 - Math.pow(1 - i / NS, 1.25); rings.push(airfoil(o, s, s * o.semi, side, paint, N)); }
+    return tube(rings, true, cut);
+  }
+  // gull wing -> { inner, outer, kz, ky }: two straight panels (y = 0 at the root) and the knee offset from the root
+  function gullPanels(wo) {
+    var kz = wo.semi * wo.gull, kc = wo.root + (wo.tip - wo.root) * wo.gull, sw = wo.sweep || 0;
+    return { kz: kz, ky: kz * wo.anh,
+      inner: { qc: wo.qc, y: 0, root: wo.root, tip: kc, semi: kz, dih: wo.anh, sweep: sw, tip_: 'cut', t: wo.t },
+      outer: { qc: wo.qc - sw * kz, y: 0, root: kc, tip: wo.tip, semi: wo.semi - kz, dih: wo.dih, sweep: sw, tip_: wo.tip_, t: wo.t } };
   }
   function meshOf(p, geo, x, y, z) { var o = new THREE.Mesh(geo, M._mat(0xffffff)); o.position.set(x || 0, y || 0, z || 0); p.add(o); return o; }
 
@@ -196,13 +208,18 @@ window.WW = window.WW || {};
     if (!circGeo) { circGeo = new THREE.CircleGeometry(0.5, 18); circGeo.rotateX(-PI / 2); M._whiten(circGeo); }
     var o = new THREE.Mesh(circGeo, M._mat(hex)); o.scale.set(r * 2, 1, r * 2); o.position.y = y; p.add(o); return o;
   }
-  // national marking lying in the local xz plane facing +y (or -y when down)
-  function mark(p, P, nat, r, x, y, z, down, tilt) {
+  // national marking lying in the local xz plane facing +y (or -y when down). P.bars: star-and-bar; sl = fuselage
+  // taper (outward rise per unit x) that the bars follow, or null on a wing (star points forward, bars spanwise)
+  function mark(p, P, nat, r, x, y, z, down, tilt, sl) {
     var g = new THREE.Group(); g.position.set(x, y, z); g.rotation.x = tilt || 0; if (down) g.rotation.x += PI; p.add(g);
+    if (P.bars && sl == null) g.rotation.y = -PI / 2;
     if (nat === 'IJN') {
       if (P.top !== 0xcac6b0) flat(g, C().white, r * 1.18, 0);
       flat(g, C().red, r, 0.004);
     } else {
+      if (P.bars) [-1, 1].forEach(function (k) {
+        M._bar(g, C().white, r * 0.9, 0.004, r * 0.56, k * r * 1.25, k * r * 1.25 * (sl || 0) - 0.003, 0).rotation.z = Math.atan(sl || 0);
+      });
       flat(g, 0x2f4a78, r, 0);
       var st = new THREE.Mesh(star(), M._mat(C().white)); st.scale.set(r * 1.9, 1, r * 1.9); st.position.y = 0.004; g.add(st);
     }
@@ -247,41 +264,48 @@ window.WW = window.WW || {};
       if (Math.abs(fu - Math.round(fu)) * 24 / (cp.frames + 1) < 0.5) return P.top;   // body-coloured frames
       return sn > 0.96 ? 0x9cc0d8 : sn < 0.15 ? P.top : P.glass;           // sky-reflection stripe on top, sill below
     }), false, false));
-    var hasSpine = cp.x0 < -0.3; // two/three-seaters: a frame rail along the greenhouse
+    var hasSpine = cp.x1 - cp.x0 > 0.9; // two/three-seaters: a frame rail along the greenhouse
     if (hasSpine) M._bar(b, P.frame, cp.x1 - cp.x0 - 0.1, 0.02, 0.02, (cp.x0 + cp.x1) / 2, cy + cp.h - 0.012, 0);
     M._sph(b, P.spin, 0.3, nose[2] * 1.05, nose[2] * 1.05, nose[0] + 0.02, nose[3], 0);                   // spinner
     // tailplane (both sides) and fin
     meshOf(b, surface(T.tail, 1, P, 0.05, true)); meshOf(b, surface(T.tail, -1, P, 0.05, true));
     var fin = surface(Object.assign({}, T.fin, { y: 0, dih: 0 }), 1, { top: P.top, belly: P.top }, 0.05, true);
     fin.rotateX(-PI / 2); fin.translate(0, T.fin.y, 0); meshOf(b, fin);
-    // exhaust stubs, Wildcat wheels in the belly, Val spats
+    // exhaust stubs, Val spats
     var ch = hwAt(T.exhX);
     [-1, 1].forEach(function (k) {
       M._xc(b, P.lip, 0.03, 0.12, T.exhX - 0.04, ch[3] - ch[2] * 0.35, k * (ch[1] + 0.005));
-      if (T.wheels) { var w = M._disc(b, 0x2e3238, 0.14, 0.05, 0.5, -0.24, k * 0.27); w.rotation.x = PI / 2 - k * 0.5; }
       if (T.spats) {
         var sx = T.wing.qc - 0.02, sz = k * 0.62;
         M._bar(b, P.top, 0.08, 0.38, 0.05, sx, -0.62, sz).rotation.x = k * 0.12;
         meshOf(b, tube(bodyRings(smooth([[sx - 0.3, 0.02, 0.04, -0.6], [sx - 0.12, 0.08, 0.15, -0.6], [sx + 0.08, 0.08, 0.16, -0.62], [sx + 0.18, 0.04, 0.08, -0.64]], 3), 10, 2.2, twoTone(P.top, P.belly)), true, true), 0, 0, sz);
       }
       // fuselage roundel/hinomaru, behind the wing
-      var mx = J ? -0.48 : -0.42, ms = hwAt(mx);
-      mark(b, P, nat, J ? 0.13 : 0.15, mx, ms[3] + 0.02, k * (ms[1] + 0.012), false, k * PI / 2);
+      var mx = T.markX || (J ? -0.48 : -0.42), ms = hwAt(mx), sl = (hwAt(mx + 0.2)[1] - hwAt(mx - 0.2)[1]) / 0.4;
+      mark(b, P, nat, J ? 0.13 : T.markX ? 0.13 : 0.15, mx, ms[3] + 0.02, k * (ms[1] + 0.012), false, k * PI / 2, sl);
+    });
+    // wings: wingL / wingR are built from z = 0 outward at their pivot (the root, or the knee of a gull wing)
+    var wo = T.wing, rootS = hwAt(wo.qc), z0 = Math.max(0.12, Math.min(rootS[1] * 0.9, wo.z0));
+    var G = wo.gull ? gullPanels(wo) : null, wp = G ? G.outer : Object.assign({}, wo, { y: 0 });
+    if (G) [-1, 1].forEach(function (k) {   // gull inner panels stay on the body; oil-cooler slots in their leading edges
+      meshOf(b, surface(G.inner, k, P, wo.z0 * 0.9, false, 5), 0, wo.y, k * z0);
+      if (!T.inlets) return;
+      var ln = new THREE.Group(), ic = chordAt(G.inner, 0.32);
+      ln.position.set(G.inner.qc + 0.25 * ic.c - (G.inner.sweep || 0) * 0.32 * G.kz - 0.004, wo.y + 0.32 * G.ky + ic.t * 0.04, k * (z0 + 0.32 * G.kz));
+      ln.rotation.x = k * Math.atan(-wo.anh); b.add(ln);
+      M._bar(ln, P.lip, 0.03, ic.t * 0.3, G.kz * 0.42, 0, 0, 0);
     });
     var tpl = { name: T.name, body: bake(b), wings: [], flaps: [], fx: {} };
-    // wings: one group per side, built from z = 0 outward at the root pivot
-    var wo = T.wing, rootS = hwAt(wo.qc);
     [-1, 1].forEach(function (k) {
       var w = new THREE.Group();
-      meshOf(w, surface(Object.assign({}, wo, { y: 0 }), k, P, wo.z0 * 0.9));
-      var s = 0.58, ca = chordAt(wo, s), qx = wo.qc - (wo.sweep || 0) * s * wo.semi, mzz = s * wo.semi, my = mzz * (wo.dih || 0);
-      var mr = Math.min(0.24, ca.c * 0.36), tilt = -k * Math.atan(wo.dih || 0);
+      meshOf(w, surface(wp, k, P, G ? 0.04 : wo.z0 * 0.9));
+      var s = G ? 0.44 : 0.58, ca = chordAt(wp, s), qx = wp.qc - (wp.sweep || 0) * s * wp.semi, mzz = s * wp.semi, my = mzz * (wp.dih || 0);
+      var mr = Math.min(P.bars ? 0.19 : 0.24, ca.c * 0.36), tilt = -k * Math.atan(wp.dih || 0);
       mark(w, P, nat, mr, qx - 0.12 * ca.c, my + ca.t * 0.4 + 0.006, k * mzz, false, tilt);
       mark(w, P, nat, mr, qx - 0.12 * ca.c, my - ca.t * 0.26 - 0.006, k * mzz, true, tilt);
-      var wz = k * Math.max(0.12, Math.min(rootS[1] * 0.9, wo.z0));
-      tpl.wings.push({ geo: bake(w), pos: [0, wo.y, wz] });
-      var tc = chordAt(wo, 0.97);
-      tpl.fx[k < 0 ? 'tipL' : 'tipR'] = new THREE.Vector3(wo.qc - (wo.sweep || 0) * 0.97 * wo.semi - 0.25 * tc.c, 0.97 * wo.semi * (wo.dih || 0), k * 0.97 * wo.semi);
+      tpl.wings.push({ geo: bake(w), pos: G ? [0, wo.y + G.ky, k * (z0 + G.kz)] : [0, wo.y, k * z0] });
+      var tc = chordAt(wp, 0.97);
+      tpl.fx[k < 0 ? 'tipL' : 'tipR'] = new THREE.Vector3(wp.qc - (wp.sweep || 0) * 0.97 * wp.semi - 0.25 * tc.c, 0.97 * wp.semi * (wp.dih || 0), k * 0.97 * wp.semi);
       // dive brakes: parts live in the wing group (fold / detach with it)
       if (T.brakes === 'split') {
         var fc = 0.24, span = wo.semi * 0.62, te = wo.qc - 0.75 * wo.root, hx = te + fc, rc = chordAt(wo, 0.2);
@@ -339,7 +363,7 @@ window.WW = window.WW || {};
   }
 
   // buildPlane(kind, nation) -> { group, prop, payload, wingL, wingR, brakes, blades, disc, fx, name }
-  //   wingL (-z, port) / wingR (+z, starboard): Groups at the wing roots. Fold up: wingL.rotation.x = +a, wingR.rotation.x = -a.
+  //   wingL (-z, port) / wingR (+z, starboard): Groups at the wing roots (Corsair: at the gull knee, outer panels only). Fold up: wingL.rotation.x = +a, wingR.rotation.x = -a.
   //   brakes: null or { open, parts, set(a) }; prop spins about local x; payload: bomb / torpedo mesh or null.
   function buildPlane(kind, nationId) {
     M = WW.models; soft = M._soft;
