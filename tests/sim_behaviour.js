@@ -10,6 +10,10 @@
 //         npm run test:ai            (tests/run.sh serves on port 8000)
 // Env:    CHROMIUM = headless shell path;  JSON=path writes raw per-scenario metrics and per-round records.
 // Exit code 1 if any hard check FAILs (WARN = fuzzy check, reported but not fatal).
+// cv_closing uses the carrier side's own picture (WW.intel.known, last-known positions up to 90 s old), not raw
+// positions: its 1.5 x range radius is 255 for a battleship, but a carrier only sees a battleship at 240, so the raw
+// metric blamed carriers for steaming toward ships they could not know about. cv_min_dist / cv_in_gun stay raw.
+// End reasons per round: kill (a side annihilated), retire (main.js: the loser broke off), time, cap.
 //
 // ---------------------------------------------------------------------------------------------------------
 // BASELINE on the pre-roles AI (ai-strategy @ 1d327fa, 8 seeds/scenario, --pages 4: 62 s wall; --quick ~30 s).
@@ -62,7 +66,7 @@ const CHECKS = [
   { id: 'cv_min_dist',   desc: 'carrier min dist to enemy gun ship (u)', op: '>=', thr: 100, level: 'FAIL' },
   { id: 'cv_med_dist',   desc: 'carrier median dist to nearest gun ship', op: '>=', thr: 200, level: 'WARN' },
   { id: 'cv_in_gun',     desc: 'carrier time inside enemy gun range',    op: '<=', thr: 0.01, level: 'FAIL' },
-  { id: 'cv_closing',    desc: 'carrier heading toward gun ship <1.5xR', op: '<=', thr: 0.10, level: 'FAIL' },
+  { id: 'cv_closing',    desc: 'carrier heading toward known gun ship <1.5xR', op: '<=', thr: 0.10, level: 'FAIL' }, // intel contacts, see sample()
   { id: 'cvcv_min',      desc: 'min carrier-carrier distance (u)',       op: '>=', thr: 150, level: 'WARN', only: ['carrier_duel'] },
   { id: 'air_drops',     desc: 'air weapon drops per round (strikes)',   op: '>=', thr: 2, level: 'FAIL', only: ['carrier_duel', 'carrier_vs_surface'] },
   // PT
@@ -284,7 +288,13 @@ function install(P) {
           if (d <= g.range) inGun = true;
           if (!GUN[o.type]) continue;
           dmin = Math.min(dmin, d);
-          if (d < P.CV_THREAT_K * g.range && d / g.range < thrK) { thrK = d / g.range; thr = o; }
+          // cv_closing judges the carrier on what its side knows (WW.intel contact, last-known position), not on
+          // raw positions: with raw positions a battleship at 241-255 (inside 1.5 x 170) that the carrier cannot
+          // see yet (a battleship is seen at 240) counted as "closing on a threat" (the sensing-gap quirk).
+          const k = B.known ? B.known(s.nation, o) : o;
+          if (!k) continue;
+          const dk = WW.dist(s.x, s.z, k.x, k.z);
+          if (dk < P.CV_THREAT_K * g.range && dk / g.range < thrK) { thrK = dk / g.range; thr = k; }
         }
         R.cv.samples++; if (inGun) R.cv.inGun++; if (dmin < 1e9) R.cv.d.push(Math.round(dmin));
         if (thr) { R.cv.thr++; if (sp > 0.3 && Math.cos(WW.angleDiff(s.heading, brg(s, thr))) > Math.cos(P.CV_CLOSE_DEG * D2R)) R.cv.closing++; }
@@ -379,6 +389,7 @@ function install(P) {
   B.run = function (spec) {
     const G = WW.game, W = WW.cfg.MAP_W, cap = WW.cfg.ROUND_TIMEOUT + 30;
     B.sees = intelSees();
+    B.known = WW.intel && typeof WW.intel.known === 'function' ? (n, u) => { const c = WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= 90 ? c : null; } : null;
     WW.terrain.generate(spec.seed); WW.seedRandom(spec.seed); G.seed = spec.seed;
     let comp;
     if (spec.random) {

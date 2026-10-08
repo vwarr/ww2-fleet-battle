@@ -101,7 +101,9 @@ window.WW = window.WW || {};
         ci++;
         // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
         // room to run in every direction
-        p.x = ownX === 0 ? WW.clamp(p.x, W * 0.15, W * 0.35) : WW.clamp(p.x, W * 0.65, W * 0.85); p.z = WW.clamp(p.z, 150, H - 150);
+        // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
+        var lo = B.posture === 'withdraw' ? 0.08 : 0.15, hi = B.posture === 'withdraw' ? 0.1 : 0.35;
+        p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, 150, H - 150);
         set(q, p); return;
       }
       var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q;

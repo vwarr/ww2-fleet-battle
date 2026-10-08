@@ -177,7 +177,7 @@ window.WW = window.WW || {};
   // cruiser or destroyer left in fighting shape, for RETIRE_HOLD s) and every ship it has left (subs aside) has got
   // clear: out of the enemy's sight for RETIRE_LOST s, or back in its own start band at its home map edge.
   // Returns the retiring nation or null (both sides at once: neither; the time limit decides).
-  const RETIRE_HOLD = 20, RETIRE_LOST = 25, RETIRE_MIN = 120, HOME_BAND = 120;
+  const RETIRE_HOLD = 20, RETIRE_LOST = 25, RETIRE_MIN = 120, HOME_BAND = W * 0.18; // the carrier's withdraw station is 0.08-0.1 W from its edge (fleet_groups.js)
   function retiring() {
     if (!WW.fleetCmd || !WW.intel || game.roundTime < RETIRE_MIN) return null;
     let out = null;
@@ -185,14 +185,15 @@ window.WW = window.WW || {};
       const B = WW.fleetCmd.side(n);
       if (!B || B.posture !== 'withdraw' || !B.brokenAt || WW.time.now - B.brokenAt < RETIRE_HOLD) continue;
       const foe = WW.enemyOf(n), home = SIDE[n].heading === 0 ? 0 : W;
-      let clear = true;
+      let clear = true, left = 0;
       for (const s of WW.world.ships) {
         if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
+        left++;
         if (Math.abs(s.x - home) < HOME_BAND) continue;
         const c = WW.intel.known(foe, s);
         if (c && WW.time.now - c.seenAt < RETIRE_LOST) { clear = false; break; }
       }
-      if (!clear) continue;
+      if (!clear || !left) continue; // only submarines left: the SUB_STALL rule decides
       if (out) return null;
       out = n;
     }
