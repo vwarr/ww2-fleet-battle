@@ -210,7 +210,7 @@ window.WW = window.WW || {};
         s.boomT -= dt;
         if (s.boomT <= 0) {
           s.boomT = rr(12, 25);
-          if (s.sev > 1.2 && R() < 0.2 && !sinking) { fx.explosion(p.x, y + 0.3, p.z, 0.6 + 0.15 * s.sev); }
+          if (s.sev > 1.2 && R() < 0.2 && !sinking) { fx.explosion(p.x, y + 0.3, p.z, 0.6 + 0.15 * s.sev); if (WW.emit) WW.emit('shipBoom', { ship: ship, x: p.x, y: y + 0.3, z: p.z, size: 0.5 + 0.3 * s.sev }); }
         }
       }
     }

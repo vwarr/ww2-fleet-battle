@@ -15,6 +15,7 @@
     "test:audio": "node tests/audio.js",
     "test:audio-aa": "node tests/audio_aa.js",
     "test:audio-amb": "node tests/audio_amb.js",
+    "test:audio:naval": "node tests/audio_naval.js",
     "shots": "bash tests/run.sh peek.js"
   },
   "devDependencies": {

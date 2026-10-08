@@ -121,6 +121,7 @@ window.WW = window.WW || {};
       p.nation = ship ? ship.nation : null; p.owner = ship || null;
       I.place(p, x, p.y, z);
       I.fx('splash', x, z, 0.6);
+      if (WW.emit) WW.emit('dcDropped', { ship: ship || null, x: x, z: z }); // sound hook
       I.stat('depthCharges');
       return p;
     } catch (e) { return null; }
@@ -134,6 +135,7 @@ window.WW = window.WW || {};
     if (p.t < p.fuse) return;
     p.dead = true;
     if (I.depthAt(p.x, p.z) <= 0) return;      // rolled onto land: dud
+    if (WW.emit) WW.emit('dcBlast', { x: p.x, z: p.z, ship: p.owner }); // sound hook
     I.fx('splash', p.x, p.z, 4);
     I.fx('splash', p.x + I.rr(-1, 1), p.z + I.rr(-1, 1), 2.5);
     var R = (WW.DEPTH_CHARGE && WW.DEPTH_CHARGE.radius) || 6;
