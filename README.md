@@ -6,6 +6,14 @@ Sunk ships stay on the seabed as wrecks. In shallow water, part of a wreck stays
 
 You can watch it as a screensaver. A new round starts automatically after each battle.
 
+Play it online: <https://varunwarrier.com/fleet-battle/>
+
+## Documents
+
+| Document | Contents |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The modules, the load order, the coordinates, the main loop and the public functions of each module. |
+
 ## Open the game
 
 1. Open a terminal in this folder.
@@ -105,17 +113,28 @@ The game does not show health bars.
 | File | Contents |
 |---|---|
 | `index.html` | The page. It loads the scripts in the correct order. |
-| `js/core.js` | Settings, ship data and helpers. |
-| `js/terrain.js` | The sea floor and the islands. |
-| `js/models.js`, `js/models_planes.js` | Ship and plane models. |
-| `js/effects.js` | Splashes, explosions, smoke, wakes and oil. |
+| `style.css` | The panels, the black bars, the captions and the tilt-shift bands. |
+| `vendor/three.min.js` | Three.js r149 (MIT licence). |
+| `js/core.js` | Settings, ship data, the random number generator, the event bus and helpers. |
+| `js/sky.js` | The sky, the clouds, the lights and the haze. |
+| `js/water.js` | The water surface, the foam, the depth colours and the contact shadows under hulls. |
+| `js/terrain.js` | The sea floor, the islands and the depth grid. |
+| `js/models.js`, `js/models_detail.js`, `js/models_planes.js` | Ship models, fine ship detail and plane models. |
+| `js/effects.js` | Splashes, explosions, smoke, fire, wakes, trails and oil. |
+| `js/damage.js` | Fires and smoke at the points where ships are hit. The wind. |
 | `js/combat.js`, `js/combat_weapons.js` | Shells, anti-aircraft fire, torpedoes, bombs and depth charges. |
-| `js/ships.js`, `js/ships_ai.js` | Ship movement, damage, sinking, wrecks and ship AI. |
+| `js/ships.js` | Ship movement, damage, sinking and wrecks. |
+| `js/ships_nav.js` | The hull outline checks against land, and the collisions between ships. |
+| `js/ships_ai.js` | Ship AI: targets, guns, torpedoes, submarines, PT boats and carriers. |
 | `js/aircraft.js` | Planes. |
-| `js/sky.js` | The sky, the lights and the haze. |
-| `js/water.js` | The water surface, the foam and the depth colours. |
 | `js/camera.js` | The director camera and the map camera. |
 | `js/freecam.js` | The free camera (mouse and keys). |
 | `js/post.js` | The bloom and the soft tone curve. |
 | `js/ui.js` | The panels, the setup clicks, the black bars and the captions. |
-| `js/main.js` | The main loop and the rounds. |
+| `js/main.js` | The renderer, the main loop and the rounds. |
+| `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. |
+
+## Licence
+
+Three.js is © the Three.js authors and has the MIT licence. Refer to the header of `vendor/three.min.js`.
+The other files in this repository do not have a licence yet.

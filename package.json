@@ -1,0 +1,18 @@
+{
+  "name": "fleet-battle-1942",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A calm, cinematic WW2 naval battle that plays itself. Static Three.js page; npm is only for the browser tests.",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "test": "bash tests/run.sh final.js",
+    "test:clip": "bash tests/run.sh clip.js 8000 10 check 0",
+    "test:gpu": "bash tests/run.sh fps.js",
+    "test:freecam": "node tests/freecam_test.js",
+    "test:realtime": "node tests/realtime.js",
+    "shots": "bash tests/run.sh peek.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.0"
+  }
+}
