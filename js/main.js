@@ -129,7 +129,7 @@ window.WW = window.WW || {};
     startRound(opts) {
       opts = opts || {};
       if (!opts.keepMap || !WW.terrain.seed) {
-        game.seed = (Math.random() * 1e9) >>> 0;
+        game.seed = (WW.rand() * 1e9) >>> 0; // WW.rand: the round after a seeded round replays too
         WW.terrain.generate(game.seed);
       }
       clearModules();

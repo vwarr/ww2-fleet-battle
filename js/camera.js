@@ -61,9 +61,9 @@ window.WW = window.WW || {};
   }
 
   // Calm, fish-tank pacing: long slow shots (12-25 s), soft cross-fades, wide diorama shots every other time.
-  const dur = (a, b) => WW.randRange(a, b);
+  const dur = (a, b) => a + (b - a) * Math.random(); // camera: Math.random, never WW.rand (seeded rounds)
   function candidates() {
-    const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr: pr + WW.rand() * 2, kind, subj }, extra || {}));
+    const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr: pr + Math.random() * 2, kind, subj }, extra || {}));
     for (const s of WW.world.ships) {
       if (s.removed) continue;
       if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: s.stats.length * 1.5 + 16, dur: dur(14, 18), w: 0.05 });
@@ -107,12 +107,12 @@ window.WW = window.WW || {};
   }
   function startShot(c) {
     shot = Object.assign({ t: 0, dur: 8 }, c);
-    shot.side = WW.rand() < 0.5 ? -1 : 1;
+    shot.side = Math.random() < 0.5 ? -1 : 1;
     const s = c.subj;
     if (c.kind === 'orbit') {
       shot.w = (c.w || 0.1) * shot.side; shot.hgt = c.hgt || 0.28; // low: the horizon stays in frame
       // start where the foreground (between subject and camera) is open water, not shoals
-      let best = -1e9, off = WW.rand() * Math.PI * 2;
+      let best = -1e9, off = Math.random() * Math.PI * 2;
       for (let i = 0; i < 10; i++) {
         const a = off + i * Math.PI / 5, mid = a + shot.w * (shot.dur || 8) * 0.5;
         const o = openness(s.x, s.z, a, c.r) + openness(s.x, s.z, mid, c.r);
@@ -129,7 +129,7 @@ window.WW = window.WW || {};
     } else if (c.kind === 'wide') {
       const f = WW.game && WW.game.state === 'victory' && WW.game.winner ? fleetCentre(WW.game.winner) : sceneCentre();
       shot.cx = f.x; shot.cz = f.z; shot.r = WW.clamp((f.d || 150) * 0.9 + 80, 160, 360);
-      shot.a0 = WW.rand() * Math.PI * 2; shot.w = 0.012 * shot.side;
+      shot.a0 = Math.random() * Math.PI * 2; shot.w = 0.012 * shot.side;
       if (shotCount === 1 && WW.game && WW.game.state === 'battle') { // opening shot: one fleet setting out, side-on
         const nat = Math.random() < 0.5 ? 'USN' : 'IJN';
         let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
@@ -137,7 +137,7 @@ window.WW = window.WW || {};
         if (x1 > x0) {
           shot.cx = (x0 + x1) / 2; shot.cz = (z0 + z1) / 2; shot.centred = true;
           shot.r = WW.clamp(Math.max(x1 - x0, (z1 - z0) * 0.6) * 0.95 + 60, 200, 460);
-          shot.a0 = WW.rand() < 0.5 ? Math.PI / 2 : -Math.PI / 2; shot.w = 0.006 * shot.side;
+          shot.a0 = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2; shot.w = 0.006 * shot.side;
         }
       }
     }

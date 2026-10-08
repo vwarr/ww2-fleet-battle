@@ -31,6 +31,7 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
     const seed = SEED0 + i, t0 = Date.now();
     const r = await p.evaluate(seed => {
       const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 30, BIG = { battleship: 1, cruiser: 1 };
+      if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: start each seed with fresh rosters
       WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
       const s0 = Object.assign({}, WW.stats);
       const sunk = [];
