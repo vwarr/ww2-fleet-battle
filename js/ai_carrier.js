@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
-  const FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 110; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
+  const FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
   // Summed repulsion from every known gun ship inside its flee radius (weight (1 - d / radius)^2): the heading
   // away from all of them, or null when none is close.
   const cone = []; // bearings of known gun ships the carrier must not head toward (filled by fleeFrom)
