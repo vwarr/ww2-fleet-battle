@@ -72,11 +72,11 @@ window.WW = window.WW || {};
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
     ship.desiredHeading = want;
     // Hunted (a known gun ship close), the carrier makes for the nearest rain squall: cover from eyes and planes (weather.js)
-    if (WW.weather && (fl !== null || WW.time.now - (a.cvWary || -1e9) < 10)) {
+    if (WW.weather && fl !== null) {
       const sh = WW.weather.shelter(ship.x, ship.z, 220, 25), bs = sh ? Math.atan2(sh.z - ship.z, sh.x - ship.x) : 0;
       let ok = !!sh && (fl === null || Math.abs(WW.angleDiff(fl, bs)) < 1.2);          // only a squall that lies away from the threat
       for (let i = 0; ok && i < cone.length; i++) if (Math.abs(WW.angleDiff(cone[i], bs)) < CONE) ok = false;
-      if (ok && WW.dist(ship.x, ship.z, sh.x, sh.z) > 20) { ship.desiredHeading = blend(ship.desiredHeading, ship, sh.x, sh.z, 0.5); WW.weather.stats.shelter = (WW.weather.stats.shelter || 0) + dt; }
+      if (ok && WW.dist(ship.x, ship.z, sh.x, sh.z) > 20) { ship.desiredHeading = blend(ship.desiredHeading, ship, sh.x, sh.z, 0.4); WW.weather.stats.shelter = (WW.weather.stats.shelter || 0) + dt; }
     }
     const here = WW.threat ? WW.threat.danger(ship.nation, ship.x, ship.z) : 0;
     // Into the wind while launching / recovering (air_deck.js), only with no danger near, on (or near) station and
