@@ -92,7 +92,7 @@ window.WW = window.WW || {};
     }
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
     if (aaCover(ship, t, o, B)) { /* steaming to the raided carrier */ }
-    else if (!t || (o && H.unreachable(ship, t))) { // nothing to shoot, or a carrier that outruns us
+    else if (!t || (o && H.unreachable(ship, t)) || homeWaters(ship, t, B)) { // nothing to shoot, a carrier that outruns us
       const pc = B && B.posture === 'press' ? pressContact(ship) : null;
       if (pc) closeOn(ship, pc, B);
       else if (o) followStation(ship, o, B); else H.idle(ship);
@@ -207,6 +207,13 @@ window.WW = window.WW || {};
       if (d < bd) { bd = d; a.pc = c; }
     }
     return a.pc;
+  }
+  // Pressing: a target out of gun range inside the enemy's home waters is not chased (the press holds at the edge
+  // of that band; a broken enemy that gets home retires, main.js).
+  function homeWaters(ship, t, B) {
+    if (!B || B.posture !== 'press' || !t) return false;
+    const W = WW.cfg.MAP_W, foeHome = ship.nation === 'USN' ? W : 0, g = ship.stats.guns[0];
+    return Math.abs(t.x - foeHome) < W * HOME_K && WW.dist(ship.x, ship.z, t.x, t.z) > (g ? g.range : 60);
   }
   function closeOn(ship, c, B) {
     const age = Math.min(20, WW.time.now - c.seenAt), px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;

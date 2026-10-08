@@ -81,7 +81,8 @@ window.WW = window.WW || {};
       * (0.85 + 0.15 * Math.abs(Math.sin(o.heading - Math.atan2(o.z - ship.z, o.x - ship.x))))   // aspect: broadside is easier
       * (c.quality === 'visual' || c.quality === 'sonar' ? 1 : 0.8);                               // spotted by a plane / scout
     const chase = unreachable(ship, c) ? 0.3 : 1;
-    const finish = chase + 0.8 * (1 - o.hp / o.maxHp) + (o.dmgSites && o.dmgSites.length ? 0.1 : 0);   // burning / low hp
+    const finish = chase + 0.8 * (1 - o.hp / o.maxHp) + (o.dmgCrit ? 0.1 : 0);   // low hp / the big fire (damage.js checkCritical;
+    // not dmgSites.length: hit-site fires last a Math.random time, which broke seeded replays)
     const assign = WW.fleetCmd ? WW.fleetCmd.assignment(ship, o) : 1;
     const base = w * VALUE[o.type];
     const exposure = WW.threat ? base * 0.3 * Math.min(1, WW.threat.danger(ship.nation, c.x, c.z) / (2 * WW.threat.DREF)) * (1 - risk) : 0;
