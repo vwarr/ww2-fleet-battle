@@ -12,11 +12,11 @@ window.WW = window.WW || {};
   const DELAY = 4.5, AUTO_HOLD = 34;
   const SHORT = { carrier: 'CV', battleship: 'BB', cruiser: 'CA', destroyer: 'DD', submarine: 'SS', pt: 'PT' };
   const ORDER = { carrier: 0, battleship: 1, cruiser: 2, destroyer: 3, submarine: 4, pt: 5 };
-  let credit = new Map(), kills = new Map(), seenPlanes = new Set(), sunk = [], escaped = { USN: 0, IJN: 0 }, el = null, showAt = 0, hideAt = 0, last = null;
+  let credit = new Map(), kills = new Map(), seenPlanes = new Set(), sunk = [], escaped = { USN: 0, IJN: 0 }, deckLost = { USN: 0, IJN: 0 }, el = null, showAt = 0, hideAt = 0, last = null;
 
   function on(name, fn) { WW.on(name, e => { try { fn(e); } catch (err) { /* visual only */ } }); }
   on('roundStart', () => {
-    credit = new Map(); kills = new Map(); seenPlanes = new Set(); sunk = []; escaped = { USN: 0, IJN: 0 };
+    credit = new Map(); kills = new Map(); seenPlanes = new Set(); sunk = []; escaped = { USN: 0, IJN: 0 }; deckLost = { USN: 0, IJN: 0 };
     if (el && WW.game.mode !== 'auto') hide(); // a standalone battle starts: the old report goes
   });
   // sinking credit: gun ships aiming at the victim within 1.3 x their gun range, and the strike planes after it
@@ -32,6 +32,7 @@ window.WW = window.WW || {};
   });
   on('shipScuttled', s => { if (s && s.stats && sunk.indexOf(s) < 0) sunk.push(s); });
   on('shipEscaped', s => { if (s && escaped[s.nation] !== undefined) escaped[s.nation]++; });
+  on('deckHit', e => { if (e.ship && deckLost[e.ship.nation] !== undefined) deckLost[e.ship.nation] += e.planes || 0; }); // planes that burned on deck
   on('planeKill', e => { const p = e.shooter && e.shooter.pilot; if (p) kills.set(p, (kills.get(p) || 0) + 1); });
   on('victory', d => { last = snapshot(d); showAt = performance.now() + DELAY * 1000; hideAt = 0; });
 
@@ -44,7 +45,7 @@ window.WW = window.WW || {};
       credit.forEach((v, s) => { if (s.nation === n && v > mv) { mv = v; mvp = s; } });
       let ace = null, ak = 0;
       kills.forEach((v, p) => { if (p.nation === n && v > ak) { ak = v; ace = p; } });
-      let planes = 0; seenPlanes.forEach(p => { if (p.nation === n && p.alive === false) planes++; });
+      let planes = deckLost[n]; seenPlanes.forEach(p => { if (p.nation === n && p.alive === false) planes++; });
       const A = WW.admirals && WW.admirals.of ? WW.admirals.of(n) : null;
       return {
         n, adm: A ? (A.full || A.title || A.name) : null, flag: A && A.flagName,
