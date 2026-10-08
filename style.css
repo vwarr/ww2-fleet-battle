@@ -67,7 +67,7 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
     radial-gradient(ellipse at 30% 20%, #fbf6e6, #efe4c6);
   box-shadow: 0 10px 26px rgba(30, 15, 5, 0.45), inset 0 0 30px rgba(150, 110, 50, 0.15); border-radius: 2px; }
 #diary.on { transform: translate(0, -50%) rotate(1.2deg); opacity: 1; }
-#diary.film { top: auto; bottom: 18px; transform: translate(calc(100% + 40px), 0) rotate(0.8deg); max-height: 46vh; width: min(290px, 30vw); }
+#diary.film { top: auto; bottom: 18px; transform: translate(calc(100% + 40px), 0) rotate(0.8deg); max-height: 40vh; width: min(270px, 30vw); font-size: 10.5px; }
 #diary.film.on { transform: translate(0, 0) rotate(0.8deg); opacity: 0.93; }
 #diary .dh { font: 600 17px/1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.3em; text-transform: uppercase; color: #3b3328;
   border-bottom: 1px solid rgba(210, 90, 80, 0.5); padding-bottom: 5px; }

@@ -159,7 +159,7 @@ window.WW = window.WW || {};
   });
   on('deckHit', e => e.ship && add(nameOf(e.ship) + ': flight deck ablaze' + (e.planes ? ', ' + e.planes + ' planes lost on deck' : ''), 3, e.ship.nation, { kind: 'damage' }));
   on('magazine', e => e.ship && add(nameOf(e.ship) + ' blows up: magazine explosion', 3, e.ship.nation, { kind: 'damage' }));
-  on('engineHit', e => e.ship && RANK[e.ship.type] >= 5 && add(nameOf(e.ship) + ' hit in the engine room, losing way', 1, e.ship.nation));
+  on('engineHit', e => e.ship && RANK[e.ship.type] >= 5 && !hitSaid.has('eng' + e.ship.id) && hitSaid.add('eng' + e.ship.id) && add(nameOf(e.ship) + ' hit in the engine room, losing way', 1, e.ship.nation));
   on('shipSunk', s => s && s.stats && add(nameOf(s) + (s.type === 'carrier' || s.type === 'battleship' ? ' sinks' : ' sunk'), RANK[s.type] >= 5 ? 3 : RANK[s.type] >= 3 ? 2 : 1, s.nation, { kind: 'sunk', ship: s }));
   on('shipScuttled', s => s && s.stats && add(nameOf(s) + ' scuttled by her own escorts', 2, s.nation, { kind: 'sunk' }));
   on('shipEscaped', s => s && s.stats && add(nameOf(s) + ' breaks away and escapes ' + (s.x < WW.cfg.MAP_W / 2 ? 'west' : 'east'), 1, s.nation));
@@ -189,7 +189,7 @@ window.WW = window.WW || {};
   }
   const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   function render() {
-    const L = entries.slice(-SHOW);
+    const L = entries.slice(mapView() ? -SHOW : -7);
     el.sub.textContent = 'Round ' + (WW.stats ? WW.stats.round : round) + ' · ' + (battle() ? clock() + ' hrs' : '');
     el.body.innerHTML = L.map((e, i) => '<div class="de p' + e.pri + (i === L.length - 1 ? ' last' : '') + '"><b>' + e.clock + '</b>' +
       (e.nation ? '<i class="' + e.nation.toLowerCase() + '">' + e.nation + '</i>' : '<i></i>') + '<span>' + esc(e.text) + '</span></div>').join('');
@@ -202,7 +202,8 @@ window.WW = window.WW || {};
     el.classList.toggle('on', want);
     el.classList.toggle('film', !mapView());
     tick += rdt;
-    if (want && (dirty || tick > 1)) { tick = 0; dirty = false; render(); }
+    const film = !mapView();
+    if (want && (dirty || tick > 1 || film !== el.wasFilm)) { tick = 0; dirty = false; el.wasFilm = film; render(); }
   }
   function flash(e) {
     if (mapView() || (el && el.classList.contains('on')) || !WW.airCaptions || !WW.airCaptions.say) return;
