@@ -37,7 +37,7 @@ Auto mode is the default mode.
   Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
   Each shot lasts 12 to 25 seconds. Then the picture fades softly to a new shot.
   Every second shot is a slow, wide view of the islands and the fleets.
-- During the battle, black bars show at the top and bottom of the screen. The panel and other controls are not shown.
+- During the battle, the panel is not shown. Only the **Menu** and **Fullscreen** buttons show at the top left.
 - A round ends when one side has no ships. A caption shows the winner.
 - A round has a time limit of 5.5 minutes. At the time limit, the side with more tonnage wins.
 - After the caption, the next round starts automatically.
@@ -49,7 +49,7 @@ A typical round lasts 6 to 8 minutes at 1× speed.
 
 Use setup mode to put your own ships on the map.
 
-1. Push `H` to show the panel. Then click **Set up fleets** in the panel at the top left.
+1. Push `H` (or click **Menu** at the top left) to show the panel. Then click **Set up fleets** in the panel.
 2. In the **Fleet setup** panel, click a ship type (for example, **Destroyer**).
 3. Click **Side** to select the nation (USN or IJN).
 4. Click the water to put a ship there.
@@ -72,7 +72,9 @@ To go back to auto mode, click **Back to auto** in setup mode.
 
 | Key or button | Action |
 |---|---|
-| `H` | Show or hide the panel during the battle. The panel always shows in setup mode. |
+| `H`, or the **Menu** button | Show or hide the panel during the battle. The panel always shows in setup mode. |
+| `N`, or **New round** in the panel | Start a new round now, on a new map. |
+| **Fullscreen** button | Show the game on the full screen. Click again (or push `Esc`) to go back. |
 | `C` | Change the camera: CINEMATIC (the director camera) or MAP (shows all of the map from above). |
 | `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
@@ -89,6 +91,7 @@ During a battle, you can move the camera yourself:
 | Mouse wheel | Move the camera nearer or farther. |
 | Drag with the right mouse button, or `W` `A` `S` `D`, or the arrow keys | Move the camera across the sea. |
 | `Q`, `E` | Turn the camera left or right. |
+| `R`, `F` (or `Page Up`, `Page Down`) | Move the camera up or down. |
 | Click a ship or a plane | Follow it. |
 | `Esc`, or click empty water | Stop following. |
 
@@ -113,7 +116,7 @@ The game does not show health bars.
 | File | Contents |
 |---|---|
 | `index.html` | The page. It loads the scripts in the correct order. |
-| `style.css` | The panels, the black bars, the captions and the tilt-shift bands. |
+| `style.css` | The panels, the captions and the tilt-shift bands. |
 | `vendor/three.min.js` | Three.js r149 (MIT licence). |
 | `js/core.js` | Settings, ship data, the random number generator, the event bus and helpers. |
 | `js/sky.js` | The sky, the clouds, the lights and the haze. |
@@ -130,7 +133,7 @@ The game does not show health bars.
 | `js/camera.js` | The director camera and the map camera. |
 | `js/freecam.js` | The free camera (mouse and keys). |
 | `js/post.js` | The bloom and the soft tone curve. |
-| `js/ui.js` | The panels, the setup clicks, the black bars and the captions. |
+| `js/ui.js` | The panels, the setup clicks, the captions and fullscreen. |
 | `js/main.js` | The renderer, the main loop and the rounds. |
 | `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. |
 

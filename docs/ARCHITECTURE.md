@@ -36,7 +36,7 @@ js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/post.js              WW.post: HDR render target, bloom, tone curve
-js/ui.js                WW.ui: panels, setup clicks, black bars, captions
+js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 ```
 
@@ -225,4 +225,4 @@ window.__sim = { stats, game, world, fastForward(seconds, onStep), setScale(n), 
 
 Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 destroyers, 1 submarine and 2 PT boats in a task-force formation. A round ends when one side has no ships, when only submarines are left and nothing sinks for 60 s, or at the time limit (330 simulation seconds). At the time limit, the side with more tonnage wins. The victory caption shows for 9 s.
 
-`ui.js` shows the panels only in setup mode. In battle, `H` shows the panel. It also controls the black bars, the captions and the tilt-shift bands (`T`).
+`ui.js` shows the panels only in setup mode. In battle, `H` shows the panel. It also controls the captions, the tilt-shift bands (`T`) and fullscreen. There is no letterbox.

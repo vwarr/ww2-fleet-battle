@@ -3,15 +3,12 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 #game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
 #game.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
 
-/* ---- film look: colour grade, vignette, letterbox, captions ---- */
+/* ---- film look: colour grade, vignette, captions (no letterbox) ---- */
 #film { position: fixed; inset: 0; pointer-events: none; }
 #film .grade { position: absolute; inset: 0; mix-blend-mode: soft-light;
   background: linear-gradient(180deg, rgba(120, 180, 255, 0.06) 0%, rgba(255, 240, 210, 0.04) 55%, rgba(255, 200, 140, 0.12) 100%); }
 #film .vignette { position: absolute; inset: 0;
   background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 62%, rgba(22, 40, 64, 0.2) 100%); }
-#film .bar { position: absolute; left: 0; right: 0; height: 0; background: #0b0f14; transition: height 2.5s ease-in-out; }
-#film .bar.top { top: 0; } #film .bar.bottom { bottom: 0; }
-#film.cinema .bar { height: 5vh; }
 #film .caption { position: absolute; left: 0; right: 0; top: 42%; text-align: center; opacity: 0;
   transition: opacity 1.8s ease-in-out; color: #fffaf0; text-shadow: 0 2px 18px rgba(10, 20, 30, 0.55); }
 #film .caption.on { opacity: 1; }
@@ -47,5 +44,10 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 #hud .btn:hover { background: #dfeaf2; }
 #hud .btn.on { background: #ffd98a; color: #4a3a18; }
 #hud .btn.go { background: #9fd8a0; color: #1f4a22; }
+#hud .corner { position: absolute; left: 16px; top: 16px; pointer-events: auto; transition: opacity 0.4s ease-in-out; }
+#hud .corner.hidden { opacity: 0; pointer-events: none; }
+#hud .btn.menu { margin-right: 6px;
+  opacity: 0.55; transition: opacity 0.4s ease-in-out; }
+#hud .btn.menu:hover { opacity: 1; }
 #hud .msg { display: none; position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center;
   font-weight: 700; color: #fffaf0; text-shadow: 0 2px 10px rgba(10, 20, 30, 0.6); }

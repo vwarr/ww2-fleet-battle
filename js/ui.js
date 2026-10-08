@@ -1,4 +1,4 @@
-// ui.js: HUD (setup mode; fades out in battle), setup-mode placement, film overlay (letterbox, captions).
+// ui.js: HUD (setup mode; fades out in battle), setup-mode placement, film overlay (captions), fullscreen.
 window.WW = window.WW || {};
 (function (WW) {
   const TYPES = ['carrier', 'battleship', 'cruiser', 'destroyer', 'submarine', 'pt'];
@@ -23,19 +23,26 @@ window.WW = window.WW || {};
     const root = document.getElementById('hud') || $('div', '', document.body);
     root.id = 'hud';
     el.root = root;
-    el.panel = $('div', 'panel', root);
+    el.panel = $('div', 'panel hidden', root); // battle starts at boot: start hidden, no flash
+    el.corner = $('div', 'corner', root); // always-reachable controls while the panel is hidden
+    btn(el.corner, '\u2630 Menu (H)', () => { hudPeek = true; }, 'menu');
+    el.fsBtns = [btn(el.corner, '\u26f6 Fullscreen', toggleFullscreen, 'menu')];
     el.round = $('div', 'row title', el.panel);
     el.usn = $('div', 'row usn', el.panel);
     el.ijn = $('div', 'row ijn', el.panel);
     el.info = $('div', 'row dim', el.panel);
     const sp = $('div', 'row', el.panel);
     el.speed = [1, 2, 4].map(n => btn(sp, n + '\u00d7', () => { WW.time.scale = n; }));
-    el.mode = btn($('div', 'row', el.panel), 'MODE: AUTO', () => {
+    const mr = $('div', 'row', el.panel);
+    el.mode = btn(mr, 'MODE: AUTO', () => {
       if (WW.game.state === 'setup') WW.game.enterAuto();
       else WW.game.enterSetup(false);
     });
-    $('div', 'row dim small', el.panel, 'H panel   C camera   T tilt-shift   P pixels');
-    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag pan \u00b7 Click ship follow');
+    el.newRound = btn(mr, 'New round', newRound);
+    el.fsBtns.push(btn(mr, 'Fullscreen', toggleFullscreen));
+    el.close = btn(mr, 'Hide', () => { hudPeek = false; });
+    $('div', 'row dim small', el.panel, 'H panel   N new round   C camera   T tilt-shift   P pixels');
+    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R F camera up / down \u00b7 Click ship follow');
 
     // setup palette
     el.setup = $('div', 'panel setup', root);
@@ -64,6 +71,15 @@ window.WW = window.WW || {};
     window.addEventListener('keydown', onKey);
   }
 
+  // whole page (canvas + HUD) so the panel still works in fullscreen; webkit prefix for Safari
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFullscreen() {
+    const d = document, r = d.documentElement;
+    try {
+      if (fsEl()) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+      else (r.requestFullscreen || r.webkitRequestFullscreen).call(r);
+    } catch (e) { say('Fullscreen is not available'); }
+  }
   function say(text) { el.msg.textContent = text; msgTimer = 2.5; }
   // film-style caption: fades in, holds, fades out
   function caption(main, sub, secs, small) {
@@ -75,6 +91,7 @@ window.WW = window.WW || {};
   function onKey(e) {
     const k = e.key.toLowerCase();
     if (k === 'h') hudPeek = !hudPeek;
+    else if (k === 'n' && WW.game.state !== 'setup') newRound();
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
     else if (k === 'p' && WW.view) say('Pixel mode ' + (WW.view.togglePixel() ? 'on' : 'off'));
     else if (k === 't') say('Tilt-shift ' + (el.film.classList.toggle('notilt') ? 'off' : 'on'));
@@ -116,6 +133,8 @@ window.WW = window.WW || {};
   function respawnSetup() { WW.game.enterSetup(false); }
   function randomizeFleets() { WW.game.composition = WW.game.randomComposition(); respawnSetup(); }
   function clearFleets() { WW.game.composition = []; respawnSetup(); }
+  // auto: a fresh random battle on a new map; setup mode: the player's fleets on a new map
+  function newRound() { if (WW.game.state !== 'setup') { WW.game.startRound(); say('New round'); } }
   function startBattle() {
     const c = WW.game.composition || [];
     if (!c.some(s => s.nation === 'USN') || !c.some(s => s.nation === 'IJN')) return say('Both sides need ships');
@@ -143,6 +162,7 @@ window.WW = window.WW || {};
       el.ijn.textContent = sideLine('IJN');
       el.info.textContent = 'Sunk ' + WW.stats.shipsSunk + '   planes lost ' + WW.stats.planesLost;
       el.speed.forEach((b, i) => b.classList.toggle('on', WW.time.scale === [1, 2, 4][i]));
+      el.fsBtns.forEach((b, i) => { b.textContent = (i ? '' : '\u26f6 ') + (fsEl() ? 'Exit fullscreen' : 'Fullscreen'); });
       el.mode.textContent = g.state === 'setup' ? 'Back to auto' : g.mode === 'setup' ? 'Edit fleet' : 'Set up fleets';
       el.setup.style.display = inSetup ? '' : 'none';
       if (inSetup) {
@@ -155,6 +175,8 @@ window.WW = window.WW || {};
     }
     // HUD shows in setup; in battle it fades away (H shows it again)
     el.panel.classList.toggle('hidden', !inSetup && !hudPeek);
+    el.corner.classList.toggle('hidden', inSetup || hudPeek);
+    el.newRound.style.display = el.close.style.display = inSetup ? 'none' : '';
     el.film.classList.toggle('cinema', !inSetup && !(WW.cam && WW.cam.mode === 'map'));
     if (capEnd && performance.now() > capEnd) { capEnd = 0; el.cap.classList.remove('on'); }
     if (msgTimer > 0) { msgTimer -= rdt; el.msg.style.display = msgTimer > 0 ? 'block' : 'none'; }
