@@ -91,7 +91,8 @@ window.WW = window.WW || {};
       for (let i = 0; i < list.length; i++) {
         const o = list[i];
         if (o === this || o.removed || !(o.alive || o.sinking) || (o.submerged !== this.submerged)) continue; // steer clear of sinking hulls too
-        const r = Math.max(rs, SPACE[o.type] || 20, (st.length + o.stats.length) * 0.6 + 4);
+        const hull = (st.length + o.stats.length) * 0.6 + 4; // a carrier's AA-ring escort may come inside its personal space (fleet_formation.js)
+        const r = this.ringCv === o || o.ringCv === this ? hull : Math.max(rs, SPACE[o.type] || 20, hull);
         const ex = this.x - o.x, ez = this.z - o.z, d2 = ex * ex + ez * ez;
         if (d2 < r * r && d2 > 1e-4) {
           const d = Math.sqrt(d2), k = (r - d) / r, w = (k + k * k * 4) * (o.nation === this.nation ? 1.5 : 0.6);

@@ -4,7 +4,7 @@
 // Usage: BASE_URL=http://localhost:PORT/ node tests/doctrine.js [rounds=24] [firstSeed=1] [--pages K]
 //   formation   ring_r: median distance of a carrier's ring escorts from it (fleet order role 'escort');
 //               ring_n: escorts in that ring; van_d: how far the main body's centroid is ahead of the first carrier,
-//               along the line toward the enemy's edge; both sampled every 2 s while the side is in search / approach
+//               along the line toward the enemy's edge; both sampled every 2 s while the side is in search / approach / engage
 //   zigzag      zig_s: sim s per round that the side's formation zigzagged (subs known or suspected near)
 //   torpedoes   per launcher (ship / air): fired, hits, duds, hit rate, dud share of hulls struck;
 //               seen_d: mean distance at which the target side first saw a track (the wake);
@@ -58,7 +58,7 @@ function runRound(p, seed) {
     while (G.state === 'battle' && t < cap) {
       __sim.fastForward(2); t += 2;
       for (const n of ['USN', 'IJN']) {
-        const B = WW.fleetCmd && WW.fleetCmd.side(n); if (!B || (B.posture !== 'search' && B.posture !== 'approach')) continue;
+        const B = WW.fleetCmd && WW.fleetCmd.side(n); if (!B || (B.posture !== 'search' && B.posture !== 'approach' && B.posture !== 'engage')) continue;
         const cvs = WW.world.ships.filter(s => s.alive && !s.sinking && s.nation === n && s.type === 'carrier');
         if (!cvs.length) continue;
         const cv = cvs[0], dir = n === 'USN' ? 1 : -1;
