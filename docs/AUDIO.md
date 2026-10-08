@@ -154,10 +154,39 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 | Event | Data | Sound |
 |---|---|---|
 | `shellFired` (combat.js `fireShell`) | `{ ship, cal, x, y, z }` | `gun.big` for `cal === 'big'` |
-| `weaponDropped`, `weaponImpact` | see ARCHITECTURE.md | (for the weapons family) |
+| `weaponDropped`, `weaponImpact` | see ARCHITECTURE.md | from a plane: `bomb.release` + `bomb.whistle` loop (stopped at impact), `plane.torpdrop` (impact sounds: weapons family) |
+| `planeHit` (aircraft.js `Plane.damage`) | `{ plane, amount }` | `plane.hit` |
+| polled every frame (audio_air.js) | `WW.world.planes`, carrier decks | aircraft: see below |
 | `shipSunk`, `planeKill`, `ace`, `roundStart`, `victory` | | |
 | UI buttons (ui.js `btn`) | | `ui.click` |
 | always | | `amb.sea` loop, level and tone follow the camera height |
+
+## Aircraft (`js/audio_air.js`)
+
+Most aircraft sounds are not driven by events. A `WW.audio.onUpdate` hook reads `WW.world.planes` and the carrier decks
+every frame (only while sound is on) and reacts to state changes. `WW.audioAir.stats()` gives counters for the tests.
+
+| Patch | Sound | Trigger |
+|---|---|---|
+| `plane.engine` (loop, `max` 7, `ref` 16) | radial drone: a pulse-wave firing tone (twin-row beat for the Wildcat and the torpedo bomber), a sub-octave, amplitude lump at the rev rate, exhaust noise pulsed by the firing tone, slipstream. Types `wildcat`, `zero`, `dive`, `torp`, `scout`. Params `thr` (0 idle, 1 cruise, 1.3 overspeed: pitch and brightness), `air` (slipstream), `dive` (rising howl), `whine` (falling engine), `fire` (crackle and roar), `cough` (sputter, with a backfire pop above 0.55) | one loop per plane, `at: plane`, doppler on at 1× and 2× (off at 4×). Only the 7 nearest get voices. `thr` follows speed and climb, the dive-bomber `phase` (`roll`/`dive` throttle back and howl, `pull` strains), the deck (`hold` run-up as the wings spread, `run` full power, `rollout` chopped) and the catapult. Damage below 55% hp coughs; below 30% hp, and in a comet or crash, it burns. In a spin the pitch falls and a whine is added. It stops when the plane is removed, ditches (with a last cough), slides off a deck, or is parked. |
+| `plane.gun` (loop, `max` 4, `ref` 9) | wing-gun rattle: pulse-gated noise and thumps, guns out of step. Zero: light 7.7 mm rattle + slow 20 mm thump | one loop per burst (`plane.df.burst > 0`), follows the plane; not started beyond 160 units |
+| `plane.hit` | metal ping + short rip | `planeHit` (throttled 0.09 s) |
+| `plane.whoosh` | rush of air | a plane's predicted closest approach to the camera is within 12 units and 0.35 s (1× and 2× only) |
+| `bomb.release`, `bomb.whistle` (loop) | rack clunk; a whistle whose pitch falls with the bomb's height | `weaponDropped` (bomb from a plane); the whistle only within 90 units, at most 4 |
+| `plane.torpdrop` | clunk, plop, splash | `weaponDropped` (torpedo from a plane) |
+| `plane.wingrip`, `plane.fireball` | crunch and a rough rip; a dark fuel whoomph (`size` 0.45 for a spin, 1.2 for a comet or crash) | `deathMode` becomes `wing` / `spin` / `comet` / `crash` |
+| `plane.splash` | thump, spray, patter (`size` 0.4 to 3) | a falling plane is removed at the water (size by death mode); `slide` → `ditched`; a scout alights |
+| `plane.crunch` | crunch, scrape, clanks | a crashing plane is removed with `crashedInto` set (the ship's hit sound is the naval family's) |
+| `plane.ditch` | hull skid and splash | `deathMode` `ditch` → `ditched` |
+| `chute.pop` | canopy snap and flutter | `plane.bailAt` is cleared above 6 units (the chute opens) |
+| `deck.roll` | tyres on the deck planks (`dur` = the roll in real s) | launcher `deckPh` → `run` |
+| `deck.trap` | wire twang, hook thunk, hiss | `state` → `rollout` with `deckPh` `trap` |
+| `deck.barrier` | wire screech and crunch | `deathMode` → `slide` (a bad trap goes over the side) |
+| `deck.fold` | hydraulic whir and lock clunk | a launcher's `fold` starts to drop; a parked entry's `fold` starts to rise |
+| `deck.elevator` | clunk, motor hum, clunk (subtle) | launcher `deckPh` → `rise`; a deck entry comes up (`ph` `up`) or goes down |
+| `deck.catapult` | cordite bang and the carriage slide | scout `fired` |
+
+A raft makes no sound. `tests/audio_air.js` (`npm run test:audio:air`, port 8812; `OUT=dir` writes WAV renders) checks all of it.
 
 ## Testing a patch
 

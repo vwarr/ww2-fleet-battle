@@ -61,6 +61,7 @@ window.WW = window.WW || {};
       this.hp -= amount;
       if (this.hitFxT <= this.t) { // throttled hit flash: sparks + a puff of debris smoke at the airframe
         this.hitFxT = this.t + 0.18;
+        if (WW.emit) WW.emit('planeHit', { plane: this, amount: amount }); // sound hook (audio_air.js), throttled with the hit flash
         WW.fx.sparks(this.x, this.y, this.z);
         if (Math.random() < 0.5) WW.fx.smoke(this.x, this.y, this.z, true, 0.35);
       }
