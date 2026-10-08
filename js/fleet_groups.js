@@ -17,7 +17,7 @@ window.WW = window.WW || {};
   //   risk         per-type risk tolerance 0..1 for WW.threat.bestHeading (carrier 0: never into danger)
   //   damageControl  divides torpedo flooding, engine-room repair time and the chance an engine-room hit is for good
   //                (ship_speed.js); puts fires out sooner, spreads them less, and above 1.15 pumps flooding out and
-  //                patches minor damage (ship_fires.js); USN 1.3: its damage-control training was the better of the two
+  //                patches minor damage (ship_fires.js); USN 1.5: its damage-control training was the better of the two
   //   avgas        chance factor that a bomb on a loaded flight deck sets off the fuel and ordnance (ship_fires.js);
   //                USN 0.8: fuel lines drained and CO2-purged under attack, ordnance struck below
   //   escortCharge how readily the carrier's destroyers charge an enemy gun ship closing on it (ai_charge.js); USN 1
@@ -28,7 +28,7 @@ window.WW = window.WW || {};
   //                may be scuttled
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.3, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
+      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true,
