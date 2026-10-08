@@ -40,11 +40,12 @@ Auto mode is the default mode.
   Every second shot is a slow, wide view of the islands and the fleets.
 - During the battle, the panel is not shown. Only the **Menu**, **Fullscreen** and **Sound** buttons show at the top left.
 - A round ends when one side has no ships. A caption shows the winner.
-- A round has a time limit of 5.5 minutes. At the time limit, the side with more tonnage wins.
+- A round has a time limit of 14 minutes at 1× speed. At the time limit, the side with more tonnage wins.
 - After the caption, the next round starts automatically.
 
 The game runs at a calm pace: at 1× speed, the ships and planes move at half of their normal speed.
-A typical round lasts 6 to 8 minutes at 1× speed.
+The fleets start on opposite sides of a large map, so each round begins with an approach: the carriers launch strikes and the scouts search first, and the gun battle starts after a few minutes.
+A typical round lasts 9 to 13 minutes at 1× speed.
 
 ## Setup mode
 

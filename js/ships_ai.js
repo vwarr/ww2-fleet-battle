@@ -238,7 +238,7 @@ window.WW = window.WW || {};
       let near = 0, cap = 0;
       for (const p of WW.world.planes) {
         if (!p.alive) continue;
-        if (p.nation !== ship.nation && WW.dist(ship.x, ship.z, p.x, p.z) < 140) near++;
+        if (p.nation !== ship.nation && WW.dist(ship.x, ship.z, p.x, p.z) < 200) near++; // strikes come from far off: scramble early
         if (p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
       }
       if (near && cap < 3 && hg.fighter > 0 && !a.queue.some(q => q.kind === 'fighter' && !q.target)) a.queue.unshift({ kind: 'fighter', target: null });

@@ -15,13 +15,14 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
   for (let i = 0; i < N; i++) {
     const seed = SEED0 + i, t0 = Date.now();
     const r = await p.evaluate(seed => {
-      const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 30;
+      const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 30, BIG = { battleship: 1, cruiser: 1 };
       WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
       const s0 = Object.assign({}, WW.stats);
       const sunk = [];
       const onSunk = s => sunk.push({ type: s.type, nation: s.nation, t: +G.roundTime.toFixed(1) });
       WW.on('shipSunk', onSunk);
       let contact = null; // first time any two enemy surface ships are within gun range of each other's main battery
+      let heavy = null;   // first time a battleship / cruiser has an enemy battleship / cruiser inside its main battery range
       const cv = {};      // per carrier id: closest approach to any live enemy gun ship
       const moved = {};   // per ship id: [x, z, t of last real move]
       let stuck = 0, nan = 0;
@@ -40,13 +41,14 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
             if (o.nation === s.nation || o.submerged) continue;
             const d = WW.dist(s.x, s.z, o.x, o.z);
             if (contact === null && s.stats.guns[0] && d <= s.stats.guns[0].range && s.type !== 'submarine') contact = t;
+            if (heavy === null && BIG[s.type] && BIG[o.type] && d <= s.stats.guns[0].range) heavy = t;
             if (s.type === 'carrier' && o.stats.guns.length && o.type !== 'carrier' && o.type !== 'submarine') cv[s.id] = Math.min(cv[s.id] || 1e9, d);
           }
         }
       }
       const end = G.state === 'battle' ? 'cap' : (WW.world.ships.some(s => s.alive && s.nation === 'USN') && WW.world.ships.some(s => s.alive && s.nation === 'IJN')) ? 'time' : 'kill';
       const d = k => WW.stats[k] - s0[k];
-      const out = { seed, winner: G.winner, end, len: +G.roundTime.toFixed(0), contact, sunk, comp,
+      const out = { seed, winner: G.winner, end, len: +G.roundTime.toFixed(0), contact, heavy, sunk, comp,
         cvMin: Object.values(cv).map(v => +v.toFixed(0)), stuck, nan,
         torps: d('torpedoesFired'), shells: d('shellsFired'), launched: d('planesLaunched'), lost: d('planesLost'), hits: d('hits') };
       // detach our listener (the bus has no off(): blank it)
@@ -56,14 +58,14 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
     r.wall = ((Date.now() - t0) / 1000).toFixed(1);
     rounds.push(r);
     const lost = n => r.sunk.filter(s => s.nation === n).map(s => s.type[0] + s.type[1]).join(',') || '-';
-    console.log(`seed ${r.seed}: ${r.winner || 'draw'} by ${r.end} @${r.len}s  contact ${r.contact}s  USN lost[${lost('USN')}] IJN lost[${lost('IJN')}]  cvMin ${r.cvMin.join('/')}  torps ${r.torps} planes ${r.launched}/${r.lost}lost  stuck ${r.stuck}${r.nan ? ' NaN!' : ''}  (${r.wall}s)`);
+    console.log(`seed ${r.seed}: ${r.winner || 'draw'} by ${r.end} @${r.len}s  contact ${r.contact}s heavy ${r.heavy}s  USN lost[${lost('USN')}] IJN lost[${lost('IJN')}]  cvMin ${r.cvMin.join('/')}  torps ${r.torps} planes ${r.launched}/${r.lost}lost  stuck ${r.stuck}${r.nan ? ' NaN!' : ''}  (${r.wall}s)`);
   }
   const avg = f => (rounds.reduce((s, r) => s + f(r), 0) / rounds.length).toFixed(1);
   const cvs = rounds.flatMap(r => r.cvMin);
   console.log('---');
   console.log(`USN ${rounds.filter(r => r.winner === 'USN').length}  IJN ${rounds.filter(r => r.winner === 'IJN').length}  draw ${rounds.filter(r => !r.winner).length}` +
     `   ends: kill ${rounds.filter(r => r.end === 'kill').length} time ${rounds.filter(r => r.end === 'time').length}`);
-  console.log(`avg length ${avg(r => r.len)}s  avg first contact ${avg(r => r.contact || 0)}s  avg sunk ${avg(r => r.sunk.length)}  avg torps ${avg(r => r.torps)}  planes lost ${avg(r => r.lost)}`);
+  console.log(`avg length ${avg(r => r.len)}s  avg first contact ${avg(r => r.contact || 0)}s (heavy ${avg(r => r.heavy || 0)}s)  avg sunk ${avg(r => r.sunk.length)}  avg torps ${avg(r => r.torps)}  planes lost ${avg(r => r.lost)}`);
   console.log(`carrier closest approach to enemy gun ships: median ${cvs.sort((a, b) => a - b)[cvs.length >> 1]}  min ${Math.min(...cvs)}`);
   console.log(`stuck ships ${rounds.reduce((s, r) => s + r.stuck, 0)}  NaN ${rounds.reduce((s, r) => s + r.nan, 0)}  errors ${errs.length}`);
   if (errs.length) console.log(errs.slice(0, 10).join('\n'));

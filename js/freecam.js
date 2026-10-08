@@ -4,7 +4,7 @@
 // takes over again (with its usual cross-fade). Only in battle / victory; setup keeps its own clicks.
 window.WW = window.WW || {};
 (function (WW) {
-  const IDLE = 20, MIN_D = 22, MAX_D = 460, MIN_P = 0.12, MAX_P = 1.25, MARGIN = 120;
+  const IDLE = 20, MIN_D = 22, MAX_D = 900, MIN_P = 0.12, MAX_P = 1.25, MARGIN = 120;
   const W = () => WW.cfg.MAP_W, H = () => WW.cfg.MAP_H;
   let lastInput = -1e9, on = false, follow = null, drag = null;
   const T = new THREE.Vector3(), goalT = new THREE.Vector3();

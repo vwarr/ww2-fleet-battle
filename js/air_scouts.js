@@ -10,11 +10,11 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var SPOT_R = 85, SPOT_HOLD = 20, SEARCH_T = 85, ALT = 26, ARC_R = 90;
+  var SPOT_R = 85, SPOT_HOLD = 20, SEARCH_T = 130, ALT = 26, ARC_R = 90;   // SEARCH_T covers the ~35 s flight out on the big map
   var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, CAT_SLIDE = 0.35;
   var SCALE_CAT = 0.55, SCALE_FLY = 1.5;   // small on the catapult, arcade size (like carrier planes) in flight
   var SHIPS = { cruiser: 1, battleship: 1 };
-  if (WW.PLANE_TYPES && !WW.PLANE_TYPES.scout) WW.PLANE_TYPES.scout = { hp: 16, speed: 22, range: 500 };
+  if (WW.PLANE_TYPES && !WW.PLANE_TYPES.scout) WW.PLANE_TYPES.scout = { hp: 16, speed: 22, range: 1000 };
   var pool = {};
   var stats = { launched: 0, recovered: 0, lost: 0, spotted: 0 };
 
