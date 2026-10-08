@@ -425,7 +425,7 @@ function install(P) {
     }
     // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
     const PL = WW.world.planes, up = p => p.alive && (p.state === 'transit' || p.state === 'attack') && !p.deckPh;
-    if (t > 60) for (const cv of L) {
+    if (t > 60 && !(WW.dayNight && !WW.dayNight.canFly())) for (const cv of L) { // (no CAP after dusk: daylight.js)
       if (cv.type !== 'carrier' || !cv.hangar) continue;
       const cap = PL.filter(p => p.carrier === cv && p.kind === 'fighter' && !p.target && !p.search && up(p)).length;
       if (cap + cv.hangar.fighter < 2) continue;                // the air boss could have two up
