@@ -54,7 +54,7 @@ window.WW = window.WW || {};
   WW.enemyOf = n => (n === 'USN' ? 'IJN' : 'USN');
 
   WW.SHIP_TYPES = {
-    carrier:    { name: 'Carrier',    hp: 900, speed: 5.0, turn: 0.25, length: 26, minDepth: 6, tons: 30000,
+    carrier:    { name: 'Carrier',    hp: 900, speed: 5.6, turn: 0.25, length: 26, minDepth: 6, tons: 30000,
                   guns: [{ cal: 'small', count: 2, range: 60, reload: 3 }], aa: { range: 45, dps: 6 },
                   planes: { fighter: 6, dive: 4, torpedo: 4 }, torpedoes: null, depthCharges: false },
     battleship: { name: 'Battleship', hp: 1200, speed: 4.2, turn: 0.22, length: 24, minDepth: 7, tons: 45000,

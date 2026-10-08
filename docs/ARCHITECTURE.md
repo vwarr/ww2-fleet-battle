@@ -45,6 +45,10 @@ js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
+js/ai_threat.js         WW.threat: per-side danger field (grid), danger(), bestHeading()
+js/ai_threat_view.js    WW.threatView: debug overlay (key G): danger field + contact picture
+js/fleet_groups.js      WW.fleetGroups: doctrine tables, group assignment, formation stations
+js/fleet_cmd.js         WW.fleetCmd: per-side commander and blackboard (posture, groups, focus, strikes, sectors)
 js/ships_ai.js          WW.shipAI core: setup, retarget, guns / turrets, dispatch to the role files, shared helpers (WW.shipAI.h)
 js/ai_surface.js        WW.shipAI.roles.surface: battleship / cruiser / destroyer behaviour, destroyer sub hunt
 js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (CAP queue, strikes, launches), pickStrikeTarget
@@ -87,7 +91,7 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 Each animation frame (`main.js`, `frame`):
 
 1. Advance the simulation. For each step (`step`):
-   1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s)
+   1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
    2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
@@ -103,7 +107,7 @@ Each animation frame (`main.js`, `frame`):
 ```js
 WW.cfg = { MAP_W: 960, MAP_H: 600, CELL: 2, ROUND_TIMEOUT: 420 /* simulation seconds: 14 min at 1× */ };
 WW.SHIP_TYPES = {   // hp is multiplied by HP_SCALE = 2.0 when core.js loads
-  carrier:    { hp:900,  speed:5.0, turn:0.25, length:26, minDepth:6,   tons:30000, planes:{ fighter:6, dive:4, torpedo:4 }, ... },
+  carrier:    { hp:900,  speed:5.6, turn:0.25, length:26, minDepth:6,   tons:30000, planes:{ fighter:6, dive:4, torpedo:4 }, ... },
   battleship: { hp:1200, speed:4.2, turn:0.22, length:24, minDepth:7,   tons:45000, ... },
   cruiser:    { hp:650,  speed:5.5, turn:0.35, length:18, minDepth:5,   tons:12000, ... },
   destroyer:  { hp:300,  speed:7.5, turn:0.6,  length:12, minDepth:3,   tons:2000, depthCharges:true, ... },
@@ -240,7 +244,14 @@ class WW.Ship {
 }
 WW.ships = { init(), update(dt), clearAll(), spawn(type, nation, x, z, heading) -> Ship, alive(nation?) -> Ship[] };
 WW.shipNav = { hullPoints, hullOK, resolve, placeHull, wreckAt, nav, ... };
-WW.shipAI = { setup(ship), update(ship, dt) };
+WW.shipAI = {
+  setup(ship), update(ship, dt), retarget(ship), ROLE_W, VALUE,
+  roles: { surface, carrier, submarine, pt },            // fn(ship, dt) per type, registered by the role files
+  h: { bearing, seen, lead, fireSpread, blend, idle,      // shared helpers (ships_ai.js)
+       withdraw, comb, score, riskOf, unreachable },
+  surface: { followStation, prefRange, engage, torpedoes }, // ai_surface.js seams
+  pickStrikeTarget(unit), capWanted(carrier), strikeTarget(carrier)  // ai_carrier.js
+};
 ```
 
 - Navigation: `ships_nav.js` checks points along the keel and on the two sides of each hull. All points must be at a depth of 0.5 or more. If a move is not permitted, the ship tries a smaller turn, a turn in place, astern with a turn, a slow forward move, then straight astern.
@@ -249,7 +260,39 @@ WW.shipAI = { setup(ship), update(ship, dt) };
 - After all ships move, `WW.shipNav.resolve` pushes overlapping hulls apart. The lighter ship moves more. Wrecks above the water and sinking ships do not move.
 - Sinking takes approximately 8 s. The ship moves at most 15 units and does not go into another wreck or onto land. The wreck stays on the seabed until the next round. In shallow water, one end of the wreck stays above the water.
 - A submarine must come to the surface for 25 s after 45 s under water. A submerged submarine casts no shadow.
-- Ship AI: each ship selects a target and keeps a range that is correct for its weapons. Destroyers find submarines in a 65-unit radius and attack with depth charges. PT boats move in fast, fire torpedoes and move away. Carriers stay back and launch strikes. Late in a round, they move nearer to the enemy.
+- Ship AI, per step: `ships_ai.js` retargets every 1 to 1.5 s, runs the role (`roles[type]`, else `roles.surface`), then the shared overrides `withdraw` (unless `ship.ai.ownWithdraw`) and `comb` (unless `ship.ai.ownComb`), then the guns. Roles write only `ship.desiredHeading` and `ship.throttle`, plus their own state on `ship.ai`.
+- **Target score** (`h.score`): `ROLE_W[type][target] × VALUE[target] × pHit × finishBonus × WW.fleetCmd.assignment − exposure`. Only fresh contacts count.
+  - pHit falls with range, rises when the target is broadside on, and is ×0.8 on a plane or scout sighting.
+  - finishBonus is 1 + 0.8 × damage taken, +0.1 when the target is burning.
+  - exposure is the danger at the target's position × (1 − risk).
+  - Stickiness: a ship switches targets only for a score 1.3× the current one, recomputed each time.
+  - A destroyer scores a carrier or battleship only when another own destroyer is within 150 (a flotilla attack, never a solo charge).
+  - A carrier that is out of gun range and at least 0.9× as fast as the shooter scores ×0.3 (`h.unreachable`). A surface ship with such a target keeps its formation station instead of chasing.
+- Per-mount guns:
+  - the main battery takes the main target when it is in range, else the best target in range by its own weights;
+  - secondaries take the closest small threat in range (`SEC_W`);
+  - a PT boat's MG never fires at a battleship or cruiser (`GUN_W.mg`).
+- `fireSpread` returns false and holds fire for 1.5 s when an allied surface ship is inside the fan, out to torpedo range.
+- **Cripples** (`h.withdraw`): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
+- **Torpedo combing** (`h.comb`): a track from `WW.intel.torpedoes` that will pass within half a hull length + 6 inside 70 units. After a reaction delay (PT 0.4 s, DD 0.7 s, sub 1 s, CA 1.2 s, CV 1.8 s, BB 2 s), the ship turns parallel to the track, bow or stern on, whichever is the smaller turn, until the torpedo has passed.
+- Surface ships (`ai_surface.js`):
+  - with no target, they keep their commander station;
+  - otherwise they orbit at `prefRange`: `doctrine.rangeFrac` × main range, and inside torpedo range for DDs;
+    - while the side presses: × (0.55 + 0.15 × (1 − night));
+    - while the side withdraws: × 1.15;
+  - they are tied to the station when more than 110 from it (escorts: 60), and every heading goes through `bestHeading` with the type's risk;
+  - they launch torpedoes inside `(0.6 + 0.3 × doctrine.torpedo)` × torpedo range.
+  The late-round `pref × 0.55` hack is gone.
+- Destroyers hunt a known sub inside `SUB_HUNT` (100) before surface targets. The attack run is in `ai_surface.js` (`dcApproach`, the `DC_*` constants above `surfaceAI`): it steers for the sub's predicted position at detonation, lays a stern stick of 5 charges plus a K-gun pair as it passes over, then comes round to re-attack.
+- **Carriers** (`ai_carrier.js`) never charge.
+  - Station: the commander's, `cvStandoff` behind the battle line. It is kept 0.15 to 0.35 of the width from the carrier's own edge and 150 from the north and south edges; with no battle line it is a fixed home at 0.2 of the width.
+  - Flee: the carrier runs from every known gun ship (contacts up to 90 s old, moved along their course for up to 20 s) inside `max(210, 1.5 × gun range + 50)`, summed with weights (1 − d / r)².
+  - It turns into the wind (`WW.airDeck.steer`) only on station, outside the edge band, with no danger at its position and no gun ship known within 320.
+  - Every heading goes through `bestHeading` with risk 0, with helm hysteresis: a course change of more than 0.3 rad at most every 2 s.
+  - It handles its own cripple withdrawal (`ownWithdraw`).
+  - CAP: `capWanted(carrier)` (one more fighter when detected raiders are within 200 and fewer than 3 are up).
+  - Strikes: `strikeTarget(carrier)` returns `WW.fleetCmd.strikeOrder(carrier).target` unless it is on hold. The strike interval is 35 to 55 s × (1.25 − 0.5 × `doctrine.carrier`).
+- PT boats and submarines: `ai_light.js`.
 - The AI sees the enemy only through `WW.intel` (below). A ship's target and its per-calibre gun targets are fresh contacts, and guns and torpedoes fire only while `WW.intel.visible` is true. A destroyer that loses a sub runs to its last-known position and gives it up there. With no fresh target, a ship goes to the nearest last-known contact; with none, it searches toward the enemy's half of the map (the half away from its own fleet), then sweeps north and south.
 
 ### intel.js
@@ -265,9 +308,11 @@ WW.intel = {
   enemyShips(nation, { fresh }) -> Contact[],  // fresh: true (3 s) or a number of s; filtered result is a shared scratch array
   enemyPlanes(nation, { fresh }) -> Contact[], // default fresh: true
   centre(nation) -> { x, z } | null,         // centre of the ship contacts' last-known positions
+  torpedoes(nation) -> Track[],              // enemy torpedo tracks seen within R.TORP = 45 of any own ship (shared array)
   age(contact) -> s, R, T, stats             // R: every detection range, T: timing (one table each, top of intel.js)
 };
 // Contact: { unit, x, z, heading, speed, seenAt, firstSeenAt, quality: 'visual' | 'sonar' | 'scout' | 'air', by }
+// Track: { proj, x, z, h, speed, run, seenAt, firstSeenAt } - one object per running torpedo, dropped when it ends
 ```
 
 - Every 0.5 s of sim time (both sides in one tick) each side looks for enemy ships and planes. Detection uses no random numbers.
@@ -278,6 +323,114 @@ WW.intel = {
 - A contact keeps its last-seen position. It is dropped after 90 s (ships) or 10 s (planes) out of sight, or when the unit dies.
 - Events: `contact` `{ nation, unit, first, by }` when an enemy ship is sighted for the first time this round (`first: true`) or again after 30 s out of sight; `firstSighting` `{ nation, unit }` once per side per enemy carrier or battleship.
 - What uses it: `ships_ai.js` retarget, guns, torpedoes, idle search, sub hunt, `pickStrikeTarget` (contacts up to 45 s old) and the carrier's CAP scan; `aircraft.js` fighter scan and `validTarget`; `air_strikes.js` (a wave flies to the last-known position); `air_scouts.js` search area; `combat_aa.js` target choice. Hit tests, flak bursts, crash targets and dogfight tail checks stay omniscient. The camera is omniscient.
+
+
+### AI framework: fleet_cmd.js, fleet_groups.js, ai_threat.js, ships_ai.js and the role files
+
+The ship AI has three layers. Each layer reads only what its side knows (`WW.intel`); the physics stays omniscient.
+
+1. **Commander** (`fleet_cmd.js`, tables in `fleet_groups.js`): one per side, ticked from `main.js step()` right after `WW.intel.update`, every `TICK = 2` s of sim time (USN and IJN staggered by 1 s). Each tick rebuilds the side's danger field and writes the side's blackboard.
+2. **Danger field** (`ai_threat.js`): a coarse grid per side of the damage per second that the known enemy can deliver at each point.
+3. **Ships** (`ships_ai.js` core plus the role files): every 1 to 1.5 s, a ship rescores its targets with the shared target score. Every step, the role file for its type sets `ship.desiredHeading` and `ship.throttle`, and the core then applies its overrides (cripple withdrawal, torpedo combing). `ships_nav` `planNav` still has the last word on land and collisions.
+
+Every tick is wrapped in try/catch, so nothing throws into the sim. The doctrine roll is the only randomness, and it uses `WW.rand` at `roundStart` (after the fleets spawn), so a seeded round replays the same way.
+
+#### WW.fleetCmd (fleet_cmd.js)
+
+```js
+WW.fleetCmd = {
+  update(dt), reset(), TICK, VALUE, stats: { ticks, ms, steps },  // ms / steps = commander + threat cost per sim step
+  side(nation) -> Blackboard | null,
+  order(ship) -> Order | null,             // null before the side's first tick
+  doctrine(nation) -> Doctrine,
+  focusFor(ship) -> Ship[],                // the focus targets of the ship's group (0 to 2)
+  incoming(nation, target) -> dps,         // expected fire the side already has on that target
+  assignment(ship, target) -> factor,      // target-score factor: a carrier's `defend` enemy x2.5 for ships within 380 of
+                                           // that carrier; saturated (overkill) x0.6; focus x1.35; else 1
+  strikeOrder(carrier) -> { target, contact, score, hold } | null,  // the strike decision (air ops read it)
+  scoutPoint(nation, x, z) -> { x, z } | null                       // best search sector for a scout near (x, z)
+};
+Blackboard = {
+  nation, t,                               // t: sim time of the last tick
+  posture,                                 // 'search' | 'approach' | 'engage' | 'withdraw' | 'press'
+  postureAt, late, timeLeft,               // late: past 55% of ROUND_TIMEOUT
+  strength: { own, known, ratio },         // POWER x hp share; known = intel contacts, weighted down with age
+  doctrine,                                // see below
+  axis: { x, z, h },                       // main-body guide and heading of advance (toward enemyCentre, else searchPoint)
+  enemyCentre: { x, z } | null,            // age-weighted centre of the enemy ship contacts
+  searchPoint: { x, z },                   // the highest-priority scout sector near the main body
+  groups: { main, carrier, screen, flotilla, pt, sub },   // each { members: Ship[], guide: { x, z } }
+  orders: Map(ship.id -> Order),
+  focus: { main, carrier, screen, flotilla, pt, sub },    // Ship[] (0 to 2) per group
+  incoming: Map(target Ship -> dps),
+  strikes: Map(carrier.id -> { target, contact, score, hold }),
+  airRaid: { carrier, n } | null,          // armed enemy bombers detected within 130 of an own carrier
+  defend: [{ carrier, enemy, d }],         // per own carrier: nearest known enemy gun ship within 280 (seen in the last 30 s)
+  sectors: [{ x, z, looked, stale, prio }] // 6 x 4 scout sectors
+};
+Order = { ship, group, role, slot, sx, sz, t };
+// group: 'main' | 'carrier' | 'screen' | 'flotilla' | 'pt' | 'sub'
+// role:  'line' | 'carrier' | 'escort' | 'asw' | 'torpedo' | 'ambush' | 'patrol' | 'withdraw'
+// (sx, sz): the formation station. It is clamped 30 units inside the map; land is the nav layer's job.
+```
+
+- **Posture**: `search` while the side has no contacts. `withdraw` after 60 s if the known strength ratio is below `doctrine.withdrawRatio`. `press` late in the round if the ratio is at least `pressRatio × (1.15 − 0.3 × aggression)`. Otherwise `engage` when any known enemy is within 260 of an own ship, else `approach`. Carriers never press.
+- **Groups** (`WW.fleetGroups.assign`):
+  - carriers go to `carrier`, together with the first cruiser (when there are 2 or more) and the first destroyer as escorts;
+  - battleships and the other cruisers go to `main`;
+  - one destroyer goes to `screen` (ASW), then up to `doctrine.flotilla` destroyers to `flotilla`, and any extra destroyers back to `screen`;
+  - PT boats go to `pt`, submarines to `sub`;
+  - any ship (not a sub) below `WW.fleetGroups.CRIP = 0.35` hp gets role `withdraw`.
+- **Stations** (`WW.fleetGroups.stations`) are offsets (forward, lateral) along `axis.h`:
+  - main: line abreast at lateral 0, ±45, ±90, …, advanced by the posture lead (search / approach +45, press +35, engage 0, withdraw −45);
+  - carriers: `cvStandoff` behind the main guide;
+  - escorts: a ring about 80 out around the first carrier;
+  - screen: `screenAhead` ahead of the main body;
+  - flotilla: on the flanks (lateral ±110);
+  - PT boats: lateral ±150, never past the midline;
+  - subs: 220 ahead, ±100 to the flank;
+  - withdrawing ships: 70 behind their own carrier (or the main body).
+- **Focus** (per gun group): the 1 or 2 best fresh targets from the group's guide, scored by group weight × `VALUE` × damage × proximity. `incoming` is rebuilt every tick from every own ship's `ship.target` (gun dps in range × 0.35). A target is saturated when its incoming fire kills it within 20 s; the shooter's own share is not counted.
+- **Carrier defence**: each `defend` enemy is the carrier group's focus and scores ×3 as a strike target (self-defence first).
+- **Strikes**: for each carrier, the best contact that is at most 45 s old and within 650 of it. The score is value × damage × freshness, divided by distance and by the AA around the target (from the AA channel of the danger field). With no such contact there is no order. `hold` is set while that carrier is under an air raid.
+
+#### Doctrine (WW.fleetGroups.BASE, rolled ±10% per round)
+
+| field | USN | IJN | used by |
+|---|---|---|---|
+| aggression | 0.5 | 0.65 | press threshold |
+| rangeFrac | 0.84 | 0.78 | battleship / cruiser preferred range (× main battery range) |
+| torpedo | 0.35 | 0.8 | launch distance (× torpedo range: 0.6 + 0.3 × torpedo) |
+| carrier | 0.8 | 0.55 | strike tempo (interval × (1.25 − 0.5 × carrier)) |
+| night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.55 + 0.15 × (1 − night))) |
+| cvStandoff | 230 | 200 | carrier station behind the main body |
+| screenAhead | 70 | 60 | ASW screen station |
+| flotilla | 1 | 2 | destroyers in the torpedo flotilla |
+| pressRatio / withdrawRatio | 1.2 / 0.45 | 1.1 / 0.4 | posture |
+| risk (cv, bb, ca, dd, ss, pt) | 0, .55, .45, .45, .35, .2 | 0, .5, .55, .6, .4, .3 | `WW.threat.bestHeading` risk tolerance |
+
+#### WW.threat (ai_threat.js)
+
+```js
+WW.threat = {
+  CELL: 20, DREF: 20, stats: { builds, ms, lookups },
+  build(nation),                                   // fleet_cmd tick: rebuild nation's field from its contacts
+  danger(nation, x, z, { air }) -> dps,            // bilinear; air: the AA channel (plane routing)
+  bestHeading(ship, want, risk, { look, k, air }) -> heading,
+  away(nation, x, z, { air }) -> heading | null,   // downhill direction of the field
+  edge(x, z) -> 0..1.5,                            // map-edge penalty used by bestHeading
+  field(nation) -> { surf, air, max, airMax, t, n, nx, nz, cell }  // raw grids (Float32Array, row-major by z)
+};
+```
+
+- The grid is 49 × 31 nodes (20-unit cells over the 960 × 600 map), with a surface channel and an AA channel.
+- Each enemy contact adds the following, scaled by its age weight (1 while fresh, falling to 0.3 at 90 s) and by `0.5 + 0.5 × hp share`:
+  - every gun: `SHELL.dmg × count / reload × 0.5` inside its range, ×1.3 at point blank, tapering to 0 over 25 units outside it;
+  - torpedoes: `TORPEDO.dmg × count / reload × 0.3` out to 0.85 × torpedo range, weighted toward the contact's bow arc (subs included);
+  - the AA channel: `aa.dps` out to `aa.range × 1.55`.
+  A stale contact is moved along its last course for up to 20 s, and its reach grows by `age × speed × 0.5` (at most 40).
+- `bestHeading` samples 16 headings around `want`, looking `look` ahead (default speed × 9, 30 to 70) and half way. Each heading scores `cos(offset) − danger / DREF × k × (1 − risk) − edge − 0.15 × turn`. The result goes into `ship.desiredHeading`; `planNav` still steers around land.
+- Overlay (`ai_threat_view.js`, `WW.threatView.toggle()`, key **G**): visual only and off by default. G cycles off → USN picture → IJN picture. It tints the sea red where the guns and torpedoes reach and blue under the AA umbrella. It shows a ring at each enemy contact's last-known position: coloured while fresh, grey and fading with age. A label shows the side's posture. Use it with the map camera (C) to see each side's contact picture.
 
 ### aircraft.js
 

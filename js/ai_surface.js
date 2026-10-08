@@ -1,5 +1,6 @@
-// ai_surface.js — surface combatant behaviour (battleship, cruiser, destroyer): stand-off orbit at a preferred
-// range, screen loosely around the carrier, torpedo spreads, and the destroyer's sub hunt with depth charges.
+// ai_surface.js — surface combatant behaviour (battleship, cruiser, destroyer): formation stations from the fleet
+// commander (WW.fleetCmd), stand-off orbit at the doctrine's preferred range, torpedo spreads, and the destroyer's
+// sub hunt with depth charges (that block belongs to the depth-charge work).
 // Registers WW.shipAI.roles.surface (the default role). Helpers: WW.shipAI.h (ships_ai.js).
 window.WW = window.WW || {};
 (function () {
@@ -65,26 +66,57 @@ window.WW = window.WW || {};
       dcApproach(ship, a, s, fresh);
       return;
     }
-    if (!t) { H.idle(ship); return; }
-    const d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t);
-    const main = st.guns[0];
-    let pref = main ? main.range * 0.7 : 60;
+    const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
+    if (!t) { if (o) followStation(ship, o, B); else H.idle(ship); return; }
+    if (o && H.unreachable(ship, t)) followStation(ship, o, B); // never run down a target that outruns us (a carrier)
+    else engage(ship, t, o, B);
+    torpedoes(ship, t, B);
+  }
+
+  // ---- seams for the battle-line / destroyer role work ----
+  // No target: keep the commander's formation station (group guide + offset along the axis of advance),
+  // through the safest heading for the type's risk tolerance. Close to the station: steam along the axis.
+  function followStation(ship, o, B) {
+    const d = WW.dist(ship.x, ship.z, o.sx, o.sz), risk = B.doctrine.risk[ship.type] || 0.5;
+    let want;
+    if (d > 20) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x); ship.throttle = WW.clamp(d / 60, 0.55, 1); }
+    else { want = B.axis.h; ship.throttle = 0.55; }
+    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, risk) : want;
+  }
+  // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range); pressing
+  // closes in by the doctrine's close-quarters style, a withdrawing side opens out.
+  function prefRange(ship, B) {
+    const st = ship.stats, main = st.guns[0];
+    let pref = main ? main.range * (B ? B.doctrine.rangeFrac : 0.8) : 60;
     if (st.torpedoes && ship.type === 'destroyer') pref = Math.min(pref, st.torpedoes.range * 0.6);
-    if (WW.game && WW.game.roundTime > WW.cfg.ROUND_TIMEOUT * 0.6) pref *= 0.55; // late round: close in to finish it
+    if (B && B.posture === 'press') pref *= 0.55 + 0.15 * (1 - B.doctrine.night); // press for a decision (IJN closer)
+    else if (B && B.posture === 'withdraw') pref *= 1.15;
+    return pref;
+  }
+  // Gun fight: orbit the target at the preferred range (close in, open out, or circle), loosely tied to the
+  // formation station (escorts more tightly), then the safest heading for the type's risk tolerance.
+  // Next (role agents): crossing the T / broadside angling, focus-fire use (WW.fleetCmd.focusFor), flotilla attacks.
+  function engage(ship, t, o, B) {
+    const a = ship.ai, d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t), pref = prefRange(ship, B);
     let h;
     if (d > pref * 1.2) { h = b; ship.throttle = 1; }
     else if (d < pref * 0.65) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
     else { h = b + a.orbitDir * (PI / 2 - WW.clamp((d - pref) / pref, -0.5, 0.5) * 1.2); ship.throttle = 0.8; }
-    const cv = a.cv && a.cv.alive ? a.cv : null;
-    if (cv && ship.type !== 'pt') { // loose screen around the carrier: 50-70 units out, never bunched on it
-      const dc = WW.dist(ship.x, ship.z, cv.x, cv.z);
-      if (dc > 80) h = blend(h, ship, cv.x, cv.z, 0.3);
-      else if (dc < 50) h = blend(h, ship, 2 * ship.x - cv.x, 2 * ship.z - cv.z, 0.6 * (50 - dc) / 50 + 0.2);
+    if (o) {
+      const ds = WW.dist(ship.x, ship.z, o.sx, o.sz), esc = o.role === 'escort';
+      if (ds > (esc ? 60 : 110)) h = blend(h, ship, o.sx, o.sz, esc ? 0.6 : 0.3);
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
-    ship.desiredHeading = h;
-    // Torpedoes.
-    if (st.torpedoes && a.torpReload <= 0 && !t.submerged && d < st.torpedoes.range * 0.8 && d > 12 && seen(ship, t)) H.fireSpread(ship, t);
+    ship.desiredHeading = WW.threat && B ? WW.threat.bestHeading(ship, h, B.doctrine.risk[ship.type] || 0.5, { k: 1 }) : h;
+  }
+  // Torpedoes: launch inside (0.6 + 0.3 x doctrine torpedo emphasis) of torpedo range on a current detection
+  // (fireSpread holds fire when an ally is in the fan).
+  function torpedoes(ship, t, B) {
+    const st = ship.stats, a = ship.ai;
+    if (!st.torpedoes || a.torpReload > 0 || t.submerged) return;
+    const d = WW.dist(ship.x, ship.z, t.x, t.z), k = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8;
+    if (d < st.torpedoes.range * k && d > 12 && seen(ship, t)) H.fireSpread(ship, t);
   }
 
   WW.shipAI.roles.surface = surfaceAI;
+  WW.shipAI.surface = { followStation, prefRange, engage, torpedoes }; // seams for the role agents
 })();
