@@ -29,7 +29,7 @@ window.WW = window.WW || {};
     else if (d > 75) { ship.desiredHeading = lb; ship.throttle = 1; }
     else { ship.desiredHeading = lb; ship.throttle = 0.5; }
     if (a.torpReload <= 0 && d < st.torpedoes.range * 0.8 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, t)) {
-      H.fireSpread(ship, t); a.evadeT = 10;
+      if (H.fireSpread(ship, t)) a.evadeT = 10;
     }
   }
 
@@ -43,7 +43,7 @@ window.WW = window.WW || {};
       const p = lead(ship, t, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
       ship.desiredHeading = lb;
       if (a.torpReload <= 0 && d < st.torpedoes.range * 0.7 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.35 && seen(ship, t)) {
-        H.fireSpread(ship, t); a.ptState = 'out'; a.ptT = 12;
+        if (H.fireSpread(ship, t)) { a.ptState = 'out'; a.ptT = 12; }
       } else if (a.torpReload > 0 && d < 80) { a.ptState = 'out'; a.ptT = 8; }
     } else {
       // Dash out with a jink, then hold off until torpedoes are nearly reloaded.

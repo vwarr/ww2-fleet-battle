@@ -18,13 +18,15 @@ window.WW = window.WW || {};
   var TTK = 20;         // s: a target whose incoming fire kills it within TTK is saturated (no more shooters)
   var SECT_X = 6, SECT_Z = 4, LOOK_R = 110; // scout sectors; an own unit within LOOK_R of a sector centre has looked
   var HIT = 0.35;       // dps -> expected dps on a target at range
+  var DEFEND_R = 280, DEFEND_HELP = 380; // an enemy gun ship this close to an own carrier is the defend target for
+                                          // own gun ships within DEFEND_HELP of that carrier (mutual support)
   var sides = {}, stats = { ticks: 0, ms: 0, steps: 0 };
 
   function newSide(n) {
     var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
       strength: { own: 0, known: 0, ratio: 1 }, doctrine: WW.fleetGroups.rollDoctrine(n),
       axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
-      groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, sectors: [] };
+      groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
     var W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
     for (var j = 0; j < SECT_Z; j++) for (var i = 0; i < SECT_X; i++) B.sectors.push({ x: (i + 0.5) * W / SECT_X, z: (j + 0.5) * H / SECT_Z, looked: 0, stale: 0, prio: 0 });
@@ -77,6 +79,7 @@ window.WW = window.WW || {};
       if (!s.alive || s.nation !== B.nation || !t || !t.alive) continue;
       B.incoming.set(t, (B.incoming.get(t) || 0) + gunDps(s.stats, WW.dist(s.x, s.z, t.x, t.z)));
     }
+    defend(B, cs, now);
     focus(B, cs, now);
     strikes(B, cs, now);
     B.airRaid = null;
@@ -90,6 +93,20 @@ window.WW = window.WW || {};
     }
   }
 
+  // Carrier defence: each own carrier's nearest known enemy gun ship inside DEFEND_R (seen in the last 30 s).
+  function defend(B, cs, now) {
+    B.defend.length = 0;
+    var cvs = B.groups.carrier.members;
+    for (var k = 0; k < cvs.length; k++) {
+      var cv = cvs[k], e = null, ed = DEFEND_R; if (cv.type !== 'carrier') continue;
+      for (var i = 0; i < cs.length; i++) {
+        var c = cs[i], u = c.unit;
+        if (!u || !u.alive || u.submerged || !u.stats.guns.length || u.type === 'carrier' || now - c.seenAt > 30) continue;
+        var d = WW.dist(cv.x, cv.z, c.x, c.z); if (d < ed) { ed = d; e = u; }
+      }
+      if (e) B.defend.push({ carrier: cv, enemy: e, d: ed });
+    }
+  }
   // Focus: per gun group, the 1-2 best visible targets from the group's guide (value x damage x proximity).
   var GROUP_W = { main: { battleship: 1.2, cruiser: 1, carrier: 1, destroyer: 0.4 }, carrier: { destroyer: 1, pt: 1, cruiser: 0.6 },
     screen: { submarine: 2, pt: 1.4, destroyer: 1.1, cruiser: 0.4 }, flotilla: { battleship: 1, carrier: 1, cruiser: 0.8, destroyer: 0.6 } };
@@ -105,6 +122,7 @@ window.WW = window.WW || {};
         var sc = (W[u.type] || 0) * VALUE[u.type] * (1.8 - u.hp / u.maxHp) / (1 + WW.dist(gd.x, gd.z, c.x, c.z) / 150);
         if (sc > as) { b = a; bs = as; a = u; as = sc; } else if (sc > bs) { b = u; bs = sc; }
       }
+      if (g === 'carrier' && B.defend.length) { F.push(B.defend[0].enemy); continue; }
       if (a) F.push(a);
       if (b && bs > as * 0.6) F.push(b);
     }
@@ -123,7 +141,8 @@ window.WW = window.WW || {};
         if (!u || !u.alive || u.submerged || age > STRIKE_AGE) continue;
         var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > STRIKE_R) continue;
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
-        var sc = STRIKE_V[u.type] * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (STRIKE_AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
+        var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
+        var sc = dfd * Math.max(STRIKE_V[u.type], dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (STRIKE_AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
         if (sc > bs) { bs = sc; best = u; bc = c; }
       }
       if (best) B.strikes.set(cv.id, { target: best, contact: bc, score: bs, hold: !!(B.airRaid && B.airRaid.carrier === cv) });
@@ -177,10 +196,15 @@ window.WW = window.WW || {};
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },
     incoming: function (nation, target) { var B = sides[nation]; return (B && B.incoming.get(target)) || 0; },
-    // target-score factor from the commander: a focus target x1.35; a saturated one (its incoming fire kills it
+    // target-score factor from the commander: an enemy gun ship near an own carrier x2.5 for ships near that
+    // carrier; a focus target x1.35; a saturated one (its incoming fire kills it
     // within TTK s, not counting this shooter's own share) x0.6; else 1
     assignment: function (ship, target) {
       var B = sides[ship.nation]; if (!B) return 1;
+      for (var i = 0; i < B.defend.length; i++) {
+        var q = B.defend[i];
+        if (q.enemy === target && ship !== q.carrier && WW.dist(ship.x, ship.z, q.carrier.x, q.carrier.z) < DEFEND_HELP) return 2.5; // protect the carrier
+      }
       var inc = B.incoming.get(target) || 0;
       if (ship.target === target) inc -= gunDps(ship.stats, WW.dist(ship.x, ship.z, target.x, target.z));
       if (inc * TTK > target.hp * 1.1) return 0.6;
