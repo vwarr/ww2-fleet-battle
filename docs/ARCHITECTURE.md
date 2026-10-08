@@ -282,7 +282,8 @@ WW.shipAI = {
     - while the side withdraws: × 1.15;
   - they are tied to the station when more than 110 from it (escorts: 60), and every heading goes through `bestHeading` with the type's risk;
   - they launch torpedoes inside `(0.6 + 0.3 × doctrine.torpedo)` × torpedo range.
-  The late-round `pref × 0.55` hack is gone. Destroyers find submarines in a 65-unit radius and attack with depth charges.
+  The late-round `pref × 0.55` hack is gone.
+- Destroyers hunt a known sub inside `SUB_HUNT` (100) before surface targets. The attack run is in `ai_surface.js` (`dcApproach`, the `DC_*` constants above `surfaceAI`): it steers for the sub's predicted position at detonation, lays a stern stick of 5 charges plus a K-gun pair as it passes over, then comes round to re-attack.
 - **Carriers** (`ai_carrier.js`) never charge.
   - Station: the commander's, `cvStandoff` behind the battle line. It is kept 0.15 to 0.35 of the width from the carrier's own edge and 150 from the north and south edges; with no battle line it is a fixed home at 0.2 of the width.
   - Flee: the carrier runs from every known gun ship (contacts up to 90 s old, moved along their course for up to 20 s) inside `max(210, 1.5 × gun range + 50)`, summed with weights (1 − d / r)².
