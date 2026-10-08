@@ -1,0 +1,130 @@
+# AI design spec: targeting, engagement, allies, enemies, aircraft
+
+Goal (user): World-of-Warships feel. Each type plays its role and avoids fights it can't win. Fog of war matters. The camera stays omniscient and gets sighting shots. Rounds run 10–14 min real time.
+
+## 0. Shared framework (every ship, every plane)
+
+**Knowledge (js/intel.js).** Per-side contact table: `{ unit, lastX, lastZ, lastHeading, lastSpeed, seenAt, quality: visual|radar|sonar|reported }`.
+- Visual range by observer type, and by target size: big ships are seen farther. Islands block line of sight. A gun flash enlarges the shooter's visibility for a few seconds (firing gives you away).
+- Detection sources: ships, airborne planes and scouts. Destroyer sonar finds submerged subs at short range; periscope or surfaced subs are visual.
+- Contacts age. A stale contact is a last-known position (go look), not a firing solution. Shooting needs a current detection (seen within ~3 s) by the shooter's own side. Spotting by an allied plane is enough, at reduced accuracy.
+- Every AI enemy scan goes through intel. Physics (hit tests) stays omniscient.
+
+**Threat field.** For any point, `danger(x, z)` = the sum over detected enemies of their weapon reach × damage: big guns, torpedo ranges along the enemy's bow arcs, known sub areas, and the AA umbrella (for planes). Ships pick headings with score = goal pull − danger × role risk tolerance. That's what keeps PT boats from charging battleships and carriers away from gun lines, without special cases.
+
+**Target score** (replaces distance − tonnage):
+`score = roleWeight[type] × value × pHit(range, aspect, detection) × finishBonus(damaged) × assignment − exposure(going there)`
+- roleWeight: per-type table (below).
+- finishBonus: prefer targets that are burning, listing or low HP.
+- Assignment: the commander de-duplicates. Each side focuses fire on 1–2 targets per group, but doesn't overkill: if a target's incoming damage is already enough, the next shooter picks another.
+- Stickiness: switch only if the new score > old × 1.3, to stop target thrash.
+- Per-mount targeting: secondaries and AA pick their own targets (closest threat in their arc), independent of the main battery.
+
+**Engagement stance** per type: kite (hold at the edge of own range, outside the enemy's), brawl, ambush, screen or stand-off. A ship angles to keep all turrets bearing (broadside) when gun-fighting, and angles bow or stern toward an enemy torpedo threat.
+
+**Allies.**
+- Formation stations from the commander (main body, screen, carrier group).
+- Mutual support: answer a nearby ally under attack (DD to an ally hunted by a sub, CA/BB AA to a carrier under air attack).
+- Don't cross the fire line of allied heavy guns. Don't fire torpedoes when an ally is in the spread's path (friendly-fire check along the fan).
+- Spacing and deconfliction stay as they are.
+
+**Aircraft awareness (ships).**
+- AA priority: a plane in an attack run on self > on a protected ship (the carrier) > closest.
+- Evasion: turn parallel to detected torpedo tracks, or toward the drop point of torpedo bombers on a run. Hard rudder under a dive-bomb wheel. Detection of the attack is required, with a reaction delay by ship type (PT and DD fast, BB slow).
+- Under an air raid, escorts close on the carrier (AA umbrella). The carrier calls CAP to its own position.
+
+**Morale / withdrawal.** HP < ~30–35%, or flooding, or alone and outgunned → withdraw toward own carrier, own fleet or land cover. A DD lays smoke if available. A withdrawing ship still shoots back but doesn't chase.
+
+**Breaking off and retiring (implemented).** A side whose last battleship, cruiser or destroyer in fighting shape (hp ≥ 35%) is gone is *broken*: its commander goes to `withdraw`, its cripples head home, and its carrier runs for its own edge. Once it has stayed broken for 30 s and every ship it has left (subs aside) is either back in its home waters or out of the enemy's sight for 45 s, the round ends: "<winner> victory / <loser> fleet retires" (`victory` event with `reason: 'retire'`). That gives a decision without hunting a lone carrier for minutes. The stronger side presses late with its gun ships, but not into the enemy carrier's lair or the enemy's home waters. Round ends: kill (annihilation), retire, stall (only subs left), time (tonnage at the cap).
+
+**Commander (js/fleet_cmd.js)**, per side, every ~2 s:
+- Posture from known strength ratio × time: search → approach → engage → (withdraw | press). Late round, the stronger side presses for a decision with gun ships. The carrier never presses.
+- Assigns: focus targets, screen stations, ASW hunter group, PT ambush spots, strike targets (only on detected or last-known contacts), scout search sectors.
+- Doctrine parameters per side per round (aggression, range preference, torpedo emphasis, carrier emphasis, night-torpedo-ish IJN vs carrier/radar USN). These also tune the IJN 7–1 imbalance.
+
+## 1. Per type
+
+### Carrier
+- Targets: none with guns except self-defence (its small guns shoot what's close). The real weapon is the air group.
+- Engagement: stand-off. Stays behind its screen, upwind for flight ops, far from detected gun ships (keeps danger ~0). Withdraws on any detected surface threat inside ~1.5× the enemy's best gun range. Never charges, even late round.
+- Allies: it's the centre of the formation. Escorts hold stations around it. When alone, it runs toward the nearest friendly group.
+- Air: keeps a standing CAP (2–4 fighters, rotated on fuel). Launches strikes only on detected targets, picking by value, detection freshness, distance, and the AA around the target. Holds strikes back when its own position is under air attack (fighters first). Recovers planes when they return.
+
+### Battleship
+- Targets: enemy battleships and cruisers first, the carrier if reachable, destroyers only when close or nothing else is available. Never wastes main guns on PT boats (secondaries handle them). Submarines are ignored.
+- Engagement: kite at 70–90% of main battery range, in the battle line with cruisers. Crosses the T (broadside to the enemy's bow). Turns away from detected torpedo threats. Focus fire with the line.
+- Allies: anchors the battle line; covers the carrier group's threat axis.
+- Air: strong AA; moves to cover the carrier under air raid if it's in the carrier group.
+
+### Cruiser
+- Targets: destroyers and cruisers first (good matchups), battleships only with torpedoes or when focus-firing with the line. Secondaries and guns go after PT boats close in.
+- Engagement: kite at mid range. Flanks the battle line. Uses torpedoes on big targets when inside 80% of torpedo range with a clean spread (no allies in the fan).
+- Allies: leads destroyer flotillas or screens the carrier. Best AA → the carrier's AA escort under air raid.
+- Air: carries the scout floatplane (spots for the line).
+
+### Destroyer
+- Role split by the commander: **ASW screen** (ahead of the main body, sweeping), **escort** (carrier ring) and **torpedo flotilla** (2–3 DDs attack together from different angles).
+- Targets: submarines first (sonar or sightings) → PT boats near the fleet → enemy destroyers → torpedo runs on capital ships only as a coordinated flotilla attack, never a solo charge into battleship secondaries.
+- Engagement:
+  - Sub hunt: run to the last-known sub position, sonar sweep, depth-charge pattern, keep hunting the datum for a while after contact is lost.
+  - Gun duels: brawl other DDs.
+  - Torpedo attack: approach, fire the spread, turn away, lay smoke.
+- Allies: defends allies under sub or PT attack. Smoke for cripples.
+- Air: light AA; jinks hard under attack.
+
+### Submarine
+- Targets: carriers, then battleships, then cruisers; isolated or slow targets preferred. Never targets DDs unless cornered.
+- Engagement: ambush. Gets ahead of the target's predicted track (or a choke point between islands), submerges, waits, and fires from the beam at medium range. After firing, goes deep or evades (turn away, slow, submerged). Surfaces only when no enemy is detected nearby; abort surfacing if a DD or aircraft is seen.
+- Allies: operates independently on the flank of the enemy's approach.
+- Air: dives when planes are detected.
+
+### PT boat
+- Targets: targets of opportunity: isolated, crippled or slow ships, transports in a channel, destroyers or cruisers near land. Never a gun fight with BB/CA. Avoids DD screens.
+- Engagement: ambush. Lurks near islands or own-fleet flanks (commander assigns ambush spots). Sprint in only when the target is within a short dash and the run is mostly clear (low danger on the path). Fire, break off home at full speed, jinking. Abort if danger on the run spikes (heavy fire, DD turning toward).
+- Allies: stays in its own half; never deep in enemy territory. Pairs up (2 PTs attack together from different angles).
+- Air: jinks; tiny AA only.
+
+### Fighters
+- Home carrier first. CAP orbits over own carrier and engages bombers before fighters: torpedo bombers on a run > dive bombers in the wheel > others > fighters. It only chases out to a leash radius, then returns.
+- Escort: close cover stays with the bombers; top cover engages enemy fighters attacking the strike. Breaks off to save a bomber under attack.
+- Recall: if own carrier is under air attack and fuel allows, escorts and fighters return to defend.
+- Gun fights and dogfight manoeuvres stay as they are (air_dogfight.js is good).
+
+### Dive and torpedo bombers
+- Strike target: the commander's choice, using intel (detected or last-known). Retargets to a better or crippled target in the same area if the original is gone or hidden. Avoids flying through heavy AA umbrellas en route (route around the detected AA field).
+- Damaged or attacked by fighters with no escort: jettison and RTB. Torpedo bombers keep the anvil; dive bombers keep the wheel.
+
+### Scout floatplanes
+- Search sectors assigned by the commander, where contacts are stale or missing. Report contacts into intel. Avoid known CAP.
+
+## 2. Harness checks (tests/sim_rounds.js additions)
+- Carrier closest approach to enemy gun ships ≫ baseline (12–147).
+- PT boats: no time spent inside BB/CA main gun range except during a run; never beyond map midline + margin. Torpedo runs per PT and their hit rate.
+- DD: sub kills by DDs vs total sub deaths; time to kill a detected sub.
+- Fighter time over own carrier vs away; bombers shot down before release.
+- Focus fire: average distinct targets per side per minute (should drop); overkill shells.
+- First-contact time, round length (median 300–420 s), win split by nation (aim ~50/50 across seeds), end reasons (kill / retire / time; at least ~60% decided before the cap).
+- Stuck 0, NaN 0, errors 0.
+
+## 3. Acceptance (user requirement)
+Once the AI is implemented, run the behaviour suite (tests/sim_behaviour.js) many times over many fleet combinations: standard random fleets plus targeted matchups. Every desired behaviour in sections 1–2 must show up in the metrics before the work counts as done.
+
+## 4. Balance gate (user requirement)
+Over 100 rounds of randomized fleets for both sides, each nation wins 50 ± 5. Noise: a perfectly fair coin has SD = 5 wins over 100 rounds, so the 100-round gate alone fails ~1/3 of the time on noise. So:
+- The tuning target is the true win rate, measured with 400+ rounds (SE ≈ 2.5%) plus mirrored-fleet rounds (same composition, sides swapped) to separate nation bias from fleet luck. Aim for 48–52%.
+- The 100-round gate: a fixed set of 100 seeds, which must land 45–55 for USN.
+- Draws are reported separately; balance is computed on decided rounds and on all rounds.
+- Balance levers: per-nation stats (plane stats in core.js PLANE_NATION, AA, torpedo range/speed) and doctrine parameters, not hidden per-nation handicaps in the AI.
+
+## 5. Air command structure (user asked: air boss? squadrons?)
+- Squadrons per carrier (VF/VB/VT with names) and persistent pilots (aces belong to squadrons). Elements: USN 2-plane sections in 4-plane divisions, IJN 3-plane shōtai. The Thach weave uses the actual wingman.
+- Air boss per carrier: launch/recovery cycle, CAP relief, no strike launch while under attack or recovering.
+- CAG leads each strike, assigns squadrons to targets, times the VT anvil and VB dive together, redirects if the target is lost, and hands off on loss.
+- Fighter director: USN radar vectors CAP to raids (~250 detection); IJN visual only. Balance via doctrine/stats.
+- Events and plane fields for camera captions ("VT-8 begins its run").
+
+## 6. Cinema: follow cams (after airops lands). RADIO CHATTER DEFERRED by the user: a later improvement; notes below kept for then.
+- Story mode: the director picks a protagonist (division, strike squadron or named pilot) and follows the whole mission for 1–3 min, cutting between members, with brief cutaways for big moments. If the protagonist dies, hand off to the wingman. User-selectable follow (click a plane in freecam, or a key to follow the active strike).
+- Radio chatter: event-driven lines (pilots, fighter director, ship crews; IJN in Japanese with English subtitles), tied to squadron and pilot callsigns. Voice: synthesized radio "garble" (speech-like syllables, radio filter, static, squelch) plus film subtitles. NO speechSynthesis toggle (user chose option 1 only). No period slurs. Chatter follows what the camera shows, plus important fleet-wide calls.
+
+- Future-proof for pre-synthesized voices (user idea): line catalog as data (stable id, speaker role, text, fragment structure for callsigns and bearings), plus a voice-backend interface (garble now; sample playback later). Recordings would be dry; the radio filter is applied live in WebAudio. Fall back to garble when files are missing or under file://. Later: an offline tools/ script generates clips per line × voice from the same catalog (model must do Japanese; license must allow distribution; no real-person cloning).

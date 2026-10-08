@@ -1,6 +1,6 @@
 // freecam.js (integrator): a free camera that takes over from the director while the user plays with it.
-// Left-drag orbits, the wheel zooms, right-drag / WASD / arrows pan, Q/E rotate, R/F raise / lower, a click on a ship or
-// plane follows it (Esc or a click on empty water stops). After IDLE seconds without input the director
+// Left-drag orbits, the wheel zooms, right-drag / WASD / arrows pan, Q/E rotate, R/V raise / lower, a click on a ship
+// follows it (a click on a plane starts a story on it: camera_story.js) (Esc or a click on empty water stops). After IDLE seconds without input the director
 // takes over again (with its usual cross-fade). Only in battle / victory; setup keeps its own clicks.
 window.WW = window.WW || {};
 (function (WW) {
@@ -69,6 +69,7 @@ window.WW = window.WW || {};
     drag = null;
     if (!click || !live()) return;
     const o = pick(e.clientX, e.clientY);
+    if (o && o.pt && o.kind && WW.camStory && WW.camStory.follow(o)) { stop(); return; } // a plane: story mode follows its element
     follow = o; // a click on empty water stops following
   }
   function onWheel(e) {
@@ -76,7 +77,7 @@ window.WW = window.WW || {};
     e.preventDefault(); takeOver();
     gDist = WW.clamp(gDist * Math.exp(e.deltaY * 0.0012), MIN_D, MAX_D);
   }
-  const KEYS = ['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 'pageup', 'pagedown', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+  const KEYS = ['w', 'a', 's', 'd', 'q', 'e', 'r', 'v', 'pageup', 'pagedown', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
   function onKey(e, down) {
     const k = e.key.toLowerCase();
     if (down && k === 'escape') { follow = null; return; }
@@ -106,6 +107,7 @@ window.WW = window.WW || {};
       return true;
     },
     following() { return follow; },
+    release() { stop(); }, // hand the camera back to the director now (story mode, key F)
     _dbg() { return { on, idle: now() - lastInput, keys: Object.keys(keys).filter(k => keys[k]), follow: !!follow, drag: !!drag }; },
     // fills the camera goal position / look point; called by camera.js each frame while active
     goal(gP, gL, rdt) {
@@ -117,7 +119,7 @@ window.WW = window.WW || {};
       if (keys.q) gYaw += 0.8 * dt;
       if (keys.e) gYaw -= 0.8 * dt;
       if (keys.r || keys.pageup) gPitch = WW.clamp(gPitch + 0.7 * dt, MIN_P, MAX_P);   // camera up (steeper look-down)
-      if (keys.f || keys.pagedown) gPitch = WW.clamp(gPitch - 0.7 * dt, MIN_P, MAX_P); // camera down (toward the sea)
+      if (keys.v || keys.pagedown) gPitch = WW.clamp(gPitch - 0.7 * dt, MIN_P, MAX_P); // camera down (toward the sea)
       // (held keys do not refresh the idle timer here: real key presses send keydown events, so a key
       // whose keyup was lost cannot keep the free camera alive forever)
       if (follow) {

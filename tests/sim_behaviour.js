@@ -10,6 +10,10 @@
 //         npm run test:ai            (tests/run.sh serves on port 8000)
 // Env:    CHROMIUM = headless shell path;  JSON=path writes raw per-scenario metrics and per-round records.
 // Exit code 1 if any hard check FAILs (WARN = fuzzy check, reported but not fatal).
+// cv_closing uses the carrier side's own picture (WW.intel.known, last-known positions up to 90 s old), not raw
+// positions: its 1.5 x range radius is 255 for a battleship, but a carrier only sees a battleship at 240, so the raw
+// metric blamed carriers for steaming toward ships they could not know about. cv_min_dist / cv_in_gun stay raw.
+// End reasons per round: kill (a side annihilated), retire (main.js: the loser broke off), time, cap.
 //
 // ---------------------------------------------------------------------------------------------------------
 // BASELINE on the pre-roles AI (ai-strategy @ 1d327fa, 8 seeds/scenario, --pages 4: 62 s wall; --quick ~30 s).
@@ -62,7 +66,7 @@ const CHECKS = [
   { id: 'cv_min_dist',   desc: 'carrier min dist to enemy gun ship (u)', op: '>=', thr: 100, level: 'FAIL' },
   { id: 'cv_med_dist',   desc: 'carrier median dist to nearest gun ship', op: '>=', thr: 200, level: 'WARN' },
   { id: 'cv_in_gun',     desc: 'carrier time inside enemy gun range',    op: '<=', thr: 0.01, level: 'FAIL' },
-  { id: 'cv_closing',    desc: 'carrier heading toward gun ship <1.5xR', op: '<=', thr: 0.10, level: 'FAIL' },
+  { id: 'cv_closing',    desc: 'carrier heading toward known gun ship <1.5xR', op: '<=', thr: 0.10, level: 'FAIL' }, // intel contacts, see sample()
   { id: 'cvcv_min',      desc: 'min carrier-carrier distance (u)',       op: '>=', thr: 150, level: 'WARN', only: ['carrier_duel'] },
   { id: 'air_drops',     desc: 'air weapon drops per round (strikes)',   op: '>=', thr: 2, level: 'FAIL', only: ['carrier_duel', 'carrier_vs_surface'] },
   // PT
@@ -81,6 +85,12 @@ const CHECKS = [
   // fighters
   { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL' },
   { id: 'ftr_bombers',   desc: 'bomber share of fighter kills in a raid', op: '>=', thr: 0.6, level: 'WARN' },
+  { id: 'cap_on_bmb',    desc: 'CAP fighters in a fight during a raid that fight bombers', op: '>=', thr: 0.6, level: 'WARN' },
+  { id: 'cap_gap',       desc: 'carrier time with <2 CAP up while it could (after 60 s)', op: '<=', thr: 0.25, level: 'WARN' },
+  { id: 'esc_with',      desc: 'escort time within 60u of its strike bombers', op: '>=', thr: 0.6, level: 'WARN' },
+  { id: 'elem_coh',      desc: 'wingman dist to element leader in transit (median u)', op: '<=', thr: 20, level: 'WARN' },
+  { id: 'air_sync',      desc: 'first VT drop vs first VB release on a target (median s)', op: '<=', thr: 10, level: 'WARN', only: ['carrier_duel', 'carrier_vs_surface', 'standard', 'mirror'] },
+  { id: 'bomb_lost',     desc: 'bombers shot down before release / launched', op: '<=', thr: 0.35, level: 'WARN' },
   // big ships
   { id: 'big_range',     desc: 'BB/CA dist to target / main range',      op: 'in', thr: [0.7, 0.95], level: 'WARN', levelIn: { battle_line: 'FAIL' } },
   { id: 'focus',         desc: 'distinct main-battery targets/side/min', op: '<=', thr: 2.0, level: 'WARN', only: ['battle_line', 'standard', 'lone_cripple'] },
@@ -100,7 +110,7 @@ const CHECKS = [
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
-const INFO = ['first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = ['cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -206,6 +216,7 @@ function install(P) {
   });
   WW.on('planeKill', e => {
     if (!R || !e || !e.shooter || e.shooter.kind !== 'fighter') return;
+    if (!e.shooter.target && e.victim && (e.victim.kind === 'dive' || e.victim.kind === 'torpedo')) R.air.capBK++; // CAP gun kill on a bomber
     const cv = e.shooter.carrier; if (!live(cv)) return;
     const armed = p => p && p.nation !== e.shooter.nation && (p.kind === 'dive' || p.kind === 'torpedo') && p.ordnance && WW.dist(p.x, p.z, cv.x, cv.z) < P.RAID_R;
     if (!(armed(e.victim) || WW.world.planes.some(p => p.alive && armed(p)))) return;
@@ -214,9 +225,19 @@ function install(P) {
   WW.on('weaponDropped', e => {
     if (!R || !e) return;
     const o = e.plane, t = now();
-    if (o && o.kind && !o.stats) R.air.drops++;              // a plane (bomb or aerial torpedo)
+    if (o && o.kind && !o.stats) {                           // a plane (bomb or aerial torpedo)
+      R.air.drops++; o.__dropped = true;
+      const tg = e.target || o.target, k = tg && tg.id !== undefined ? o.nation + ':' + tg.id : null;
+      if (k) { // strike coordination: first VT drop vs first VB release on the same target, per attack (90 s window)
+        let a = R.sync[k]; if (!a || t - a.t0 > 90) a = R.sync[k] = { t0: t, vt: null, vb: null, done: false };
+        const f = o.kind === 'torpedo' ? 'vt' : o.kind === 'dive' ? 'vb' : null;
+        if (f && a[f] === null) a[f] = t;
+        if (!a.done && a.vt !== null && a.vb !== null) { a.done = true; R.air.sync.push(+Math.abs(a.vt - a.vb).toFixed(1)); }
+      }
+    }
     if (e.kind !== 'torpedo' || !e.proj) return;
     const p = e.proj; R.torps.push({ p, nation: p.nation, best: {}, done: false });
+    if (o && (o.type === 'pt' || o.type === 'submarine')) R.th[o.type].fired++; // torpedo hit rate per launcher type
     if (!o || !o.stats) return;                              // ship-fired
     const k = o.id, fresh = t - (R.lastSpread[k] === undefined ? -99 : R.lastSpread[k]) > 2;
     R.lastSpread[k] = t;
@@ -240,6 +261,7 @@ function install(P) {
   const parallel = (h, th) => { let a = Math.abs(WW.angleDiff(h, th)); a = Math.min(a, PI - a); return a < P.TORP_PAR * D2R; };
   WW.on('weaponImpact', e => {
     if (!R || !e || e.kind !== 'torpedo') return;
+    const ow = e.proj && e.proj.owner; if (e.ship && ow && (ow.type === 'pt' || ow.type === 'submarine')) R.th[ow.type].hit++;
     const tr = R.torps.find(q => q.p === e.proj && !q.done); if (!tr) return;
     if (e.ship) tr.best[e.ship.id] = { d: 0, par: parallel(e.ship.heading, e.proj.h) };
     finishTorp(tr);
@@ -269,7 +291,13 @@ function install(P) {
           if (d <= g.range) inGun = true;
           if (!GUN[o.type]) continue;
           dmin = Math.min(dmin, d);
-          if (d < P.CV_THREAT_K * g.range && d / g.range < thrK) { thrK = d / g.range; thr = o; }
+          // cv_closing judges the carrier on what its side knows (WW.intel contact, last-known position), not on
+          // raw positions: with raw positions a battleship at 241-255 (inside 1.5 x 170) that the carrier cannot
+          // see yet (a battleship is seen at 240) counted as "closing on a threat" (the sensing-gap quirk).
+          const k = B.known ? B.known(s.nation, o) : o;
+          if (!k) continue;
+          const dk = WW.dist(s.x, s.z, k.x, k.z);
+          if (dk < P.CV_THREAT_K * g.range && dk / g.range < thrK) { thrK = dk / g.range; thr = k; }
         }
         R.cv.samples++; if (inGun) R.cv.inGun++; if (dmin < 1e9) R.cv.d.push(Math.round(dmin));
         if (thr) { R.cv.thr++; if (sp > 0.3 && Math.cos(WW.angleDiff(s.heading, brg(s, thr))) > Math.cos(P.CV_CLOSE_DEG * D2R)) R.cv.closing++; }
@@ -322,6 +350,32 @@ function install(P) {
       if (!p.alive || p.kind !== 'fighter' || p.target || !live(p.carrier) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
       R.ftr.t += dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.inLeash += dt;
     }
+    // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
+    const PL = WW.world.planes, up = p => p.alive && (p.state === 'transit' || p.state === 'attack') && !p.deckPh;
+    if (t > 60) for (const cv of L) {
+      if (cv.type !== 'carrier' || !cv.hangar) continue;
+      const cap = PL.filter(p => p.carrier === cv && p.kind === 'fighter' && !p.target && up(p)).length;
+      if (cap + cv.hangar.fighter < 2) continue;                // the air boss could have two up
+      R.air.capN++; if (cap < 2) R.air.capGap++;
+    }
+    for (const p of PL) { // CAP during a raid on its carrier: is its foe a bomber?
+      if (p.kind !== 'fighter' || p.target || !up(p) || p.state !== 'attack' || !p.foe || !live(p.carrier)) continue;
+      const cv = p.carrier; if (!PL.some(b => b.alive && b.nation !== p.nation && (b.kind === 'dive' || b.kind === 'torpedo') && b.ordnance && WW.dist(b.x, b.z, cv.x, cv.z) < P.RAID_R)) continue;
+      R.air.capF++; if (p.foe.kind === 'dive' || p.foe.kind === 'torpedo') R.air.capB++;
+    }
+    for (const p of PL) {
+      if (p.kind === 'fighter' && p.target && up(p) && live(p.carrier)) {
+        R.air.escN++; if (PL.some(b => b.alive && b.carrier === p.carrier && (b.kind === 'dive' || b.kind === 'torpedo') && WW.dist(b.x, b.z, p.x, p.z) < 60)) R.air.escWith++;
+      }
+      if (p.leader && p.leader.alive && up(p) && p.state === 'transit' && up(p.leader) && p.leader.state === 'transit' && !p.foe) R.air.coh.push(+Math.hypot(p.x - p.leader.x, p.y - p.leader.y, p.z - p.leader.z).toFixed(1));
+      if (p.kind !== 'dive' && p.kind !== 'torpedo') continue;
+      if (p.alive && p.ordnance && !p.__seen) { p.__seen = true; R.air.bombers++; }
+      if (p.__seen && !p.__fate) {
+        if (!p.alive && p.ordnance) { p.__fate = 1; if (p.state === 'falling' || p.state === 'ditch' || p.deathMode) R.air.lostArmed++; }
+        else if (p.alive && !p.ordnance && !p.__dropped) { p.__fate = 1; R.air.jett++; }
+        else if (!p.ordnance) p.__fate = 1;
+      }
+    }
     // ---- torpedo closest approach ----
     for (const tr of R.torps) {
       if (tr.done) continue;
@@ -338,6 +392,7 @@ function install(P) {
   B.run = function (spec) {
     const G = WW.game, W = WW.cfg.MAP_W, cap = WW.cfg.ROUND_TIMEOUT + 30;
     B.sees = intelSees();
+    B.known = WW.intel && typeof WW.intel.known === 'function' ? (n, u) => { const c = WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= 90 ? c : null; } : null;
     WW.terrain.generate(spec.seed); WW.seedRandom(spec.seed); G.seed = spec.seed;
     let comp;
     if (spec.random) {
@@ -350,13 +405,15 @@ function install(P) {
     }
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
+    G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9 }, pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
-      intel: { checked: 0, unseen: 0, err: 0 }, cr: { n: 0, away: 0 }, lc: { n: 0, away: 0 }, torp: { passes: 0, par: 0 }, air: { drops: 0 } };
+      intel: { checked: 0, unseen: 0, err: 0 }, cr: { n: 0, away: 0 }, lc: { n: 0, away: 0 }, torp: { passes: 0, par: 0 }, sync: {},
+      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0, capBK: 0 } };
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
     const step = spec.light ? 5 : P.SAMPLE;
@@ -370,11 +427,11 @@ function install(P) {
     for (const k in R.ddP) if (R.ddP[k].in && !R.ddP[k].done) R.dd.missed++;
     const alive = n => WW.world.ships.some(s => s.alive && s.nation === n);
     const out = { seed: spec.seed, aNation: spec.aNation || null, swap: !!spec.swap, winner: G.winner, len: +G.roundTime.toFixed(0),
-      end: G.state === 'battle' ? 'cap' : alive('USN') && alive('IJN') ? 'time' : 'kill', comp: types,
+      end: G.state === 'battle' ? 'cap' : G.endReason === 'retire' ? 'retire' : alive('USN') && alive('IJN') ? 'time' : 'kill', comp: types,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
-      cr: R.cr, lc: R.lc, torp: R.torp, air: R.air };
+      cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
     R = null;
     return out;
@@ -387,6 +444,9 @@ function wilson(k, n) {
   if (!n) return null; const z = 1.96, ph = k / n, d = 1 + z * z / n, c = (ph + z * z / (2 * n)) / d, h = z * Math.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n)) / d;
   return [+(c - h).toFixed(3), +(c + h).toFixed(3)];
 }
+// loop min/max: Math.min(...a) overflows the call stack on long sample arrays (many seeds)
+const amin = a => { if (!a.length) return null; let m = Infinity; for (const v of a) if (v < m) m = v; return m; };
+const amax = a => { if (!a.length) return null; let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };
 const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 const ratio = (a, b) => (b > 0 ? a / b : null);
 function aggregate(rounds) {
@@ -398,25 +458,31 @@ function aggregate(rounds) {
   const firsts = k => med(rounds.map(r => r[k]).filter(v => v !== null));
   return {
     rounds: rounds.length,
-    cv_min_dist: cvd.length ? Math.min(...cvd) : null, cv_med_dist: med(cvd), cv_in_gun: ratio(S(r => r.cv.inGun), S(r => r.cv.samples)),
-    cv_closing: ratio(S(r => r.cv.closing), S(r => r.cv.thr)), cvcv_min: cvcv.length ? Math.min(...cvcv) : null,
+    cv_min_dist: amin(cvd), cv_med_dist: med(cvd), cv_in_gun: ratio(S(r => r.cv.inGun), S(r => r.cv.samples)),
+    cv_closing: ratio(S(r => r.cv.closing), S(r => r.cv.thr)), cvcv_min: amin(cvcv),
     air_drops: rounds.length ? S(r => r.air.drops) / rounds.length : null,
     pt_loiter: ratio(S(r => r.pt.loiter), S(r => r.pt.time)), pt_in_big: ratio(S(r => r.pt.inBig), S(r => r.pt.time)),
-    pt_pen_med: med(pen), pt_pen_max: pen.length ? Math.max(...pen) : null, pt_runs: ptN ? S(r => r.pt.spreads) / ptN : null,
+    pt_pen_med: med(pen), pt_pen_max: amax(pen), pt_runs: ptN ? S(r => r.pt.spreads) / ptN : null,
     pt_mg_big: ratio(S(r => r.pt.mgBig), S(r => r.pt.mgShots)),
     dd_sub_kills: ratio(S(r => r.dd.subDC), S(r => r.dd.subDeaths)), dd_react_med: med(react),
     dd_react_rate: ratio(react.length, react.length + S(r => r.dd.missed)), dd_episodes: react.length + S(r => r.dd.missed),
     sub_bowbeam: ratio(S(r => r.sub.bow + r.sub.beam), shots), sub_shots: shots, sub_dived_dd: ratio(S(r => r.sub.nearDived), near),
+    cap_bkills: rounds.length ? S(r => r.air.capBK || 0) / rounds.length : null,
+    cap_on_bmb: ratio(S(r => r.air.capB || 0), S(r => r.air.capF || 0)),
+    cap_gap: ratio(S(r => r.air.capGap || 0), S(r => r.air.capN || 0)), esc_with: ratio(S(r => r.air.escWith || 0), S(r => r.air.escN || 0)),
+    elem_coh: med(C(r => r.air.coh || [])), air_sync: med(C(r => r.air.sync || [])), sync_n: C(r => r.air.sync || []).length,
+    bomb_lost: ratio(S(r => r.air.lostArmed || 0), S(r => r.air.bombers || 0)), jettisons: rounds.length ? S(r => r.air.jett || 0) / rounds.length : null,
     ftr_leash: ratio(S(r => r.ftr.inLeash), S(r => r.ftr.t)), ftr_bombers: ratio(S(r => r.ftr.bomberKillsUA), S(r => r.ftr.killsUA)),
     big_range: ratio(S(r => r.big.fs), S(r => r.big.fn)), big_band: ratio(S(r => r.big.band), S(r => r.big.fn)),
     focus: focus.length ? focus.reduce((a, b) => a + b, 0) / focus.length : null, broadside: ratio(S(r => r.big.broad), S(r => r.big.shots)),
     unseen_shots: intelOn && !S(r => r.intel.err) ? S(r => r.intel.unseen) : null, intel_err: S(r => r.intel.err), intel_on: intelOn,
     crip_away: ratio(S(r => r.cr.away), S(r => r.cr.n)), lc_away: ratio(S(r => r.lc.away), S(r => r.lc.n)),
+    pt_torp_hit: ratio(S(r => r.th.pt.hit), S(r => r.th.pt.fired)), sub_torp_hit: ratio(S(r => r.th.submarine.hit), S(r => r.th.submarine.fired)),
     torp_parallel: ratio(S(r => r.torp.par), S(r => r.torp.passes)), torp_passes: S(r => r.torp.passes),
     usn_share: ratio(decided.filter(r => r.winner === 'USN').length, decided.length),
     bal_usn: ratio(rounds.filter(r => r.winner === 'USN').length, rounds.length), bal_ijn: ratio(rounds.filter(r => r.winner === 'IJN').length, rounds.length),
     usn_ci: wilson(decided.filter(r => r.winner === 'USN').length, decided.length),
-    len_med: med(lens), len_min: lens.length ? Math.min(...lens) : null, len_max: lens.length ? Math.max(...lens) : null,
+    len_med: med(lens), len_min: amin(lens), len_max: amax(lens),
     first_fire: firsts('firstFire'), first_contact: firsts('firstContact'), first_sight: firsts('firstSight'),
     sub_killed_by: (() => { const k = {}; for (const r of rounds) for (const n in r.dd.kinds) k[n] = (k[n] || 0) + r.dd.kinds[n]; return Object.entries(k).map(e => e.join(':')).join(',') || null; })(),
     stuck_who: C(r => r.stuckWho.map(w => 's' + r.seed + ':' + w)).join(' ') || null,
@@ -447,7 +513,11 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
   for (let k = 0; k < PAGES; k++) { // --pages K: K independent game pages run rounds in parallel
     const p = await b.newPage({ viewport: { width: 640, height: 360 } });
     p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
-    await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
+    // 'domcontentloaded' + retries: a long-running python http.server sometimes stalls the 'load' event
+    for (let tries = 0; ; tries++) {
+      try { await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 }); await p.waitForFunction(() => window.__sim && window.WW && WW.game, null, { timeout: 60000 }); break; }
+      catch (e) { if (tries >= 2) throw e; console.log(`page ${k}: load retry (${e.message.split('\n')[0]})`); }
+    }
     await p.waitForTimeout(1500);
     // stop the render loop driving the sim (setScale clamps at 0.1; the director's slow-motion warp too): we drive it
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
@@ -472,7 +542,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     const wall = ((Date.now() - t0) / 1000).toFixed(1);
     const wins = { USN: 0, IJN: 0, draw: 0, A: 0, B: 0 };
     for (const r of rounds) { wins[r.winner || 'draw']++; if (r.aNation && r.winner) wins[r.winner === r.aNation ? 'A' : 'B']++; }
-    console.log(`\n== ${sc.name}  (${rounds.length} rounds, ${wall}s)  USN ${wins.USN} IJN ${wins.IJN} draw ${wins.draw}${sc.A ? `  fleetA ${wins.A} fleetB ${wins.B}` : ''}  len ${M.len_min}/${M.len_med}/${M.len_max}s`);
+    console.log(`\n== ${sc.name}  (${rounds.length} rounds, ${wall}s)  USN ${wins.USN} IJN ${wins.IJN} draw ${wins.draw}${sc.A ? `  fleetA ${wins.A} fleetB ${wins.B}` : ''}  len ${M.len_min}/${M.len_med}/${M.len_max}s  ends ${['kill', 'retire', 'time', 'cap'].map(k => k + ' ' + rounds.filter(r => r.end === k).length).join(' ')}`);
     const rows = [];
     for (const c of CHECKS) {
       if (c.intel && M.unseen_shots === null) { if (sc.light) continue; if (!c.only || c.only.includes(sc.name)) rows.push([c.id, M.intel_on ? `intel API err ${M.intel_err}` : 'no WW.intel', fmtThr(c), 'SKIP']); continue; }

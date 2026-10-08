@@ -143,7 +143,7 @@ window.WW = window.WW || {};
     D.waitT = launchPend && D.mode !== 'launch' ? D.waitT + dt : 0;
     if (D.mode === 'launch' && launchAct) { /* keep */ }
     else if (D.mode === 'recover' && landAct) { /* keep */ }
-    else if (recPend && !(launchPend && D.waitT > 20)) D.mode = 'recover';
+    else if (recPend && !(launchPend && D.waitT > (D.launchers.some(p => p.kind === 'fighter' && !p.target) ? 6 : 20))) D.mode = 'recover'; // a CAP launch waits less
     else D.mode = launchPend ? 'launch' : 'idle';
     // reconcile what is shown with what the carrier holds (launched from below / rearm counts)
     const t = counts(c), vis = { fighter: 0, dive: 0, torpedo: 0 };
@@ -224,6 +224,8 @@ window.WW = window.WW || {};
     steer(ship, late) {
       const D = ship._deck, h = intoWind();
       if (!D || late || h === null || !(D.mode !== 'idle' || D.launchers.length || D.lq.length)) return;
+      const E = 80, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H; // near the map edge: no wind turn (the standing CAP keeps the deck busy)
+      if (ship.x < E || ship.x > W - E || ship.z < E || ship.z > Hh - E) return;
       const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : 2.5, dh = ship.desiredHeading;
       ship.desiredHeading = Math.atan2(Math.sin(dh) + Math.sin(h) * w, Math.cos(dh) + Math.cos(h) * w);
       ship.throttle = Math.max(ship.throttle, 0.75);

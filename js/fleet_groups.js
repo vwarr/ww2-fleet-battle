@@ -16,7 +16,7 @@ window.WW = window.WW || {};
   //   pressRatio   known strength ratio needed to press late in the round; withdrawRatio: below it, withdraw
   //   risk         per-type risk tolerance 0..1 for WW.threat.bestHeading (carrier 0: never into danger)
   var BASE = {
-    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
+    USN: { aggression: 0.5, rangeFrac: 0.78, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
@@ -74,11 +74,27 @@ window.WW = window.WW || {};
   // Station points. Offsets are (forward f, lateral l) along the axis of advance B.axis.h from the guide.
   var RING = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]];        // carrier escorts (radius ~80: SPACE.carrier is 70)
   var LINE = [0, -45, 45, -90, 90, -135, 135];                              // battle line, lateral slots
+  // Carrier station safety: no closer than 1.9 x gun range + 20 to any known enemy gun ship (contacts up to 60 s
+  // old): the station slides straight away from it (then back into the band x0..x1 and 80 off the north / south
+  // edges). Keeps a pressing or advancing side from leading its carrier toward the enemy's guns.
+  function cvSafe(B, p, x0, x1) {
+    if (!WW.intel) return;
+    var cs = WW.intel.enemyShips(B.nation), now = WW.time.now, H = WW.cfg.MAP_H;
+    for (var pass = 0; pass < 2; pass++) for (var i = 0; i < cs.length; i++) {
+      var c = cs[i], u = c.unit;
+      if (!u || !u.alive || u.submerged || u.type === 'carrier' || !u.stats.guns.length || now - c.seenAt > 60) continue;
+      var R = u.stats.guns[0].range * 1.9 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
+      if (d >= R || d < 1) continue;
+      p.x = WW.clamp(c.x + (p.x - c.x) / d * R, x0, x1); p.z = WW.clamp(c.z + (p.z - c.z) / d * R, 80, H - 80);
+    }
+  }
   function stations(B) {
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, h = B.axis.h, c = Math.cos(h), s = Math.sin(h);
     var lead = { search: 45, approach: 45, engage: 0, press: 35, withdraw: -45 }[B.posture] || 0;
     // guides: the main body's centroid, else the first group that has ships
-    var mg = centroid(G.main.members, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide);
+    // (withdrawing cripples are left out of the main guide: they would drag the battle line home with them)
+    var fitMain = G.main.members.filter(function (q) { var o = B.orders.get(q.id); return !o || o.role !== 'withdraw'; });
+    var mg = centroid(fitMain, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide);
     if (!mg) return;
     B.axis.x = mg.x; B.axis.z = mg.z;
     for (var k in G) if (k !== 'main' && !centroid(G[k].members, G[k].guide)) { G[k].guide.x = mg.x; G[k].guide.z = mg.z; }
@@ -99,7 +115,11 @@ window.WW = window.WW || {};
         ci++;
         // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
         // room to run in every direction
-        p.x = ownX === 0 ? WW.clamp(p.x, W * 0.15, W * 0.35) : WW.clamp(p.x, W * 0.65, W * 0.85); p.z = WW.clamp(p.z, 150, H - 150);
+        // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
+        var wd = B.posture === 'withdraw', lo = wd ? 0.08 : 0.15, hi = wd ? 0.1 : 0.35;
+        if (wd) p.z = q.z; // straight home, not across the front
+        p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
+        cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
       var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q;

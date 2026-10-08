@@ -68,8 +68,8 @@ window.WW = window.WW || {};
     el.sound.dataset.audio = el.soundPanel.dataset.audio = '1'; // the gesture that starts a remembered "on" is the toggle itself
     if (!AU()) { el.sound.style.display = 'none'; sr.style.display = 'none'; }
     soundLabels();
-    $('div', 'row dim small', el.panel, 'H panel   N new battle   C camera   T tilt-shift   P pixels   M sound');
-    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R F camera up / down \u00b7 Click ship follow');
+    $('div', 'row dim small', el.panel, 'H panel   N new battle   C camera   F follow action   T tilt-shift   P pixels   M sound');
+    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R V camera up / down \u00b7 Click ship follow \u00b7 Click plane story');
 
     // setup palette
     el.setup = $('div', 'panel setup', root);
@@ -92,7 +92,7 @@ window.WW = window.WW || {};
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
     WW.on('roundStart', () => { s0 = Object.assign({}, WW.stats); hudPeek = false; });
     WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); });
-    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', lossLine(), 5, false));
+    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : lossLine(), 5, false));
 
     const canvas = document.getElementById('game');
     canvas.addEventListener('mousedown', onMouse);
@@ -128,6 +128,7 @@ window.WW = window.WW || {};
     if (k === 'h') hudPeek = !hudPeek;
     else if (k === 'n') newRound();
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
+    else if (k === 'f' && !e.repeat && WW.camStory) say(WW.camStory.toggle());
     else if (k === 'p' && WW.view) say('Pixel mode ' + (WW.view.togglePixel() ? 'on' : 'off'));
     else if (k === 'm' && !e.repeat) toggleSound();
     else if (k === 't') say('Tilt-shift ' + (el.film.classList.toggle('notilt') ? 'off' : 'on'));
@@ -228,5 +229,5 @@ window.WW = window.WW || {};
     if (msgTimer > 0) { msgTimer -= rdt; el.msg.style.display = msgTimer > 0 ? 'block' : 'none'; }
   }
 
-  WW.ui = { init, update, say };
+  WW.ui = { init, update, say, caption, captionOn: () => capEnd > 0 }; // caption / captionOn: air_captions.js
 })(window.WW);

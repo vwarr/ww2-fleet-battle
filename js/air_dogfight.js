@@ -11,6 +11,7 @@ window.WW = window.WW || {};
   const RANGE = 28;        // no firing beyond this (open fire inside ~2x convergence)
   const WING = 1.25;       // wing-gun offset from the centre line (scaled model)
   const DMG = 0.75;        // damage per hitting round (times the type's pt.gun)
+  const BOMBER_K = 5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const N = 240;           // tracer pool size (oldest round is reused)
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
@@ -116,6 +117,12 @@ window.WW = window.WW || {};
     return best;
   }
 
+  // The plane's own element: its leader and wingmen (air_squadrons.js), alive, not itself.
+  function elementMates(p) {
+    const el = p.element;
+    return el ? el.members.filter(w => w !== p && w.alive && w.kind === 'fighter').concat(el.div && el.div.members[0] && el.div.members[0] !== p ? [el.div.members[0]] : []) : [];
+  }
+
   // Energy: climbing bleeds speed, diving builds it, hard turns cost speed; the engine pulls back to cruise.
   function energy(p, dt, cruise) {
     const pt = p.pt;
@@ -179,7 +186,7 @@ window.WW = window.WW || {};
   }
   function hitPlane(p, f) {
     if (!f.alive) return;
-    const dmg = DMG * (p.pt.gun || 1), lethal = f.hp - dmg <= 0;
+    const dmg = DMG * (p.pt.gun || 1) * (f.kind === 'fighter' ? 1 : BOMBER_K), lethal = f.hp - dmg <= 0;
     if (lethal && !f.killedBy) f.killedBy = p;
     f.damage(dmg);
     if (Math.random() < 0.35) WW.fx.sparks(f.x, f.y, f.z);
@@ -194,7 +201,8 @@ window.WW = window.WW || {};
     let mate = null;
     if (slasher(p)) { // Thach weave: turn toward a wingman who swings head-on into the attacker
       let bd = 75;
-      for (const w of WW.world.planes) {
+      for (const w of elementMates(p)) if (!(w.df && w.df.def) && (w.state === 'attack' || w.state === 'transit') && d3(w, p) < 110) { mate = w; bd = -1; break; } // own section first
+      if (!mate) for (const w of WW.world.planes) {
         if (w === p || !w.alive || w.kind !== 'fighter' || w.nation !== p.nation || (w.df && w.df.def)) continue;
         if (w.state !== 'attack' && w.state !== 'transit') continue;
         const d = d3(w, p); if (d < bd) { bd = d; mate = w; }
@@ -238,6 +246,7 @@ window.WW = window.WW || {};
   // ---------- offence ----------
   function setMode(s, m) { s.mode = m; s.mt = 0; }
   function offence(p, f, s, dt) {
+    if (f.kind !== 'fighter' && WW.intercept && WW.intercept.attack(p, f, s, dt)) return; // gun passes on bombers (air_intercept.js)
     const pt = p.pt, dist = d3(p, f), dy = f.y - p.y, adv = -dy;
     if (s.foe !== f) { // new engagement: dive on it from above if we have the height
       s.foe = f; setMode(s, adv > 8 && dist > 22 && (slasher(p) || WW.rand() < 0.4) ? 'boom' : 'pursue');
@@ -304,6 +313,7 @@ window.WW = window.WW || {};
       if (s.lock > 0 && cur && cur.alive) return cur;
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;
+      for (const m of elementMates(p)) { const t = threat(m, 60); if (t && d3(p, t) < 90) return t; } // cover the leader / wingman
       if (cur && cur.alive && best && cur !== best && d3(p, cur) < d3(p, best) * 1.5 + 10 && d3(p, cur) < 120) return cur;
       return best;
     },
@@ -335,7 +345,7 @@ window.WW = window.WW || {};
     },
     update: updateTracers,
     clearAll: clearTracers,
-    _tracers: T, stats: DS
+    threat, _k: { guns, energy, rate, climb, BV, RANGE }, _tracers: T, stats: DS
   };
   WW.on('roundStart', clearTracers);
   WW.on('setupStart', clearTracers);
