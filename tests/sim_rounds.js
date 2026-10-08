@@ -1,14 +1,13 @@
 // Headless AI harness: run N seeded rounds with no rendering (__sim.fastForward) and report how they play out:
 // winner, end reason, length, losses by type, first contact, how close carriers get to enemy guns, stuck ships.
-// Usage: bash tests/run.sh sim_rounds.js [rounds=8] [firstSeed=1] [--pages K] [--render]
-//        (or BASE_URL=http://localhost:PORT/ node tests/sim_rounds.js ...)
-// Sim-only mode (index.html?sim: no WebGL, identical results) unless --render. --pages K (default 6): K pages run
-// seeds in parallel; the rounds print in seed order.
-// Env: CHROMIUM = path to a headless shell build; JSON=path writes the raw per-round results.
-const { chromium } = require('playwright');
+// Usage: node tests/sim_rounds.js [rounds=8] [firstSeed=1] [--workers K] [--browser | --render]
+// Sim-only mode in the node runner (tests/node_sim.js) by default; --browser: sim-only Chrome pages
+// (BASE_URL=http://localhost:PORT/, CHROMIUM = headless shell); --render: the full game. Identical results in all three.
+// --workers K (alias --pages K; default cores - 2 in node, 6 pages in Chrome): K games run seeds in parallel;
+// the rounds print in seed order.  JSON=path writes the raw per-round results.
 const HL = require('./headless');
-const pi = HL.argv.indexOf('--pages'), PAGES = pi >= 0 ? Math.max(1, +HL.argv[pi + 1]) : 6;
-const pos = HL.argv.filter((a, i) => a !== '--pages' && HL.argv[i - 1] !== '--pages');
+const PAGES = HL.WORKERS; // --workers K (alias --pages K)
+const pos = HL.argv;
 const N = +(pos[0] || 8), SEED0 = +(pos[1] || 1);
 const errs = [];
 async function openPage(b) {
@@ -89,7 +88,7 @@ function print(r) {
 }
 
 (async () => {
-  const T0 = Date.now(), b = await HL.launch(chromium), k = Math.min(PAGES, N);
+  const T0 = Date.now(), b = await HL.launch(), k = Math.min(PAGES, N);
   const pages = HL.RENDER ? [] : await Promise.all([...Array(k)].map(() => openPage(b)));
   if (HL.RENDER) for (let i = 0; i < k; i++) pages.push(await openPage(b)); // the full game: one page at a time
   const rounds = new Array(N);
@@ -113,7 +112,7 @@ function print(r) {
   console.log(`first sighting: USN ${avgN(r => r.sightUSN)}s  IJN ${avgN(r => r.sightIJN)}s   first fire at a ship ${avgN(r => r.fire)}s   shots at unseen targets ${rounds.reduce((s, r) => s + r.blind, 0)} / ${rounds.reduce((s, r) => s + r.shotsAtShips, 0)}`);
   console.log(`carrier closest approach to enemy gun ships: median ${cvs.sort((a, b) => a - b)[cvs.length >> 1]}  min ${Math.min(...cvs)}`);
   console.log(`stuck ships ${rounds.reduce((s, r) => s + r.stuck, 0)}  NaN ${rounds.reduce((s, r) => s + r.nan, 0)}  errors ${errs.length}` +
-    `   (${HL.RENDER ? 'render' : 'sim-only'}, ${k} page${k > 1 ? 's' : ''}, wall ${((Date.now() - T0) / 1000).toFixed(1)}s)`);
+    `   (${HL.MODE}, ${k} ${HL.NODE ? 'worker' : 'page'}${k > 1 ? 's' : ''}, wall ${((Date.now() - T0) / 1000).toFixed(1)}s)`);
   if (errs.length) console.log(errs.slice(0, 10).join('\n'));
   if (process.env.JSON) require('fs').writeFileSync(process.env.JSON, JSON.stringify(rounds, null, 1));
   await b.close();

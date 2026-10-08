@@ -1,13 +1,12 @@
 // Ship heel jitter: sample every live ship's turn heel (roll minus wave rock and damage list) every sim step
 // for 60 sim s of a few seeded rounds, and report per type: heel sign flips per minute (counted only when the
 // heel swings past ±0.5°), max |heel| and mean |roll rate|.
-// Usage: bash tests/run.sh ship_heel.js [rounds=3] [firstSeed=1] [--render]   (or BASE_URL=http://localhost:PORT/ node tests/ship_heel.js)
-// Sim-only mode (index.html?sim) unless --render: the heel is sim state (Ship.syncGroup), identical in both.
-const { chromium } = require('playwright');
+// Usage: node tests/ship_heel.js [rounds=3] [firstSeed=1] [--browser | --render]   (Chrome modes: BASE_URL=http://localhost:PORT/)
+// Sim-only mode in the node runner unless --browser / --render: the heel is sim state (Ship.syncGroup), identical in all.
 const HL = require('./headless');
 const N = +(HL.argv[0] || 3), SEED0 = +(HL.argv[1] || 1);
 (async () => {
-  const b = await HL.launch(chromium);
+  const b = await HL.launch();
   const p = await b.newPage({ viewport: { width: 640, height: 360 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message));
   await p.goto(HL.url('auto'));

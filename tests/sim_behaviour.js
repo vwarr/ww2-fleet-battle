@@ -5,12 +5,15 @@
 // planeKill, weaponDropped, weaponImpact). It never reads AI internals (ship.ai), so it works on the old and
 // the new AI. Fog-of-war checks use WW.intel when it exists (feature-detected), else they SKIP.
 //
-// Usage:  BASE_URL=http://localhost:8746/ node tests/sim_behaviour.js [--seeds N] [--seed0 S] [--only a,b] [--quick] [--pages K] [--render]
+// Usage:  node tests/sim_behaviour.js [--seeds N] [--seed0 S] [--only a,b] [--quick] [--workers K] [--browser | --render]
 //         balance gate: --only balance --seeds 100   (balance/balance_mirror run only when named; --seeds 400 for tuning)
-//         Sim-only mode (index.html?sim, no WebGL; identical results) unless --render (the full game on software GL).
-//         --pages: parallel game pages, default 6 (M1 Pro, 6P+2E cores: on the balance gate 6 and 5 tie, both beat 4 and 8).
-//         npm run test:ai            (tests/run.sh serves on port 8000)
-// Env:    CHROMIUM = headless shell path;  JSON=path writes raw per-scenario metrics and per-round records.
+//         Default: sim-only mode in the node runner (tests/node_sim.js, worker threads, no Chrome, no server).
+//         --browser: sim-only Chrome pages (BASE_URL=http://localhost:PORT/, CHROMIUM = headless shell path);
+//         --render: the full game on software GL. All three give identical results.
+//         --workers K (alias --pages K): parallel games. Default node: cores - 2 (MAX_WORKERS caps it); browser: 6
+//         pages (M1 Pro, 6P+2E cores: on the balance gate 6 and 5 tie, both beat 4 and 8).
+//         npm run test:ai
+// Env:    JSON=path writes raw per-scenario metrics and per-round records.
 // Exit code 1 if any hard check FAILs (WARN = fuzzy check, reported but not fatal).
 // cv_closing uses the carrier side's own picture (WW.intel.known, last-known positions up to 90 s old), not raw
 // positions: its 1.5 x range radius is 255 for a battleship, but a carrier only sees a battleship at 240, so the raw
@@ -41,7 +44,6 @@
 //   edge), CI [0.48, 0.62]; the same fleet won from both sides in 65 of 100 pairs (fleet luck > nation bias).
 //   ~0.3-0.4 s wall per round with 4 pages.
 // ---------------------------------------------------------------------------------------------------------
-const { chromium } = require('playwright');
 const fs = require('fs');
 const HL = require('./headless');
 
@@ -138,9 +140,9 @@ const BAL_MIN_ROUNDS = 100;
 
 // ======================= CLI =======================
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const QUICK = argv.includes('--quick'), PAGES_DEFAULT = 6;
+const QUICK = argv.includes('--quick');
 const SEEDS = +arg('--seeds', QUICK ? 2 : 8), SEED0 = +arg('--seed0', 1);
-const ONLY = arg('--only', null), PAGES = Math.max(1, +arg('--pages', PAGES_DEFAULT));
+const ONLY = arg('--only', null), PAGES = HL.WORKERS; // --workers K (alias --pages K): worker threads (node) or pages (browser)
 const scens = SCEN.filter(s => (ONLY ? ONLY.split(',').includes(s.name) : !s.optIn));
 
 // ======================= PAGE SIDE =======================
@@ -513,7 +515,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
 // ======================= MAIN =======================
 (async () => {
   const T0 = Date.now();
-  const b = await HL.launch(chromium);
+  const b = await HL.launch();
   let errs = [];
   // --pages K: K independent game pages run rounds in parallel (opened together in sim-only mode)
   async function openPage(k) {
@@ -570,13 +572,13 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     if (sc.light) {
       const d = rounds.filter(r => r.winner).length, u = rounds.filter(r => r.winner === 'USN').length;
       console.log(`  balance: USN ${wins.USN} / IJN ${wins.IJN} / draw ${wins.draw} of ${rounds.length};  USN win rate on decided ${fmt(ratio(u, d))}  95% CI [${(M.usn_ci || []).join(', ')}]` +
-        `;  ${(Date.now() - t0) / 1000 / rounds.length * PAGES >= 0 ? ((Date.now() - t0) / 1000 / rounds.length).toFixed(2) : ''} s wall/round (${PAGES} page${PAGES > 1 ? 's' : ''})` +
+        `;  ${(Date.now() - t0) / 1000 / rounds.length * PAGES >= 0 ? ((Date.now() - t0) / 1000 / rounds.length).toFixed(2) : ''} s wall/round (${HL.label()})` +
         (sc.mirror ? `;  same fleet won both sides in ${pairs(rounds)} of ${rounds.length >> 1} pairs` : ''));
     }
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
   }
   console.log('\n=== SUMMARY ===');
-  console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);
+  console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.label()})`);
   for (const sc of scens) {
     const M = results[sc.name], f = [];
     for (const c of CHECKS) {
