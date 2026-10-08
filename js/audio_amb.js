@@ -21,12 +21,16 @@ window.WW = window.WW || {};
   const sm = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
   // ---------- control buffers (cached per context) ----------
-  const CTL_RATE = 3000, cache = new WeakMap();
+  // 3 kHz keeps them small; the spec only promises 8 kHz and up (Firefox), so fall back to that
+  let CTL_RATE = 3000;
+  const cache = new WeakMap();
   function cbuf(ctx, key, secs, fill) {
     let c = cache.get(ctx); if (!c) cache.set(ctx, c = {});
     if (c[key]) return c[key];
-    const n = Math.floor(CTL_RATE * secs), b = ctx.createBuffer(1, n, CTL_RATE);
-    fill(b.getChannelData(0), n);
+    let b;
+    try { b = ctx.createBuffer(1, Math.floor(CTL_RATE * secs), CTL_RATE); }
+    catch (e) { CTL_RATE = 8000; b = ctx.createBuffer(1, Math.floor(CTL_RATE * secs), CTL_RATE); }
+    fill(b.getChannelData(0), b.length);
     return (c[key] = b);
   }
   // smooth random curve in [-1, 1], knots every `lo..hi` s, cosine-interpolated, periodic (no seam)
@@ -413,10 +417,10 @@ window.WW = window.WW || {};
   WW.on('shipSunk', s => heat(3, s && s.x, s && s.z));
   WW.on('planeKill', e => heat(1, e && e.victim && e.victim.x, e && e.victim && e.victim.z));
   WW.on('roundStart', () => {
-    st.heat = 0; st.quietUntil = now() + 1.5; st.seed = -1;
+    st.heat = 0; st.quietUntil = now() + 1.5; // a new map is noticed by WW.terrain.seed
     if (A.live) play('cine.bell', { ui: true, delay: 0.7, vol: 0.9 });
   });
-  WW.on('setupStart', () => { st.heat = 0; st.quietUntil = now() + 1.5; st.seed = -1; });
+  WW.on('setupStart', () => { st.heat = 0; st.quietUntil = now() + 1.5; });
   WW.on('victory', d => {
     if (!A.live) return;
     if (d && d.winner) play('cine.horn', { ui: true, delay: 1.2, vol: 0.9 });
