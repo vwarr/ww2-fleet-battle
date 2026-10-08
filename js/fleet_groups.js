@@ -105,7 +105,8 @@ window.WW = window.WW || {};
     // guides: the main body's centroid, else the first group that has ships
     // (withdrawing cripples are left out of the main guide: they would drag the battle line home with them)
     var fitMain = G.main.members.filter(function (q) { var o = B.orders.get(q.id); return !o || o.role !== 'withdraw'; });
-    var mg = centroid(fitMain, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide);
+    var mg = centroid(fitMain, G.main.guide) || centroid(G.screen.members, G.main.guide) || centroid(G.flotilla.members, G.main.guide) || centroid(G.carrier.members, G.main.guide)
+      || centroid(G.pt.members, G.main.guide) || centroid(G.sub.members, G.main.guide); // a PT / sub-only side still gets stations
     if (!mg) return;
     B.axis.x = mg.x; B.axis.z = mg.z;
     for (var k in G) if (k !== 'main' && !centroid(G[k].members, G[k].guide)) { G[k].guide.x = mg.x; G[k].guide.z = mg.z; }
