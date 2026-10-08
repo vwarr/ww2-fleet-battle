@@ -207,6 +207,7 @@ window.WW = window.WW || {};
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
+    call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);
     call('ui', 'update', rdt);
     if (WW.post) WW.post.render(scene, camera); else renderer.render(scene, camera);
@@ -224,7 +225,7 @@ window.WW = window.WW || {};
 
   function boot() {
     setupRenderer();
-    ['sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui', 'freecam'].forEach(m => {
+    ['audio', 'sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui', 'freecam'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
     });
     call('post', 'init');

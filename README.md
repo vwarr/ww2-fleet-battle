@@ -13,6 +13,7 @@ Play it online: <https://varunwarrier.com/fleet-battle/>
 | Document | Contents |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The modules, the load order, the coordinates, the main loop and the public functions of each module. |
+| [docs/AUDIO.md](docs/AUDIO.md) | The sound engine: buses, the distance model, voice caps and how to write a sound patch. |
 
 ## Open the game
 
@@ -37,7 +38,7 @@ Auto mode is the default mode.
   Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
   Each shot lasts 12 to 25 seconds. Then the picture fades softly to a new shot.
   Every second shot is a slow, wide view of the islands and the fleets.
-- During the battle, the panel is not shown. Only the **Menu** and **Fullscreen** buttons show at the top left.
+- During the battle, the panel is not shown. Only the **Menu**, **Fullscreen** and **Sound** buttons show at the top left.
 - A round ends when one side has no ships. A caption shows the winner.
 - A round has a time limit of 5.5 minutes. At the time limit, the side with more tonnage wins.
 - After the caption, the next round starts automatically.
@@ -75,6 +76,8 @@ To go back to auto mode, click **Back to auto** in setup mode.
 | `H`, or the **Menu** button | Show or hide the panel during the battle. The panel always shows in setup mode. |
 | `N`, or **New round** in the panel | Start a new round now, on a new map. |
 | **Fullscreen** button | Show the game on the full screen. Click again (or push `Esc`) to go back. |
+| `M`, or the 🔊 / 🔇 **Sound** button | Set the sound on or off. The default is off. The game remembers your choice. If the sound was on last time, the button shows **Tap to start**: the first click or key press starts the sound (browsers need this). |
+| Volume slider in the panel | Set the sound volume. |
 | `C` | Change the camera: CINEMATIC (the director camera) or MAP (shows all of the map from above). |
 | `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
@@ -119,6 +122,7 @@ The game does not show health bars.
 | `style.css` | The panels, the captions and the tilt-shift bands. |
 | `vendor/three.min.js` | Three.js r149 (MIT licence). |
 | `js/core.js` | Settings, ship data, the random number generator, the event bus and helpers. |
+| `js/audio.js`, `js/audio_synth.js`, `js/audio_base.js` | The sound engine, the shared synth parts and the first sounds. All sound is made by the code (no audio files). |
 | `js/sky.js` | The sky, the clouds, the lights and the haze. |
 | `js/water.js` | The water surface, the foam, the depth colours and the contact shadows under hulls. |
 | `js/terrain.js` | The sea floor, the islands and the depth grid. |

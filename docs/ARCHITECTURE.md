@@ -19,6 +19,9 @@ This document tells you how the code is organized. Read it before you change a m
 ```
 vendor/three.min.js     Three.js r149 (UMD build, global THREE)
 js/core.js              WW.cfg, data tables, helpers, event bus
+js/audio.js             WW.audio: synthesized sound engine (buses, voices, spatial model, loops)
+js/audio_synth.js       WW.audio.syn: noise buffers, envelopes, bursts, booms, crackle
+js/audio_base.js        example patches: ui.click, gun.big, amb.sea
 js/sky.js               WW.sky: sky dome, clouds, lights, fog
 js/water.js             WW.water: water shader, foam, contact shadows
 js/terrain.js           WW.terrain: sea floor, islands, depth grid
@@ -77,7 +80,7 @@ Each animation frame (`main.js`, `frame`):
    4. `WW.combat.update`: projectiles and anti-aircraft fire
    5. `WW.fx.update`
    6. Round logic: victory, time limit and the next round
-2. `WW.water.update`, `WW.cam.update`, `WW.sky.update` and `WW.ui.update` on real time.
+2. `WW.water.update`, `WW.cam.update`, `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
 3. Render through `WW.post.render` (HDR, bloom, tone curve). If `WW.post` is not available, render directly.
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
@@ -105,7 +108,7 @@ WW.stats = { planesLaunched, planesLanded, planesLost, shellsFired, torpedoesFir
 
 Read `js/core.js` for the full tables (guns, ranges, reload times, anti-aircraft values and torpedoes).
 
-Helpers: `WW.rand`, `WW.seedRandom`, `WW.randRange`, `WW.randInt`, `WW.pick`, `WW.clamp`, `WW.lerp`, `WW.angleDiff`, `WW.dist`, `WW.dist2`, `WW.pastel`, `WW.enemyOf`. Events: `WW.on(name, fn)` and `WW.emit(name, data)`. Event names include `roundStart`, `setupStart` and `shipSunk`.
+Helpers: `WW.rand`, `WW.seedRandom`, `WW.randRange`, `WW.randInt`, `WW.pick`, `WW.clamp`, `WW.lerp`, `WW.angleDiff`, `WW.dist`, `WW.dist2`, `WW.pastel`, `WW.enemyOf`. Events: `WW.on(name, fn)` and `WW.emit(name, data)`. Event names include `roundStart`, `setupStart`, `shipSunk` and `shellFired` (`{ ship, cal, x, y, z }`, sent by `combat.fireShell` for sound).
 
 ## Modules
 
@@ -245,6 +248,25 @@ Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-
 - `WW.cam` (director): it selects a live subject (a sinking, a torpedo or dive-bomb attack, a carrier launch, a dogfight, a burning ship or a battleship that fires). It films the subject for 12 to 25 s with a slow orbit, chase, fly-by or wide shot, then cross-fades in 1.4 s. Every second shot is a wide shot. The subject stays in the middle third of the frame. The camera stays more than 7 units from a hull and above the terrain. Setup mode and map view (`C`) use a high overview.
 - `WW.camAction` (`camera_action.js`) adds action shots to the director. When the director films a dive-bomb attack and the bomb falls, the camera follows the bomb to the impact and holds on the explosion. When it films a torpedo run and the plane drops its torpedo, the camera follows the wake to the hit or the miss. These hand-offs do not cut. They change the current shot. A fighter with a foe can get an over-the-shoulder shot: behind and above the fighter, its foe ahead, with a slow, rate-limited turn. Planes with `kills` or `ace` (if present) get a higher priority. `combat_weapons.js` sends the events `weaponDropped` `{ kind: 'bomb' | 'torpedo', proj, plane, target }` and `weaponImpact` `{ kind, proj, x, z, ship }` (`ship` is null for a miss). Test hook: `WW.cam.film(candidate)`; `tests/action_cam.js` records each action shot.
 - `WW.freecam`: left-drag orbits, the wheel zooms, right-drag and `W` `A` `S` `D` pan, `Q` and `E` turn. A click follows a ship or a plane. After 20 s with no input, the director starts again.
+
+### audio.js, audio_synth.js, audio_base.js
+
+All sound is synthesized (no files, no music). Sound starts muted. Read [AUDIO.md](AUDIO.md) before you add sounds.
+
+```js
+WW.audio = {
+  register(name, build | { build, bus, ref, max, minGap, sos, reverb, duck, dur, params }),
+  play(name, { x, y, z } | { at: obj } | { ui: true }, + vol, rate, delay, sos, ref, duck, patch params) -> voice | null,
+  loop(name, opts) -> { set(params), stop(fade), alive },   // virtual: real nodes only while on and audible
+  stopAll(fade, all), duck(amount, secs), onUpdate(fn(rdt)),
+  doppler(pos, vel, c?) -> rate factor, delayFor(dist) -> s, distGain(d, ref), distTo(x, y, z),
+  init(), update(rdt), enabled, pending, live, available, volume, setEnabled(b), toggle(), setVolume(v),
+  pitch, listener, C /* constants */, syn /* synth helpers */, stats(), meter(), renderOffline(name, params, secs)
+};
+```
+
+When sound is off, `play` returns `null` at once and makes no nodes, and no AudioContext exists. The tests and 4× speed depend on this.
+`ui.js` has the 🔊 corner button, the panel **Sound** button and volume slider, and the `M` key. `main.js` calls `WW.audio.update(rdt)` after the camera.
 
 ### main.js, ui.js
 

@@ -156,6 +156,7 @@ window.WW = window.WW || {};
       }
       place(p, m.x, m.y, m.z); orient(p, p.vx, p.vy0, p.vz);
       fx('muzzleFlash', m.x, m.y, m.z);
+      if (WW.emit) WW.emit('shellFired', { ship: ship, cal: cal, x: m.x, y: m.y, z: m.z }); // sound hook (audio_*.js)
       stat('shellsFired');
       return p;
     } catch (e) { return null; }

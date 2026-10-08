@@ -12,6 +12,7 @@
     "test:action": "bash tests/run.sh action_cam.js",
     "test:deaths": "bash tests/run.sh deaths.js",
     "test:realtime": "node tests/realtime.js",
+    "test:audio": "node tests/audio.js",
     "shots": "bash tests/run.sh peek.js"
   },
   "devDependencies": {

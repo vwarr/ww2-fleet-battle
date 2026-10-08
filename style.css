@@ -49,5 +49,6 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 #hud .btn.menu { margin-right: 6px;
   opacity: 0.55; transition: opacity 0.4s ease-in-out; }
 #hud .btn.menu:hover { opacity: 1; }
+#hud input.vol { width: 120px; vertical-align: middle; accent-color: #3d5a78; cursor: pointer; }
 #hud .msg { display: none; position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center;
   font-weight: 700; color: #fffaf0; text-shadow: 0 2px 10px rgba(10, 20, 30, 0.6); }

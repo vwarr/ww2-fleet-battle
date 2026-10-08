@@ -15,8 +15,21 @@ window.WW = window.WW || {};
   };
   function btn(parent, text, fn, cls) {
     const b = $('button', 'btn' + (cls ? ' ' + cls : ''), parent, text);
-    b.addEventListener('click', e => { e.stopPropagation(); fn(b); });
+    b.addEventListener('click', e => { e.stopPropagation(); fn(b); if (WW.audio) WW.audio.play('ui.click', { ui: true }); });
     return b;
+  }
+  // sound: starts muted; the first enable must happen inside a click or key press (browser rule)
+  const AU = () => WW.audio && WW.audio.available ? WW.audio : null;
+  function toggleSound() {
+    const a = AU(); if (!a) return say('Sound is not available in this browser');
+    a.toggle(); soundLabels(); say('Sound ' + (a.enabled ? 'on' : 'off'));
+  }
+  function soundLabels() {
+    const a = AU(); if (!a || !el.sound) return;
+    el.sound.textContent = a.pending ? '\ud83d\udd0a Tap to start' : a.enabled ? '\ud83d\udd0a Sound' : '\ud83d\udd07 Sound';
+    el.sound.classList.toggle('off', !a.enabled && !a.pending);
+    el.soundPanel.textContent = 'Sound: ' + (a.pending ? 'tap' : a.enabled ? 'on' : 'off');
+    el.soundPanel.classList.toggle('on', a.enabled);
   }
 
   function init() {
@@ -27,6 +40,7 @@ window.WW = window.WW || {};
     el.corner = $('div', 'corner', root); // always-reachable controls while the panel is hidden
     btn(el.corner, '\u2630 Menu (H)', () => { hudPeek = true; }, 'menu');
     el.fsBtns = [btn(el.corner, '\u26f6 Fullscreen', toggleFullscreen, 'menu')];
+    el.sound = btn(el.corner, '', toggleSound, 'menu');
     el.round = $('div', 'row title', el.panel);
     el.usn = $('div', 'row usn', el.panel);
     el.ijn = $('div', 'row ijn', el.panel);
@@ -41,7 +55,17 @@ window.WW = window.WW || {};
     el.newRound = btn(mr, 'New round', newRound);
     el.fsBtns.push(btn(mr, 'Fullscreen', toggleFullscreen));
     el.close = btn(mr, 'Hide', () => { hudPeek = false; });
-    $('div', 'row dim small', el.panel, 'H panel   N new round   C camera   T tilt-shift   P pixels');
+    const sr = $('div', 'row', el.panel);
+    el.soundPanel = btn(sr, 'Sound: off', toggleSound);
+    el.vol = $('input', 'vol', sr);
+    Object.assign(el.vol, { type: 'range', min: 0, max: 100, step: 1, title: 'Volume' });
+    el.vol.value = Math.round((WW.audio ? WW.audio.volume : 0.7) * 100);
+    el.vol.addEventListener('input', () => { if (WW.audio) WW.audio.setVolume(el.vol.value / 100); });
+    el.vol.addEventListener('keydown', e => e.stopPropagation()); // arrow keys change the volume, not the camera
+    el.sound.dataset.audio = el.soundPanel.dataset.audio = '1'; // the gesture that starts a remembered "on" is the toggle itself
+    if (!AU()) { el.sound.style.display = 'none'; sr.style.display = 'none'; }
+    soundLabels();
+    $('div', 'row dim small', el.panel, 'H panel   N new round   C camera   T tilt-shift   P pixels   M sound');
     $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R F camera up / down \u00b7 Click ship follow');
 
     // setup palette
@@ -94,6 +118,7 @@ window.WW = window.WW || {};
     else if (k === 'n' && WW.game.state !== 'setup') newRound();
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
     else if (k === 'p' && WW.view) say('Pixel mode ' + (WW.view.togglePixel() ? 'on' : 'off'));
+    else if (k === 'm' && !e.repeat) toggleSound();
     else if (k === 't') say('Tilt-shift ' + (el.film.classList.toggle('notilt') ? 'off' : 'on'));
     else if (k === '1' || k === '2' || k === '4') WW.time.scale = +k;
   }
@@ -163,6 +188,7 @@ window.WW = window.WW || {};
       el.info.textContent = 'Sunk ' + WW.stats.shipsSunk + '   planes lost ' + WW.stats.planesLost + (WW.aces ? WW.aces.infoText() : '');
       el.speed.forEach((b, i) => b.classList.toggle('on', WW.time.scale === [1, 2, 4][i]));
       el.fsBtns.forEach((b, i) => { b.textContent = (i ? '' : '\u26f6 ') + (fsEl() ? 'Exit fullscreen' : 'Fullscreen'); });
+      soundLabels();
       el.mode.textContent = g.state === 'setup' ? 'Back to auto' : g.mode === 'setup' ? 'Edit fleet' : 'Set up fleets';
       el.setup.style.display = inSetup ? '' : 'none';
       if (inSetup) {
