@@ -339,7 +339,7 @@ window.WW = window.WW || {};
     _pool: { get: getModel, release, scale: PLANE_SCALE, deckY: DECK_Y, rearm: REARM, pool }, // for air_deck.js
     init() {
       if (WW.airFx) WW.airFx.init();
-      if (tracers.length || !WW.scene) return;
+      if (tracers.length || !WW.scene || WW.simOnly) return;
       for (let i = 0; i < 16; i++) { // one material per pooled line (created once) so each can fade on its own
         const mat = new THREE.LineBasicMaterial({ color: 0xe6c27a, transparent: true, opacity: 0.5, depthWrite: false });
         const g = new THREE.BufferGeometry();

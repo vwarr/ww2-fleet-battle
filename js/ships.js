@@ -434,7 +434,7 @@ window.WW = window.WW || {};
       if (live) WW.shipNav.resolve(arr, wreckShips); // hard backstop: no hulls through each other or through wrecks
       for (const s of arr) {
         if (s.removed || s.wreck || s.sinking) continue;
-        s.effects(dt);
+        if (!WW.simOnly) s.effects(dt); // wakes and funnel smoke: visual only
         s.syncGroup(t);
       }
       prune();

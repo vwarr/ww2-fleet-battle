@@ -224,7 +224,7 @@ window.WW = window.WW || {};
       try { hit(ship, amount, x, z, kind, cal); checkCritical(ship); } catch (e) { /* never throw into combat */ }
     },
     update: function (dt) {
-      if (!(dt > 0) || !WW.fx) return;
+      if (!(dt > 0) || !WW.fx || WW.simOnly) return; // fire / smoke emission: visual only
       load = clamp(demand / BUDGET, 1, 6); demand = 0;
       for (var i = burning.length - 1; i >= 0; i--) {
         var s = burning[i];

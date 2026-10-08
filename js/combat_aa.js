@@ -100,7 +100,7 @@ window.WW = window.WW || {};
   Ring.prototype.clear = function () { this.on.fill(0); this.head = 0; this.mesh.count = 0; };
 
   function initVisuals() {
-    if (V || typeof THREE === 'undefined' || !WW.scene) return;
+    if (V || typeof THREE === 'undefined' || !WW.scene || WW.simOnly) return;
     var ball = new THREE.IcosahedronGeometry(0.5, 2), pa = ball.attributes.position, na = ball.attributes.normal, v = new THREE.Vector3();
     for (var j = 0; j < pa.count; j++) { v.fromBufferAttribute(pa, j).normalize(); na.setXYZ(j, v.x, v.y, v.z); } // smooth normals
     var gt = new THREE.DataTexture(new Uint8Array([120, 120, 120, 255, 165, 165, 165, 255, 205, 205, 205, 255]), 3, 1, THREE.RGBAFormat);

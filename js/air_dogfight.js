@@ -35,7 +35,7 @@ window.WW = window.WW || {};
     return new THREE.CanvasTexture(c);
   }
   function initTracers() {
-    if (T.mesh || !WW.scene) return !!T.mesh;
+    if (T.mesh || !WW.scene || WW.simOnly) return !!T.mesh;
     m4 = new THREE.Matrix4(); v3a = new THREE.Vector3(); v3b = new THREE.Vector3(); v3c = new THREE.Vector3(); v3d = new THREE.Vector3();
     colTmp = new THREE.Color();
     const geo = new THREE.PlaneGeometry(1, 1); // x along the round's path, y across, faces +z
