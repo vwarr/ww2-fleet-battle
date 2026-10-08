@@ -18,7 +18,7 @@ window.WW = window.WW || {};
   const KIND = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
   const sq = p => (p && p.squadron ? p.squadron.short : p && p.nation === 'IJN' ? 'IJN strike' : 'Strike');
-  let cache = [], cacheAt = -1e9, rate = 0.5, rW = null, rS = 0, latched = [];
+  let cache = [], cacheAt = -1e9, cacheSim = -1e9, rate = 0.5, rW = null, rS = 0, latched = [];
 
   // how many sim seconds pass per real second right now (time scale x base speed x slow motion), smoothed
   function sampleRate() {
@@ -120,7 +120,7 @@ window.WW = window.WW || {};
   }
   function list() {
     sampleRate();
-    if (wall() - cacheAt > 0.5 || !cache) { cacheAt = wall(); try { cache = scan(); } catch (e) { console.error('camFinder', e); cache = []; } }
+    if (wall() - cacheAt > 0.5 || Math.abs(WW.time.now - cacheSim) > 0.5) { cacheAt = wall(); cacheSim = WW.time.now; try { cache = scan(); } catch (e) { console.error('camFinder', e); cache = []; } }
     return cache;
   }
   // upcoming attacks in time order (Tab cycling); kinds: optional filter
@@ -140,6 +140,6 @@ window.WW = window.WW || {};
   }
   WW.on('magazine', e => { if (e && e.ship) latched.push({ s: e.ship, t: WW.time.now, why: 'magazine explodes' }); cacheAt = -1e9; });
   WW.on('deckHit', e => { if (e && e.ship) latched.push({ s: e.ship, t: WW.time.now, why: 'flight deck ablaze' }); cacheAt = -1e9; });
-  WW.on('roundStart', () => { latched = []; cache = []; cacheAt = -1e9; });
+  WW.on('roundStart', () => { latched = []; cache = []; cacheAt = -1e9; cacheSim = -1e9; });
   WW.camFinder = { list, upcoming, about, etaText, realS, rate: () => rate, HOT };
 })(window.WW);

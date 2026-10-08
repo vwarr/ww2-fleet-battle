@@ -50,7 +50,8 @@ window.WW = window.WW || {};
     const P = WW.cam.current().P, oy = isPlane(o) ? o.y : 1.5;
     const d = new THREE.Vector3(P.x - o.x, P.y - oy, P.z - o.z), len = Math.max(1e-3, d.length());
     T.set(o.x, oy, o.z); goalT.copy(T);
-    dist = gDist = WW.clamp(len, minD(), MAX_D);
+    dist = WW.clamp(len, minD(), MAX_D);
+    gDist = WW.clamp(len, minD(), isPlane(o) ? 48 : o.stats.length * 2.5 + 40); // glide in to a chase-cam distance
     const wy = Math.atan2(d.x, d.z);
     yaw = gYaw = rel ? wy - base(hS) : wy;
     pitch = gPitch = WW.clamp(Math.asin(WW.clamp(d.y / len, -1, 1)), minP(), MAX_P);

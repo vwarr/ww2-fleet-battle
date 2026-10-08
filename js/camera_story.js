@@ -208,10 +208,10 @@ window.WW = window.WW || {};
     S.phase = phaseOf(L);
     const age = now - S.t0;
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
-    const sk = choose(S.phase, L);
+    const sk = S.user && !S.shots && WW.storyShots.valid('chase', L, S.group) ? 'chase' : choose(S.phase, L); // the user asked: open close on the subject
     const d = S.phase === 'attack' && sk !== 'high' ? dur(10, 14) : dur(CUT[0], CUT[1]);
     // hard cuts inside a scene; a soft cross-fade into the story, out of a cutaway and on a new phase
-    const hard = S.shots > 0 && S.last !== 'cutaway' && S.prevPhase === S.phase && Math.random() < 0.5;
+    const hard = (S.user && !S.shots) || (S.shots > 0 && S.last !== 'cutaway' && S.prevPhase === S.phase && Math.random() < 0.5); // a key press answers at once
     S.prevPhase = S.phase;
     return mk(sk, L, d, hard);
   }
