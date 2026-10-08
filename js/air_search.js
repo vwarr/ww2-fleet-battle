@@ -5,7 +5,7 @@
 // - Search legs (fan): out to the claimed sector, on along the same bearing deep into the enemy's side, a dogleg
 //   across, then home.
 // - Shadow: a searcher with a fresh contact close by keeps it in sight from a standoff ring (just inside its own
-//   spotting range), on the point of that ring with the least known AA (WW.threat air channel), away from known
+//   spotting range; a scout inside the 85 it spots for the guns from), on the point of that ring with the least known AA (WW.threat air channel), away from known
 //   enemy carriers (their CAP) and detected enemy fighters, for at most SHADOW_T s.
 // - Break away: a detected enemy fighter closing (or one on its tail, or damage taken) and the searcher dives low
 //   and turns away, then goes home.
@@ -17,7 +17,7 @@
 window.WW = window.WW || {};
 (function () {
   const WANT = 3, PER_CV = 2, START_T = 30, SEARCH_AGE = 45, CV_GAP = 6;
-  const SHADOW_T = { scout: 70, other: 55 }, STAND = { scout: 108, other: 90 };
+  const SHADOW_T = { scout: 70, other: 55 }, STAND = { scout: 80, other: 90 }; // a scout shadows inside its gun-spotting range (intel SPOT 85), outside ships' AA (~70)
   const CAP_KEEP = 150, FTR_R = 85, SWEPT_R = 60, ALT = 30, LOW = 8;
   const ST = { sorties: 0, shadows: 0, breaks: 0, lost: { out: 0, station: 0, home: 0 }, flown: 0, searched: { USN: new Set(), IJN: new Set() } };
   const claims = new Map(); // who -> { nation, k }
@@ -125,7 +125,7 @@ window.WW = window.WW || {};
       const R = STAND[sc], a0 = Math.atan2(pl.z - c.z, pl.x - c.x);
       let best = null, bs = -1e9;
       for (let k = -2; k <= 3; k++) {
-        const a = a0 + k * 0.35 * (pl.orbit || 1), x = c.x + Math.cos(a) * R, z = c.z + Math.sin(a) * R;
+        const a = a0 + k * 0.35 * (pl.srchDir || 1), x = c.x + Math.cos(a) * R, z = c.z + Math.sin(a) * R;
         const v = -risk(pl.nation, x, z) * 3 - Math.abs(k - 1) * 0.15 - (x < 20 || z < 20 || x > WW.cfg.MAP_W - 20 || z > WW.cfg.MAP_H - 20 ? 2 : 0);
         if (!best || v > bs) { bs = v; best = { x, z }; }
       }
@@ -146,7 +146,7 @@ window.WW = window.WW || {};
   // ---------- carrier searchers ----------
   function begin(pl) {
     ST.sorties++;
-    pl.search = true; pl.target = null; pl.orbit = pl.id & 1 ? -1 : 1;
+    pl.search = true; pl.target = null; pl.srchDir = (pl.carrier.id + WW.world.planes.length) & 1 ? -1 : 1;
     if (pl.ordnance) pl.dropped();                 // unarmed search (no raid alarm, no bomb on the deck)
     const el = pl.element;                         // fly alone: leave the CAP element the launch put it in
     if (el) { el.members = el.members.filter(m => m !== pl); el.members.forEach((m, i) => { m.wing = i; m.leader = i ? el.members[0] : null; }); }

@@ -58,6 +58,12 @@ window.WW = window.WW || {};
     if (pen(n, bx) > lim) bx = xAt(n, lim);
     var sp = P > 1 ? Math.min(LANE, (H - 120) / (P - 1)) : 0;
     var bz = P > 1 ? (others ? gz : H / 2) + (k - (P - 1) / 2) * sp : gz + (B.nation === 'USN' ? 1 : -1) * LANE * 0.6;
+    if (B.sweep && !B.heavySeen) bz += Math.sin(B.sweepT / 25 + k) * Math.max(sp, 160) * 0.5; // the lanes scan across too
+    var ec = B.enemyCentre;
+    if (B.ptDeep && ec) { // close on what is known (a carrier without escorts): pairs fan out short of it, in reach of a dash
+      bx = ec.x - home * 110; bz = ec.z + (k - (P - 1) / 2) * 70;
+      if (pen(n, bx) > lim) bx = xAt(n, lim);
+    }
     return { x: WW.clamp(bx, 40, W - 40), z: WW.clamp(bz, 50, H - 50), lim: lim };
   }
   function ptSpots(B) {
