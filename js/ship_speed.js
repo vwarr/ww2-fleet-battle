@@ -4,6 +4,7 @@
 //   flooding      -FLOOD per torpedo hit, at most FLOOD_MAX (each hit also deepens the list, damage.js / syncGroup);
 //   engine room   a heavy hit (torpedo, bomb, big shell) knocks the engines down to ENGINE_K with chance CRIT:
 //                 half the time for good, otherwise until the damage-control party has it back (CRIT_T s).
+// The side's doctrine.damageControl (USN 1.3, IJN 1) divides the flooding, the repair time and the permanent share.
 // Ship.takeDamage calls hit() before damage.js; Ship.move reads k() for its target speed. ship.speedK is public
 // (the behaviour suite reads it), ship.flood and ship.engineT too.
 window.WW = window.WW || {};
@@ -21,15 +22,18 @@ window.WW = window.WW || {};
     return (ship.speedK = Math.max(MIN_K, k));
   }
   // A hit on a live ship (Ship.takeDamage, after hp is reduced). kind: 'shell' | 'torpedo' | 'bomb' | 'dc'.
+  // doctrine.damageControl (fleet_groups.js) divides flooding, repair time and the permanent share
+  function dcOf(ship) { var d = WW.fleetCmd && WW.fleetCmd.doctrine(ship.nation); return d && d.damageControl > 0 ? d.damageControl : 1; }
   function hit(ship, amount, kind, cal) {
     if (!ship.alive || ship.hp <= 0 || !(amount > 0)) return;
-    if (kind === 'torpedo' && ship.type !== 'submarine') { ship.flood = Math.min(FLOOD_MAX, (ship.flood || 0) + FLOOD); stats.floods++; }
+    var dc = dcOf(ship);
+    if (kind === 'torpedo' && ship.type !== 'submarine') { ship.flood = Math.min(FLOOD_MAX, (ship.flood || 0) + FLOOD / dc); stats.floods++; }
     var heavy = kind === 'torpedo' || kind === 'bomb' || cal === 'big';
     if (heavy && ship.type !== 'pt' && WW.rand() < CRIT) {
       stats.crits++;
       ship.engineK = ENGINE_K;
-      if (WW.rand() < CRIT_PERM) { ship.engineT = Infinity; stats.permanent++; }
-      else ship.engineT = Math.max(ship.engineT > 0 ? ship.engineT : 0, WW.randRange(CRIT_T[0], CRIT_T[1]));
+      if (WW.rand() < CRIT_PERM / dc) { ship.engineT = Infinity; stats.permanent++; }
+      else ship.engineT = Math.max(ship.engineT > 0 ? ship.engineT : 0, WW.randRange(CRIT_T[0], CRIT_T[1]) / dc);
       WW.emit('engineHit', { ship: ship, permanent: ship.engineT === Infinity });
     }
     calc(ship);

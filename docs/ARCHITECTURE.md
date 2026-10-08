@@ -44,6 +44,7 @@ js/combat_weapons.js    torpedoes, bombs, depth charges
 js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts, plane jinking
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
+js/ship_speed.js        WW.shipSpeed: damage slows ships (hull damage, torpedo flooding, engine-room hits)
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
 js/ai_threat.js         WW.threat: per-side danger field (grid), danger(), bestHeading()
 js/ai_threat_view.js    WW.threatView: debug overlay (key G): danger field + contact picture
@@ -54,6 +55,7 @@ js/ai_surface.js        WW.shipAI.roles.surface: battleship / cruiser / destroye
 js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (CAP queue, strikes, launches), pickStrikeTarget
 js/ai_light.js          WW.shipAI.roles.submarine: submarine behaviour; WW.lightAI.h helpers shared with ai_pt.js
 js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_light.js)
+js/ai_endgame.js        WW.endgameAI: a broken side runs for its home edge (doctrine: rescue / escort or best speed), rescue steering, pursuit seams
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns, tracer rounds
 js/air_intercept.js     WW.intercept: fighter gun passes on bombers (wheel arc lead, dive line, stern passes)
@@ -62,6 +64,7 @@ js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spot
 js/air_props.js         WW.airProps: pooled parachutes, life rafts, sheared-off wings
 js/lifeboats.js         WW.lifeboats: a sinking ship's boats row to a friendly ship or the shore
 js/air_deaths.js        WW.airDeaths: shoot-down / ditch / bail-out / deck slide-off deaths
+js/endgame.js           WW.endgame: escapes off the map, survivor rescue tasks, scuttling, endgame stats (sim)
 js/air_deck.js          WW.airDeck: deck parking, wing folding, takeoff runs, into-the-wind turns, landing pattern
 js/air_fx.js            WW.airFx: prop disc, dive brakes, wing-tip vapour, exhaust flicker, canopy glint
 js/air_strikes.js       WW.strike: strike waves (form-up, vics), sequential dive bombing, anvil torpedo attack
@@ -101,7 +104,7 @@ Each animation frame (`main.js`, `frame`):
 
 1. Advance the simulation. For each step (`step`):
    1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
-   2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`
+   2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.endgame.update` (escapes, survivor pickups, scuttling)
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
    5. `WW.fx.update`, then `WW.lifeboats.update`
@@ -132,6 +135,7 @@ node tests/sim_rounds.js [rounds=8] [firstSeed=1]    # per-round report, seeds a
 node tests/determinism.js [seed] [seconds]           # same seed, same round: one page, after another seed, fresh page
 node tests/determinism.js --cross 1,2,3 300          # rendered page vs sim-only page (always launches both)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
+node tests/endgame_shots.js rescue 19                # render-mode endgame screenshots (cripple 9, rescue 19, retreat 8)
 ```
 
 `--pages` (sim_behaviour, sim_rounds) defaults to 6, measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier), so 6 is the compromise. The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game.
@@ -218,7 +222,7 @@ WW.lifeboats = { init(), update(dt), figures(), clearAll(), stats() };
 - Sailors are about 0.48 units tall (`SCALE` 1.1). That is larger than true scale, like the planes' `PLANE_SCALE`, so they read in close shots. All sailors in the scene are 4 `InstancedMesh`es (shirt and arms, trousers, head, cap). The 4 meshes share one instance-matrix buffer and use per-instance colours: USN dungarees with a white cap, IJN whites with a dark cap, khaki officers, grey-helmeted gunners and coloured carrier deck jerseys.
 - Stations per type are in ship-local coordinates (carrier 13, battleship 10, cruiser 7, destroyer 5, PT boat 3, submarine 3). The surplus valid stations are spares for rescued sailors. Deck heights come from vertical-line hits on a throwaway model of each type and nation, made one time in `init`. A station that would be in the air, inside superstructure or without head room is dropped. Each deck sailor also gets a walkable lane along x.
 - `WW.crew.update` runs each frame on real time. Sailors idle, sway, look around and walk a step along their lane. Two of them run to the worst fire site (`ship.dmgSites`) or to a fresh hit (`shipHit`). The PT boat gunner turns with his mount. When the ship sinks, the sailors go below or run to the rail and jump. A sailor whose feet go under water is hidden. A submarine's crew shows only while it is surfaced. Ships more than `FAR` (115) units from the camera are skipped. Wrecks have no crew.
-- `WW.lifeboats.update` runs on simulation time. 1.2 s into a sinking, whaleboats (carrier 4, battleship 3, cruiser 2) or 1 raft (destroyer, submarine, PT boat) launch from the sides. Every 3 s, each boat picks the nearer goal: a live friendly ship or the shore (a ring search with `WW.terrain.depthAt`, sized from `WW.cfg`). It rows at 1.2 units/s, steers around hulls and keeps off land. A friendly ship picks it up (its sailors join that ship's crew through `WW.crew.adopt`). On land it beaches and its sailors stand on the sand until the round ends. With no goal for 90 s, it fades. The pool has 36 boats.
+- `WW.lifeboats.update` runs on simulation time. 1.2 s into a sinking, whaleboats (carrier 4, battleship 3, cruiser 2) or 1 raft (destroyer, submarine, PT boat) launch from the sides. Every 3 s, each boat picks its goal: the destroyer sent to rescue survivors near it (`WW.endgame.rescuerNear`), else, while survivors near it still wait for a rescuer (`WW.endgame.taskNear`), the sinking position (it lies to there), else the nearer of a live friendly ship or the shore (a ring search with `WW.terrain.depthAt`, sized from `WW.cfg`). It rows at 1.2 units/s, steers around hulls and keeps off land. A friendly ship picks it up (its sailors join that ship's crew through `WW.crew.adopt`). On land it beaches and its sailors stand on the sand until the round ends. With no goal for 90 s, it fades. The pool has 36 boats.
 
 ### effects.js
 
@@ -288,6 +292,8 @@ WW.shipAI = {
 };
 ```
 
+- **Damage slows ships** (`ship_speed.js`, `WW.shipSpeed = { hit, k, vmax, hpK, stats }`): the target speed in `Ship.move` is `stats.speed × ship.speedK × throttle`. `speedK` = hull factor (1 above 70% hp, easing to 0.5 at 15% hp and below) × (1 − `flood`) × `engineK`. Each torpedo hit floods −0.08 (at most −0.3). A torpedo, bomb or big-shell hit knocks the engine room out with chance 0.12 (`WW.rand`, not PT boats): `engineK` 0.5, half the time for good, else for 25 to 60 s. `Ship.takeDamage` calls `hit` (after hp drops, before `damage.hit`); `ship.speedK`, `flood`, `engineK`, `engineT` are public. Visual: `Ship.cripList()` adds up to ~9° of list (flooding, hp under 60%) on the side of the torpedo list, and the wake shrinks with `speedK`. `WW.shipSpeed.vmax(ship)` is the current top speed the AI compares.
+- **Leaving the map**: `ship.escapeEdge` (−1 west, +1 east, set by `ai_endgame.js` for a broken side) switches off the soft edge push and the planner's edge margin on that edge (`ships_nav.js clearance` plans as if the sea went on); `endgame.js` removes the ship once it is within `EXIT` (7) of the edge.
 - Navigation: `ships_nav.js` checks points along the keel and on the two sides of each hull. All points must be at a depth of 0.5 or more. If a move is not permitted, the ship tries a smaller turn, a turn in place, astern with a turn, a slow forward move, then straight astern.
 - If a ship pivots against shallow water for more than 2 s, it goes to the heading with the most clear water.
 - Spacing: each type has a personal space (carrier 70, battleship and cruiser 35, destroyer 20, PT boat and submarine 12). Escorts stay 50 to 80 units from their carrier.
@@ -310,6 +316,7 @@ WW.shipAI = {
 - **Cripples** (`h.withdraw`, used by carriers' own code and PT boats; surface ships use `crippleHome` below): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
 - **Torpedo combing** (`h.comb`): a track from `WW.intel.torpedoes` that will pass within half a hull length + 6 inside 70 units. After a reaction delay (PT 0.4 s, DD 0.7 s, sub 1 s, CA 1.2 s, CV 1.8 s, BB 2 s), the ship turns parallel to the track, bow or stern on, whichever is the smaller turn, until the torpedo has passed.
 - Surface ships (`ai_surface.js`; the order inside `surfaceAI`: sub hunt, then AA cover / press / station / engage, torpedoes, torpedo angling, early combing, the carrier keep-off, and last `crippleHome`):
+  - **Pursuit** (posture `pursue`, see fleet_cmd): with nothing in gun range a ship steams for `WW.endgameAI.pursueContact`: the nearest last-known enemy up to 120 s old (cripples count as 0.6 × the distance), aimed ahead along its course by the time it takes to get there (at most 60 s); carriers only when fair game; no lair or home-waters limit. It closes like a press (`prefRange` × press factor), is not tied to its station, and a destroyer may attack a crippled capital ship alone. `WW.endgameAI.fairGame(ship, cv, B)`: a carrier that is crippled (hp < `CRIP` or `speedK` < 0.75), slower than 0.95 × the pursuer, or with no fit known gun ship of its own within 150; for it the carrier keep-off, the `CV_KEEP` floor of `prefRange` and of `torpedoRun`, and `h.unreachable` are lifted;
   - with no target, they keep their commander station. While the side presses (`posture 'press'`) they steam instead for the nearest last-known enemy contact up to 60 s old (`pressContact`, `closeOn`): never a carrier, never a PT boat for a BB / CA, never a contact within 230 of a known enemy carrier (its lair) or inside the enemy's home waters (0.35 of the width from its edge). A target out of gun range in those home waters is not chased either (`homeWaters`): the press holds at the edge of the band and a broken enemy that gets home retires (main.js);
   - otherwise they orbit at `prefRange`: `doctrine.rangeFrac` × main range, and inside torpedo range for DDs;
     - while the side presses: × (0.72 + 0.15 × (1 − night)) (IJN closer);
@@ -321,7 +328,7 @@ WW.shipAI = {
   - **Destroyer torpedo attack** (`torpedoRun`, a battleship or carrier target, which `h.score` only allows with another own destroyer within 150): the DD waits at 1.35 × its launch distance until a second destroyer is within 1.8 × that distance of the same quarry, runs in from the flank (flotilla members alternate sides by slot, so the pair come from different angles), launches beam on, then turns away for 14 s. It never goes inside 0.8 × the launch distance, the target's secondary range + 8, or `CV_KEEP` of a carrier: no ram-closing. Smoke is not modelled.
   - **AA cover** (`aaCover`): while `B.airRaid` names an own carrier, cruisers (and a battleship of the carrier group) within 300 of it with nothing in gun range close to 45 of it.
   - **Torpedo threats**: big ships turn parallel to any side-wide torpedo track (`WW.intel.torpedoes`, so an escort's sighting counts) that will pass close within 150 (BB) / 120 (CA), after the type's reaction delay (`earlyComb`); the core comb then holds it. A battleship also angles bow or stern on to a known DD / PT (seen in the last 5 s) inside 1.1 × its torpedo range that has it in its bow arc (`angleOnBoats`).
-  - **Carrier keep-off**: no surface ship closes inside `CV_KEEP` (108) of a known enemy carrier (contact ≤ 10 s old, moved along its course).
+  - **Carrier keep-off**: no surface ship closes inside `CV_KEEP` (108) of a known enemy carrier (contact ≤ 10 s old, moved along its course), unless its side pursues and the carrier is fair game (above).
   - **Cripples** (`crippleHome`, replaces `h.withdraw` for surface ships: `ai.ownWithdraw`): below `CRIP` hp, head home (60 behind the own carrier, else the own map edge), pushed away from every known enemy that could shoot (contacts ≤ 45 s, within 1.2 × its gun range + 20), at full speed through `bestHeading` with risk 0.
 - Destroyers hunt a known sub inside `SUB_HUNT` (100; ×2 for the commander's ASW screen and escorts, and out to 250 when the sub is known within 70 of an ally) before surface targets. The attack run is in `ai_surface.js` (`dcApproach`, the `DC_*` constants above `surfaceAI`): it steers for the sub's predicted position at detonation, lays a stern stick of 5 charges plus a K-gun pair as it passes over, then comes round to re-attack.
 - **Carriers** (`ai_carrier.js`) never charge.
@@ -403,7 +410,7 @@ WW.fleetCmd = {
 };
 Blackboard = {
   nation, t,                               // t: sim time of the last tick
-  posture,                                 // 'search' | 'approach' | 'engage' | 'withdraw' | 'press'
+  posture,                                 // 'search' | 'approach' | 'engage' | 'withdraw' | 'press' | 'pursue'
   postureAt, late, timeLeft,               // late: past 55% of ROUND_TIMEOUT
   strength: { own, known, ratio },         // POWER x hp share; known = intel contacts, weighted down with age
   doctrine,                                // see below
@@ -415,8 +422,9 @@ Blackboard = {
   focus: { main, carrier, screen, flotilla, pt, sub },    // Ship[] (0 to 2) per group
   incoming: Map(target Ship -> dps),
   strikes: Map(carrier.id -> { target, contact, score, hold }),
-  fit, hadFit, brokenAt,                   // fit: own BB / CA / DD at >= CRIP hp; brokenAt: sim time the side lost its last
-                                           // one (0 while it has one; never set for a side that never had one)
+  fit, hadFit, brokenAt,                   // fit: own BB / CA / DD at >= CRIP hp; brokenAt: sim time the side broke (below)
+  startTons, fitTons,                      // BB / CA / DD tonnage at the first tick, and the fit share of it now
+  foeSeen, foeTons, foeFit, pursueAt,      // every enemy gun ship seen this round (Map id -> Ship), their tonnage, the fit part
   airRaid: { carrier, n } | null,          // armed enemy bombers detected within 130 of an own carrier
   defend: [{ carrier, enemy, d }],         // per own carrier: nearest known enemy gun ship within 280 (seen in the last 30 s)
   sectors: [{ x, z, looked, stale, prio }] // 6 x 4 scout sectors
@@ -427,7 +435,7 @@ Order = { ship, group, role, slot, sx, sz, t };
 // (sx, sz): the formation station. It is clamped 30 units inside the map; land is the nav layer's job.
 ```
 
-- **Posture**: `withdraw` after 60 s once the side is *broken* (`brokenAt`: no battleship, cruiser or destroyer left at ≥ `CRIP` hp, after having had one), whatever the ratio says; main.js then ends the round when the side has got clear ("retires"). Otherwise `search` while the side has no contacts. `withdraw` after 60 s if the known strength ratio is below `doctrine.withdrawRatio`. `press` late in the round if the ratio is at least `pressRatio × (1.15 − 0.3 × aggression)`. Otherwise `engage` when any known enemy is within 260 of an own ship, else `approach`. Carriers never press.
+- **Posture**: `withdraw` after 60 s once the side is *broken* (`brokenAt`: its fit battleship / cruiser / destroyer tonnage, hp ≥ `CRIP`, is below `BREAK` = 0.15 of its starting BB / CA / DD tonnage; never for a side that never had one), whatever the ratio says: its ships run for the home edge and leave the map (`ai_endgame.js`). `pursue` when the side is not broken and judges the enemy broken by the same rule on what it has seen (`foeBroken`: fit tonnage of every enemy gun ship seen this round, still afloat, below `BREAK` of all of them; or an enemy with no gun ships at all whose carrier is known: unescorted carriers are hunted), with a contact and past 60 s. When both sides are broken, the side with the larger fit share (own true share against the enemy's seen share) pursues instead of withdrawing. While pursuing: stations lead +60, strikes reach the whole map (`PURSUE_STRIKE_R` 2000) on contacts up to 120 s old and favour targets no own gun ship is within 150 of (×2.5: the gun ships run down the cripples, the planes go for what they cannot catch), the strike interval is ×0.55 (air_ops.js), a broken side launches no new strikes, the scout sectors within 0.42 W of the enemy's home edge get +70 priority (its escape route) and each catapult ship flies one more scout sortie. Otherwise `search` while the side has no contacts. `withdraw` after 60 s if the known strength ratio is below `doctrine.withdrawRatio`. `press` late in the round if the ratio is at least `pressRatio × (1.15 − 0.3 × aggression)`. Otherwise `engage` when any known enemy is within 260 of an own ship, else `approach`. Carriers never press.
 - **Groups** (`WW.fleetGroups.assign`):
   - carriers go to `carrier`, together with the first cruiser (when there are 2 or more) and the first destroyer as escorts;
   - battleships and the other cruisers go to `main`;
@@ -445,7 +453,7 @@ Order = { ship, group, role, slot, sx, sz, t };
   - withdrawing ships: 70 behind their own carrier (or the main body).
 - **Focus** (per gun group): the 1 or 2 best fresh targets from the group's guide, scored by group weight × `VALUE` × damage × proximity. `incoming` is rebuilt every tick from every own ship's `ship.target` (gun dps in range × 0.35). A target is saturated when its incoming fire kills it within 20 s; the shooter's own share is not counted.
 - **Carrier defence**: each `defend` enemy is the carrier group's focus and scores ×3 as a strike target (self-defence first).
-- **Strikes**: for each carrier, the best contact that is at most 45 s old and within 650 of it. The score is value × damage × freshness, divided by distance and by the AA around the target (from the AA channel of the danger field). With no such contact there is no order. `hold` is set while that carrier is under an air raid.
+- **Strikes**: for each carrier, the best contact that is at most 45 s old and within 650 of it. The score is value × damage × freshness, divided by distance and by the AA around the target (from the AA channel of the danger field). With no such contact there is no order. `hold` is set while that carrier is under an air raid. Pursuing: 120 s old contacts anywhere on the map, see Posture.
 
 #### Doctrine (WW.fleetGroups.BASE, rolled ±10% per round)
 
@@ -461,6 +469,7 @@ Order = { ship, group, role, slot, sx, sz, t };
 | flotilla | 1 | 2 | destroyers in the torpedo flotilla |
 | pressRatio / withdrawRatio | 1.2 / 0.45 | 1.1 / 0.4 | posture |
 | risk (cv, bb, ca, dd, ss, pt) | 0, .55, .45, .45, .35, .2 | 0, .5, .55, .6, .4, .3 | `WW.threat.bestHeading` risk tolerance |
+| rescue / scuttle (flags, not rolled) | true / false | false / true | endgame: USN destroyers pick up survivors and escort cripples home; IJN runs at best speed and may scuttle a cripple about to be caught |
 
 #### WW.threat (ai_threat.js)
 
@@ -583,12 +592,34 @@ window.__sim = { stats, game, world, fastForward(seconds, onStep), setScale(n), 
 ```
 
 Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 destroyers, 1 submarine and 2 PT boats in a task-force formation. A round ends (`game.endReason`):
-- `kill`: one side has no ships;
-- `retire` (`retiring()` in main.js): a side's commander has been broken (posture `withdraw`, no fit BB / CA / DD, `brokenAt`) for 30 s, the round is past 120 s, the side still has a ship that is not a submarine, and every such ship is either in its home band (0.18 of the width from its own edge) or has not been seen by the enemy (`WW.intel`) for 45 s. The other side wins. If both sides qualify at once, neither retires;
-- `stall`: only submarines are left and nothing sinks for 60 s (tonnage decides);
-- `time`: the time limit (420 simulation seconds, 14 minutes at 1×); the side with more tonnage wins.
+- a side is *out* when it has no carrier, battleship, cruiser or destroyer afloat (its submarines and PT boats scatter). A side that started without such ships (a PT or submarine raid), or any side while `noRetire` is set, is out when all its ships are gone (`game.hadMajor`). The way its last major ship went decides the reason (`WW.endgame.lastOut`):
+- `kill`: sunk. The winner ran down the last of them; ships that left the map earlier (often the carrier, which waits 0.08–0.35 W from its edge) are counted in `WW.endgame.stats.escaped`. The suite's `wipeout` counts the strict case (no major ship escaped at all);
+- `retire`: it left the map over its home edge (a broken side, `endgame.js`). The caption shows "<loser> fleet retires";
+- both out at once: tonnage decides (`kill`);
+- `stall`: only submarines are left on a side and nothing sinks for 60 s (tonnage decides);
+- `time`: the time limit (420 simulation seconds, 14 minutes at 1×), stretched for a pursuit (`game.deadline()`): while a broken side still has major ships afloat, at least `PURSUE_T` (150) s after it broke, at most `EXT_MAX` (150) s past the limit. The side with more tonnage wins.
 
-`tests/sim_rounds.js` and `tests/sim_behaviour.js` report each round's end reason (kill / retire / time / cap). The behaviour suite's `cv_closing` judges a carrier on its own side's picture (`WW.intel.known`, last-known positions), not raw positions.
+`tests/sim_rounds.js` and `tests/sim_behaviour.js` report each round's end reason (kill / retire / time / cap) from `game.endReason` (a stall counts as time).
+
+### Endgame: endgame.js, ai_endgame.js
+
+```js
+WW.endgame = { update(dt), stats, EXIT, broken(n), homeX(n), engaged(ship), lastOut(n), tasks(), pending(n),
+               taskNear(n, x, z, r), rescuerNear(n, x, z, r) };     // the last two are read-only helpers for lifeboats.js
+// stats (reset on roundStart): per nation { escaped, sunk, scuttled, abandoned, rescues, survivors, lost, pilots,
+//   pursuitKills }, escTypes { 'USN:carrier': n }, lastEsc { type, nation, t, hp }, brokenAt
+// events: shipEscaped (ship), shipScuttled (ship), rescue { ship, x, z, n, kind }, engineHit { ship, permanent } (ship_speed.js)
+WW.endgameAI = { steer(ship, dt), fairGame(ship, cv, B), pursueContact(ship, B), isCripple(ship), PURSUE_AGE };
+```
+
+All sim code (`WW.rand` only; the rescue and scuttle rules are deterministic apart from the scuttle roll).
+- `ships_ai.js` calls `WW.endgameAI.steer` after the role; when it returns true it has the helm and the core cripple withdrawal is skipped (combing and the guns still run). Submarines are never steered.
+- **Broken side** (`endgame.broken`: `brokenAt` and posture `withdraw`; not with `game.noRetire`): every ship sets `escapeEdge` and makes for its home edge at about its own z (`bestHeading` risk 0 until 90 from the edge, then straight). A surface cripple keeps `crippleHome`'s route (away from every gun in reach) until it is near the edge. The carrier leaves at once; its planes still up (CAP, scouts) are removed with it.
+  - IJN (`doctrine.scuttle`): best speed, each ship on its own. The cripples it has when it breaks are counted as abandoned. Every 4 s, a cripple below 25% hp and 0.6 `speedK`, 30 s after the break, with a known enemy gun ship (seen in the last 5 s) at least 1.3× faster inside its gun range, is scuttled with chance 0.08.
+  - USN (`doctrine.rescue`): a destroyer with a rescue task does that first; a fit destroyer escorts the nearest unescorted cripple (a station 26 off it toward the nearest known enemy, at the cripple's speed, `ship.escortBy` / `ai.escortOf`); a free fit destroyer waits 70 off the edge while survivors are still being picked up (`pending`).
+- **Rescue tasks** (`doctrine.rescue`): a sunk ship (from `shipSunk`, at its position then) leaves boats × 12 survivors (carrier 4 boats, battleship 3, cruiser 2, destroyer and PT 1); a plane that ditches or is abandoned (`deathMode` 'ditch' / 'abandon', a wrapper on `Plane.shotDown` / `ditch`) leaves its crew. Not on land. Every 1 s each open task gets the nearest own destroyer that has no task, is at ≥ `CRIP` hp, is not on a depth-charge run, is within 320 (aircrew 220) and, unless the side is broken, is not in a gun fight (`engaged`: a fresh enemy gun ship inside its main range + 20) and sees known enemy fire below 12 dps at the survivors. A rescuer called into a gun fight (not broken) drops the task. It steams there, slows (half the length of the sunk hull + 14 off, aircrew 10) and recovers them after 10 s alongside under 1.6 units/s. A task with no rescuer is lost after 150 s, any after 240 s.
+- No hidden per-nation handicaps: the two nations differ only in the doctrine flags. The rescue costs the USN nothing measurable on the balance gate (rescuers are only sent away from a gun fight), so nothing was compensated.
+- `tests/endgame_shots.js <cripple|rescue|retreat> <seed>`: render-mode screenshots of a slowed, listing cripple being run down, a destroyer picking up boats, an IJN fleet running east (good seeds: 9, 19, 8). The behaviour suite's `cv_closing` judges a carrier on its own side's picture (`WW.intel.known`, last-known positions), not raw positions.
 
 `endRound` emits `victory` `{ winner, round, reason, loser }`. The caption shows "<winner> victory" for 9 s, with "<loser> fleet retires" as the subtitle after a retire, else the ships each side lost.
 
