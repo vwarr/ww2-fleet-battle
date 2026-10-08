@@ -35,6 +35,7 @@ window.WW = window.WW || {};
       else WW.game.enterSetup(false);
     });
     $('div', 'row dim small', el.panel, 'H panel   C camera   T tilt-shift   P pixels');
+    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag pan \u00b7 Click ship follow');
 
     // setup palette
     el.setup = $('div', 'panel setup', root);

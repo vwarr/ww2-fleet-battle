@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   const P = new THREE.Vector3(), L = new THREE.Vector3();        // current camera position / look point
   const gP = new THREE.Vector3(), gL = new THREE.Vector3();      // goals for this frame
   const _c = new THREE.Vector3(), _f = new THREE.Vector3();
-  let shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null;
+  let manual = false, shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null;
 
   // ---------- overview fit (setup / map mode) ----------
   function placeOverview(d, tz) {
@@ -261,6 +261,7 @@ window.WW = window.WW || {};
       fade.style.transition = 'opacity 1.4s ease-in-out'; fade.style.opacity = '0';
     },
     target() { return L; },
+    current() { return { P, L }; },
     isOverview() { const st = WW.game && WW.game.state; return st === 'setup' || !st || cam.mode === 'map'; },
     toggle() { cam.mode = cam.mode === 'director' ? 'map' : 'director'; snapNext = true; shot = null; return cam.mode === 'map' ? 'map' : 'cinematic'; },
     // test hook: film (x, z) with a slow orbit about `width` units across, for `hold` seconds
@@ -275,7 +276,13 @@ window.WW = window.WW || {};
       const st = WW.game && WW.game.state;
       if (st === 'setup' || !st || cam.mode === 'map') {
         gP.set(W / 2, mapDist * Math.sin(OV_PITCH), mapTz + mapDist * Math.cos(OV_PITCH)); gL.set(W / 2, 0, mapTz);
+      } else if (WW.freecam && WW.freecam.active()) {
+        // the user has the camera: no cut, just ease from wherever we are; the director resumes later
+        WW.freecam.goal(gP, gL, rdt);
+        keepSane(gP, gL);
+        manual = true; shot = null; snapNext = false;
       } else {
+        manual = false;
         if (shot) shot.t += rdt;
         if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && dull(shot.subj))) { forced = null; pickShot(); }
         shotGoal();
@@ -285,8 +292,8 @@ window.WW = window.WW || {};
       if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)
       else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; }
       else {
-        P.lerp(gP, 1 - Math.exp(-rdt * 0.9));   // heavy easing: slow, floaty moves
-        L.lerp(gL, 1 - Math.exp(-rdt * 1.3));
+        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 : 0.9)));   // heavy easing for the director, crisp for the user
+        L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 : 1.3)));
       }
       camera.position.copy(P);
       camera.lookAt(L);

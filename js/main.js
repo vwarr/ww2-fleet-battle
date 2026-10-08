@@ -223,7 +223,7 @@ window.WW = window.WW || {};
 
   function boot() {
     setupRenderer();
-    ['sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui'].forEach(m => {
+    ['sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui', 'freecam'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
     });
     call('post', 'init');

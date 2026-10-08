@@ -71,6 +71,21 @@ To go back to auto mode, click **Back to auto** in setup mode.
 | `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
 | **1× / 2× / 4×** buttons | Set the game speed. These buttons are in the panel. |
 
+### Free camera
+
+During a battle, you can move the camera yourself:
+
+| Input | Action |
+|---|---|
+| Drag with the left mouse button | Turn the camera around the point it looks at. |
+| Mouse wheel | Move the camera nearer or farther. |
+| Drag with the right mouse button, or `W` `A` `S` `D`, or the arrow keys | Move the camera across the sea. |
+| `Q`, `E` | Turn the camera left or right. |
+| Click a ship or a plane | Follow it. |
+| `Esc`, or click empty water | Stop following. |
+
+When you do not touch the mouse or the keys for 20 seconds, the director camera starts again.
+
 In setup mode, the camera always shows all of the map from above.
 The game does not show health bars.
 
@@ -100,5 +115,7 @@ The game does not show health bars.
 | `js/sky.js` | The sky, the lights and the haze. |
 | `js/water.js` | The water surface, the foam and the depth colours. |
 | `js/camera.js` | The director camera and the map camera. |
+| `js/freecam.js` | The free camera (mouse and keys). |
+| `js/post.js` | The bloom and the soft tone curve. |
 | `js/ui.js` | The panels, the setup clicks, the black bars and the captions. |
 | `js/main.js` | The main loop and the rounds. |
