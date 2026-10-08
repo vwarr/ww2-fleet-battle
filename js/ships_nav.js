@@ -205,13 +205,16 @@ window.WW = window.WW || {};
     const look = this.lookDist;
     this.clearAhead = this.clearance(this.heading);
     let best = want, bestScore = -1e9;
+    // navAvoid: bearings the AI must not steer toward (a carrier's known gun ships), fresh for 0.5 s
+    const av = this.navAvoid && WW.time.now - this.navAvoidT < 0.5 && this.navAvoid.length ? this.navAvoid : null;
     for (let i = 0; i < OFFS.length; i++) {
       const h = want + OFFS[i];
       const c = this.clearance(h);
-      const score = (c >= look ? 1.2 : c / look) * 4 - Math.abs(OFFS[i]) * 0.7
+      let score = (c >= look ? 1.2 : c / look) * 4 - Math.abs(OFFS[i]) * 0.7
         - Math.abs(WW.angleDiff(this.heading, h)) * 0.3;
+      if (av) for (let j = 0; j < av.length; j++) if (Math.abs(WW.angleDiff(av[j], h)) < 1.2) score -= 2.5; // never detour toward a known threat
       if (score > bestScore) { bestScore = score; best = h; }
-      if (i === 0 && c >= look) break; // straight line is clear
+      if (i === 0 && c >= look && !(av && score < 4)) break; // straight line is clear (and not toward a threat)
     }
     best %= Math.PI * 2; this.navHeading = best < 0 ? best + Math.PI * 2 : best;
   };

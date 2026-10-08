@@ -85,20 +85,22 @@ window.WW = window.WW || {};
     return (ch[o] * (1 - fx) + ch[o + 1] * fx) * (1 - fz) + (ch[o + nx] * (1 - fx) + ch[o + nx + 1] * fx) * fz;
   }
   // 0..1.5 penalty for a point inside the EDGE band of the map; a point off the map scores 3 and more.
-  function edge(x, z) {
-    var m = Math.min(x, WW.cfg.MAP_W - x, z, WW.cfg.MAP_H - z);
-    return m >= EDGE ? 0 : m >= 0 ? 1.5 * (EDGE - m) / EDGE : 3 - m / 10; // off the map: never
+  function edge(x, z, band) {
+    var m = Math.min(x, WW.cfg.MAP_W - x, z, WW.cfg.MAP_H - z), E = band || EDGE;
+    return m >= E ? 0 : m >= 0 ? 1.5 * (E - m) / E : 3 - m / 10; // off the map: never
   }
   // Heading near `want` with the best goal pull - danger x (1 - risk) - edge, sampled `look` units ahead
-  // (and half way). risk 0: avoid all known danger; 1: ignore it. opts: { look, air, k (danger weight) }.
+  // (and half way). risk 0: avoid all known danger; 1: ignore it. opts: { look, air, k (danger weight), edge (band
+  // width for the edge penalty, default EDGE), avoid (bearings never to head toward), cone (their half-angle) }.
   function bestHeading(ship, want, risk, opts) {
     var look = (opts && opts.look) || WW.clamp(ship.stats.speed * 9, 30, 70), K = ((opts && opts.k) || 2) * (1 - WW.clamp(risk || 0, 0, 1)) / DREF;
-    var best = want, bs = -1e9, n = ship.nation;
+    var best = want, bs = -1e9, n = ship.nation, av = opts && opts.avoid, cone = (opts && opts.cone) || 1.4;
     for (var i = 0; i < OFFS.length; i++) {
       var h = want + OFFS[i], c = Math.cos(h), s = Math.sin(h);
       var x1 = ship.x + c * look * 0.5, z1 = ship.z + s * look * 0.5, x2 = ship.x + c * look, z2 = ship.z + s * look;
       var dg = Math.max(danger(n, x1, z1, opts), danger(n, x2, z2, opts));
-      var sc = Math.cos(OFFS[i]) - dg * K - edge(x2, z2) - 0.15 * Math.abs(WW.angleDiff(ship.heading, h));
+      var sc = Math.cos(OFFS[i]) - dg * K - edge(x2, z2, opts && opts.edge) - 0.15 * Math.abs(WW.angleDiff(ship.heading, h));
+      if (av) for (var j = 0; j < av.length; j++) { var off = Math.abs(WW.angleDiff(av[j], h)); if (off < cone) sc -= 3 - 1.5 * off / cone; }
       if (sc > bs) { bs = sc; best = h; }
     }
     return best;
