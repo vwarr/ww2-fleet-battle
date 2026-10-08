@@ -34,7 +34,7 @@ window.WW = window.WW || {};
     carrier: [[4.3, 2.2, 2.0, 'i', 'y'], [-9.05, 2.8, 1.6, 'o', 'g'], [-1.6, 2.25, 2.0, 'i', 'b'], [5.95, -2.8, 1.6, 'o', 'g'],
       [8.5, 2.25, 2.0, 'i', 'r'], [-4.05, -2.8, 1.6, 'o', 'g'], [-7.5, 2.3, 2.0, 'i', 'n'], [5.1, 2.05, 2.0, 'f', 'o'],
       [-2.6, 2.1, 2.0, 'i', 'w'], [-4.05, 2.8, 1.6, 'o', 'g'], [5.95, 2.8, 1.6, 'o', 'g'], [11.0, 2.15, 2.0, 'i', 'y'],
-      [-11.5, 2.3, 2.0, 'i', 'b'], [-9.05, -2.8, 1.6, 'o', 'g'], [6.4, 2.1, 2.0, 'i', 'b'], [2.4, 2.15, 2.0, 'i', 'r'], [-12.4, -2.3, 2.0, 'f', 'y']]
+      [-11.5, 2.3, 2.0, 'i', 'b'], [-9.05, -2.8, 1.6, 'o', 'g'], [6.4, 2.1, 2.0, 'i', 'b'], [2.4, 2.15, 2.0, 'i', 'r']]
   };
   // uniforms: [shirt, trousers, cap]
   var PAL = {
@@ -216,11 +216,11 @@ window.WW = window.WW || {};
       });
     }
   }
-  function startAbandon(rec, near) {
+  function startAbandon(rec) {   // far ships keep this state frozen until the camera comes close
     rec.sink = true;
     var below = rec.ship.type === 'submarine' && (rec.ship.depthY < -0.08 || !rec.ship.wantSurface); // crew was below
     rec.sailors.forEach(function (s) {
-      if (!near || below) { s.mode = 'gone'; return; }
+      if (below) { s.mode = 'gone'; return; }
       if (s.tur) { s.tur.updateMatrix(); _v.set(s.x, s.y, s.z).applyMatrix4(s.tur.matrix); s.x = _v.x; s.y = _v.y; s.z = _v.z; s.f += s.tur.rotation.y; s.tur = null; }
       s.mode = 'flee'; s.wait = R() * 2.2; s.below = R() < 0.25; s.job = null;
       s.side = Math.abs(s.z) > 0.05 ? Math.sign(s.z) : (R() < 0.5 ? -1 : 1);
@@ -288,7 +288,7 @@ window.WW = window.WW || {};
       var rec = recs[i], sh = rec.ship;
       if (sh.removed || sh.wreck || sh._crew !== rec) { recs.splice(i, 1); continue; }
       var g = sh.group, near = cam.distanceToSquared(g.position) < FAR * FAR;
-      if (sh.sinking && !rec.sink) startAbandon(rec, near);
+      if (sh.sinking && !rec.sink) startAbandon(rec);
       if (!near) continue;
       if (sh.type === 'submarine' && !rec.sink && (!sh.wantSurface || sh.depthY < -0.08)) continue; // crew below
       g.updateMatrix();
