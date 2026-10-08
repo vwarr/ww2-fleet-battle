@@ -145,6 +145,11 @@ window.WW = window.WW || {};
     if (d > pref * 1.3) { h = b + a.orbitDir * 0.3; ship.throttle = 1; }
     else if (d < pref * 0.6) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
     else { h = b + a.orbitDir * (PI / 2 - WW.clamp(e, -0.5, 0.5) * 1.4); ship.throttle = Math.abs(e) > 0.15 ? 1 : 0.8; }
+    // Pursuing a ship that runs (heading within 60 deg of straight away from us): no kiting, chase its lead point
+    if (B && B.posture === 'pursue' && d > pref * 0.6 && t.speed > 0.5 && Math.abs(WW.angleDiff(t.heading, b)) < 1.05) {
+      const k = Math.min(40, d / ship.stats.speed);
+      h = Math.atan2(t.z + Math.sin(t.heading) * t.speed * k - ship.z, t.x + Math.cos(t.heading) * t.speed * k - ship.x); ship.throttle = 1;
+    }
     if (o && !(B && (B.posture === 'press' || B.posture === 'pursue') && o.role !== 'escort')) {
       const ds = WW.dist(ship.x, ship.z, o.sx, o.sz), esc = o.role === 'escort';
       if (ds > (esc ? 60 : 110)) h = blend(h, ship, o.sx, o.sz, esc ? 0.6 : 0.3);

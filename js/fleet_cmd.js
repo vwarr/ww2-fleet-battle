@@ -11,7 +11,7 @@ window.WW = window.WW || {};
   var NATIONS = ['USN', 'IJN'];
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
-  var BREAK = 0.25;     // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
+  var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
   var PURSUE_AGE = 120, PURSUE_STRIKE_R = 2000; // pursuit: strikes on contacts this old, anywhere on the map
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
@@ -76,9 +76,11 @@ window.WW = window.WW || {};
     if (B.startTons < 0) B.startTons = allT;  // first tick: the side's starting surface combatants
     B.fit = fit; B.fitTons = fitT; if (fit) B.hadFit = true;   // a side that never had gun ships (a PT / sub raid) never "breaks"
     if (B.hadFit && !B.brokenAt && fitT < BREAK * B.startTons) B.brokenAt = now;
-    var pursue = !B.brokenAt && foeBroken(B, cs, now);
+    // Pursue a broken enemy; when both sides are broken, the side with the larger fit share (its own true one against
+    // the enemy's as seen) turns to hunt instead of running.
+    var pursue = foeBroken(B, cs, now) && (!B.brokenAt || fitT / Math.max(1, B.startTons) > B.foeFit / Math.max(1, B.foeTons));
     if (pursue && !B.pursueAt) B.pursueAt = now;
-    if (rt > 60 && B.brokenAt) B.posture = 'withdraw';
+    if (rt > 60 && B.brokenAt && !pursue) B.posture = 'withdraw';
     else if (pursue) B.posture = 'pursue';
     else if (!cs.length) B.posture = 'search';
     else if (rt > 60 && B.strength.ratio < d.withdrawRatio) B.posture = 'withdraw';
@@ -172,10 +174,22 @@ window.WW = window.WW || {};
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sc = dfd * Math.max(STRIKE_V[u.type], dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
+        if (pur) sc *= runaway(B, u, c);
         if (sc > bs) { bs = sc; best = u; bc = c; }
       }
       if (best) B.strikes.set(cv.id, { target: best, contact: bc, score: bs, hold: !!(B.airRaid && B.airRaid.carrier === cv) });
     }
+  }
+  // Pursuit division of labour: the gun ships run down the slow cripples near them; the strikes go for what they
+  // cannot catch, a ship at speed (speedK >= 0.75) with no own gun ship within 150 of its last-known position.
+  function runaway(B, u, c) {
+    if (WW.endgameAI && WW.endgameAI.isCripple(u)) return 1;
+    var ships = WW.world.ships;
+    for (var i = 0; i < ships.length; i++) {
+      var s = ships[i];
+      if (s.alive && s.nation === B.nation && GUNSHIP[s.type] && WW.dist2(s.x, s.z, c.x, c.z) < 150 * 150) return 1;
+    }
+    return 2.5;
   }
   // Scout sectors: how long since an own ship / plane looked there, plus stale contacts; the best one is the
   // search point while nothing is known.

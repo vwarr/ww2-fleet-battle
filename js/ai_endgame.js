@@ -25,7 +25,8 @@ window.WW = window.WW || {};
     if (ship.type === 'submarine' || !WW.fleetCmd || !WW.endgame) return false;
     const B = WW.fleetCmd.side(ship.nation), d = B && B.doctrine;
     if (!B) return false;
-    if (WW.endgame.broken(ship.nation)) return retreat(ship, B, d);
+    if (WW.endgame.broken(ship.nation) && !(WW.game && WW.game.noRetire)) return retreat(ship, B, d); // noRetire: tests, no leaving
+    ship.escapeEdge = 0; // (a broken side that turns to pursue a worse-broken enemy, fleet_cmd.js)
     if (ship.rescue) return rescueSteer(ship, B);
     return false;
   }
@@ -40,6 +41,8 @@ window.WW = window.WW || {};
       const hx = WW.endgame.homeX(ship.nation); // a fit destroyer waits off the edge for survivors still to be picked up
       if (ship.type === 'destroyer' && WW.endgame.pending(ship.nation) && Math.abs(ship.x - hx) < HOLD + 40) return holdOff(ship, hx);
     }
+    // a surface cripple keeps its own way home (ai_surface.js crippleHome: away from every gun in reach) until close
+    if (ship.ai.withdrawing && Math.abs(ship.x - WW.endgame.homeX(ship.nation)) > 90) return true;
     ship.desiredHeading = homeHeading(ship);
     return true;
   }

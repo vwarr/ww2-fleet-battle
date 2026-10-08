@@ -13,12 +13,13 @@ window.WW = window.WW || {};
   'use strict';
   var EXIT = 7;                                   // units from the home edge: off the map
   var RESCUE_R = 320, PILOT_R = 220;              // a rescuer is sent from this far (ship survivors / aircrew)
-  var WAIT_T = 60, RESCUE_AGE = 150;              // unassigned survivors are lost after WAIT_T s, any after RESCUE_AGE s
+  var WAIT_T = 150, RESCUE_AGE = 240;            // unassigned survivors are lost after WAIT_T s, any after RESCUE_AGE s
   var PICKUP_D = 10, PICKUP_V = 1.6, PICKUP_T = 10; // alongside (aircrew; a hull's survivors: + half its length + 4, clear of the wreck), nearly stopped, this long
-  var SAFE_DPS = 8;                               // known enemy fire at the survivors' position a rescuer accepts (not broken)
+  var SAFE_DPS = 12;                              // known enemy fire at the survivors' position a rescuer accepts (not broken)
   var BOATS = { carrier: 4, battleship: 3, cruiser: 2, destroyer: 1, submarine: 0, pt: 1 }, PER_BOAT = 12; // lifeboats.js boats
   var CREW = { fighter: 1, dive: 2, torpedo: 3, scout: 2 };
-  var SCUT_T = 4, SCUT_P = 0.25;                  // scuttle check interval, chance per check
+  var SCUT_T = 4, SCUT_P = 0.08, SCUT_HP = 0.25, SCUT_K = 0.6, SCUT_GRACE = 30, SCUT_FAST = 1.3; // check interval, chance per check,
+                                                  // hp share and speedK below which, s after the break, pursuer speed ratio
   var NATIONS = ['USN', 'IJN'];
   var MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var tasks = [], nextId = 1, tick = 0, scutT = 0, broke = {}, stats = null, last = {};
@@ -27,7 +28,7 @@ window.WW = window.WW || {};
   function reset() {
     tasks.length = 0; nextId = 1; tick = 0; scutT = 0; broke = {}; last = {};
     stats = { escaped: per(), sunk: per(), scuttled: per(), abandoned: per(), rescues: per(), survivors: per(), lost: per(),
-      pilots: per(), pursuitKills: per() };
+      pilots: per(), pursuitKills: per(), escTypes: {}, lastEsc: null, brokenAt: per() };
     WW.endgame.stats = stats;
   }
   function side(n) { return WW.fleetCmd ? WW.fleetCmd.side(n) : null; }
@@ -51,7 +52,7 @@ window.WW = window.WW || {};
   function release(t) { if (t.by && t.by.rescue === t) t.by.rescue = null; t.by = null; t.pick = 0; }
   function canRescue(s, t, br) {
     if (!s.alive || s.sinking || s.nation !== t.nation || s.type !== 'destroyer' || s.rescue || s.escaped) return false;
-    if (s.hp < 0.25 * s.maxHp || (s.ai && (s.ai.dcLeft > 0 || s.ai.dcSub))) return false;
+    if (s.hp < WW.fleetGroups.CRIP * s.maxHp || (s.ai && (s.ai.dcLeft > 0 || s.ai.dcSub))) return false; // a cripple runs home
     if (WW.dist2(s.x, s.z, t.x, t.z) > Math.pow(t.kind === 'pilot' ? PILOT_R : RESCUE_R, 2)) return false;
     if (br) return true;   // broken: picking up survivors comes first
     return !engaged(s) && !(WW.threat && WW.threat.danger(s.nation, t.x, t.z) > SAFE_DPS);
@@ -87,6 +88,8 @@ window.WW = window.WW || {};
   }
   function escape(s) {
     s.escaped = true; stats.escaped[s.nation]++; if (MAJOR[s.type]) last[s.nation] = 'escaped';
+    var et = s.nation + ':' + s.type; stats.escTypes[et] = (stats.escTypes[et] || 0) + 1;
+    stats.lastEsc = { type: s.type, nation: s.nation, t: +WW.game.roundTime.toFixed(0), hp: +(s.hp / s.maxHp).toFixed(2) };
     for (var i = 0; i < tasks.length; i++) if (tasks[i].by === s) release(tasks[i]);
     WW.emit('shipEscaped', s);
     var P = WW.world.planes; // its planes still up (CAP, a scout) go with it: they land on it past the edge
@@ -95,17 +98,17 @@ window.WW = window.WW || {};
   }
   // Doctrine scuttle: a cripple of a broken side, slowed, with a faster known enemy gun ship within reach.
   function scuttleCheck() {
-    var ships = WW.world.ships, I = WW.intel, now = WW.time.now, crip = WW.fleetGroups.CRIP, V = WW.shipSpeed;
+    var ships = WW.world.ships, I = WW.intel, now = WW.time.now, V = WW.shipSpeed;
     if (!I || !V) return;
     for (var i = 0; i < ships.length; i++) {
       var s = ships[i];
       if (!s.alive || s.sinking || s.type === 'submarine' || s.type === 'pt' || !doctrine(s.nation).scuttle || !broken(s.nation)) continue;
-      if (s.hp >= crip * s.maxHp || s.speedK > 0.75) continue;
+      if (now - side(s.nation).brokenAt < SCUT_GRACE || s.hp >= SCUT_HP * s.maxHp || s.speedK > SCUT_K) continue; // the crew tries to run first
       var cs = I.enemyShips(s.nation), hunted = false, v = V.vmax(s);
       for (var k = 0; k < cs.length && !hunted; k++) {
         var u = cs[k].unit, g = u && u.stats.guns[0];
-        if (!u || !u.alive || u.submerged || !g || u.type === 'carrier' || now - cs[k].seenAt > 10) continue;
-        hunted = V.vmax(u) > v && WW.dist(s.x, s.z, cs[k].x, cs[k].z) < g.range * 1.3;
+        if (!u || !u.alive || u.submerged || !g || u.type === 'carrier' || now - cs[k].seenAt > 5) continue;
+        hunted = V.vmax(u) > v * SCUT_FAST && WW.dist(s.x, s.z, cs[k].x, cs[k].z) < g.range;  // a faster hunter already in gun range
       }
       if (!hunted || WW.rand() >= SCUT_P) continue;
       s.scuttled = true; stats.scuttled[s.nation]++;
@@ -117,7 +120,7 @@ window.WW = window.WW || {};
   function breakCheck() {
     for (var i = 0; i < NATIONS.length; i++) {
       var n = NATIONS[i]; if (broke[n] || !broken(n)) continue;
-      broke[n] = true;
+      broke[n] = true; stats.brokenAt[n] = +WW.game.roundTime.toFixed(0);
       if (doctrine(n).rescue) continue;
       var ships = WW.world.ships, crip = WW.fleetGroups.CRIP;
       for (var k = 0; k < ships.length; k++) {
