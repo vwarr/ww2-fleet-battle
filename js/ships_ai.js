@@ -222,6 +222,7 @@ window.WW = window.WW || {};
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
       ship.desiredHeading = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
     } else { ship.desiredHeading = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; }
+    if (WW.airDeck) WW.airDeck.steer(ship, late); // into the wind while launching / recovering (air_deck.js)
     // Any ship closing inside ~90 units: turn away from it (separation in ships.js enforces the 70-unit space).
     const n = a.near;
     if (n && n.alive && (!late || n.nation === ship.nation) && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {
