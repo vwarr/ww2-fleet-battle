@@ -212,6 +212,21 @@ window.WW = window.WW || {};
   }
 
   // ---------- torpedo bombers ----------
+  function freeAV(pl, t) { // the first anvil bearing on this side not held by a live bomber on the same target
+    const used = new Set();
+    for (const p of WW.world.planes) if (p !== pl && p.alive && p.kind === 'torpedo' && p.target === t && p.side === pl.side && (p.sk === 'anvil' || p.phase === 'run')) used.add(p.av);
+    for (const a of AV) if (!used.has(a)) return a;
+    return AV[used.size % AV.length];
+  }
+  function clearOf(pl) { // { x, z } 20 u away from the nearest same-side bomber inside 10 u, else null
+    let n = null, bd = 100;
+    for (const p of WW.world.planes) {
+      if (p === pl || !p.alive || p.nation !== pl.nation || p.kind !== 'torpedo' || p.state !== 'attack') continue;
+      const d2 = WW.dist2(p.x, p.z, pl.x, pl.z); if (d2 < bd) { bd = d2; n = p; }
+    }
+    if (!n) return null;
+    const d = Math.sqrt(bd) || 1; return { x: (pl.x - n.x) / d * 20, z: (pl.z - n.z) / d * 20 };
+  }
   function torp(pl, dt) {
     const t = pl.validTarget();
     pl.phaseT -= dt;
@@ -223,7 +238,7 @@ window.WW = window.WW || {};
     if (pl.sk !== 'anvil') { // approach at cruise height, then split for the anvil
       pl.state = 'transit';
       pl.fly(t.x, t.z, 22, dt, pl.pt.speed);
-      if (dh < 115) { pl.sk = 'anvil'; pl.side = g.side++ % 2 ? 1 : -1; pl.av = AV[((g.side - 1) >> 1) % AV.length]; pl.anT = now; }
+      if (dh < 115) { pl.sk = 'anvil'; pl.side = g.side++ % 2 ? 1 : -1; pl.av = freeAV(pl, t); pl.anT = now; }
       return;
     }
     // Anvil setup: work round the target at R to a point ~54 deg off its bow on our side, then hold low.
@@ -234,11 +249,12 @@ window.WW = window.WW || {};
     const sx = WW.clamp(px + Math.cos(a) * R, 10, WW.cfg.MAP_W - 10), sz = WW.clamp(pz + Math.sin(a) * R, 10, WW.cfg.MAP_H - 10); // torpedoes die off-map
     const ds = WW.dist(pl.x, pl.z, sx, sz);
     if (a === want && now > (pl.flipT || 0) && !wet(WW.lerp(sx, px, 0.25), WW.lerp(sz, pz, 0.25), WW.lerp(sx, px, 0.8), WW.lerp(sz, pz, 0.8))) {
-      pl.side = -pl.side; pl.flipT = now + 6; // land in the way: try the other bow
+      pl.side = -pl.side; pl.av = freeAV(pl, t); pl.flipT = now + 6; // land in the way: try the other bow
     }
     pl.ready = Math.abs(da) < 0.5 && ds < 16;
-    if (ds < 12) pl.orbit(sx, sz, 9, overLand(pl, 5, 5), dt);
-    else pl.fly(sx, sz, overLand(pl, 5, Math.abs(da) < 0.5 ? 5 : 16), dt, pl.pt.speed);
+    const sep = clearOf(pl), hy = Math.abs(pl.av || 0) * 1.5;   // sidestep a squadron mate closer than 10; stepped heights
+    if (ds < 12 && !sep) pl.orbit(sx, sz, 9, overLand(pl, 5, 5 + hy), dt);
+    else pl.fly(sx + (sep ? sep.x : 0), sz + (sep ? sep.z : 0), overLand(pl, 5, (Math.abs(da) < 0.5 ? 5 : 16) + hy), dt, pl.pt.speed);
     // Both groups turn in together: all ready, someone has waited too long, or a run just started.
     let go = now - g.goT < 7;
     if (!go && pl.ready && !(WW.cag && WW.cag.vtWait(pl, t, g))) {
@@ -280,13 +296,13 @@ window.WW = window.WW || {};
       const dh = pl.hd(t);
       if (dh > pl.lastD + 0.01) pl.passed = true;
       pl.lastD = dh;
-      alt = pl.floor + 1.5;
+      alt = pl.floor + 1.5 + Math.abs(pl.av || 0) * 2.5 + (pl.side > 0 ? 1.5 : 0); // stepped: crossing runs pass apart
       if (dh > t.stats.length * 0.5 + 6) pl.turnTo(Math.atan2(t.z - pl.z, t.x - pl.x), dt, 0.6); else pl.turn = 0;
     } else pl.turn = 0;
     pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, -3, 17) - pl.vy, -34 * dt, 34 * dt);
     if (pl.phaseT > 0 || (t && !pl.passed)) return;
     pl.phase = null;
-    if (pl.ordnance && t) { pl.sk = 'anvil'; pl.anT = WW.time.now; } else { pl.state = 'return'; pl.sk = null; }
+    if (pl.ordnance && t) { pl.sk = 'anvil'; pl.av = freeAV(pl, t); pl.anT = WW.time.now; } else { pl.state = 'return'; pl.sk = null; }
   }
 
   // ---------- escorts ----------
