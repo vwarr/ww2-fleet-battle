@@ -39,6 +39,7 @@ window.WW = window.WW || {};
     const ox = ship.x + Math.cos(b) * off, oz = ship.z + Math.sin(b) * off;
     for (let i = 0; i < n; i++) WW.combat.fireTorpedo(ship, ox, oz, b + (i - (n - 1) / 2) * spread, ship.nation, R);
     ship.ai.torpReload = tp.reload * WW.randRange(0.9, 1.2);
+    if (WW.supply) WW.supply.torpFired(ship); // reload sets (ship_supply.js): out of torpedoes, the tubes stay empty
     return true;
   }
 
@@ -182,7 +183,7 @@ window.WW = window.WW || {};
       ts.t.obj.rotation.y = -ts.aim;
       if (tgt && ts.reload <= 0 && d <= ts.gun.range && Math.abs(WW.angleDiff(ts.aim, rel)) < 0.12) {
         if (!mw) { ship.group.updateMatrixWorld(true); mw = true; }
-        WW.combat.fireShell(ship, ts.t, tgt, ts.gun.cal);
+        if (!WW.supply || WW.supply.shell(ship, ts.gun, d)) WW.combat.fireShell(ship, ts.t, tgt, ts.gun.cal); // main-battery ammunition (ship_supply.js)
         ts.reload = ts.gun.reload * WW.randRange(0.9, 1.15);
       }
     }

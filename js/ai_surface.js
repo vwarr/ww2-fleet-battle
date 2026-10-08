@@ -70,7 +70,7 @@ window.WW = window.WW || {};
   const REACT = { battleship: 2, cruiser: 1.2 };
 
   function surfaceAI(ship, dt) {
-    const a = ship.ai, st = ship.stats, t = ship.target;
+    const a = ship.ai, st = ship.stats, t = WW.supply && WW.supply.spent(ship) ? null : ship.target; // spent (ammo / fuel): breaks off, guns still answer
     a.ownWithdraw = true; // cripples: crippleHome below, after everything else
     surfaceRole(ship, dt, a, st, t);
     crippleHome(ship);
@@ -142,7 +142,7 @@ window.WW = window.WW || {};
   // heading for the type's risk. A destroyer with a capital target makes a torpedo attack instead (torpedoRun).
   function engage(ship, t, o, B) {
     const a = ship.ai, d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t), pref = prefRange(ship, B, t), now = WW.time.now;
-    if (ship.type === 'destroyer' && CAPITAL[t.type] && ship.stats.torpedoes) return torpedoRun(ship, t, o, B, d, b);
+    if (ship.type === 'destroyer' && CAPITAL[t.type] && ship.stats.torpedoes && !(WW.supply && !WW.supply.torpLeft(ship))) return torpedoRun(ship, t, o, B, d, b); // (no reloads left: guns only)
     if (BIG[ship.type] && (a.tdFor !== t || now > a.tdT)) {
       // we sit at angle rel from the target; orbitDir +1 swings rel clockwise (decreasing): pick the side that
       // moves us toward its bow

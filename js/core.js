@@ -99,10 +99,10 @@ window.WW = window.WW || {};
   // Type 95 (sub) likewise; Type 91 (aerial) an ordinary air-driven wake. USN 1942 Mk 15 / Mk 14 / Mk 13: slower,
   // shorter, steam wakes easy to see, and the notorious duds (the Mk 14 the worst). Balance levers (AI_DESIGN §4).
   WW.TORPEDO_NATION = {
-    IJN: { ship: { rangeK: 1.75, speed: 18, dud: 0, sight: 0.5 }, submarine: { rangeK: 1.25, speed: 17, dud: 0, sight: 0.55 },
+    IJN: { ship: { rangeK: 1.6, speed: 17, dud: 0, sight: 0.6 }, submarine: { rangeK: 1.25, speed: 16, dud: 0, sight: 0.6 },
            pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1 } },
-    USN: { ship: { rangeK: 0.85, speed: 12, dud: 0.25, sight: 1.3 }, submarine: { rangeK: 0.9, speed: 12.5, dud: 0.3, sight: 1.3 },
-           pt: { rangeK: 1, speed: 12, dud: 0.25, sight: 1.3 }, air: { rangeK: 1, speed: 14, dud: 0.15, sight: 1.3 } }
+    USN: { ship: { rangeK: 0.85, speed: 12, dud: 0.22, sight: 1.3 }, submarine: { rangeK: 0.9, speed: 12.5, dud: 0.28, sight: 1.3 },
+           pt: { rangeK: 1, speed: 12, dud: 0.22, sight: 1.3 }, air: { rangeK: 1, speed: 14, dud: 0.12, sight: 1.3 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
     const N = WW.TORPEDO_NATION[nation] || {};

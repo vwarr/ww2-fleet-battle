@@ -146,7 +146,8 @@ window.WW = window.WW || {};
 
       // Speed: slow down when the way ahead is short or the turn is large.
       const vk = WW.shipSpeed ? WW.shipSpeed.k(this, dt) : 1; // hull damage, flooding, engine room (ship_speed.js)
-      let ts = st.speed * vk * WW.clamp(this.throttle, 0, 1);
+      const fk = WW.supply ? WW.supply.fuel(this, dt) : 1;   // a destroyer short of fuel keeps to economic speed (ship_supply.js)
+      let ts = st.speed * vk * WW.clamp(Math.min(this.throttle, fk), 0, 1);
       if (this.clearAhead < this.lookDist * 0.6) ts *= WW.clamp(this.clearAhead / (this.lookDist * 0.6), 0.25, 1);
       if (Math.abs(diff) > 1.2) ts *= 0.6;
       if (pivot) ts = 0;

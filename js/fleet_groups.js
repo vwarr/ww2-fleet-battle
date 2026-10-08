@@ -39,8 +39,8 @@ window.WW = window.WW || {};
   //                the reach discount (USN 25: the nearest worthwhile target); subShadow (flag, IJN): shadow what it
   //                cannot get ahead of; lifeguard (flag, USN): surfaced boats pick up survivors and aircrew (ai_sub_roles.js)
   var BASE = {
-    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.3, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
+    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.9, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
+      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false,
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
@@ -74,7 +74,7 @@ window.WW = window.WW || {};
     var put = function (s, g, role) {
       G[g].members.push(s);
       var o = B.orders.get(s.id) || { ship: s, sx: s.x, sz: s.z };
-      o.group = g; o.role = s.hp < CRIP * s.maxHp && s.type !== 'submarine' ? 'withdraw' : role; o.slot = G[g].members.length - 1; o.t = B.t;
+      o.group = g; o.role = (s.hp < CRIP * s.maxHp && s.type !== 'submarine') || (WW.supply && WW.supply.spent(s)) ? 'withdraw' : role; // spent: ship_supply.js o.slot = G[g].members.length - 1; o.t = B.t;
       B.orders.set(s.id, o);
     };
     // carrier escorts (fleet_formation.js ringCounts: doctrine ringBB / ringDD): big ships first, so the first ring
