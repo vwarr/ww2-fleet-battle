@@ -178,7 +178,7 @@ window.WW = window.WW || {};
       for (var pass = 0; pass < 2 && !best; pass++) for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit, age = now - c.seenAt;
         if (!u || !u.alive || u.submerged || age > AGE) continue;
-        var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > (pass ? Math.max(STRIKE_FAR, RANGE) : RANGE)) continue;
+        var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > (pur ? RANGE : pass ? Math.max(STRIKE_FAR, RANGE) : RANGE)) continue;
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sc = dfd * Math.max(STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
