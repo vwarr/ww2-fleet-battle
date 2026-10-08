@@ -217,11 +217,13 @@ window.WW = window.WW || {};
     var gx = s.x + Math.cos(h) * a - Math.sin(h) * sd * L * 0.09, gz = s.z + Math.sin(h) * a + Math.cos(h) * sd * L * 0.09;
     if (V) V.core.spawn(gx, 3, gz, 0, 0.5, 0, 0.16, 0.9, 1.8, V.col.hot, V.col.hot2);
     if (WW.fx && WW.fx.muzzleFlash) try { WW.fx.muzzleFlash(gx, 3, gz); } catch (e) { /* ignore */ }
+    WW.emit('aaHeavyFired', { ship: s, x: gx, y: 3, z: gz, target: pl });   // sound (audio_aa.js)
   }
 
   function detonate(b, planes) {
     dbg.bursts++;
     burstFx(b.x, b.y, b.z);
+    WW.emit('flakBurst', { x: b.x, y: b.y, z: b.z, ship: b.ship, nation: b.nation });   // sound (audio_aa.js)
     var R = HEAVY.radius, J = HEAVY.jinkRadius;
     for (var j = 0; j < planes.length; j++) {
       var pl = planes[j];
@@ -284,6 +286,7 @@ window.WW = window.WW || {};
         var hit = rnd() < hc;
         if (hit) hitPlane(lt, aa.dps * (1 - hs) * LIGHT.interval * LIGHT.dmgK, s, 'lightKills');
         tracerStream(s, lt, hit);   // visual only: every light-AA tick shows a stream
+        WW.emit('aaLightFired', { ship: s, target: lt, hit: hit });   // sound (audio_aa.js)
       }
     }
   }
