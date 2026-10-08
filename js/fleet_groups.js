@@ -32,6 +32,11 @@ window.WW = window.WW || {};
   //                trained early in the war; USN 0.09 / 0.18 (the Midway PBY and SBD reports)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
+  //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
+  //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
+  //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
+  //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
+  //   (jointStrike, followUp and reserveFrac are not rolled: they are doctrine, not tuning)
   //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
   //                ring (~80). USN 35: the 1942 circular screen, the AA umbrella over the carrier
   //   ringDD       destroyers per carrier in its ring (at least one); ringBB (flag): a side with two or more
@@ -44,21 +49,16 @@ window.WW = window.WW || {};
   //   subCV        sub ambush weight of a carrier contact (IJN 2.2: carriers above all); subNear: the time scale (s) of
   //                the reach discount (USN 25: the nearest worthwhile target); subShadow (flag, IJN): shadow what it
   //                cannot get ahead of; lifeguard (flag, USN): surfaced boats pick up survivors and aircrew (ai_sub_roles.js)
-  //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
-  //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
-  //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
-  //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
-  //   (jointStrike, followUp and reserveFrac are not rolled: they are doctrine, not tuning)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
-      ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
+      ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
-      ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       jointStrike: true, followUp: 'deckload', reserveFrac: 0.4,
+      ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
   var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1 }; // doctrine fields that are not rolled
@@ -171,7 +171,7 @@ window.WW = window.WW || {};
         cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
-      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // the flagship's escorts close in
+      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
     });
     if (WW.formation) { WW.formation.ringStations(B, set, at); WW.formation.zigzag(B); }
     G.screen.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });

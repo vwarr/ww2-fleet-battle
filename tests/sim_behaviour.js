@@ -125,20 +125,20 @@ const CHECKS = [
   // WARN: at 100 rounds the 95% interval is about +-10 points (kill 40-48% across the two 100-round seed sets).
   { id: 'end_kill',      desc: 'rounds ending in a kill (last ship sunk)', op: '>=', thr: 0.5, level: 'WARN', only: ['standard', 'mirror', 'balance', 'balance_mirror'] },
   { id: 'end_time',      desc: 'rounds ending on time',                 op: '<=', thr: 0.15, level: 'WARN', only: ['standard', 'mirror', 'balance', 'balance_mirror'] },
+  { id: 'form_later_max', desc: 'later strikes: median form-up orbit per nation (s)', op: '<=', thr: 10, level: 'WARN' },
+  { id: 'pt_nn_p10',     desc: 'PT nearest same-side PT (not its pair-mate), 10th pct', op: '>=', thr: 25, level: 'WARN', levelIn: { fuzz: 'FAIL' } },
   // night and weather (daylight.js, night_ops.js, weather.js)
   { id: 'dark_launch',   desc: 'carrier / scout launches after dusk',   op: '==', thr: 0, level: 'FAIL' },
   { id: 'night_torps',   desc: 'night torpedo spreads per round',       op: '>=', thr: 0.5, level: 'WARN', only: ['night', 'dusk'] },
   { id: 'star_shells',   desc: 'star shells per round',                 op: '>=', thr: 1, level: 'WARN', only: ['night', 'dusk'] },
   { id: 'wx_detect',     desc: 'first-sighting range in rain / clear',   op: '<=', thr: 0.85, level: 'WARN', only: ['weather'] },
-  { id: 'form_later_max', desc: 'later strikes: median form-up orbit per nation (s)', op: '<=', thr: 10, level: 'WARN' },
-  { id: 'pt_nn_p10',     desc: 'PT nearest same-side PT (not its pair-mate), 10th pct', op: '>=', thr: 25, level: 'WARN', levelIn: { fuzz: 'FAIL' } },
   { id: 'stuck',         desc: 'stuck ships',  op: '==', thr: 0, level: 'FAIL' },
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
 const DOCTRINE_INFO = ['deck_hits', 'deck_safe', 'deck_planes', 'deck_chain', 'fires', 'fires_out_usn', 'fires_out_ijn', 'fire_kills', 'usn_repaired', 'magazines',
   'charges', 'charge_dds', 'charge_lost', 'charge_torp', 'charge_turned', 'charge_cv_sunk'];
-const INFO = [...DOCTRINE_INFO, 'srch_sect', 'srch_lost', 'form_first', 'form_later', 'sync_usn', 'sync_ijn', 'reserve', 'strafe_hits', 'pt_nn_p10', 'first_dmg', 'tod', 'det_day', 'det_dusk', 'det_night', 'det_radar', 'det_flash', 'night_torps_n', 'searchlights', 'radar_sights', 'night_land', 'night_land_loss', 'recalls', 'wx_det_rain', 'wx_det_clear', 'dive_holds', 'dive_aborts', 'cv_shelter', 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = [...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'srch_sect', 'srch_lost', 'form_first', 'form_later', 'sync_usn', 'sync_ijn', 'reserve', 'strafe_hits', 'pt_nn_p10', 'first_dmg', 'tod', 'det_day', 'det_dusk', 'det_night', 'det_radar', 'det_flash', 'night_torps_n', 'searchlights', 'radar_sights', 'night_land', 'night_land_loss', 'recalls', 'wx_det_rain', 'wx_det_clear', 'dive_holds', 'dive_aborts', 'cv_shelter', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -485,7 +485,7 @@ function install(P) {
     const snap = () => JSON.parse(JSON.stringify({ d: WW.dayNight ? WW.dayNight.stats : {}, n: WW.nightOps ? WW.nightOps.stats : {}, w: WW.weather ? WW.weather.stats : {} }));
     const s0 = snap();
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { forms: [], firstDmg: null, dmgSum: 0, ptNN: [], nnT: -99, syncN: {}, vis: {}, det: { day: [], dusk: [], night: [], radar: [], flash: [], rain: [], clear: [] }, th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { vis: {}, det: { day: [], dusk: [], night: [], radar: [], flash: [], rain: [], clear: [] }, forms: [], firstDmg: null, dmgSum: 0, ptNN: [], nnT: -99, syncN: {}, th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9, brkN: 0, brkGun: 0, brkMin: 1e9 }, spd: [0, 0, 0, 0], spdN: [0, 0, 0, 0], pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
@@ -515,15 +515,15 @@ function install(P) {
       cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
     if (out.cv.brkMin === 1e9) out.cv.brkMin = null;
-    const s1 = snap(), dlt = (a, b) => (typeof a === 'number' ? a - (b || 0) : Object.fromEntries(Object.keys(a).map(k => [k, dlt(a[k], b && b[k])])));
-    out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
-    out.det = R.det;
     out.label = spec.label || null; out.endReason = G.endReason || null; out.firstDmg = R.firstDmg; out.dmgSum = Math.round(R.dmgSum);
     out.forms = R.forms; out.syncN = R.syncN; out.ptNN = R.ptNN;
     const SS = WW.search && WW.search.stats;
     out.search = SS ? { sect: { USN: SS.searched.USN.size, IJN: SS.searched.IJN.size }, lost: Object.assign({}, SS.lost), sorties: SS.sorties + SS.flown, breaks: SS.breaks, shadows: SS.shadows } : null;
     out.reserve = WW.airOps && WW.airOps.reserve ? JSON.parse(JSON.stringify(WW.airOps.reserve)) : null;
     out.strafe = WW.strafe ? Object.assign({}, WW.strafe.stats) : null;
+    const s1 = snap(), dlt = (a, b) => (typeof a === 'number' ? a - (b || 0) : Object.fromEntries(Object.keys(a).map(k => [k, dlt(a[k], b && b[k])])));
+    out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
+    out.det = R.det;
     out.dmg = R.dmg; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;

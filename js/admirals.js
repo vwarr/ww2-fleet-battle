@@ -4,8 +4,9 @@
 //  - The roll: at roundStart, after fleetCmd.reset() rolled the doctrine (this file loads right after fleet_cmd.js),
 //    one admiral per side from ROSTER (carrier admirals need a carrier to fly the flag; else any). In setup mode the
 //    panel shows a preview pair (Math.random: setup rounds are not replayable anyway) and the Start button uses it.
-//  - Personality: multipliers on the already-jittered doctrine (only on keys the doctrine has, so the params other
-//    modules add are covered once they exist), then the rollDoctrine clamps again. Moderate: 0.85-1.2.
+//  - Personality: multipliers (mul, risk, riskT), additions (add) and modes (set) on the already-jittered doctrine,
+//    only on keys the doctrine has (same type), then the rollDoctrine clamps again. Moderate: 0.85-1.2 (reserveFrac
+//    0.4-1.5: it is the personality). strikeRange (x STRIKE_R, fleet_cmd.js) is the admirals' own field.
 //  - Flagship: carrier admirals fly their flag in the first carrier, Kondo in a battleship, Tanaka in a cruiser
 //    (fallbacks: BB > CA > CV > DD). Sunk, sinking or crippled (hp < CRIP; if it was fit when the flag went up):
 //    'flagLost', CONFUSION 30-60 s in which the side's commander does not tick (no new posture, stations or strike
@@ -24,33 +25,36 @@ window.WW = window.WW || {};
     USN: [
       { key: 'spruance', name: 'Spruance', full: 'Rear Adm. Raymond A. Spruance', style: 'calculating', flag: 'carrier',
         blurb: 'calculating: strikes at extreme range, keeps a reserve',
-        mul: { strikeRange: 1.15, reserveFrac: 1.5, aggression: 0.95, rangeFrac: 1.03, escortCharge: 1.1, followUp: 0.9 },
+        mul: { strikeRange: 1.15, reserveFrac: 1.5, aggression: 0.95, rangeFrac: 1.03, escortCharge: 1.1 },
         say: { strike: 'launch the strike now, at extreme range', press: 'close and finish them', retire: 'retire west; we have done what we came for' } },
       { key: 'halsey', name: 'Halsey', full: 'Vice Adm. William F. Halsey', style: 'aggressive', flag: 'carrier',
         blurb: 'aggressive: all-out strikes, presses hard',
-        mul: { aggression: 1.2, pressRatio: 0.93, withdrawRatio: 0.9, carrier: 1.12, rangeFrac: 0.97, reserveFrac: 0.5, followUp: 1.2, cvStandoff: 0.95 }, risk: 1.1,
+        mul: { aggression: 1.2, pressRatio: 0.93, withdrawRatio: 0.9, carrier: 1.12, rangeFrac: 0.97, reserveFrac: 0.5, cvStandoff: 0.95 }, risk: 1.1,
+        set: { followUp: 'deckload' },
         say: { strike: 'strike! everything that flies', press: 'attack — repeat — attack!', retire: 'break off — for now', pursue: 'chase them down' } },
       { key: 'fletcher', name: 'Fletcher', full: 'Rear Adm. Frank J. Fletcher', style: 'cautious', flag: 'carrier',
         blurb: 'cautious: guards his carriers, retires early',
-        mul: { aggression: 0.88, pressRatio: 1.06, withdrawRatio: 1.12, cvStandoff: 1.12, carrier: 0.95, escortCharge: 1.15, reserveFrac: 1.3 }, risk: 0.88,
+        mul: { aggression: 0.88, pressRatio: 1.06, withdrawRatio: 1.12, cvStandoff: 1.12, carrier: 0.95, escortCharge: 1.15, reserveFrac: 1.3, ringR: 0.9 }, risk: 0.88,
         say: { strike: 'launch the strike; keep the fighters home', press: 'press on, carefully', retire: 'retire west and save the carriers' } }
     ],
     IJN: [
       { key: 'nagumo', name: 'Nagumo', full: 'Vice Adm. Chūichi Nagumo', style: 'cautious', flag: 'carrier',
         blurb: 'cautious, by the book: big reserve, slow to commit',
-        mul: { aggression: 0.9, carrier: 0.9, reserveFrac: 1.6, jointStrike: 1.2, cvStandoff: 1.08, withdrawRatio: 1.08, pressRatio: 1.05 },
+        mul: { aggression: 0.9, carrier: 0.9, reserveFrac: 1.4, cvStandoff: 1.08, withdrawRatio: 1.08, pressRatio: 1.05, vanguard: 1.1 },
+        set: { jointStrike: true },
         say: { strike: 'the attack unit will launch', press: 'all forces, attack', retire: 'the fleet will withdraw to the northwest' } },
       { key: 'yamaguchi', name: 'Yamaguchi', full: 'Rear Adm. Tamon Yamaguchi', style: 'aggressive', flag: 'carrier',
         blurb: 'aggressive: launch everything, now',
-        mul: { carrier: 1.15, aggression: 1.12, strikeRange: 1.08, reserveFrac: 0.4, followUp: 1.2, pressRatio: 0.95 }, risk: 1.08,
+        mul: { carrier: 1.15, aggression: 1.12, strikeRange: 1.08, reserveFrac: 0.4, pressRatio: 0.95 }, risk: 1.08,
+        set: { followUp: 'deckload' },
         say: { strike: 'launch everything', press: 'attack, attack!', retire: 'withdraw — we will strike again', pursue: 'after them' } },
       { key: 'kondo', name: 'Kondo', full: 'Vice Adm. Nobutake Kondō', style: 'gunnery', flag: 'battleship',
         blurb: 'gunnery: pushes the vanguard and the battle line',
-        mul: { aggression: 1.15, rangeFrac: 0.96, pressRatio: 0.93, screenAhead: 1.2, carrier: 0.92, escortCharge: 0.9 }, riskT: { battleship: 1.15, cruiser: 1.15 },
+        mul: { aggression: 1.15, rangeFrac: 0.96, pressRatio: 0.93, screenAhead: 1.2, vanguard: 1.2, carrier: 0.92, escortCharge: 0.9 }, riskT: { battleship: 1.15, cruiser: 1.15 },
         say: { strike: 'carriers, attack', press: 'battle line, close the range', retire: 'the battle line will retire' } },
       { key: 'tanaka', name: 'Tanaka', full: 'Rear Adm. Raizō Tanaka', style: 'torpedo', flag: 'cruiser',
         blurb: 'destroyers and night torpedoes',
-        mul: { torpedo: 1.15, night: 1.1, aggression: 1.05, carrier: 0.92 }, add: { flotilla: 1 }, riskT: { destroyer: 1.2 },
+        mul: { torpedo: 1.15, night: 1.1, searchlight: 1.1, aggression: 1.05, carrier: 0.92 }, add: { flotilla: 1 }, riskT: { destroyer: 1.2 },
         say: { strike: 'aircraft, attack', press: 'all destroyers, charge!', retire: 'make smoke and retire' } }
     ]
   };
@@ -95,9 +99,10 @@ window.WW = window.WW || {};
     if (d.strikeRange === undefined) d.strikeRange = 1;
     for (k in m) if (typeof d[k] === 'number') d[k] *= m[k];
     for (k in P.add || {}) if (typeof d[k] === 'number') d[k] += P.add[k];
+    for (k in P.set || {}) if (typeof d[k] === typeof P.set[k]) d[k] = P.set[k];   // flags and modes (jointStrike, followUp)
     for (k in d.risk) if (k !== 'carrier') d.risk[k] = WW.clamp(d.risk[k] * (P.risk || 1) * ((P.riskT || {})[k] || 1), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.pressRatio = Math.max(1.02, d.pressRatio); d.risk.carrier = 0;
-    ['aggression', 'torpedo', 'carrier', 'night', 'reserveFrac'].forEach(function (q) { if (typeof d[q] === 'number') d[q] = WW.clamp(d[q], 0, 1); });
+    ['aggression', 'torpedo', 'carrier', 'night', 'reserveFrac', 'vanguard', 'searchlight'].forEach(function (q) { if (typeof d[q] === 'number') d[q] = WW.clamp(d[q], 0, 1); });
     d.admiral = P.key;
   }
 
@@ -173,8 +178,8 @@ window.WW = window.WW || {};
     var A = cur[e.carrier.nation]; if (!A) return;
     var first = !A.strikes++;
     if (order(A, 'strike', first ? says(A, 'strike', 'launch the strike') : A.title + ': another strike away', { carrier: e.carrier, target: e.target || null, first: first })
-      && first && WW.fleetCmd.doctrine(A.nation) && WW.fleetCmd.doctrine(A.nation).reserveFrac >= 0.25)
-      order(A, 'reserve', A.title + ' holds his reserve', {});
+      && e.carrier.ai && e.carrier.ai.rsv) // air_ops.js reserve strike: part of the deck held back for the enemy carriers
+      order(A, 'reserve', A.title + ' holds his reserve', { carrier: e.carrier });
   });
   WW.on('victory', function () {
     NATIONS.forEach(function (n) { var A = cur[n]; if (A && A.confusedUntil) { stats.confusionSec += WW.time.now - A.confusedAt; A.confusedUntil = 0; } });
