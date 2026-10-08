@@ -44,6 +44,16 @@ window.WW = window.WW || {};
     }
   };
 
+  // Doctrine metrics (formation, zigzag, torpedoes, subs, ammo / fuel): per-round counters per nation, read by
+  // tests/doctrine.js. Sim code adds to them; nothing reads them back. Reset on roundStart / setupStart.
+  WW.docStats = {};
+  WW.dstat = function (key, nation, v) {
+    const o = WW.docStats[key] || (WW.docStats[key] = { USN: 0, IJN: 0 });
+    o[nation] = (o[nation] || 0) + (v === undefined ? 1 : v);
+  };
+  WW.on('roundStart', () => { WW.docStats = {}; });
+  WW.on('setupStart', () => { WW.docStats = {}; });
+
   WW.time = { now: 0, dt: 0, scale: 1 };
   WW.scene = null; WW.camera = null; WW.renderer = null;
 
@@ -83,6 +93,34 @@ window.WW = window.WW || {};
   WW.SHELL = { mg: { dmg: 2, speed: 120, splash: 0.6 }, small: { dmg: 12, speed: 90, splash: 1.2 },
                med: { dmg: 35, speed: 80, splash: 2 }, big: { dmg: 110, speed: 70, splash: 3.5 } };
   WW.TORPEDO = { dmg: 220, speed: 14 };
+  // Torpedoes per nation and launcher (ship = destroyer / cruiser tubes): rangeK x the type's torpedo range, speed,
+  // dud (share of hits that do not go off, rolled with WW.rand at launch), sight (x intel R.TORP: how close a ship
+  // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;
+  // Type 95 (sub) likewise; Type 91 (aerial) an ordinary air-driven wake. USN 1942 Mk 15 / Mk 14 / Mk 13: slower,
+  // shorter, steam wakes easy to see, and the notorious duds (the Mk 14 the worst). Balance levers (AI_DESIGN §4).
+  WW.TORPEDO_NATION = {
+    IJN: { ship: { rangeK: 1.6, speed: 17, dud: 0, sight: 0.6 }, submarine: { rangeK: 1.25, speed: 16, dud: 0, sight: 0.6 },
+           pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1 } },
+    USN: { ship: { rangeK: 0.85, speed: 12, dud: 0.22, sight: 1.3 }, submarine: { rangeK: 0.9, speed: 12.5, dud: 0.28, sight: 1.3 },
+           pt: { rangeK: 1, speed: 12, dud: 0.22, sight: 1.3 }, air: { rangeK: 1, speed: 14, dud: 0.12, sight: 1.3 } }
+  };
+  WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
+    const N = WW.TORPEDO_NATION[nation] || {};
+    return N[launcher === 'destroyer' || launcher === 'cruiser' ? 'ship' : launcher] || { rangeK: 1, speed: WW.TORPEDO.speed, dud: 0, sight: 1 };
+  };
+  // Per-nation ship stats: WW.SHIP_TYPES[type] with the nation's torpedoes (range, speed, dud, sight) merged in.
+  // ships.js gives each Ship this object as ship.stats; cached, so every ship of a type and nation shares one.
+  const _stCache = {};
+  WW.shipType = function (type, nation) {
+    const key = type + '|' + nation;
+    if (_stCache[key]) return _stCache[key];
+    const b = WW.SHIP_TYPES[type], st = Object.assign({}, b);
+    if (b.torpedoes) {
+      const q = WW.torpSpec(nation, type);
+      st.torpedoes = Object.assign({}, b.torpedoes, { range: Math.round(b.torpedoes.range * q.rangeK), speed: q.speed, dud: q.dud, sight: q.sight });
+    }
+    return (_stCache[key] = st);
+  };
   WW.BOMB = { dmg: 180 };
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
   // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter

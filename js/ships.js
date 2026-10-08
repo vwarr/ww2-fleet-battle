@@ -30,7 +30,7 @@ window.WW = window.WW || {};
 
   class Ship {
     constructor(type, nation, x, z, heading) {
-      const st = WW.SHIP_TYPES[type];
+      const st = WW.shipType ? WW.shipType(type, nation) : WW.SHIP_TYPES[type]; // per-nation torpedoes (core.js)
       this.id = nextId++; this.type = type; this.stats = st; this.nation = nation;
       this.x = x; this.z = z; this.heading = wrap(heading || 0); this.speed = 0;
       this.hp = this.maxHp = st.hp;
@@ -91,7 +91,8 @@ window.WW = window.WW || {};
       for (let i = 0; i < list.length; i++) {
         const o = list[i];
         if (o === this || o.removed || !(o.alive || o.sinking) || (o.submerged !== this.submerged)) continue; // steer clear of sinking hulls too
-        const r = Math.max(rs, SPACE[o.type] || 20, (st.length + o.stats.length) * 0.6 + 4);
+        const hull = (st.length + o.stats.length) * 0.6 + 4; // a carrier's AA-ring escort may come inside its personal space (fleet_formation.js)
+        const r = this.ringCv === o || o.ringCv === this ? hull : Math.max(rs, SPACE[o.type] || 20, hull);
         const ex = this.x - o.x, ez = this.z - o.z, d2 = ex * ex + ez * ez;
         if (d2 < r * r && d2 > 1e-4) {
           const d = Math.sqrt(d2), k = (r - d) / r, w = (k + k * k * 4) * (o.nation === this.nation ? 1.5 : 0.6);
@@ -145,7 +146,8 @@ window.WW = window.WW || {};
 
       // Speed: slow down when the way ahead is short or the turn is large.
       const vk = WW.shipSpeed ? WW.shipSpeed.k(this, dt) : 1; // hull damage, flooding, engine room (ship_speed.js)
-      let ts = st.speed * vk * WW.clamp(this.throttle, 0, 1);
+      const fk = WW.supply ? WW.supply.fuel(this, dt) : 1;   // a destroyer short of fuel keeps to economic speed (ship_supply.js)
+      let ts = st.speed * vk * WW.clamp(Math.min(this.throttle, fk), 0, 1);
       if (this.clearAhead < this.lookDist * 0.6) ts *= WW.clamp(this.clearAhead / (this.lookDist * 0.6), 0.25, 1);
       if (Math.abs(diff) > 1.2) ts *= 0.6;
       if (pivot) ts = 0;
@@ -253,9 +255,14 @@ window.WW = window.WW || {};
       this.wakeT -= dt;
       if (this.wakeT <= 0 && this.speed > 0.6) {
         if (this.type === 'submarine' && this.submerged) {
-          this.wakeT = 0.3;
+          // at periscope depth with an enemy ship within 110 (checked every 1 s): the periscope's feather, a thin
+          // white streak a little ahead of the hull's swirl (visual only)
+          this.periT = (this.periT || 0) - 0.3;
+          if (this.periT <= 0) { this.periT = 1; this.peri = WW.world.ships.some(o => o.alive && o.nation !== this.nation && !o.submerged && WW.dist2(o.x, o.z, this.x, this.z) < 12100); }
+          this.wakeT = this.peri ? 0.12 : 0.3;
           const p = this.toWorld(st.length * 0.1, 0);
           fx.wake(p[0], p[1], this.heading, 0.4);
+          if (this.peri) { const q = this.toWorld(st.length * 0.3, 0); fx.wake(q[0], q[1], this.heading, 0.3); }
         } else {
           this.wakeT = 0.12;
           const p = this.toWorld(-st.length * 0.45, 0);

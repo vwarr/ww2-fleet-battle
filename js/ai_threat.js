@@ -64,7 +64,7 @@ window.WW = window.WW || {};
       }
       if (st.torpedoes) {
         var tp = st.torpedoes;
-        stamp(f.surf, x, z, tp.range * 0.85 + grow, w * TORP_HIT * WW.TORPEDO.dmg * tp.count / tp.reload, { h: ct.heading, k: 0.6 });
+        stamp(f.surf, x, z, tp.range * 0.85 + grow, w * TORP_HIT * WW.TORPEDO.dmg * (1 - (tp.dud || 0)) * tp.count / tp.reload, { h: ct.heading, k: 0.6 });
       }
       if (st.aa) stamp(f.air, x, z, st.aa.range * 1.55 + grow, w * st.aa.dps);
       n++;
