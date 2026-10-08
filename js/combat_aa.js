@@ -237,6 +237,8 @@ window.WW = window.WW || {};
   }
 
   // ---------- per-ship fire control ----------
+  // the ship's side has the plane on its plots (intel.js: AA directors and lookouts)
+  function detected(s, pl) { return !WW.intel || WW.intel.visible(s.nation, pl, 1.5); }
   function update(dt) {
     var ships = (WW.world && WW.world.ships) || [], planes = (WW.world && WW.world.planes) || [];
     if (V) { V.puff.update(dt, false); V.core.update(dt, true); }
@@ -265,7 +267,7 @@ window.WW = window.WW || {};
           var pl = planes[j];
           if (!pl || !pl.alive || pl.nation === s.nation || (pl.y || 0) < HEAVY.minAlt) continue;
           var dx = pl.x - s.x, dz = pl.z - s.z, h2 = dx * dx + dz * dz, d3 = Math.sqrt(h2 + pl.y * pl.y);
-          if (d3 > hr || h2 < HEAVY.minRange * HEAVY.minRange) continue;
+          if (d3 > hr || h2 < HEAVY.minRange * HEAVY.minRange || !detected(s, pl)) continue;
           var sc = d3 * (pl.kind === 'fighter' ? 1.7 : 1) * (pl.ordnance ? 0.8 : 1);   // bombers with ordnance first
           if (sc < bs) { bs = sc; best = pl; }
         }
@@ -278,7 +280,7 @@ window.WW = window.WW || {};
           var p2 = planes[k];
           if (!p2 || !p2.alive || p2.nation === s.nation || (p2.y || 0) > LIGHT.maxAlt) continue;
           var ex = p2.x - s.x, ez = p2.z - s.z, ey = (p2.y || 0), dd = ex * ex + ez * ez + ey * ey;
-          if (dd < bd) { bd = dd; lt = p2; }
+          if (dd < bd && detected(s, p2)) { bd = dd; lt = p2; }
         }
         if (!lt) continue;
         var frac = Math.sqrt(bd) / aa.range;
