@@ -68,7 +68,7 @@ window.WW = window.WW || {};
         m.scale.set(rs, rs * 0.75, rs); m.position.set(k2 * s * 2.6, (r() - 0.3) * s * 0.4, (r() - 0.5) * s * 0.9);
         c.add(m); // no shadow casting: big soft cloud shadows read as dark blots at this scale
       }
-      const a = r() * Math.PI * 2, d = i < 8 ? r() * 400 : 450 + r() * 1000; // a few over the map, most toward the horizon
+      const a = r() * Math.PI * 2, d = i < 8 ? r() * 600 : 650 + r() * 1100; // a few over the map, most toward the horizon
       c.position.set(cx + Math.cos(a) * d, 110 + r() * 80, cz + Math.sin(a) * d);
       c.rotation.y = r() * Math.PI;
       clouds.add(c);
@@ -92,11 +92,13 @@ window.WW = window.WW || {};
     if (clouds) { // drift with the wind; wrap far downwind back upwind. Hidden in the overview (it looks down through them)
       clouds.visible = !(WW.cam && WW.cam.isOverview());
       const dt = Math.min(0.1, rdt || 0);
-      for (const c of clouds.children) { c.position.x += 1.2 * dt; if (c.position.x > WW.cfg.MAP_W / 2 + 1800) c.position.x -= 3600; }
+      for (const c of clouds.children) { c.position.x += 1.2 * dt; if (c.position.x > WW.cfg.MAP_W / 2 + 2000) c.position.x -= 4000; }
     }
     // the sun's shadow box follows what the camera looks at
     const wide = !WW.cam || WW.cam.isOverview();
-    setShadowSize(wide ? 300 : 120);
+    setShadowSize(wide ? 520 : 120);   // the overview covers the whole 960 x 600 map
+    const fog = WW.scene && WW.scene.fog; // the overview sits ~1300 units up: push the haze out so the far side of the map reads
+    if (fog) { fog.near = wide ? 1500 : 650; fog.far = wide ? 4200 : 2300; }
     if (WW.cam && WW.cam.target) tgt.copy(WW.cam.target()); else tgt.set(WW.cfg.MAP_W / 2, 0, WW.cfg.MAP_H / 2);
     tgt.y = 0;
     const texel = (2 * shadowSize) / sun.shadow.mapSize.x;

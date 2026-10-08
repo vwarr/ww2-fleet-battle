@@ -229,7 +229,7 @@ window.WW = window.WW || {};
       if (this.foe && !this.foe.alive) this.foe = null;
       if (this.scanT <= 0) {
         this.scanT = 0.4;
-        const cx = this.target ? this.x : c.x, cz = this.target ? this.z : c.z, R = this.target ? 90 : 140;
+        const cx = this.target ? this.x : c.x, cz = this.target ? this.z : c.z, R = this.target ? 90 : 180;
         let best = null, bd = R;
         const foes = WW.intel ? WW.intel.enemyPlanes(this.nation) : [];   // detected enemy planes (intel.js)
         for (const c of foes) {

@@ -265,7 +265,7 @@ window.WW = window.WW || {};
     if (a.capT <= 0) {
       a.capT = 3;
       let near = 0, cap = 0;
-      if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (WW.dist(ship.x, ship.z, c.x, c.z) < 140) near++; // detected raiders
+      if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (WW.dist(ship.x, ship.z, c.x, c.z) < 200) near++; // detected raiders (strikes come from far off: scramble early)
       for (const p of WW.world.planes) if (p.alive && p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
       if (near && cap < 3 && hg.fighter > 0 && !a.queue.some(q => q.kind === 'fighter' && !q.target)) a.queue.unshift({ kind: 'fighter', target: null });
     }
