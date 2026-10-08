@@ -5,7 +5,6 @@
 window.WW = window.WW || {};
 (function () {
   const PI = Math.PI;
-  const BIG_PRIO = { carrier: 90, battleship: 80, cruiser: 50, destroyer: 10, submarine: -999, pt: -60 };
   const ARC = 2.5; // max turret swing either side of its rest angle
   const TURRET_RATE = { big: 0.5, med: 0.8, small: 1.6, mg: 3 };
 
@@ -23,14 +22,24 @@ window.WW = window.WW || {};
     return { x: px, z: pz };
   }
 
+  // Torpedo spread at t (lead-aimed). Holds fire (returns false, retry in 1.5 s) when an allied surface ship is
+  // inside the fan out to the torpedoes' range: the friendly-fire check along the spread.
   function fireSpread(ship, t, range) {
     const tp = ship.stats.torpedoes, n = tp.count;
     const p = lead(ship, t, WW.TORPEDO.speed), b = Math.atan2(p.z - ship.z, p.x - ship.x);
+    const spread = n > 2 ? 0.07 : 0.05, half = spread * (n - 1) / 2 + 0.08, R = range || tp.range;
+    for (const o of WW.world.ships) {
+      if (o === ship || !o.alive || o.nation !== ship.nation || o.submerged) continue;
+      const d = WW.dist(ship.x, ship.z, o.x, o.z);
+      if (d > R + 5 || d < 1) continue;
+      const off = Math.abs(WW.angleDiff(b, Math.atan2(o.z - ship.z, o.x - ship.x)));
+      if (off < half + Math.atan2(o.stats.length * 0.5 + 2, d)) { ship.ai.torpReload = 1.5; return false; }
+    }
     const off = Math.min(4, ship.stats.length * 0.3);
     const ox = ship.x + Math.cos(b) * off, oz = ship.z + Math.sin(b) * off;
-    const spread = n > 2 ? 0.07 : 0.05;
-    for (let i = 0; i < n; i++) WW.combat.fireTorpedo(ship, ox, oz, b + (i - (n - 1) / 2) * spread, ship.nation, range || tp.range);
+    for (let i = 0; i < n; i++) WW.combat.fireTorpedo(ship, ox, oz, b + (i - (n - 1) / 2) * spread, ship.nation, R);
     ship.ai.torpReload = tp.reload * WW.randRange(0.9, 1.2);
+    return true;
   }
 
   // Blend a heading with a pull toward a point.
@@ -39,15 +48,63 @@ window.WW = window.WW || {};
     return Math.atan2(Math.sin(h) + Math.sin(b) * w, Math.cos(h) + Math.cos(b) * w);
   }
 
+  // ---- target score (spec: roleWeight x value x pHit x finishBonus x assignment - exposure) ----
+  // ROLE_W[shooter type][target type]: what each type is for (main battery / torpedoes). 0 = never.
+  const ROLE_W = {
+    carrier:    { carrier: 0.2, battleship: 0.2, cruiser: 0.3, destroyer: 0.6, submarine: 0.3, pt: 1 },   // self-defence guns only
+    battleship: { carrier: 1, battleship: 1.2, cruiser: 1, destroyer: 0.35, submarine: 0, pt: 0 },      // never main guns on PTs or subs
+    cruiser:    { carrier: 0.8, battleship: 0.45, cruiser: 1, destroyer: 1.2, submarine: 0.3, pt: 0.6 },
+    destroyer:  { carrier: 0.15, battleship: 0.3, cruiser: 0.5, destroyer: 1.2, submarine: 2, pt: 1.5 },
+    submarine:  { carrier: 1.5, battleship: 1.2, cruiser: 1, destroyer: 0.1, submarine: 0.05, pt: 0 },
+    pt:         { carrier: 0.8, battleship: 0.4, cruiser: 0.6, destroyer: 0.7, submarine: 0.05, pt: 0.3 }
+  };
+  // Per-calibre overrides for guns that are not the ship's main battery role (a PT's machine gun never duels a
+  // battleship or cruiser) and secondaries (closest small threat first).
+  const GUN_W = { mg: { carrier: 0, battleship: 0, cruiser: 0, destroyer: 0.6, submarine: 1, pt: 1.5 } };
+  const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6 };
+  const VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };
+  const STICKY = 1.3; // switch targets only for a score this much better
+  function reach(st) { return st.guns[0] ? st.guns[0].range : st.torpedoes ? st.torpedoes.range : 60; }
+  // c: the side's contact for o (position, quality); W: weight table row; R: the weapon's reach.
+  // A destroyer goes for a carrier or battleship only as part of a flotilla attack (another own destroyer within
+  // PACK_R), never as a solo charge into the big ship's secondaries.
+  const PACK_R = 150;
+  function packed(ship) {
+    for (const o of WW.world.ships) if (o !== ship && o.alive && o.nation === ship.nation && o.type === 'destroyer' && WW.dist2(ship.x, ship.z, o.x, o.z) < PACK_R * PACK_R) return true;
+    return false;
+  }
+  function score(ship, o, c, W, R, risk) {
+    let w = W[o.type]; if (!w) return 0;
+    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship)) return 0;
+    const d = WW.dist(ship.x, ship.z, c.x, c.z);
+    const pHit = (d <= R ? 1 - 0.5 * (d / R) * (d / R) : 0.5 * Math.max(0.1, 1 - (d - R) / (2 * R)))
+      * (0.85 + 0.15 * Math.abs(Math.sin(o.heading - Math.atan2(o.z - ship.z, o.x - ship.x))))   // aspect: broadside is easier
+      * (c.quality === 'visual' || c.quality === 'sonar' ? 1 : 0.8);                               // spotted by a plane / scout
+    const chase = unreachable(ship, c) ? 0.3 : 1;
+    const finish = chase + 0.8 * (1 - o.hp / o.maxHp) + (o.dmgSites && o.dmgSites.length ? 0.1 : 0);   // burning / low hp
+    const assign = WW.fleetCmd ? WW.fleetCmd.assignment(ship, o) : 1;
+    const base = w * VALUE[o.type];
+    const exposure = WW.threat ? base * 0.3 * Math.min(1, WW.threat.danger(ship.nation, c.x, c.z) / (2 * WW.threat.DREF)) * (1 - risk) : 0;
+    return base * pHit * finish * assign - exposure;
+  }
+  // A target out of gun range that runs away at (nearly) our best speed cannot be caught: chasing it only drags
+  // the ship out of formation (a battleship or cruiser never runs down a fleeing carrier).
+  function unreachable(ship, t) {
+    const R = reach(ship.stats), d = WW.dist(ship.x, ship.z, t.x, t.z);
+    if (d <= R) return false;
+    const u = t.unit || t, away = Math.cos(WW.angleDiff(t.heading, Math.atan2(t.z - ship.z, t.x - ship.x)));
+    return away > 0 && u.stats.speed >= 0.9 * ship.stats.speed; // not closing, and its type can outrun us
+  }
+  function riskOf(ship) { const d = WW.fleetCmd && WW.fleetCmd.doctrine(ship.nation); return d ? d.risk[ship.type] || 0 : 0.5; }
+
   // Targets come from what the side knows (intel.js): only a fresh contact (a firing solution) can be a target;
   // the threat a carrier runs from and the sub a destroyer hunts may be older last-known positions.
   // Allies (formation centre, carrier, near) stay omniscient: a fleet knows where its own ships are.
   const THREAT_AGE = 20, SUB_AGE = 30;
   function retarget(ship) {
     const a = ship.ai, st = ship.stats, ships = WW.world.ships, now = WW.time.now;
-    let best = null, bestS = 1e9, sub = null, subD = 1e9, threat = null, threatD = 1e9, any = null, anyD = 1e9, fb = null, fbD = 1e9;
+    let best = null, bestS = 0, sub = null, subD = 1e9, threat = null, threatD = 1e9, any = null, anyD = 1e9, fb = null, fbD = 1e9;
     let cx = 0, cz = 0, cn = 0, cv = null, cvD = 1e9, near = null, nearD = 1e9;
-    const big = ship.type === 'submarine' || ship.type === 'pt';
     for (const o of ships) {
       if (!o.alive || o === ship || o.nation !== ship.nation) continue;
       const d = WW.dist(ship.x, ship.z, o.x, o.z);
@@ -56,6 +113,8 @@ window.WW = window.WW || {};
       if (o.type === 'carrier' && d < cvD) { cvD = d; cv = o; }
     }
     const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], FRESH = WW.intel ? WW.intel.T.FRESH : 3;
+    const W = ROLE_W[ship.type] || ROLE_W.cruiser, R = reach(st), risk = riskOf(ship), old = ship.target;
+    let oldS = -1;
     a.subC = null; a.anyC = null;
     for (const c of cs) {
       const o = c.unit;
@@ -66,29 +125,32 @@ window.WW = window.WW || {};
       if (age <= THREAT_AGE && !o.submerged && o.stats.guns.length && o.type !== 'carrier' && d < threatD) { threatD = d; threat = o; }
       if (age > FRESH) continue;
       if (!o.submerged && d < nearD) { nearD = d; near = o; }
-      if (o.type === 'submarine' && ship.type === 'submarine' && d < fbD) { fbD = d; fb = o; } // sub vs sub: last resort
       if (o.submerged) continue;
-      let s = big ? d - BIG_PRIO[o.type] : d - o.stats.tons / 2000;
-      if (big && o.type === 'submarine') { if (d < fbD) { fbD = d; fb = o; } continue; } // surfaced subs: last resort
-      if (s < bestS) { bestS = s; best = o; }
+      if (o.type === 'submarine' && ship.type === 'submarine' && d < fbD) { fbD = d; fb = o; } // sub vs sub: last resort
+      const s = score(ship, o, c, W, R, risk);
+      if (o === old) oldS = s;
+      if (s > bestS) { bestS = s; best = o; }
     }
-    if (!best) best = fb;
+    if (old && oldS > 0 && best !== old && bestS <= oldS * STICKY) { best = old; bestS = oldS; } // no target thrash
+    if (!best && W.submarine > 0) best = fb;
+    a.targetScore = bestS;
     a.cv = cv; a.near = near; a.nearD = nearD;
     ship.target = best; a.any = any; a.sub = sub; a.subD = subD; a.threat = threat; a.threatD = threatD;
     a.cn = cn; if (cn) { a.cx = cx / cn; a.cz = cz / cn; }
-    // Per-calibre gun targets: main target if in range, else nearest visible enemy in range.
+    // Per-mount gun targets: the main battery takes the main target when it is in range, else the best-scoring
+    // target in range (its own weights); secondaries take the closest small threat in their range.
     const ct = a.calTarget || (a.calTarget = {});
-    for (const g of st.guns) {
-      let t = null;
-      if (best && WW.dist(ship.x, ship.z, best.x, best.z) <= g.range) t = best;
-      else {
-        let bd = g.range;
-        for (const c of cs) {
-          const o = c.unit;
-          if (!o || !o.alive || o.submerged || now - c.seenAt > FRESH) continue;
-          const d = WW.dist(ship.x, ship.z, o.x, o.z);
-          if (d < bd) { bd = d; t = o; }
-        }
+    for (let gi = 0; gi < st.guns.length; gi++) {
+      const g = st.guns[gi], gw = GUN_W[g.cal] || (gi === 0 ? W : SEC_W);
+      let t = null, bs = 0;
+      if (best && gw[best.type] > 0 && WW.dist(ship.x, ship.z, best.x, best.z) <= g.range) t = best;
+      else for (const c of cs) {
+        const o = c.unit;
+        if (!o || !o.alive || o.submerged || now - c.seenAt > FRESH || !(gw[o.type] > 0)) continue;
+        const d = WW.dist(ship.x, ship.z, o.x, o.z);
+        if (d > g.range) continue;
+        const v = gw[o.type] * (gi === 0 && !GUN_W[g.cal] ? VALUE[o.type] : 1) / (1 + d / g.range);
+        if (v > bs) { bs = v; t = o; }
       }
       ct[g.cal] = t;
     }
@@ -136,10 +198,64 @@ window.WW = window.WW || {};
     ship.desiredHeading = Math.atan2(sp.z - ship.z, sp.x - ship.x); ship.throttle = 0.75;
   }
 
+  // ---- shared overrides, applied by the core after the role (a role can call them itself and set the flag) ----
+  // Cripple withdrawal: below WW.fleetGroups.CRIP hp (not subs) a ship turns away from the nearest known enemy,
+  // toward its own carrier / group when that is also away, at full speed, through the safest heading.
+  // It keeps shooting (guns run after this) but no longer chases. Returns true when it took over the helm.
+  function withdraw(ship) {
+    const a = ship.ai, crip = WW.fleetGroups ? WW.fleetGroups.CRIP : 0.35;
+    if (ship.type === 'submarine' || ship.hp >= crip * ship.maxHp) return false;
+    let e = null, ed = 1e9;
+    const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], now = WW.time.now;
+    for (const c of cs) {
+      if (!c.unit || !c.unit.alive || c.unit.submerged || now - c.seenAt > 45) continue;
+      const d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (d < ed) { ed = d; e = c; }
+    }
+    const o = WW.fleetCmd && WW.fleetCmd.order(ship);
+    let want;
+    if (e) {
+      want = Math.atan2(ship.z - e.z, ship.x - e.x);
+      const hx = a.cv && a.cv !== ship && a.cv.alive ? a.cv.x : o ? o.sx : null, hz = a.cv && a.cv !== ship && a.cv.alive ? a.cv.z : o ? o.sz : null;
+      if (hx !== null && WW.dist(ship.x, ship.z, hx, hz) > 40) {
+        const home = Math.atan2(hz - ship.z, hx - ship.x);
+        if (Math.abs(WW.angleDiff(want, home)) < 1.1) want = blend(want, ship, hx, hz, 0.8);
+      }
+    } else if (o) want = Math.atan2(o.sz - ship.z, o.sx - ship.x);
+    else return false;
+    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;
+    ship.throttle = 1;
+    a.withdrawing = true;
+    return true;
+  }
+  // Torpedo combing: a ship that has seen (WW.intel.torpedoes) a torpedo track heading for it turns parallel to
+  // it (bow or stern on, whichever needs less rudder) after a reaction delay by type. Returns true while combing.
+  const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 };
+  function comb(ship) {
+    const a = ship.ai, now = WW.time.now;
+    if (a.combUntil > now) { ship.desiredHeading = a.combH; return true; }
+    if (!WW.intel || !WW.intel.torpedoes || ship.submerged) return false;
+    const T = WW.intel.torpedoes(ship.nation), L = ship.stats.length * 0.5 + 6, rt = REACT[ship.type] || 1;
+    for (let i = 0; i < T.length; i++) {
+      const e = T[i];
+      if (now - e.firstSeenAt < rt) continue;
+      const dt = now - e.seenAt, c = Math.cos(e.h), s = Math.sin(e.h);
+      const px = e.x + c * e.speed * dt, pz = e.z + s * e.speed * dt, rx = ship.x - px, rz = ship.z - pz;
+      const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
+      if (along < -2 || along > 70 || perp > L + along * 0.12) continue; // passed, too far, or missing wide
+      a.combH = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
+      a.combUntil = now + along / Math.max(1, e.speed) + 1.5;
+      ship.desiredHeading = a.combH;
+      return true;
+    }
+    return false;
+  }
+
   const roles = {}; // type -> fn(ship, dt), filled by the role files; 'surface' is the default
   WW.shipAI = {
     roles,
-    h: { bearing, seen, lead, fireSpread, blend, idle }, // shared helpers for the role files
+    h: { bearing, seen, lead, fireSpread, blend, idle, withdraw, comb, score, riskOf, unreachable }, // shared helpers for the role files
+    ROLE_W, VALUE, retarget,
     setup(ship) {
       const st = ship.stats;
       ship.ai = {
@@ -161,10 +277,20 @@ window.WW = window.WW || {};
       if (ship.target && !ship.target.alive) a.retargetT = 0;
       if (a.retargetT <= 0) { a.retargetT = 1 + WW.rand() * 0.5; retarget(ship); }
       // Flip orbit side when boxed in for a while.
-      if (ship.clearAhead < ship.lookDist * 0.4) { a.blockedT += dt; if (a.blockedT > 4) { a.blockedT = 0; a.orbitDir *= -1; } }
-      else a.blockedT = 0;
+      // Test the heading the ship wants (not the one it points), and not while it is still swinging toward it:
+      // flipping every few s while a slow battleship turns left it circling in place.
+      a.blockChkT = (a.blockChkT || 0) - dt;
+      if (a.blockChkT <= 0) {
+        a.blockChkT = 0.5;
+        const turning = Math.abs(WW.angleDiff(ship.heading, ship.navHeading)) > 0.5;
+        if (!turning && ship.clearance(ship.desiredHeading) < ship.lookDist * 0.4) { a.blockedT += 0.5; if (a.blockedT > 6) { a.blockedT = 0; a.orbitDir *= -1; } }
+        else if (!turning) a.blockedT = 0;
+      }
       const role = roles[ship.type] || roles.surface;
+      a.withdrawing = false;
       if (role) role(ship, dt);
+      if (!a.ownWithdraw) withdraw(ship); // a role that handles its own cripples sets ship.ai.ownWithdraw
+      if (!a.ownComb) comb(ship);
       if (a.turrets.length) guns(ship, dt);
     },
     pickStrikeTarget: () => null // ai_carrier.js replaces it

@@ -91,7 +91,15 @@ window.WW = window.WW || {};
     var back = B.doctrine.cvStandoff * (B.posture === 'search' ? 0.8 : 1);
     var ci = 0;
     G.carrier.members.forEach(function (q) {
-      if (q.type === 'carrier') { set(q, at(mg.x, mg.z, -back, (ci++ ? 60 : 0) * (ci % 2 ? 1 : -1))); return; }
+      if (q.type === 'carrier') { // kept 110 inside the map edges: room to run
+        // with no battle line to hide behind: a fixed home in its own fifth of the map (never trails the destroyers)
+        const p = G.main.members.length ? at(mg.x, mg.z, -back, (ci ? 60 : 0) * (ci % 2 ? -1 : 1))
+          : { x: ownX === 0 ? W * 0.2 : W * 0.8, z: WW.clamp(q.z, 150, H - 150) + (ci ? 80 : 0) };
+        ci++;
+        p.x = WW.clamp(p.x, 110, W - 110); p.z = WW.clamp(p.z, 110, H - 110);
+        p.x = ownX === 0 ? Math.min(p.x, W * 0.35) : Math.max(p.x, W * 0.65); // and in its own third of the map
+        set(q, p); return;
+      }
       var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q;
       set(q, at(g.x, g.z, r[0], r[1]));
     });
@@ -105,7 +113,7 @@ window.WW = window.WW || {};
     G.sub.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
     // withdrawing ships: behind their own carrier (or the main body)
     B.orders.forEach(function (o) {
-      if (o.role !== 'withdraw') return;
+      if (o.role !== 'withdraw' || o.ship.type === 'carrier') return; // a carrier keeps its own (safe) station
       var g = cvg && cvg !== o.ship ? cvg : mg, p = at(g.x, g.z, -70, 0);
       o.sx = p.x; o.sz = p.z;
     });
