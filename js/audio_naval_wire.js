@@ -92,7 +92,7 @@ window.WW = window.WW || {};
   WW.on('weaponImpact', e => {
     if (!A.live || !e || e.kind !== 'torpedo') return;
     for (let i = runs.length - 1; i >= 0; i--) if (runs[i].p === e.proj) { runs[i].h.stop(0.15); runs.splice(i, 1); }
-    if (!e.ship) A.play('torp.fizz', { x: e.x, y: 0, z: e.z });
+    if (!e.ship) A.play(WW.terrain && WW.terrain.depthAt(e.x, e.z) <= 0 ? 'shell.land' : 'torp.fizz', { x: e.x, y: 0, z: e.z, size: 0.8 });
   });
   function pollRuns() {
     for (let i = runs.length - 1; i >= 0; i--) { const r = runs[i]; if (r.p.dead || r.p.kind !== 'torp' || !r.h.alive) { r.h.stop(0.15); runs.splice(i, 1); } }
@@ -133,6 +133,8 @@ window.WW = window.WW || {};
       const d = A.distTo(s.x, 0, s.z) * (eng.has(s) ? 0.85 : 1); // a little stickiness: no flapping between two ships
       if (s.type === 'pt') { if (d < PT_FAR) ptCand.push({ s, d }); } else if (d < ENG_FAR) cand.push({ s, d });
     }
+    // a ship that became a wreck has left WW.world.ships: silence its fire here (wrecks are quiet)
+    for (const [s, h] of fire) if (s.wreck || s.removed || (!s.alive && !s.sinking)) { h.stop(1.5); fire.delete(s); }
     cand.sort((a, b) => a.d - b.d); ptCand.sort((a, b) => a.d - b.d);
     const want = new Set();
     for (let i = 0; i < Math.min(ENG_N, cand.length); i++) want.add(cand[i].s);
@@ -162,5 +164,5 @@ window.WW = window.WW || {};
     acc += rdt || 0;
     if (acc >= 0.25) { acc = 0; pollShips(); }
   });
-  WW.audioNaval = { _debug: () => ({ engines: eng.size, fires: fire.size, sinking: sinking.size, runs: runs.length }) };
+  WW.audioNaval = { _debug: () => ({ engines: eng.size, fires: fire.size, sinking: sinking.size, runs: runs.length, fireWrecks: [...fire.keys()].filter(s => s.wreck || s.removed).length }) };
 })(window.WW);

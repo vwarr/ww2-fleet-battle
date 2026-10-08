@@ -185,6 +185,8 @@ const PATCHES = [ // name, params, render seconds, max duration
   chk(`master not silent (max rms ${st.au.rmsMax.toFixed(4)})`, st.au.rmsMax > 1e-4);
   chk('no engine errors (' + st.st.errors + ')', st.st.errors === 0);
   chk('engines culled to the nearest few (max ' + st.au.naval.engines + ' engine handles)', st.au.naval.engines <= 5);
+  const fw = await p.evaluate(() => WW.audioNaval._debug().fireWrecks);
+  chk('no fire loops left on settled wrecks (' + fw + ')', fw === 0);
   chk('no console/page errors (' + errs.length + ')', errs.length === 0);
   if (errs.length) console.log('ERRORS', errs.slice(0, 10));
   console.log('\nWAV demos in', DEMO);
