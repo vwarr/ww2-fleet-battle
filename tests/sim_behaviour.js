@@ -81,7 +81,8 @@ const CHECKS = [
   // fighters
   { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL' },
   { id: 'ftr_bombers',   desc: 'bomber share of fighter kills in a raid', op: '>=', thr: 0.6, level: 'WARN' },
-  { id: 'cap_gap',       desc: 'carrier time with <2 CAP up (fighters spare, after 60 s)', op: '<=', thr: 0.25, level: 'WARN' },
+  { id: 'cap_on_bmb',    desc: 'CAP fighters in a fight during a raid that fight bombers', op: '>=', thr: 0.6, level: 'WARN' },
+  { id: 'cap_gap',       desc: 'carrier time with <2 CAP up while it could (after 60 s)', op: '<=', thr: 0.25, level: 'WARN' },
   { id: 'esc_with',      desc: 'escort time within 60u of its strike bombers', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'elem_coh',      desc: 'wingman dist to element leader in transit (median u)', op: '<=', thr: 20, level: 'WARN' },
   { id: 'air_sync',      desc: 'first VT drop vs first VB release on a target (median s)', op: '<=', thr: 10, level: 'WARN', only: ['carrier_duel', 'carrier_vs_surface', 'standard', 'mirror'] },
@@ -341,8 +342,13 @@ function install(P) {
     if (t > 60) for (const cv of L) {
       if (cv.type !== 'carrier' || !cv.hangar) continue;
       const cap = PL.filter(p => p.carrier === cv && p.kind === 'fighter' && !p.target && up(p)).length;
-      if (cv.hangar.fighter + PL.filter(p => p.carrier === cv && p.kind === 'fighter' && p.alive).length < 2) continue;
+      if (cap + cv.hangar.fighter < 2) continue;                // the air boss could have two up
       R.air.capN++; if (cap < 2) R.air.capGap++;
+    }
+    for (const p of PL) { // CAP during a raid on its carrier: is its foe a bomber?
+      if (p.kind !== 'fighter' || p.target || !up(p) || p.state !== 'attack' || !p.foe || !live(p.carrier)) continue;
+      const cv = p.carrier; if (!PL.some(b => b.alive && b.nation !== p.nation && (b.kind === 'dive' || b.kind === 'torpedo') && b.ordnance && WW.dist(b.x, b.z, cv.x, cv.z) < P.RAID_R)) continue;
+      R.air.capF++; if (p.foe.kind === 'dive' || p.foe.kind === 'torpedo') R.air.capB++;
     }
     for (const p of PL) {
       if (p.kind === 'fighter' && p.target && up(p) && live(p.carrier)) {
@@ -392,7 +398,7 @@ function install(P) {
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
       intel: { checked: 0, unseen: 0, err: 0 }, cr: { n: 0, away: 0 }, lc: { n: 0, away: 0 }, torp: { passes: 0, par: 0 }, sync: {},
-      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0 } };
+      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0 } };
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
     const step = spec.light ? 5 : P.SAMPLE;
@@ -443,6 +449,7 @@ function aggregate(rounds) {
     dd_sub_kills: ratio(S(r => r.dd.subDC), S(r => r.dd.subDeaths)), dd_react_med: med(react),
     dd_react_rate: ratio(react.length, react.length + S(r => r.dd.missed)), dd_episodes: react.length + S(r => r.dd.missed),
     sub_bowbeam: ratio(S(r => r.sub.bow + r.sub.beam), shots), sub_shots: shots, sub_dived_dd: ratio(S(r => r.sub.nearDived), near),
+    cap_on_bmb: ratio(S(r => r.air.capB || 0), S(r => r.air.capF || 0)),
     cap_gap: ratio(S(r => r.air.capGap || 0), S(r => r.air.capN || 0)), esc_with: ratio(S(r => r.air.escWith || 0), S(r => r.air.escN || 0)),
     elem_coh: med(C(r => r.air.coh || [])), air_sync: med(C(r => r.air.sync || [])), sync_n: C(r => r.air.sync || []).length,
     bomb_lost: ratio(S(r => r.air.lostArmed || 0), S(r => r.air.bombers || 0)), jettisons: rounds.length ? S(r => r.air.jett || 0) / rounds.length : null,

@@ -38,7 +38,7 @@ window.WW = window.WW || {};
       const t = CV[cv.nation] || CV.USN, e = t[slot % t.length], num = e[1] || slot + 1, sq = {};
       for (const k in CODE) {
         const name = cv.nation === 'USN' ? CODE[k] + '-' + num : e[0] + ' ' + IJN_UNIT[k];
-        sq[k] = { kind: k, nation: cv.nation, name, short: cv.nation === 'USN' ? name : e[0] + ' ' + CODE[k], cvName: e[0], leader: null, sorties: 0, lost: 0 };
+        sq[k] = { kind: k, nation: cv.nation, name, short: name, cvName: e[0], leader: null, sorties: 0, lost: 0 };
       }
       g = L[slot] = { name: e[0], sq };
     }

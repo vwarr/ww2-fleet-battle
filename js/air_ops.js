@@ -10,7 +10,7 @@
 // search sectors and keep clear of known enemy carriers' CAP. Load after air_strikes.js. Sim code: WW.rand only.
 window.WW = window.WW || {};
 (function () {
-  const CAP_R = 35, LEASH = CAP_R * 1.5, LEASH2 = CAP_R * 2;   // CAP orbit radius, chase leash (sim_behaviour LEASH_K)
+  const CAP_R = 35, LEASH = CAP_R * 1.5, LEASH2 = CAP_R * 4.5; // CAP orbit radius, chase leash (sim_behaviour LEASH_K), armed raid closing
   const RAID_R = 120;          // armed enemy bomber this close to the carrier: under air attack
   const WARN_R = 260;          // raid picture radius for the fighter director (radar / lookouts decide what is in it)
   const RELIEF = 45;           // launch a relief when an on-station CAP fighter has less fuel than this (s)
