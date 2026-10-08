@@ -11,6 +11,8 @@ window.WW = window.WW || {};
   var NATIONS = ['USN', 'IJN'];
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
+  var BREAK = 0.25;     // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
+  var PURSUE_AGE = 120, PURSUE_STRIKE_R = 2000; // pursuit: strikes on contacts this old, anywhere on the map
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
   var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
@@ -26,6 +28,7 @@ window.WW = window.WW || {};
   function newSide(n) {
     var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
       strength: { own: 0, known: 0, ratio: 1 }, fit: 0, hadFit: false, brokenAt: 0, doctrine: WW.fleetGroups.rollDoctrine(n),
+      startTons: -1, fitTons: 0, foeSeen: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0,
       axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
       groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
@@ -62,13 +65,21 @@ window.WW = window.WW || {};
     // ---- posture ----
     var T = WW.cfg.ROUND_TIMEOUT, rt = WW.game ? WW.game.roundTime : 0, prev = B.posture;
     B.timeLeft = T - rt; B.late = rt > T * LATE;
-    // Broken: no battleship, cruiser or destroyer left in fighting shape (hp >= CRIP). The side breaks off,
-    // whatever the (fogged) strength ratio says; main.js ends the round when it has got clear ("retires").
-    var fit = 0, crip = WW.fleetGroups.CRIP;
-    for (i = 0; i < ships.length; i++) { s = ships[i]; if (s.alive && !s.sinking && s.nation === B.nation && GUNSHIP[s.type] && s.hp >= crip * s.maxHp) fit++; }
-    B.fit = fit; if (fit) B.hadFit = true;   // a side that never had gun ships (a PT / sub raid) never "breaks"
-    if (fit) B.brokenAt = 0; else if (B.hadFit && !B.brokenAt) B.brokenAt = now;
+    // Broken: the fit battleship / cruiser / destroyer tonnage (hp >= CRIP) is below BREAK of what the side started
+    // with. The side breaks off for home whatever the (fogged) strength ratio says (ai_endgame.js); main.js ends the
+    // round when its ships have left the map ("retires") or are all sunk.
+    var fit = 0, fitT = 0, allT = 0, crip = WW.fleetGroups.CRIP;
+    for (i = 0; i < ships.length; i++) {
+      s = ships[i]; if (!s.alive || s.sinking || s.nation !== B.nation || !GUNSHIP[s.type]) continue;
+      allT += s.stats.tons; if (s.hp >= crip * s.maxHp) { fit++; fitT += s.stats.tons; }
+    }
+    if (B.startTons < 0) B.startTons = allT;  // first tick: the side's starting surface combatants
+    B.fit = fit; B.fitTons = fitT; if (fit) B.hadFit = true;   // a side that never had gun ships (a PT / sub raid) never "breaks"
+    if (B.hadFit && !B.brokenAt && fitT < BREAK * B.startTons) B.brokenAt = now;
+    var pursue = !B.brokenAt && foeBroken(B, cs, now);
+    if (pursue && !B.pursueAt) B.pursueAt = now;
     if (rt > 60 && B.brokenAt) B.posture = 'withdraw';
+    else if (pursue) B.posture = 'pursue';
     else if (!cs.length) B.posture = 'search';
     else if (rt > 60 && B.strength.ratio < d.withdrawRatio) B.posture = 'withdraw';
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression)) B.posture = 'press';
@@ -101,6 +112,16 @@ window.WW = window.WW || {};
     }
   }
 
+  // Pursuit (fog of war): every enemy gun ship the side has seen this round is remembered; the enemy is judged
+  // broken when the fit (hp >= CRIP) tonnage among those still afloat is below BREAK of all of them, the same
+  // rule the enemy's own commander uses (on its true starting tonnage).
+  function foeBroken(B, cs, now) {
+    for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && GUNSHIP[u.type] && !B.foeSeen.has(u.id)) B.foeSeen.set(u.id, u); }
+    var all = 0, fitT = 0, crip = WW.fleetGroups.CRIP;
+    B.foeSeen.forEach(function (u) { all += u.stats.tons; if (u.alive && !u.sinking && !u.escaped && u.hp >= crip * u.maxHp) fitT += u.stats.tons; });
+    B.foeTons = all; B.foeFit = fitT;
+    return all > 0 && fitT < BREAK * all && cs.length > 0 && WW.game && WW.game.roundTime > 60;
+  }
   // Carrier defence: each own carrier's nearest known enemy gun ship inside DEFEND_R (seen in the last 30 s).
   function defend(B, cs, now) {
     B.defend.length = 0;
@@ -140,17 +161,17 @@ window.WW = window.WW || {};
   var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 0, pt: 0.5 };
   function strikes(B, cs, now) {
     B.strikes.clear();
-    var cvs = B.groups.carrier.members;
+    var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R;
     for (var k = 0; k < cvs.length; k++) {
       var cv = cvs[k]; if (cv.type !== 'carrier') continue;
       var best = null, bc = null, bs = 0;
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit, age = now - c.seenAt;
-        if (!u || !u.alive || u.submerged || age > STRIKE_AGE) continue;
-        var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > STRIKE_R) continue;
+        if (!u || !u.alive || u.submerged || age > AGE) continue;
+        var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > RANGE) continue;
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
-        var sc = dfd * Math.max(STRIKE_V[u.type], dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (STRIKE_AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
+        var sc = dfd * Math.max(STRIKE_V[u.type], dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
         if (sc > bs) { bs = sc; best = u; bc = c; }
       }
       if (best) B.strikes.set(cv.id, { target: best, contact: bc, score: bs, hold: !!(B.airRaid && B.airRaid.carrier === cv) });
@@ -170,6 +191,8 @@ window.WW = window.WW || {};
       sc.stale = 0;
       for (i = 0; i < cs.length; i++) if (now - cs[i].seenAt > 20 && Math.abs(cs[i].x - sc.x) < W / SECT_X / 2 && Math.abs(cs[i].z - sc.z) < WW.cfg.MAP_H / SECT_Z / 2) sc.stale++;
       sc.prio = Math.min(120, now - sc.looked) + ((sc.x > W / 2) === enemyHalfEast ? 60 : 0) + 80 * Math.min(1, sc.stale);
+      // pursuit: the enemy's escape route, the band in front of its home edge
+      if (B.posture === 'pursue' && Math.abs(sc.x - (enemyHalfEast ? W : 0)) < W * 0.42) sc.prio += 70;
       if (!best || sc.prio > best.prio) best = sc;
     }
     // while searching: the nearest of the high-priority enemy-half sectors to the main body

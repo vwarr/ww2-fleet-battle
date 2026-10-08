@@ -34,6 +34,8 @@ window.WW = window.WW || {};
       this.id = nextId++; this.type = type; this.stats = st; this.nation = nation;
       this.x = x; this.z = z; this.heading = wrap(heading || 0); this.speed = 0;
       this.hp = this.maxHp = st.hp;
+      this.speedK = 1; this.flood = 0; this.engineK = 1; this.engineT = 0; // damage slows ships (ship_speed.js)
+      this.escapeEdge = 0; // -1 / +1: leaving the map over the west / east edge (endgame.js), no edge avoidance there
       this.alive = true; this.sinking = false; this.removed = false;
       this.submerged = type === 'submarine';
       this.model = WW.models.buildShip(type, nation);
@@ -100,7 +102,7 @@ window.WW = window.WW || {};
       // boundary long before the hull gets pinned against it.
       const eb = Math.max(EDGE_BAND, this.lookDist * 0.6), MW = WW.cfg.MAP_W, MH = WW.cfg.MAP_H;
       const ep = e => (e < eb ? 2.5 * ((eb - e) / eb) * ((eb - e) / eb) : 0);
-      dx += ep(this.x) - ep(MW - this.x); dz += ep(this.z) - ep(MH - this.z);
+      dx += (this.escapeEdge < 0 ? 0 : ep(this.x)) - (this.escapeEdge > 0 ? 0 : ep(MW - this.x)); dz += ep(this.z) - ep(MH - this.z);
       const want = Math.atan2(dz, dx);
       this.navT -= dt;
       if (this.navT <= 0) { this.navT = 0.2 + WW.rand() * 0.1; this.planNav(want); }
@@ -142,7 +144,8 @@ window.WW = window.WW || {};
       const turn = WW.clamp(this.rudder * dt, -maxR * dt, maxR * dt), h0 = this.heading;
 
       // Speed: slow down when the way ahead is short or the turn is large.
-      let ts = st.speed * WW.clamp(this.throttle, 0, 1);
+      const vk = WW.shipSpeed ? WW.shipSpeed.k(this, dt) : 1; // hull damage, flooding, engine room (ship_speed.js)
+      let ts = st.speed * vk * WW.clamp(this.throttle, 0, 1);
       if (this.clearAhead < this.lookDist * 0.6) ts *= WW.clamp(this.clearAhead / (this.lookDist * 0.6), 0.25, 1);
       if (Math.abs(diff) > 1.2) ts *= 0.6;
       if (pivot) ts = 0;
@@ -234,8 +237,14 @@ window.WW = window.WW || {};
       const g = this.group, amp = 0.35 / Math.sqrt(this.stats.length);
       g.position.set(this.x, this.depthY + Math.sin(t * 1.1 + this.bob) * amp * 0.5, this.z);
       g.rotation.y = -this.heading;
-      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.heel + this.listRoll;
+      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.heel + this.listRoll + this.cripList();
       g.rotation.z = Math.sin(t * 0.9 + this.bob) * amp * 0.12;
+    }
+
+    // A cripple lists heavier: flooding and lost buoyancy, on the side of its torpedo list (else its sinking side).
+    cripList() {
+      const f = this.hp / this.maxHp, x = (this.flood || 0) * 0.25 + Math.max(0, 0.5 - f) * 0.14;
+      return x ? (this.listRoll ? Math.sign(this.listRoll) : this.sinkDir) * x : 0;
     }
 
     // Wakes, smoke and fire while afloat.
@@ -250,7 +259,7 @@ window.WW = window.WW || {};
         } else {
           this.wakeT = 0.12;
           const p = this.toWorld(-st.length * 0.45, 0);
-          fx.wake(p[0], p[1], this.heading, WW.clamp(st.length / 10, 0.4, 2.5) * (0.4 + 0.6 * this.speed / st.speed));
+          fx.wake(p[0], p[1], this.heading, WW.clamp(st.length / 10, 0.4, 2.5) * (0.4 + 0.6 * this.speed / st.speed) * (0.55 + 0.45 * this.speedK)); // a cripple churns less
         }
       }
       const f = this.hp / this.maxHp;
@@ -268,6 +277,7 @@ window.WW = window.WW || {};
       if (!this.alive) return;
       this.hp -= amount;
       WW.emit('shipHit', { ship: this, amount, x: hx, z: hz, kind, cal }); // sound hook (audio_naval_wire.js)
+      if (WW.shipSpeed) WW.shipSpeed.hit(this, amount, kind, cal);         // flooding, engine room (sim: WW.rand)
       if (WW.damage) WW.damage.hit(this, amount, hx, hz, kind, cal);
       if (this.hp <= 0) { this.hp = 0; this.startSinking(); return; }
       this.applyLook();

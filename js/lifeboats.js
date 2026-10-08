@@ -80,6 +80,9 @@ window.WW = window.WW || {};
     return null;
   }
   function pickGoal(b) {
+    // a destroyer sent to pick up survivors here (endgame.js rescue task; read only): row to it
+    var r = WW.endgame && WW.endgame.rescuerNear ? WW.endgame.rescuerNear(b.nation, b.x, b.z, 110) : null;
+    if (r && !r.sinking && !r.removed) { b.goal = { ship: r }; return; }
     var best = null, bd = 1e9, ships = WW.world.ships;
     for (var i = 0; i < ships.length; i++) {
       var s = ships[i];

@@ -111,8 +111,9 @@ window.WW = window.WW || {};
     if (a.strikeT <= 0 && !a.queue.some(q => q.target) && attacked && (a.holdT || 0) < HOLD_MAX) {
       if (!a.holdT) ST.holds++;
       a.holdT = (a.holdT || 0) + dt;
-    } else if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
-      a.strikeT = WW.randRange(35, 55); a.holdT = 0;
+    } else if (a.strikeT <= 0 && !a.queue.some(q => q.target) && !(WW.endgame && WW.endgame.broken(cv.nation))) { // broken: no new strikes, it is running
+      const pur = WW.fleetCmd && WW.fleetCmd.side(cv.nation) && WW.fleetCmd.side(cv.nation).posture === 'pursue';
+      a.strikeT = WW.randRange(35, 55) * (pur ? 0.55 : 1); a.holdT = 0; // pursuit: every spare plane, sooner
       const tgt = pickTarget(cv);
       if (tgt && hg.dive + hg.torpedo > 0) {
         const cs = capState(cv), reserve = Math.max(0, capWanted(cv) - cs.on - cs.coming) + 1; // keep a relief back

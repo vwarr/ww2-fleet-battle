@@ -15,12 +15,16 @@ window.WW = window.WW || {};
   //   flotilla     destroyers in the torpedo flotilla (the rest screen / escort)
   //   pressRatio   known strength ratio needed to press late in the round; withdrawRatio: below it, withdraw
   //   risk         per-type risk tolerance 0..1 for WW.threat.bestHeading (carrier 0: never into danger)
+  //   rescue       (flag) destroyers pick up survivors of sunk ships and ditched aircrew, escort cripples home once
+  //                broken, and the fleet leaves only with its survivors aboard (endgame.js, ai_endgame.js)
+  //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
+  //                may be scuttled
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45,
+      pressRatio: 1.2, withdrawRatio: 0.45, rescue: true, scuttle: false,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
-      pressRatio: 1.1, withdrawRatio: 0.4,
+      pressRatio: 1.1, withdrawRatio: 0.4, rescue: false, scuttle: true,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
@@ -28,7 +32,7 @@ window.WW = window.WW || {};
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
     for (k in b) if (typeof b[k] === 'number') d[k] = b[k] * j();
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
-    d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0;
+    d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
     d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1);
     return d;
@@ -90,7 +94,7 @@ window.WW = window.WW || {};
   }
   function stations(B) {
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, h = B.axis.h, c = Math.cos(h), s = Math.sin(h);
-    var lead = { search: 45, approach: 45, engage: 0, press: 35, withdraw: -45 }[B.posture] || 0;
+    var lead = { search: 45, approach: 45, engage: 0, press: 35, pursue: 60, withdraw: -45 }[B.posture] || 0;
     // guides: the main body's centroid, else the first group that has ships
     // (withdrawing cripples are left out of the main guide: they would drag the battle line home with them)
     var fitMain = G.main.members.filter(function (q) { var o = B.orders.get(q.id); return !o || o.role !== 'withdraw'; });
