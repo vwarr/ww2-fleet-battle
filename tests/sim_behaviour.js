@@ -8,7 +8,7 @@
 // Usage:  BASE_URL=http://localhost:8746/ node tests/sim_behaviour.js [--seeds N] [--seed0 S] [--only a,b] [--quick] [--pages K] [--render]
 //         balance gate: --only balance --seeds 100   (balance/balance_mirror run only when named; --seeds 400 for tuning)
 //         Sim-only mode (index.html?sim, no WebGL; identical results) unless --render (the full game on software GL).
-//         --pages: parallel game pages, default 6 (M1 Pro, 6P+2E cores: 6 beat 4, 5 and 8 on the balance gate).
+//         --pages: parallel game pages, default 6 (M1 Pro, 6P+2E cores: on the balance gate 6 and 5 tie, both beat 4 and 8).
 //         npm run test:ai            (tests/run.sh serves on port 8000)
 // Env:    CHROMIUM = headless shell path;  JSON=path writes raw per-scenario metrics and per-round records.
 // Exit code 1 if any hard check FAILs (WARN = fuzzy check, reported but not fatal).
