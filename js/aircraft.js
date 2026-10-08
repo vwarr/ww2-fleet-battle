@@ -75,20 +75,35 @@ window.WW = window.WW || {};
       }
     }
     // Damage trail from the engine: thin grey < 70% hp, thick black + flames < 40%, burning when falling.
+    // Damage trail from the engine, emitted by distance travelled so the puffs overlap into one soft ribbon.
+    // >= 70% hp: nothing; 50-70%: an occasional single wisp; < 50%: grey ribbon; < 30% / falling: charcoal + flames.
     trail(dt, falling) {
-      const f = this.hp / this.maxHp;
+      const f = this.hp / this.maxHp, fx = WW.fx;
       if (!falling && f >= 0.7) return;
-      const heavy = falling || f < 0.4, ld = WW.damage ? WW.damage.load() : 1, fx = WW.fx;
-      const n = 1.25 * PLANE_SCALE, c = Math.cos(this.heading), sn = Math.sin(this.heading);
-      const nx = this.x + c * n * 0.6, nz = this.z + sn * n * 0.6;
-      this.flameT = (this.flameT || 0) - dt; // flickering flames at the engine (fire puffs trail behind fast planes, so keep them sparse)
-      if (heavy && this.flameT <= 0) { this.flameT = falling ? 0.06 : 0.16; fx.fire(nx, this.y + 0.1, nz); }
-      const iv = falling ? 0.09 : heavy ? 0.11 : 0.22; // light damage: sparse grey wisps (white puffs read as dotted lines)
-      if (WW.damage) WW.damage.want(1 / iv);
-      this.trailT -= dt;
-      if (this.trailT > 0) return;
-      this.trailT = iv * Math.min(3, ld);
-      fx.smoke(nx - c * 0.8, this.y + 0.1, nz - sn * 0.8, true, falling ? 0.9 : heavy ? 0.75 : 0.3);
+      const n = 1.25 * PLANE_SCALE * 0.6, c = Math.cos(this.heading), sn = Math.sin(this.heading);
+      const ex = this.x + c * (n - 0.8), ey = this.y + 0.1, ez = this.z + sn * (n - 0.8);
+      if (!falling && f >= 0.5) {
+        this.trailT -= dt;
+        if (this.trailT <= 0) { this.trailT = 1.5 + Math.random() * 2; fx.smoke(ex, ey, ez, true, 0.25); }
+        this.tx = undefined; return;
+      }
+      const heavy = falling || f < 0.3;
+      this.flameT = (this.flameT || 0) - dt; // flickering flames at the engine
+      if (heavy && this.flameT <= 0) { this.flameT = falling ? 0.08 : 0.2; fx.fire(ex + c * 0.8, ey, ez + sn * 0.8); }
+      const ld = WW.damage ? WW.damage.load() : 1, ribbon = !!fx.trail;
+      const sp = (ribbon ? 0.7 : 3.5) * Math.min(2, ld), size = heavy ? 1.35 : 1.05, life = falling ? 1.4 : heavy ? 1.1 : 0.85; // size ~1.5-2x spacing: overlapping ribbon
+      if (WW.damage) WW.damage.want((this.speed || 20) / sp * life / 3);
+      if (this.tx === undefined) { this.tx = ex; this.ty = ey; this.tz = ez; return; }
+      let dx = ex - this.tx, dy = ey - this.ty, dz = ez - this.tz, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d > 30) { this.tx = ex; this.ty = ey; this.tz = ez; return; } // jumped (e.g. new sortie): restart the ribbon
+      if (d < sp) return;
+      dx /= d; dy /= d; dz /= d;
+      for (let k = 0; k < 12 && d >= sp; k++, d -= sp) {
+        this.tx += dx * sp; this.ty += dy * sp; this.tz += dz * sp;
+        if (ribbon) fx.trail(this.tx, this.ty, this.tz, heavy, size * (0.85 + Math.random() * 0.3), life);
+        else fx.smoke(this.tx, this.ty, this.tz, true, heavy ? 0.6 : 0.4);
+      }
+      if (d >= sp) { this.tx = ex; this.ty = ey; this.tz = ez; }
     }
     shotDown() {
       this.alive = false; this.state = 'falling'; WW.stats.planesLost++;

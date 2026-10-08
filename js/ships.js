@@ -234,15 +234,7 @@ window.WW = window.WW || {};
       }
       const f = this.hp / this.maxHp;
       if (f >= 0.6) return;
-      this.smokeT -= dt;
-      if (this.smokeT <= 0) {
-        this.smokeT = (f < 0.35 ? 0.18 : 0.3) * (this.dmgSites.length ? 2 : 1) * (WW.damage ? WW.damage.load() : 1);
-        const stacks = this.model.stacks || [];
-        if (stacks.length) {
-          this.group.updateMatrixWorld(true);
-          for (const sObj of stacks) { sObj.getWorldPosition(WW._v3 || (WW._v3 = new THREE.Vector3())); fx.smoke(WW._v3.x, WW._v3.y, WW._v3.z, f < 0.35, 1 + st.length / 20); }
-        } else fx.smoke(this.x, 2, this.z, f < 0.35, 1);
-      }
+      if (WW.damage) WW.damage.stackSmoke(this, f, dt); // funnel smoke plume (damage.js)
     }
 
     applyLook() {

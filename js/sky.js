@@ -5,7 +5,7 @@ window.WW = window.WW || {};
   // elsewhere, a gentle blue zenith. Palettes are pastel (about 20% desaturated).
   const SUN_DIR = new THREE.Vector3(-0.86, 0.36, 0.36).normalize();   // ~21 degrees above the horizon
   const C = h => WW.pastel ? WW.pastel(h, 0.1) : new THREE.Color(h);
-  const HORIZON = 0xd0dcee, ZENITH = 0x5a8fd6, SUN_SIDE = 0xffc89a, AWAY = 0xbfd3ee, SUN_GLOW = 0xffe0b0, FOG = 0xd0dcee;
+  const HORIZON = 0xc4dcf2, ZENITH = 0x3f7fd6, SUN_SIDE = 0xffc89a, AWAY = 0xb4d2f2, SUN_GLOW = 0xffe0b0, FOG = 0xc4dcf2;
   let dome = null, sun = null, hemi = null, clouds = null;
 
   function init() {
@@ -33,8 +33,8 @@ window.WW = window.WW || {};
         '  float h = clamp(d.y, 0.0, 1.0);',
         '  vec2 az = normalize(d.xz + 1e-5), sa = normalize(sunDir.xz);',
         '  float toward = dot(az, sa) * 0.5 + 0.5;',                       // 1 = looking at the sun
-        '  vec3 horizon = mix(away, sunSide, pow(toward, 2.5));',
-        '  vec3 c = mix(horizon, zenith, pow(smoothstep(0.0, 0.6, h), 0.75));',
+        '  vec3 horizon = mix(away, sunSide, pow(toward, 5.0));',
+        '  vec3 c = mix(horizon, zenith, pow(smoothstep(0.0, 0.5, h), 0.6));',
         '  float s = max(dot(d, sunDir), 0.0);',
         '  c = mix(c, glow, pow(s, 10.0) * 0.55 + pow(s, 300.0) * 0.6);',   // soft halo + soft sun disc
         '  if (d.y < 0.0) c = horizon;',
@@ -47,10 +47,17 @@ window.WW = window.WW || {};
     scene.add(dome);
     buildClouds(scene);
   }
+  // 4-step soft ramp for toon clouds (smooth enough to read as soft, still cartoony)
+  function cloudRamp() {
+    const d = new Uint8Array([150, 150, 150, 255, 196, 196, 196, 255, 232, 232, 232, 255, 255, 255, 255, 255]);
+    const t = new THREE.DataTexture(d, 4, 1, THREE.RGBAFormat);
+    t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+    return t;
+  }
   // Soft puffy low-poly clouds that drift slowly and cast soft shadows on the sea.
   function buildClouds(scene) {
-    const geo = new THREE.IcosahedronGeometry(1, 1);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xfff6ee, emissive: C(0xa89cc8), emissiveIntensity: 0.32, flatShading: true, fog: false }); // warm on the sun side, lilac in shade
+    const geo = new THREE.SphereGeometry(1, 20, 14); // smooth soft blobs
+    const mat = new THREE.MeshToonMaterial({ color: 0xeee8e2, emissive: C(0xb8c4e6), emissiveIntensity: 0.26, gradientMap: cloudRamp(), fog: false }); // soft toon: warm on the sun side, cool in shade
     clouds = new THREE.Group(); clouds.name = 'clouds';
     let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const cx = WW.cfg.MAP_W / 2, cz = WW.cfg.MAP_H / 2;

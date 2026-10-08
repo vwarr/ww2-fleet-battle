@@ -130,6 +130,38 @@ window.WW = window.WW || {};
     if (burning.indexOf(ship) < 0) burning.push(ship);
   }
 
+  // One puff of a plume: random height along a column that leans downwind and broadens with height.
+  // Neighbouring puffs overlap, so a steady stream reads as one soft billowing plume.
+  function plumePuff(x, y, z, H, base, top, dark, life) {
+    var u = R() * R(), wind = WW.wind;             // bias toward the dense base
+    var hh = u * H, sz = (base + (top - base) * u) * rr(0.85, 1.15), lean = hh * (0.55 + 0.25 * u); // bends more as it rises
+    WW.fx.trail(x + wind.x * lean + rr(-0.15, 0.15) * sz, y + hh, z + wind.z * lean + rr(-0.15, 0.15) * sz,
+      dark && u < 0.7, sz, life + 0.9 * u);         // upper puffs lighter and slower to fade
+  }
+  // Funnel smoke of a damaged ship (f = hp fraction < 0.6) as a small plume from each stack.
+  function stackSmoke(ship, f, dt) {
+    var fx = WW.fx, st = ship.model.stacks || [];
+    ship._stT = (ship._stT || 0) - dt;
+    if (ship._stT > 0) return;
+    var many = ship.dmgSites && ship.dmgSites.length;
+    if (!fx.trail) { ship._stT = (f < 0.35 ? 0.18 : 0.3) * (many ? 2 : 1) * load; }
+    else ship._stT = (f < 0.35 ? 0.12 : 0.2) * (many ? 1.6 : 1) * load;
+    demand += 1.5 * Math.max(1, st.length);
+    if (!v) v = new THREE.Vector3();
+    if (!ship._stackL) { // stack positions in ship-group space (computed once)
+      ship.group.updateMatrixWorld(true);
+      ship._stackL = st.map(function (o) { return ship.group.worldToLocal(o.getWorldPosition(new THREE.Vector3())); });
+    }
+    ship.group.updateMatrix();
+    var dark = f < 0.35, b = 0.45 + ship.stats.length / 60;
+    for (var i = 0; i < ship._stackL.length; i++) {
+      var p = v.copy(ship._stackL[i]).applyMatrix4(ship.group.matrix);
+      if (fx.trail) plumePuff(p.x, p.y, p.z, 2 + ship.stats.length / 10, b, b * 2.4, dark, 0.9);
+      else fx.smoke(p.x, p.y, p.z, dark, 1 + ship.stats.length / 20);
+    }
+    if (!ship._stackL.length) fx.smoke(ship.x, 2, ship.z, dark, 1);
+  }
+
   // ---- per-frame emission ----
   function emitShip(ship, dt) {
     var S = ship.dmgSites, fx = WW.fx, H = hullInfo(ship);
@@ -147,16 +179,22 @@ window.WW = window.WW || {};
       var p = worldOf(ship, s), y = p.y;
       if (y < 0.05 || (sub && ship.depthY < -0.6)) continue; // under water: no fire or smoke
       var inten = 0.6 + 0.5 * s.sev + hpLoss;
-      demand += 2.2 * inten;
-      // smoke column, drifting downwind (puffs start a little downwind/higher as the column bends)
+      demand += s.fire > 0 && wreckT < 0 ? 4 : 2.2; // ~ plume puff rate x (short life / 3 s smoke life)
+      // Smoke plume: short-lived overlapping puffs placed along a column that leans downwind and broadens
+      // with height, so it reads as one soft billowing plume (not a chain of balls drifting across the sky).
       s.sT -= dt;
       if (s.sT <= 0) {
-        var onFire = s.fire > 0 && wreckT < 0;
-        s.sT = (onFire ? 0.58 : 1.05) / Math.min(2.5, inten) * load; // lazy columns
-        if (wreckT >= 0) s.sT = rr(1.0, 1.9) * load;
-        var h = R() * (onFire ? 1.4 : 0.6), size = wreckT >= 0 ? 0.6 : (onFire ? 1.0 + 0.35 * s.sev + 0.5 * hpLoss : 0.7 + 0.2 * s.sev);
-        var dark = wreckT >= 0 ? R() < 0.5 : (onFire || s.low || hpLoss > 0.4);
-        fx.smoke(p.x + wind.x * h * 2, y + 0.5 + h, p.z + wind.z * h * 2, dark, size);
+        var onFire = s.fire > 0 && wreckT < 0, wreck = wreckT >= 0;
+        var H = wreck ? 2.5 : onFire ? 3.5 + 1.2 * s.sev + 2 * hpLoss : 2.5 + 0.6 * s.sev; // plume height
+        var base = wreck ? 0.5 : onFire ? 0.8 + 0.2 * s.sev : 0.6, top = base * (onFire ? 2.6 : 2.2);
+        var dark = !wreck && (onFire || s.low || hpLoss > 0.4);
+        // ~0.6 puffs per unit of height per 0.15 s keeps neighbours overlapping (spacing < 0.6 * size)
+        s.sT = (wreck ? 0.35 : onFire ? 0.11 : 0.2) * load;
+        if (fx.trail) plumePuff(p.x, y + 0.3, p.z, H, base, top, dark, wreck ? 1.2 : 1.0);
+        else {
+          s.sT *= 4;
+          fx.smoke(p.x, y + 0.5, p.z, dark, base);
+        }
       }
       if (wreckT >= 0) continue;
       // flames
@@ -195,6 +233,7 @@ window.WW = window.WW || {};
     },
     // Share of the smoke budget in use (>1 = over budget). Other emitters (planes, stacks) scale by this.
     load: function () { return load; },
+    stackSmoke: function (ship, f, dt) { try { stackSmoke(ship, f, dt); } catch (e) { /* never throw */ } },
     want: function (perSec) { demand += perSec * 0.35; }, // other emitters (plane trails) report their puff rate
     clearAll: function () {
       for (var i = 0; i < burning.length; i++) if (burning[i].dmgSites) burning[i].dmgSites.length = 0;

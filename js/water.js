@@ -82,7 +82,7 @@ window.WW = window.WW || {};
       // the horizon colour depends on where we look: peach toward the sun, soft blue away from it
       vec2 az = normalize(-v.xz + 1e-5);
       float toward = dot(az, normalize(sunDir.xz)) * 0.5 + 0.5;
-      vec3 hz = mix(hzAway, hzSun, pow(toward, 2.5));
+      vec3 hz = mix(hzAway, hzSun, pow(toward, 5.0));
       col = mix(col, hz, fr * 0.35);
       alpha = mix(alpha, 1.0, fr);
       gl_FragColor = vec4(col, alpha);
@@ -102,7 +102,7 @@ window.WW = window.WW || {};
         cDeep: { value: WW.pastel(0x2a94c4, 0.05) }, cAbyss: { value: WW.pastel(0x236ca8, 0.05) },
         cFoam: { value: new THREE.Color(0xfffaf2) }, cSky: { value: WW.pastel(0xc4d6ea, 0.1) },
         sunDir: { value: (WW.sky && WW.sky.SUN_DIR) || new THREE.Vector3(-0.86, 0.36, 0.36).normalize() }, sunCol: { value: WW.pastel(0xffd2a0) },
-        hzAway: { value: WW.pastel(0xbfd3ee, 0.1) }, hzSun: { value: WW.pastel(0xffc89a, 0.1) }
+        hzAway: { value: WW.pastel(0xb4d2f2, 0.1) }, hzSun: { value: WW.pastel(0xffc89a, 0.1) }
       }]),
       vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true,
       extensions: { derivatives: true }

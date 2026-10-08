@@ -229,6 +229,12 @@ window.WW = window.WW || {};
       rr(2.6, 3.8), 0.5 * k, rr(1.2, 1.6) * k,
       col(dark ? (R() < 0.45 ? 0x55514e : 0x6e6964) : 0xd4d0c8), col(dark ? 0xc4bfb8 : 0xe8e2d8), -0.25, 0.25, rr(-0.5, 0.5));
   }
+  // plane smoke trail: one puff that starts near full size so neighbours overlap into a continuous trail
+  function trail(x, y, z, dark, size, life) {
+    if (!P) return; size = size || 0.5;
+    P.smoke.spawn(x, y, z, rr(-0.1, 0.1) + windX() * 0.5, 0.3, rr(-0.1, 0.1) + windZ() * 0.5,
+      life || 1.3, 0.85 * size, size, col(dark ? 0x4a4744 : 0x8a8680), col(dark ? 0x9a958e : 0xb8b3ab), 0, 0.3, rr(-0.4, 0.4));
+  }
   function fire(x, y, z) {
     if (!P || R() > 0.55) return;             // throttle: ships call this every frame
     P.glow.spawn(x + rr(-0.35, 0.35), y + rr(0, 0.2), z + rr(-0.35, 0.35), rr(-0.3, 0.3) + windX() * 0.5, rr(1.4, 2.6), rr(-0.3, 0.3) + windZ() * 0.5,
@@ -277,7 +283,7 @@ window.WW = window.WW || {};
   WW.fx = {
     init: init, update: update, clearAll: clearAll,
     splash: splash, explosion: explosion, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
-    fire: fire, wake: wake, oilSlick: oilSlick, sparks: sparks,
+    fire: fire, wake: wake, oilSlick: oilSlick, sparks: sparks, trail: trail,
     _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; }
   };
 })();
