@@ -139,8 +139,9 @@ window.WW = window.WW || {};
     // Hard threats keep the boat down (and abort a surfacing). A destroyer out past DD_SAFE, or a target still
     // closing, only keeps it down while the air is fresh: with the clock past REFRESH it surfaces now, while it is
     // still safe, rather than be forced up later in the middle of a hunt.
-    const hard = L.ddD < SUB.DD_SAFE || L.air || L.near || a.evadeT > 0 || (d < SUB.DIVE_TGT && a.diveT < SUB.REFRESH + 4);
-    const soft = L.ddD < SUB.DIVE_DD || d < SUB.DIVE_TGT;
+    const up = WW.nightOps && WW.nightOps.subUp(); // night: attack on the surface (night_ops.js)
+    const hard = L.ddD < SUB.DD_SAFE || L.air || L.near || a.evadeT > 0 || (!up && d < SUB.DIVE_TGT && a.diveT < SUB.REFRESH + 4);
+    const soft = L.ddD < SUB.DIVE_DD || (!up && d < SUB.DIVE_TGT);
     if (a.forcedT > 0) { a.forcedT -= dt; ship.wantSurface = true; }
     else ship.wantSurface = !hard && (!soft || a.diveT > SUB.REFRESH);
     a.evadeT -= dt;

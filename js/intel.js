@@ -90,8 +90,9 @@ window.WW = window.WW || {};
     for (i = 0; i < ships.length; i++) {
       o = ships[i];
       if (o.nation === nation || !usableShip(o)) continue;
-      var size = o.submerged ? 0 : R.SEEN[o.type] || 100;
-      if (o.firedAt > now - R.FLASH_T) size = Math.max(size, R.FLASH[o.firedCal] || 0);
+      var size = o.submerged ? 0 : R.SEEN[o.type] || 100, glow = o.firedAt > now - R.FLASH_T ? R.FLASH[o.firedCal] || 0 : 0;
+      var NO = WW.nightOps; // night_ops.js: darkness, rain, star shells, searchlights (seeR), USN ship radar (radarR)
+      if (!NO) size = Math.max(size, glow);
       var seen = false;
       for (j = 0; j < ships.length && !seen; j++) {
         s = ships[j];
@@ -99,8 +100,13 @@ window.WW = window.WW || {};
         d2 = WW.dist2(s.x, s.z, o.x, o.z);
         if (o.type === 'submarine' && s.stats.depthCharges && d2 < R.SONAR * R.SONAR) { sight(nation, S, o, s, o.submerged ? 'sonar' : 'visual', now); seen = !o.submerged; continue; }
         if (!size) continue;
-        r = size * (s.submerged ? R.PERISCOPE : R.EYE[s.type] || 0.8);
+        r = (NO ? NO.seeR(s, o, size, glow) : size) * (s.submerged ? R.PERISCOPE : R.EYE[s.type] || 0.8);
         if (d2 < r * r && los(s, o)) { sight(nation, S, o, s, 'visual', now); seen = true; }
+      }
+      for (j = 0; j < ships.length && !seen && NO && !o.submerged; j++) { // USN SG surface radar: through dark and rain
+        s = ships[j];
+        if (s.nation !== nation || !usableShip(s) || !(r = NO.radarR(s, o))) continue;
+        if (WW.dist2(s.x, s.z, o.x, o.z) < r * r && los(s, o)) { sight(nation, S, o, s, 'radar', now); seen = true; NO.stats.radarSights++; }
       }
       if (o.submerged) continue;
       for (j = 0; j < planes.length; j++) {
@@ -109,7 +115,7 @@ window.WW = window.WW || {};
         var sc = p.kind === 'scout';
         if (seen && !sc) continue;
         d2 = WW.dist2(p.x, p.z, o.x, o.z);
-        r = sc ? R.SCOUT : R.AIR;
+        r = (sc ? R.SCOUT : R.AIR) * (NO ? NO.airK(o) : 1);
         if (d2 >= r * r) continue;
         if (!seen) sight(nation, S, o, p, sc ? 'scout' : 'air', now);
         if (sc && d2 < R.SPOT * R.SPOT) { // scouts spot for the guns: combat.js SPOT_DISP
