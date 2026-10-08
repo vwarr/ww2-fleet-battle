@@ -55,6 +55,8 @@ window.WW = window.WW || {};
         line = [(who(s) || 'Next leader') + ' takes the lead', sqName(s) || ''];
       if (line) { said.add(key); return line; }
     }
+    const fb = fbLine(s);
+    if (fb) return fb;
     if (!isPlane || !s.alive || !s.squadron) return null;
     // the plane's own state
     const sq = sqName(s), key = s.t0id || (s.t0id = Math.random());
@@ -62,6 +64,28 @@ window.WW = window.WW || {};
     if (s.kind === 'fighter' && !s.target && s.state === 'attack' && s.foe && (s.foe.kind === 'torpedo' || s.foe.kind === 'dive') && !said.has('cap' + key)) {
       said.add('cap' + key); return [sq + ' CAP engages ' + (s.foe.kind === 'torpedo' ? 'torpedo bombers' : 'dive bombers'), who(s) || ''];
     }
+    return null;
+  }
+  // flying boats (air_flyingboats.js, air_patrol.js): a Catalina rescue, a shadower and the CAP that hunts it
+  const FBN = p => (p.nation === 'IJN' ? 'Mavis' : 'Catalina');
+  function fbLine(s) {
+    if (!s.pt || !s.alive) return null;
+    const k = s.t0id || (s.t0id = Math.random()), once = (id, line) => (said.has(id + k) ? null : (said.add(id + k), line));
+    if (s.kind === 'fighter' && s.foe && s.foe.kind === 'flyingboat' && s.foe.alive) return once('snoop', [(sqName(s) || 'Fighters') + ' jump the ' + FBN(s.foe), s.foe.mission === 'patrol' ? 'a snooper shadowing the fleet' : 'a flying boat']);
+    if (s.kind !== 'flyingboat') return null;
+    const n = s.task ? s.task.n : 0;
+    if (s.mission === 'rescue') {
+      if (s.state === 'inbound' || s.state === 'circle') return once('dumbo', ['Dumbo inbound', 'PBY Catalina' + (n ? ' · ' + n + ' in the water' : '')]);
+      if (s.state === 'afloat') return once('afloat', ['Dumbo on the water', 'picking up ' + (n ? n + ' ' : '') + 'survivors']);
+      if (s.state === 'liftoff') return once('lift', ['Dumbo away', s.boarded ? s.boarded + ' aboard' : 'survivors aboard']);
+      return null;
+    }
+    if (s.state === 'shadow') {
+      const c = s.shadowOf && WW.intel && WW.intel.known(s.nation, s.shadowOf), ty = c && WW.intel.typeOf ? WW.intel.typeOf(c) : null;
+      return once('shadow', [FBN(s) + ' shadowing the ' + (s.nation === 'IJN' ? 'fleet' : 'enemy'), 'reporting' + (ty ? ': ' + (KIND[ty] || ty) + (c.misid ? '?' : '') : '')]);
+    }
+    if (s.state === 'evade') return once('evade', [FBN(s) + ' hunted by fighters', 'running for home, low over the sea']);
+    if (s.state === 'bomb' && s.bombAt) return once('bomb', ['Mavis bombing run', 'on a lone ' + (KIND[s.bombAt.type] || 'ship')]);
     return null;
   }
   function tick() {
@@ -89,6 +113,14 @@ window.WW = window.WW || {};
       if (!p.alive || !p.squadron) continue;
       if (p.wave && p.wave.cag === p && p.wave.go && p.sk === 'form' && p.state === 'transit') add(5.5, 'chase', p, { dur: dur(12, 15) });
       else if (p.kind === 'fighter' && !p.target && p.wing === 0 && p.element && p.element.members.length >= 2 && p.state === 'transit') add(3.5, 'chase', p, { dur: dur(11, 14) });
+    }
+    // flying boats: a Catalina landing among the survivors, a Mavis shadowing the fleet or hunted by the CAP
+    for (const p of WW.world.planes) {
+      if (!p.alive || p.kind !== 'flyingboat') continue;
+      if (p.state === 'alight') add(7.5, 'chase', p, { dur: dur(12, 15) });
+      else if (p.state === 'afloat' || p.state === 'liftoff') add(6.5, 'orbit', p, { r: 30, dur: dur(13, 16), w: 0.05, hgt: 0.22 });
+      else if (p.state === 'shadow' || p.state === 'bomb') add(p.state === 'bomb' ? 6.5 : 4.5, 'chase', p, { dur: dur(11, 14) });
+      for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.foe === p) { add(7.5, 'ots', q, { dur: dur(10, 13) }); break; }
     }
   });
   // story mode title card (camera_story.js): shown only when the throttle allows; true if shown
