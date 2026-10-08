@@ -444,6 +444,9 @@ function wilson(k, n) {
   if (!n) return null; const z = 1.96, ph = k / n, d = 1 + z * z / n, c = (ph + z * z / (2 * n)) / d, h = z * Math.sqrt(ph * (1 - ph) / n + z * z / (4 * n * n)) / d;
   return [+(c - h).toFixed(3), +(c + h).toFixed(3)];
 }
+// loop min/max: Math.min(...a) overflows the call stack on long sample arrays (many seeds)
+const amin = a => { if (!a.length) return null; let m = Infinity; for (const v of a) if (v < m) m = v; return m; };
+const amax = a => { if (!a.length) return null; let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };
 const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 const ratio = (a, b) => (b > 0 ? a / b : null);
 function aggregate(rounds) {
@@ -455,11 +458,11 @@ function aggregate(rounds) {
   const firsts = k => med(rounds.map(r => r[k]).filter(v => v !== null));
   return {
     rounds: rounds.length,
-    cv_min_dist: cvd.length ? Math.min(...cvd) : null, cv_med_dist: med(cvd), cv_in_gun: ratio(S(r => r.cv.inGun), S(r => r.cv.samples)),
-    cv_closing: ratio(S(r => r.cv.closing), S(r => r.cv.thr)), cvcv_min: cvcv.length ? Math.min(...cvcv) : null,
+    cv_min_dist: amin(cvd), cv_med_dist: med(cvd), cv_in_gun: ratio(S(r => r.cv.inGun), S(r => r.cv.samples)),
+    cv_closing: ratio(S(r => r.cv.closing), S(r => r.cv.thr)), cvcv_min: amin(cvcv),
     air_drops: rounds.length ? S(r => r.air.drops) / rounds.length : null,
     pt_loiter: ratio(S(r => r.pt.loiter), S(r => r.pt.time)), pt_in_big: ratio(S(r => r.pt.inBig), S(r => r.pt.time)),
-    pt_pen_med: med(pen), pt_pen_max: pen.length ? Math.max(...pen) : null, pt_runs: ptN ? S(r => r.pt.spreads) / ptN : null,
+    pt_pen_med: med(pen), pt_pen_max: amax(pen), pt_runs: ptN ? S(r => r.pt.spreads) / ptN : null,
     pt_mg_big: ratio(S(r => r.pt.mgBig), S(r => r.pt.mgShots)),
     dd_sub_kills: ratio(S(r => r.dd.subDC), S(r => r.dd.subDeaths)), dd_react_med: med(react),
     dd_react_rate: ratio(react.length, react.length + S(r => r.dd.missed)), dd_episodes: react.length + S(r => r.dd.missed),
@@ -479,7 +482,7 @@ function aggregate(rounds) {
     usn_share: ratio(decided.filter(r => r.winner === 'USN').length, decided.length),
     bal_usn: ratio(rounds.filter(r => r.winner === 'USN').length, rounds.length), bal_ijn: ratio(rounds.filter(r => r.winner === 'IJN').length, rounds.length),
     usn_ci: wilson(decided.filter(r => r.winner === 'USN').length, decided.length),
-    len_med: med(lens), len_min: lens.length ? Math.min(...lens) : null, len_max: lens.length ? Math.max(...lens) : null,
+    len_med: med(lens), len_min: amin(lens), len_max: amax(lens),
     first_fire: firsts('firstFire'), first_contact: firsts('firstContact'), first_sight: firsts('firstSight'),
     sub_killed_by: (() => { const k = {}; for (const r of rounds) for (const n in r.dd.kinds) k[n] = (k[n] || 0) + r.dd.kinds[n]; return Object.entries(k).map(e => e.join(':')).join(',') || null; })(),
     stuck_who: C(r => r.stuckWho.map(w => 's' + r.seed + ':' + w)).join(' ') || null,
@@ -510,7 +513,11 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
   for (let k = 0; k < PAGES; k++) { // --pages K: K independent game pages run rounds in parallel
     const p = await b.newPage({ viewport: { width: 640, height: 360 } });
     p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
-    await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
+    // 'domcontentloaded' + retries: a long-running python http.server sometimes stalls the 'load' event
+    for (let tries = 0; ; tries++) {
+      try { await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 }); await p.waitForFunction(() => window.__sim && window.WW && WW.game, null, { timeout: 60000 }); break; }
+      catch (e) { if (tries >= 2) throw e; console.log(`page ${k}: load retry (${e.message.split('\n')[0]})`); }
+    }
     await p.waitForTimeout(1500);
     // stop the render loop driving the sim (setScale clamps at 0.1; the director's slow-motion warp too): we drive it
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
