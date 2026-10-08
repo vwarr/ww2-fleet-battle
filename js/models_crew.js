@@ -45,8 +45,8 @@ window.WW = window.WW || {};
   };
   var SKIN = 0xe2b994;
 
-  var meshes = null, mat4 = null, recs = [], cache = {}, colCache = {}, figs = [], nFigs = 0;
-  var _m, _l, _t, _v, _e, perf = { ms: 0, max: 0, n: 0, vis: 0, build: 0, model: 0 };
+  var meshes = null, arms = null, mat4 = null, recs = [], cache = {}, colCache = {}, figs = [], nFigs = 0;
+  var _m, _l, _t, _v, _e, _a, _q, perf = { ms: 0, max: 0, n: 0, vis: 0, build: 0, model: 0 };
 
   // ---- figure geometry (bottom at y = 0, facing +x), merged by hand: no BufferGeometryUtils in the UMD build ----
   function merged(parts) {
@@ -73,7 +73,7 @@ window.WW = window.WW || {};
     var G = WW.models._geo(), box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), sph = new THREE.SphereGeometry(0.5, 8, 6);
     var cap = new THREE.CylinderGeometry(0.5, 0.4, 1, 8).translate(0, 0.5, 0);
     var geos = [
-      merged([P(G.rbox, 0.09, 0.17, 0.155, 0, 0.16, 0), P(box, 0.045, 0.155, 0.042, 0, 0.17, 0.098, 0.12), P(box, 0.045, 0.155, 0.042, 0, 0.17, -0.098, -0.12)]),
+      merged([P(G.rbox, 0.09, 0.17, 0.155, 0, 0.16, 0)]),
       merged([P(box, 0.06, 0.175, 0.05, 0, 0, 0.033), P(box, 0.06, 0.175, 0.05, 0, 0, -0.033)]),
       merged([P(sph, 0.115, 0.12, 0.115, 0, 0.38, 0)]),
       merged([P(cap, 0.135, 0.042, 0.135, -0.004, 0.405, 0)])
@@ -87,7 +87,14 @@ window.WW = window.WW || {};
       WW.scene.add(m);
       return m;
     });
-    _m = new THREE.Matrix4(); _l = new THREE.Matrix4(); _t = new THREE.Matrix4(); _v = new THREE.Vector3(); _e = new THREE.Euler();
+    // arms: their own instanced mesh (2 per figure, own matrix buffer), pivot at the shoulder, hanging down -y
+    var ag = merged([P(box, 0.045, 0.155, 0.042, 0, -0.155, 0)]);
+    arms = new THREE.InstancedMesh(ag, meshes[0].material, MAX * 2);
+    arms.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    arms.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 6), 3); arms.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    arms.count = 0; arms.frustumCulled = false; arms.castShadow = true; arms.receiveShadow = true; arms.visible = false;
+    WW.scene.add(arms); meshes.push(arms);
+    _m = new THREE.Matrix4(); _l = new THREE.Matrix4(); _t = new THREE.Matrix4(); _v = new THREE.Vector3(); _e = new THREE.Euler(); _a = new THREE.Matrix4(); _q = new THREE.Matrix4();
   }
   function cols(nation, role) {
     var k = nation + role;
@@ -142,6 +149,28 @@ window.WW = window.WW || {};
     }
     return best;
   }
+  // top-surface height map (0.25-unit cells, ship-local) for scorch decals (damage_visuals.js): the median of the
+  // highest surface over a 3 x 3 sample, so thin masts and rails do not count
+  function topMap(grid, type) {
+    var a = HP[type], S = 0.25, nx = Math.ceil(a[0] / S) + 2, nz = Math.ceil((type === 'carrier' ? 6 : a[1]) / S) + 2;
+    var x0 = -a[0] / 2 - S, z0 = -(nz - 1) * S / 2, y = new Float32Array(nx * nz), smp = [];
+    for (var i = 0; i < nx; i++) for (var k = 0; k < nz; k++) {
+      smp.length = 0;
+      for (var di = -1; di <= 1; di++) for (var dk = -1; dk <= 1; dk++) {
+        hits(grid, x0 + i * S + di * 0.09, z0 + k * S + dk * 0.09, _h);
+        var tp = -1e9, lim = deckY(type, x0 + i * S) + 1.4;   // decks and low roofs, not mast platforms
+        for (var j = 0; j < _h.length; j += 2) if (_h[j + 1] > 0 && _h[j] > tp && _h[j] < lim) tp = _h[j];
+        smp.push(tp);
+      }
+      smp.sort(function (p, q) { return p - q; }); y[i * nz + k] = smp[4];
+    }
+    return { x0: x0, z0: z0, S: S, nx: nx, nz: nz, y: y };
+  }
+  function topAt(c, x, z) {
+    var i = Math.round((x - c.x0) / c.S), k = Math.round((z - c.z0) / c.S);
+    if (i < 0 || k < 0 || i >= c.nx || k >= c.nz) return null;
+    var y = c.y[i * c.nz + k]; return y > -1e8 ? y : null;
+  }
   function deckY(type, x) { var a = HP[type]; return WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1)).yt; }
   function halfW(type, x) { var a = HP[type]; return WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1)).w; }
   function lane(list, x, z, y, range) {   // contiguous walkable strip along x at this z (same deck level)
@@ -165,6 +194,7 @@ window.WW = window.WW || {};
       var lm = WW.models._lineMat(), list = [];
       m.group.traverse(function (o) { if (o.isMesh && o.material !== lm && !(Array.isArray(o.material) && o.material[0] === lm)) list.push(o); });
       list = triGrid(list);
+      out.top = topMap(list, type);
       var side = type === 'carrier' && nation === 'IJN' ? -1 : 1;
       (ST[type] || []).forEach(function (s) {
         var tu = s[5] != null ? m.turrets[s[5]] : null, x = s[0], z = s[1] * side, gx = x, gz = z;
@@ -198,31 +228,27 @@ window.WW = window.WW || {};
     if (meshes) meshes.forEach(function (m) { m.count = 0; m.visible = false; });
   }
 
-  // fire or fresh hit -> the 2 nearest deck hands run to it
+  // fire or fresh hit -> 2 deck hands run to it (crew_ops.js replaces this with damage-control parties and much more)
   function fireCheck(rec, now) {
+    if (WW.crewOps) return WW.crewOps.ship(rec, now);
     var sh = rec.ship, best = null, S = sh.dmgSites || [];
     for (var i = 0; i < S.length; i++) if (S[i].fire > 0 && (!best || S[i].sev > best.sev)) best = S[i];
     var tgt = best || (sh._crewHit && now - sh._crewHit.t < 6 ? sh._crewHit : null);
-    if (tgt !== rec.job) {
-      rec.job = tgt;
-      rec.sailors.forEach(function (s) { if (s.job) { s.job = null; s.tx = s.st.x; s.mode = 'walk'; } });
-      if (!tgt) return;
-      var c = rec.sailors.filter(function (s) { return s.st.lane && !s.tur && (s.mode === 'idle' || s.mode === 'walk'); });
-      c.forEach(function (s) { var ln = s.st.lane; s._k = Math.abs(WW.clamp(tgt.lx, ln.x0, ln.x1) - tgt.lx) + Math.abs(WW.clamp(tgt.lx, ln.x0, ln.x1) - s.x) * 0.2 + Math.abs(s.z - tgt.lz) * 0.5; });
-      c.sort(function (a, b) { return a._k - b._k; });
-      c.slice(0, 2).forEach(function (s, k) {
-        var ln = s.st.lane, d = s.x < tgt.lx ? -1 : 1;
-        s.job = tgt; s.tx = WW.clamp(tgt.lx + d * (0.55 + 0.35 * k), ln.x0, ln.x1); s.mode = 'run';
-      });
-    }
+    if (tgt === rec.job) return;
+    rec.job = tgt;
+    rec.sailors.forEach(function (s) { if (s.job) { s.job = null; s.tx = s.st.x; s.mode = 'walk'; } });
+    if (tgt) rec.sailors.filter(function (s) { return s.st.lane && !s.tur && s.mode === 'idle'; }).slice(0, 2).forEach(function (s) {
+      s.job = tgt; s.tx = WW.clamp(tgt.lx, s.st.lane.x0, s.st.lane.x1); s.mode = 'run';
+    });
   }
   function startAbandon(rec) {   // far ships keep this state frozen until the camera comes close
     rec.sink = true;
+    if (WW.crewOps && !(rec.ship.type === 'submarine')) WW.crewOps.abandon(rec, sailor);   // hands pour up from below
     var below = rec.ship.type === 'submarine' && (rec.ship.depthY < -0.08 || !rec.ship.wantSurface); // crew was below
     rec.sailors.forEach(function (s) {
       if (below) { s.mode = 'gone'; return; }
       if (s.tur) { s.tur.updateMatrix(); _v.set(s.x, s.y, s.z).applyMatrix4(s.tur.matrix); s.x = _v.x; s.y = _v.y; s.z = _v.z; s.f += s.tur.rotation.y; s.tur = null; }
-      s.mode = 'flee'; s.wait = R() * 2.2; s.below = R() < 0.25; s.job = null;
+      s.mode = 'flee'; s.wait = R() * 2.2; s.below = R() < 0.25; s.job = null; s.jk = null;
       s.side = Math.abs(s.z) > 0.05 ? Math.sign(s.z) : (R() < 0.5 ? -1 : 1);
       s.ez = s.side * (rec.ship.type === 'carrier' && s.y > 1.9 ? 2.6 : halfW(rec.ship.type, s.x) + 0.1);
     });
@@ -230,6 +256,7 @@ window.WW = window.WW || {};
 
   function stepSailor(s, rec, dt, t) {
     var a, ln = s.st.lane;
+    if (WW.crewOps && WW.crewOps.step(s, rec, dt, t)) { a = WW.angleDiff(s.f, s.ft); s.f += a * Math.min(1, dt * 6); return; }
     switch (s.mode) {
       case 'idle':
         s.wait -= dt;
@@ -247,7 +274,7 @@ window.WW = window.WW || {};
         break;
       }
       case 'fight':
-        if (s.job) s.ft = Math.atan2(-(s.job.lz - s.z), s.job.lx - s.x) + Math.sin(t * 2.6 + s.ph) * 0.35;
+        if (s.job) s.ft = Math.atan2(-(s.job.lz - s.z), s.job.lx - s.x) + (s.job.fire > 0 ? Math.sin(t * 1.3 + s.ph) * 0.12 : Math.sin(t * 2.6 + s.ph) * 0.35);
         break;
       case 'flee':
         s.wait -= dt;
@@ -256,7 +283,7 @@ window.WW = window.WW || {};
         s.ft = s.side > 0 ? -PI / 2 : PI / 2;
         a = 1.6 * dt;
         if (Math.abs(s.ez - s.z) > a && Math.abs(s.z) < Math.abs(s.ez)) s.z += s.side * a;
-        else { // over the side: switch to world space
+        else if (!(WW.crewOps && WW.crewOps.atRail(s, rec))) { // over the side (or down a cargo net, crew_ops.js): world space
           var sh = rec.ship, G = sh.group.matrix;
           _v.set(s.x, s.y, s.z).applyMatrix4(G);
           var dx = G.elements[8] * s.side, dz = G.elements[10] * s.side, l = Math.hypot(dx, dz) || 1;
@@ -272,10 +299,20 @@ window.WW = window.WW || {};
   }
 
   // write one instance (world matrix in _m); returns false when full or under water (wet: lifeboat seats sit low)
-  function put(n, c, wet) {
+  // arms (s: sailor with aL / aR forward swing and oL / oR outward flare, radians; none: hanging)
+  function put(n, c, wet, s) {
     if (n >= MAX || (!wet && _m.elements[13] < 0.03)) return false;
     _m.toArray(mat4.array, n * 16);
     for (var k = 0; k < 3; k++) { var a = meshes[k === 2 ? 3 : k].instanceColor.array; a[n * 3] = c[k].r; a[n * 3 + 1] = c[k].g; a[n * 3 + 2] = c[k].b; }
+    var ca = arms.instanceColor.array;
+    for (k = 0; k < 2; k++) {
+      var sd = k ? -1 : 1, fw = s ? (k ? s.aR : s.aL) || 0 : 0.15, o = s ? (k ? s.oR : s.oL) : 0.12;
+      if (o == null) o = 0.12;
+      _a.makeTranslation(0, 0.325 * SCALE, sd * 0.098 * SCALE);
+      _a.multiply(_q.makeRotationFromEuler(_e.set(-sd * o * (Math.cos(fw) < 0 ? -1 : 1), 0, fw, 'XZY')));
+      _t.multiplyMatrices(_m, _a); _t.toArray(arms.instanceMatrix.array, (n * 2 + k) * 16);
+      ca[(n * 2 + k) * 3] = c[0].r; ca[(n * 2 + k) * 3 + 1] = c[0].g; ca[(n * 2 + k) * 3 + 2] = c[0].b;
+    }
     return true;
   }
 
@@ -294,28 +331,33 @@ window.WW = window.WW || {};
       g.updateMatrix();
       rec.fireT -= dt;
       if (rec.fireT <= 0 && !rec.sink) { rec.fireT = 0.5; fireCheck(rec, now); }
+      if (WW.crewOps) WW.crewOps.frame(rec, dt, now);
       for (j = 0; j < rec.sailors.length; j++) {
         var s = rec.sailors[j];
         if (s.mode === 'gone') continue;
         stepSailor(s, rec, dt, now);
-        if (s.mode === 'jump') _m.makeRotationFromEuler(_e.set(0, s.yaw, -s.tum, 'YXZ')).setPosition(s.wp);
+        if (s.mode === 'jump') { _m.makeRotationFromEuler(_e.set(0, s.yaw, -s.tum, 'YXZ')).setPosition(s.wp); s.aL = 2.7; s.aR = 2.3; s.oL = s.oR = 0.5; }
         else {
           var walk = s.mode === 'walk' || s.mode === 'run' || (s.mode === 'flee' && s.wait <= 0);
-          var bob = walk ? Math.abs(Math.sin(now * (s.mode === 'walk' ? 9 : 15) + s.ph)) * 0.025 : 0;
-          _l.makeRotationY(s.f + (s.mode === 'idle' ? Math.sin(now * 0.7 + s.ph) * 0.06 : 0));
-          if (s.sc !== 1) _l.scale(_v.set(s.sc, s.sc, s.sc));
-          _l.setPosition(s.x, s.y + bob, s.z);
+          var sw = walk ? Math.sin(now * (s.mode === 'walk' ? 9 : 15) + s.ph) : 0, bob = Math.abs(sw) * 0.025;
+          s.aL = sw * 0.45; s.aR = -sw * 0.45; s.oL = s.oR = null; s.cr = 0; s.lean = 0; s.hop = 0; s.dx = 0;
+          if (WW.crewOps) WW.crewOps.pose(s, rec, now);   // working / cheering / saluting poses
+          _l.makeRotationY(s.f + (s.mode === 'idle' && !s.still ? Math.sin(now * 0.7 + s.ph) * 0.06 : 0));
+          if (s.lean) _l.multiply(_t.makeRotationZ(-s.lean));
+          if (s.sc !== 1 || s.cr) _l.scale(_v.set(s.sc, s.sc * (1 - 0.28 * s.cr), s.sc));
+          _l.setPosition(s.x + Math.cos(s.f) * s.dx, s.y + bob + s.hop, s.z - Math.sin(s.f) * s.dx);
           if (s.tur) { s.tur.updateMatrix(); _t.multiplyMatrices(s.tur.matrix, _l); _m.multiplyMatrices(g.matrix, _t); }
           else _m.multiplyMatrices(g.matrix, _l);
         }
-        if (put(n, s.col)) n++;
+        if (put(n, s.col, false, s)) n++;
       }
     }
     if (WW.lifeboats && WW.lifeboats.figures) WW.lifeboats.figures();
     for (i = 0; i < nFigs; i++) { var fg = figs[i]; if (cam.distanceToSquared(_v.setFromMatrixPosition(fg.m)) > FAR * FAR) continue; _m.copy(fg.m); if (put(n, fg.c, true)) n++; }
     nFigs = 0;
-    meshes.forEach(function (m) { m.count = n; m.visible = n > 0; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
-    mat4.needsUpdate = true;
+    if (WW.crewProps) WW.crewProps.update(dt);   // hose streams and cargo nets (crew_props.js)
+    meshes.forEach(function (m) { m.count = m === arms ? n * 2 : n; m.visible = n > 0; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+    mat4.needsUpdate = true; arms.instanceMatrix.needsUpdate = true;
     var ms = performance.now() - t0 - (perf.build - b0); // steady-state cost (one-time station builds excluded)
     perf.ms = perf.ms * 0.95 + ms * 0.05; perf.max = Math.max(perf.max * 0.999, ms); perf.vis = n;
   }
@@ -347,7 +389,8 @@ window.WW = window.WW || {};
       var n = 0; while (n < k && rec.spare.length) { rec.sailors.push(sailor(ship, rec.spare.shift())); n++; }
       return n;
     },
-    stations: stations,
+    stations: stations, halfW: halfW, deckY: deckY, HP: HP, recs: recs,
+    top: function (type, nation, x, z) { var c = stations(type, nation).top; return c ? topAt(c, x, z) : null; },
     stats: function () {
       var sl = 0; recs.forEach(function (r) { sl += r.sailors.filter(function (s) { return s.mode !== 'gone'; }).length; });
       return { ships: recs.length, sailors: sl, visible: perf.vis, ms: +perf.ms.toFixed(3), maxMs: +perf.max.toFixed(3), buildMs: Math.round(perf.build), modelMs: Math.round(perf.model) };

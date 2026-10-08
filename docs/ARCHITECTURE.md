@@ -37,9 +37,12 @@ js/models_detail.js     fine ship detail, merged into one mesh per material
 js/models_planes.js     WW.models.buildPlane
 js/models_scout.js      WW.models.buildScout: scout floatplanes
 js/models_flyingboats.js WW.models.buildFlyingBoat: PBY Catalina / H6K Mavis (lofted with models_planes.js WW.models._planeKit)
-js/models_crew.js       WW.crew: tiny sailors on every ship (instanced), deck stations, idle / fire / abandon-ship motion
+js/models_crew.js       WW.crew: tiny sailors on every ship (instanced, posable arms), deck stations, idle / fire / abandon-ship motion
+js/crew_ops.js          WW.crewOps: crews at work: AA crews, loaders, damage-control hoses, lookouts, cheer, salute, deck crews, cargo nets
+js/crew_props.js        WW.crewProps: hose water streams and cargo nets (pooled, ship-local)
 js/effects.js           WW.fx: pooled particle effects
 js/damage.js            WW.damage: fires and smoke at hit points, WW.wind
+js/damage_visuals.js    WW.dmgVis: scorch / hole decals, knocked-out turrets, toppled masts, bent funnels, settling, deck wrecks
 js/combat.js            WW.combat: projectile pool, shells, anti-aircraft fire
 js/combat_weapons.js    torpedoes, bombs, depth charges
 js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts, plane jinking
@@ -112,14 +115,14 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 
 Each animation frame (`main.js`, `frame`):
 
-1. Advance the simulation. For each step (`step`):
+1. `WW.dmgVis.unpose` (the sim must not see the visual settling), then advance the simulation. For each step (`step`):
    1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
    2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.endgame.update` (escapes, survivor pickups, scuttling), `WW.shipFires.update` (fires, flooding, damage control, once a sim second) and `WW.charge.update` (smoke clouds, escort charges)
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
    5. `WW.fx.update`, then `WW.lifeboats.update`
    6. Round logic: victory, time limit and the next round
-2. `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
+2. `WW.dmgVis.pose` (visual settling and trim), `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.dmgVis.draw` (decals on the posed hulls), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
 3. Render through `WW.post.render` (HDR, bloom, tone curve). If `WW.post` is not available, render directly.
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
@@ -129,7 +132,7 @@ Each animation frame (`main.js`, `frame`):
 `index.html?sim` sets `WW.simOnly` (and `WW.cfg.SIM_ONLY`) in `core.js`, before any module initializes. The page runs the full simulation and renders nothing. The headless sim tests use it; players never see it.
 
 - `main.js bootSim()` makes a plain `THREE.Scene` and camera, but no `WebGLRenderer`. It initializes only `terrain`, `models`, `combat`, `ships` and `air`, starts the game as usual (`?auto` or setup), and never calls `requestAnimationFrame`. The test drives `__sim.fastForward`.
-- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` and `lifeboats` (no `init`, no `update`). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
+- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats` and `dmgVis` (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
 - Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
 - The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page and a sim-only page; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
 - Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
@@ -148,6 +151,7 @@ node tests/determinism.js [seed] [seconds]           # same seed, same round: on
 node tests/determinism.js --cross 1,2,3 300          # rendered page vs sim-only page (always launches both)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
 node tests/endgame_shots.js rescue 19                # render-mode endgame screenshots (cripple 9, rescue 19, retreat 8)
+node tests/crew_shots.js [outdir] [scene,scene]     # render-mode close shots: crews at work, battle damage (forced through test hooks)
 ```
 
 `--pages` (sim_behaviour, sim_rounds) defaults to 6, measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier), so 6 is the compromise. The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game.
@@ -226,15 +230,46 @@ Materials are `MeshToonMaterial` with a shared 5-step gradient and baked vertex 
 ```js
 WW.crew = { init(), update(rdt), clearAll(), stats() -> { ships, sailors, visible, ms, maxMs, buildMs },
             addFigure(worldMatrix, nation, role),   // one extra figure this frame (lifeboats)
-            adopt(ship, n), stations(type, nation), SCALE, FAR };
+            adopt(ship, n), stations(type, nation), top(type, nation, x, z), halfW, deckY, HP, recs, SCALE, FAR };
+WW.crewOps = { ship(rec, now), frame(rec, dt, now), step(s, rec, dt), atRail(s, rec), abandon(rec, mk), pose(s, rec, now), hullZ(type, x, y) };
+WW.crewProps = { init(), update(dt), hose(ship, hx, hy, hz, tx, ty, tz, dt), clearAll(), stats() };
 WW.lifeboats = { init(), update(dt), figures(), clearAll(), stats() };
 ```
 
 - Visual only: `Math.random`, no effect on the simulation. Both clear themselves on `roundStart` and `setupStart`.
-- Sailors are about 0.48 units tall (`SCALE` 1.1). That is larger than true scale, like the planes' `PLANE_SCALE`, so they read in close shots. All sailors in the scene are 4 `InstancedMesh`es (shirt and arms, trousers, head, cap). The 4 meshes share one instance-matrix buffer and use per-instance colours: USN dungarees with a white cap, IJN whites with a dark cap, khaki officers, grey-helmeted gunners and coloured carrier deck jerseys.
+- Sailors are about 0.48 units tall (`SCALE` 1.1). That is larger than true scale, like the planes' `PLANE_SCALE`, so they read in close shots. All sailors in the scene are 4 `InstancedMesh`es (shirt, trousers, head, cap) that share one instance-matrix buffer, plus a 5th for the arms (2 instances per figure, its own matrix buffer, pivot at the shoulder). Per-instance colours: USN dungarees with a white cap, IJN whites with a dark cap, khaki officers, grey-helmeted gunners and coloured carrier deck jerseys.
+- Poses: each frame a sailor gets an arm swing forward (`aL`, `aR`, radians; 0 hangs, π is straight up) and an outward flare (`oL`, `oR`), a crouch `cr` (0..1, the body squashes by up to 28%), a forward `lean`, a `hop` and a recoil offset `dx` along its facing. Walking swings the arms; `WW.crewOps.pose` sets the working poses.
+- `stations()` also bakes a top-surface height map per type and nation (`top(type, nation, x, z)`: decks and low roofs up to 1.4 above the hull deck, the median of a 3 × 3 sample, so masts and rails do not count). `damage_visuals.js` puts its deck decals there.
 - Stations per type are in ship-local coordinates (carrier 13, battleship 10, cruiser 7, destroyer 5, PT boat 3, submarine 3). The surplus valid stations are spares for rescued sailors. Deck heights come from vertical-line hits on a throwaway model of each type and nation, made one time in `init`. A station that would be in the air, inside superstructure or without head room is dropped. Each deck sailor also gets a walkable lane along x.
-- `WW.crew.update` runs each frame on real time. Sailors idle, sway, look around and walk a step along their lane. Two of them run to the worst fire site (`ship.dmgSites`) or to a fresh hit (`shipHit`). The PT boat gunner turns with his mount. When the ship sinks, the sailors go below or run to the rail and jump. A sailor whose feet go under water is hidden. A submarine's crew shows only while it is surfaced. Ships more than `FAR` (115) units from the camera are skipped. Wrecks have no crew.
+- `WW.crew.update` runs each frame on real time. Sailors idle, sway, look around and walk a step along their lane. The PT boat gunner turns with his mount. When the ship sinks, up to 4 more hands come up from below, and the sailors go below, run to the rail and jump, or climb down a cargo net (`crew_ops.js`). A sailor whose feet go under water is hidden. A submarine's crew shows only while it is surfaced. Ships more than `FAR` (115) units from the camera are skipped. Wrecks have no crew.
 - `WW.lifeboats.update` runs on simulation time. 1.2 s into a sinking, whaleboats (carrier 4, battleship 3, cruiser 2) or 1 raft (destroyer, submarine, PT boat) launch from the sides. Every 3 s, each boat picks its goal: the destroyer sent to rescue survivors near it (`WW.endgame.rescuerNear`), else, while survivors near it still wait for a rescuer (`WW.endgame.taskNear`), the sinking position (it lies to there), else the nearer of a live friendly ship or the shore (a ring search with `WW.terrain.depthAt`, sized from `WW.cfg`). It rows at 1.2 units/s, steers around hulls and keeps off land. A friendly ship picks it up (its sailors join that ship's crew through `WW.crew.adopt`). On land it beaches and its sailors stand on the sand until the round ends. With no goal for 90 s, it fades. The pool has 36 boats.
+
+### crew_ops.js, crew_props.js
+
+Visual only (`Math.random`, real time); every listener returns at once in sim-only mode or for a ship without a crew. `models_crew.js` calls `crewOps.ship` every 0.5 s per near ship (jobs), `frame` per near ship and frame, `step` / `atRail` for the custom modes, `abandon` when the ship starts to sink and `pose` per sailor; `crewProps.update` runs at the end of `crew.update`.
+
+- AA crews (`aaLightFired`, `aaHeavyFired`): for ~1 s the gunners (role `g` and mount-bound sailors) face the target, crouch, grip and shake with the recoil (a harder kick on a heavy salvo).
+- Gun crews (`shellFired`): 2 deck hands walk to just aft of (or forward of) the firing turret and pass shells (arms pumping) until 5 s after the last shot. Near a firing big or medium turret, idle hands put their hands to their ears for a moment.
+- Damage-control parties: every 0.5 s the worst 1 (carrier, battleship: 2) burning `ship.dmgSites` get 2 + ⌊severity⌋ hands (2–4), the nearest along their lanes (they may leave loading or a look at a hit). The lead stands ~1.5 units off and plays a hose: `crewProps.hose` sprays ~70 droplets/s along a parabola in ship-local space (the stream stays on the moving deck); a small white steam puff rises from the fire now and then. When the site stops burning they walk back. A fresh hit without fire still draws 2 hands to look.
+- Lookouts: on a first `contact` (ships of that side within 400 units) or when an enemy plane comes within 85 units (at most every 12 s), an officer and one hand point at it for 3.5–5 s.
+- Cheer: an enemy ship sinking within 160 units, or a plane the ship fired at going down (`killedBy`, or shot at in the last 2.5 s), starts a wave of arms-up and hops along the deck, bow to stern.
+- Salute: a friendly ship sinking within 80 units: the crew stands still (no sway) facing her for 12 s; officers salute.
+- Carrier deck: plane directors (yellow) circle an arm while a plane holds for launch and point down the deck during its run; the hand nearest the stern holds out his arms like an LSO's paddles for a plane on final and waves both arms overhead for a wave-off; 2 deck hands run to chock a plane that has just trapped (`state === 'rollout'`), crouch beside it, then return. All of it is read from `ship._deck` and the plane states; nothing is written.
+- Cargo nets: at the rail, 70% of the sailors of a carrier, battleship, cruiser or destroyer climb down a net (up to 4, 3, 3, 2 nets per ship, 4 sailors each, staggered) facing the hull, arms climbing, then drop into the water with a small splash. `crewProps` hangs each net (rope-grid canvas texture, alpha-tested) from the rail to the water, following the hull's flare, in ship-local space.
+
+### damage_visuals.js
+
+```js
+WW.dmgVis = { init(), pose(rdt), unpose(), draw(rdt), clearAll(), topple(ship, i), stats() };
+```
+
+Visual only (`Math.random`, real time, initialised only in render mode). `damage.js hit` emits `dmgSite` (`{ ship, lx, ly, lz, kind, cal, amount }`, ship-local, after the site is stored); `ship_fires.js` emits `deckHit`.
+
+- Decals: 2 pooled `InstancedMesh`es of unlit, alpha-blended planes (`depthWrite` off, polygon offset): soft char scorches (360) and shell holes (220: a black ragged hole, torn grey plating, a rust ring). A shell scorches the deck or roof under it (`WW.crew.top`), size by calibre, and may hole the hull side near the waterline (small 20%, medium 45%, big 60%); a torpedo leaves a big hole at the waterline with a scorch above; a bomb a crater and a wide scorch. At most 12 deck and 10 side marks per ship (carrier +4): a further hit grows and darkens the nearest mark instead. Marks follow the hull (group matrix) and knocked-out turrets.
+- Knocked-out turrets (`ai.turrets[i].disabled`, polled): the turret's merged gun mesh (the child that reaches furthest forward) droops 13–20° about its trunnions, the house turns 17–37° askew (`ships_ai` never writes a disabled turret's rotation again, and nothing in the sim reads it), a scorch and a hole on its roof, a small explosion.
+- Masts and funnels (`PARTS`, per type and nation, ship-local boxes): a heavy hit (big or medium shell, bomb, torpedo) under 60% hp topples a mast or bends a funnel within ~3 units with chance 0.35 (under 30% hp any of them, 0.25). A mast carrying the admiral's flag hoist (`admirals_flags.js`) takes it down with it. The part's vertices in the ship's merged static meshes (cloned for that ship, disposed with it) rotate about its foot: masts fall 57–77° (mostly aft for forward masts and forward for aft ones, sometimes over the side) with a small bounce; funnels bend 20–31° above their base. A bent funnel's stack marker turns with it, so the smoke leaves the new mouth.
+- Settling: under 75% hp (or flooding, `ship.flood`) a ship sinks lower, by up to 0.1 + 0.012 × length units, and trims down by its damaged end (up to min(0.05, 0.6 / length) rad), easing in over seconds, fading out in the first 3 s of a sinking. `pose` adds it to the group after the sim steps of a frame; `unpose` (start of the next frame, and `fastForward`) restores the sim pose if nothing changed it since, so sim code never sees it.
+- Deck fire (`deckHit`): 1–4 burnt-out parked planes (charcoal `InstancedMesh`, 18 at most) near the hit, burning 25–45 s (fire and smoke puffs from them, no lights), plus wide scorches and a crater.
 
 ### effects.js
 
