@@ -33,6 +33,7 @@ js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
 js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship type
 js/aircraft.js          WW.air, WW.Plane: carrier planes
+js/air_strikes.js       WW.strike: strike waves (form-up, vics), sequential dive bombing, anvil torpedo attack
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/post.js              WW.post: HDR render target, bloom, tone curve

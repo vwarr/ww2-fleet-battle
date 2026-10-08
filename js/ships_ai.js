@@ -255,6 +255,7 @@ window.WW = window.WW || {};
           if (i < hg.dive) a.queue.push({ kind: 'dive', target: tgt });
           if (i < hg.torpedo) a.queue.push({ kind: 'torpedo', target: tgt });
         }
+        if (WW.strike) WW.strike.newWave(ship, tgt, a.queue); // air_strikes.js: form up before departing
       }
     }
     a.launchT -= dt;

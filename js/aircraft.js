@@ -237,6 +237,7 @@ window.WW = window.WW || {};
       if (this.target === null && this.t > 1 && this.wasEscort) { this.state = 'return'; return; }
       if (t) {
         this.wasEscort = true;
+        if (WW.strike && WW.strike.escort(this, dt)) return; // weave over the forming / transiting wave
         // Escort: stay with the nearest friendly bomber of this carrier, else orbit the target.
         let lead = null, bd = 1e9;
         for (const p of WW.world.planes) {
@@ -256,58 +257,9 @@ window.WW = window.WW || {};
       this.fly(cx + Math.cos(a) * r, cz + Math.sin(a) * r, alt, dt, this.pt.speed * 0.85);
     }
 
-    diveBomber(dt) {
-      const t = this.validTarget();
-      if (!t && this.phase !== 'pull') { this.state = 'return'; return; }
-      if (this.phase === 'pull') {
-        this.climbTo(25, dt, 9); this.speedTo(this.pt.speed, dt); this.turn = 0;
-        if (this.y > 15) { this.state = 'return'; this.phase = null; }
-        return;
-      }
-      const dh = this.hd(t);
-      if (this.phase === 'dive') {
-        const tt = this.y / 40, px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
-        const dx = px - this.x, dz = pz - this.z, dy = 1 - this.y, len = Math.hypot(dx, dy, dz) || 1, v = 42;
-        this.turnTo(Math.atan2(dz, dx), dt, 3);
-        this.speed = (Math.hypot(dx, dz) / len) * v; this.vy = (dy / len) * v;
-        if (this.y < 9) { WW.combat.dropBomb(this, t); this.dropped(); this.phase = 'pull'; }
-        return;
-      }
-      this.state = dh < 80 ? 'attack' : 'transit';
-      const d = this.fly(t.x, t.z, 38, dt, this.pt.speed);
-      if (dh < 24 && Math.abs(d) < 0.4 && this.y > 28) this.phase = 'dive';
-    }
-
-    torpBomber(dt) {
-      const t = this.validTarget();
-      if (!t && this.phase !== 'out') { this.state = 'return'; return; }
-      this.phaseT -= dt;
-      if (this.phase === 'out') {
-        this.climbTo(20, dt); this.speedTo(this.pt.speed, dt); this.turn = 0;
-        if (this.phaseT <= 0) { this.state = 'return'; this.phase = null; }
-        return;
-      }
-      if (this.phase === 'reset') {
-        this.climbTo(12, dt); this.turnTo(Math.atan2(this.z - t.z, this.x - t.x), dt, 1.1);
-        if (this.phaseT <= 0) this.phase = 'run';
-        return;
-      }
-      const dh = this.hd(t);
-      if (this.phase !== 'run') {
-        this.state = 'transit';
-        this.fly(t.x, t.z, 22, dt, this.pt.speed);
-        if (dh < 110) this.phase = 'run';
-        return;
-      }
-      this.state = 'attack';
-      const tt = dh / WW.TORPEDO.speed;
-      const px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
-      const d = this.fly(px, pz, dh < 70 ? 2 : 10, dt, this.pt.speed, 1.2);
-      if (dh < 45 && this.y < 4 && Math.abs(d) < 0.25) {
-        WW.combat.fireTorpedo(this, this.x + Math.cos(this.heading), this.z + Math.sin(this.heading), this.heading, this.nation, 70);
-        this.dropped(); this.phase = 'out'; this.phaseT = 4;
-      } else if (dh < 18) { this.phase = 'reset'; this.phaseT = 6; }
-    }
+    // Strike attacks live in air_strikes.js (WW.strike): form-up, vics, sequential dive, anvil torpedo run.
+    diveBomber(dt) { if (WW.strike) WW.strike.dive(this, dt); else this.state = 'return'; }
+    torpBomber(dt) { if (WW.strike) WW.strike.torp(this, dt); else this.state = 'return'; }
 
     goHome(dt) {
       const c = this.carrier, dk = deckInfo(c), L = c.stats.length, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
