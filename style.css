@@ -52,3 +52,56 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 #hud input.vol { width: 120px; vertical-align: middle; accent-color: #3d5a78; cursor: pointer; }
 #hud .msg { display: none; position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center;
   font-weight: 700; color: #fffaf0; text-shadow: 0 2px 10px rgba(10, 20, 30, 0.6); }
+
+/* ---- plot table (plot_table.js): a 2D canvas over the 3D view in map view ---- */
+#plot { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; opacity: 0;
+  transition: opacity 0.7s ease-in-out; background: #4a2e1b; }
+#plot.on { opacity: 1; }
+
+/* ---- war diary card (war_diary.js): typed on a ruled index card ---- */
+#diary { position: fixed; right: 18px; top: 50%; width: min(300px, 24vw); max-height: 78vh; overflow: hidden;
+  transform: translate(calc(100% + 40px), -50%) rotate(1.2deg); opacity: 0; pointer-events: none;
+  transition: transform 0.8s cubic-bezier(.2,.8,.2,1), opacity 0.6s; padding: 14px 16px 12px;
+  font: 11.5px/1.45 'Special Elite', 'Courier New', monospace; color: #2b2622;
+  background: repeating-linear-gradient(180deg, transparent 0 16.5px, rgba(110, 140, 190, 0.2) 16.5px 17.5px),
+    radial-gradient(ellipse at 30% 20%, #fbf6e6, #efe4c6);
+  box-shadow: 0 10px 26px rgba(30, 15, 5, 0.45), inset 0 0 30px rgba(150, 110, 50, 0.15); border-radius: 2px; }
+#diary.on { transform: translate(0, -50%) rotate(1.2deg); opacity: 1; }
+#diary.film { top: auto; bottom: 18px; transform: translate(calc(100% + 40px), 0) rotate(0.8deg); max-height: 46vh; width: min(290px, 30vw); }
+#diary.film.on { transform: translate(0, 0) rotate(0.8deg); opacity: 0.93; }
+#diary .dh { font: 600 17px/1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.3em; text-transform: uppercase; color: #3b3328;
+  border-bottom: 1px solid rgba(210, 90, 80, 0.5); padding-bottom: 5px; }
+#diary .ds { font-size: 10px; color: #7a6a58; margin: 4px 0 8px; }
+#diary .de { display: grid; grid-template-columns: 34px 26px 1fr; gap: 0 4px; margin: 0 0 3px; }
+#diary .de b { font-weight: normal; color: #6a5a48; }
+#diary .de i { font-style: normal; font-size: 9px; padding-top: 1px; }
+#diary .de i.usn, #aar .usn h3 { color: #33547e; }
+#diary .de i.ijn, #aar .ijn h3 { color: #8a3a33; }
+#diary .de.p3 span { font-weight: bold; }
+#diary .de.p0 { opacity: 0.7; }
+#diary .de.last span { animation: typed 2.2s ease-out; }
+@keyframes typed { from { background: rgba(255, 210, 90, 0.55); } to { background: transparent; } }
+
+/* ---- after-action report (aar_card.js): a typed report on old paper ---- */
+#aar { position: fixed; left: 50%; top: 50%; width: min(640px, 92vw); max-height: 86vh; overflow: auto;
+  transform: translate(-50%, -46%) rotate(-0.6deg); opacity: 0; pointer-events: none; transition: opacity 1.2s, transform 1.2s;
+  padding: 22px 28px 18px; font: 12.5px/1.5 'Special Elite', 'Courier New', monospace; color: #2b2622; box-sizing: border-box;
+  background: radial-gradient(ellipse at 20% 10%, rgba(255, 255, 245, 0.9), rgba(0, 0, 0, 0) 60%),
+    radial-gradient(circle at 85% 80%, rgba(160, 110, 50, 0.16), rgba(0, 0, 0, 0) 40%), linear-gradient(180deg, #f6eed6, #ead9b4);
+  box-shadow: 0 18px 50px rgba(20, 10, 0, 0.5), inset 0 0 50px rgba(140, 100, 40, 0.22); }
+#aar.on { opacity: 1; transform: translate(-50%, -50%) rotate(-0.6deg); pointer-events: auto; cursor: pointer; }
+#aar .hd { font: 600 26px/1 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.35em; text-transform: uppercase; text-align: center; }
+#aar .meta { text-align: center; color: #7a6a58; font-size: 11px; margin: 6px 0 12px; }
+#aar .res { text-align: center; font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase;
+  border-top: 1px solid #8a7a64; border-bottom: 1px solid #8a7a64; padding: 7px 0; }
+#aar .res span { display: block; font-size: 12px; text-transform: none; letter-spacing: 0; color: #5a4a38; }
+#aar .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 12px 0 6px; }
+#aar h3 { margin: 0 0 4px; font: 600 15px/1.2 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.08em; text-transform: uppercase; }
+#aar p { margin: 0 0 5px; }
+#aar u { text-decoration: none; color: #7a6a58; font-size: 10.5px; text-transform: uppercase; display: block; }
+#aar .km { border-top: 1px dashed #8a7a64; padding-top: 8px; margin-top: 4px; }
+#aar .km b { font-weight: normal; color: #6a5a48; }
+#aar .sig { text-align: right; font-style: italic; color: #6a5a48; margin-top: 10px; font-size: 11px; }
+#aar .stamp { position: absolute; right: 24px; top: 16px; transform: rotate(9deg); color: rgba(180, 40, 35, 0.6);
+  border: 2px solid rgba(180, 40, 35, 0.55); padding: 2px 10px; font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase; border-radius: 3px; }
+@media (max-width: 560px) { #aar .cols { grid-template-columns: 1fr; } #diary, #diary.film { width: 70vw; } }

@@ -72,6 +72,6 @@ window.WW = window.WW || {};
     else { WW.scene.remove(V.g); label.style.display = 'none'; }
     return MODES[mode];
   }
-  window.addEventListener('keydown', function (e) { if (e.key && e.key.toLowerCase() === 'g' && !e.repeat) toggle(); });
+  window.addEventListener('keydown', function (e) { if (e.key && e.key.toLowerCase() === 'g' && !e.repeat && !WW.plot) toggle(); }); // G belongs to the plot table when it is loaded
   WW.threatView = { toggle: toggle, mode: function () { return MODES[mode]; } };
 })();
