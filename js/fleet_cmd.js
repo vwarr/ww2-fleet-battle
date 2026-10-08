@@ -84,7 +84,7 @@ window.WW = window.WW || {};
     else if (pursue) B.posture = 'pursue';
     else if (!cs.length) B.posture = 'search';
     else if (rt > 60 && B.strength.ratio < d.withdrawRatio) B.posture = 'withdraw';
-    else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression)) B.posture = 'press';
+    else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
     if (B.posture !== prev) B.postureAt = now;
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----

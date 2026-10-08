@@ -9,7 +9,10 @@ window.WW = window.WW || {};
   //   rangeFrac    BB/CA preferred gun range as a fraction of main battery range
   //   torpedo      0..1  torpedo emphasis: launch distance (x torpedo range) and the flotilla's size
   //   carrier      0..1  carrier emphasis: strike tempo
-  //   night        0..1  close-quarters style: how much closer the side fights when it presses
+  //   night        0..1  night-fighting style: how much closer the side fights when it presses, and after dark
+  //                       (night_ops.js: closer range, longer torpedo reach, readier to press)
+  //   radar        0..1  surface search radar on BB / CA / DD (> 0.5: fitted; night_ops.js radarR)
+  //   searchlight  0..1  share of the side's BB / CA / DD that use searchlights at night (night_ops.js)
   //   cvStandoff   carrier station distance behind the main body
   //   screenAhead  ASW screen distance ahead of the main body
   //   flotilla     destroyers in the torpedo flotilla (the rest screen / escort)
@@ -30,10 +33,10 @@ window.WW = window.WW || {};
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
   var BASE = {
-    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, cvStandoff: 230, screenAhead: 70, flotilla: 1,
+    USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
-    IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
+    IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
@@ -44,7 +47,7 @@ window.WW = window.WW || {};
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
-    d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1);
+    d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1); d.searchlight = WW.clamp(d.searchlight, 0, 1);
     return d;
   }
 
