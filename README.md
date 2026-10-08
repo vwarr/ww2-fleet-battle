@@ -141,7 +141,7 @@ The game does not show health bars.
 | `js/post.js` | The bloom and the soft tone curve. |
 | `js/ui.js` | The panels, the setup clicks, the captions and fullscreen. |
 | `js/main.js` | The renderer, the main loop and the rounds. |
-| `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. |
+| `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. The simulation tests (`npm run test:ai`, `test:balance`, `test:determinism`) run the game in sim-only mode (`index.html?sim`: no rendering, the same results); add `--render` for the full game. Refer to `docs/ARCHITECTURE.md`, "Sim-only mode". |
 
 ## Licence
 

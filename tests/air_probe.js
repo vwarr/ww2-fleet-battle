@@ -1,14 +1,16 @@
 // Air ops probe: runs one seeded carrier round headless and prints the air picture every few sim seconds
 // (per carrier: CAP up / coming / hangar, queue, deck mode; strikes; airOps stats). For debugging air_ops.js.
-// Usage: BASE_URL=http://localhost:PORT/ node tests/air_probe.js [seed=1] [seconds=240] [fleet=carrier_duel|random]
+// Usage: BASE_URL=http://localhost:PORT/ node tests/air_probe.js [seed=1] [seconds=240] [fleet=carrier_duel|random] [--render]
+// Sim-only mode (index.html?sim, no WebGL; identical results) unless --render.
 const { chromium } = require('playwright');
-const SEED = +(process.argv[2] || 1), SECS = +(process.argv[3] || 240), FLEET = process.argv[4] || 'carrier_duel';
+const HL = require('./headless');
+const SEED = +(HL.argv[0] || 1), SECS = +(HL.argv[1] || 240), FLEET = HL.argv[2] || 'carrier_duel';
 (async () => {
-  const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const b = await HL.launch(chromium);
   const p = await b.newPage({ viewport: { width: 640, height: 360 } });
   p.on('pageerror', e => console.log('PAGE', e.message)); p.on('console', m => { if (m.type() === 'error') console.log('ERR', m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
-  await p.waitForTimeout(1500);
+  await p.goto(HL.url());
+  await p.waitForTimeout(HL.settle());
   const out = await p.evaluate(([seed, secs, fleet, STEP]) => { window.__detailArg = STEP < 10 && STEP >= 1;
     window.requestAnimationFrame = () => 0; WW.time.warp = 1;
     const G = WW.game; if (WW.aces) WW.aces.reset();

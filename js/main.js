@@ -233,8 +233,7 @@ window.WW = window.WW || {};
     call('ships', 'update', dt);
     call('air', 'update', dt);
     call('combat', 'update', dt);
-    call('fx', 'update', dt);
-    call('lifeboats', 'update', dt);
+    if (!WW.simOnly) { call('fx', 'update', dt); call('lifeboats', 'update', dt); } // visual only
     updateGame(dt);
   }
   function advance(simDt) {
@@ -268,7 +267,28 @@ window.WW = window.WW || {};
   window.__sim = { stats: WW.stats, game: WW.game, world: WW.world, fastForward, setScale,
     focus: (x, z, w, hold) => call('cam', 'focus', x, z, w, hold), snapCamera: () => call('cam', 'snap') };
 
+  // Sim-only mode (WW.simOnly, index.html?sim): a scene graph for the models (the sim reads turret, deck and hull
+  // transforms) but no renderer, no visual modules and no render loop; the tests drive __sim.fastForward.
+  // Visual-only modules are switched off: fx calls become no-ops, airFx / airProps are absent (callers check).
+  function bootSim() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 5000);
+    WW.scene = scene; WW.camera = camera;
+    const nop = () => {};
+    for (const k in WW.fx) if (typeof WW.fx[k] === 'function') WW.fx[k] = nop;
+    WW.airFx = null; WW.airProps = null;
+    ['terrain', 'models', 'combat', 'ships', 'air'].forEach(m => {
+      try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
+    });
+    startGame();
+  }
+  function startGame() {
+    if (/[?&]auto\b/.test(location.search)) game.enterAuto(); // screensaver / tests: start fighting at once
+    else game.enterSetup(true, true);                         // random fleets placed and waiting for Start
+  }
+
   function boot() {
+    if (WW.simOnly) return bootSim();
     setupRenderer();
     ['audio', 'sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'crew', 'lifeboats', 'ui', 'freecam'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
@@ -276,8 +296,7 @@ window.WW = window.WW || {};
     call('post', 'init');
     resize();
     call('cam', 'init');
-    if (/[?&]auto\b/.test(location.search)) game.enterAuto(); // screensaver / tests: start fighting at once
-    else game.enterSetup(true, true);                         // random fleets placed and waiting for Start
+    startGame();
     requestAnimationFrame(frame);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

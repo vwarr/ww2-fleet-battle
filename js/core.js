@@ -4,6 +4,9 @@ window.WW = window.WW || {};
   // 960 x 600: room for an approach phase between fleets (ships keep their size; the sea between them grows).
   // ROUND_TIMEOUT 420 sim s = 14 min real at 1x (BASE_SPEED 0.5): it only caps stalemates.
   WW.cfg = { MAP_W: 960, MAP_H: 600, CELL: 2, ROUND_TIMEOUT: 420 /* sim seconds */ };
+  // Sim-only mode (index.html?sim, headless tests): the full simulation with no rendering, no visuals and no
+  // render loop (main.js boot). Results are bit-identical to normal mode (tests/determinism.js --cross).
+  WW.simOnly = WW.cfg.SIM_ONLY = /[?&]sim(&|=|$)/.test(location.search);
 
   // Seedable RNG (mulberry32). WW.seedRandom(n) resets it; default seeded from Math.random.
   let _s = (Math.random() * 4294967296) >>> 0;

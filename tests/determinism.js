@@ -2,19 +2,24 @@
 // In one page: run seed S, run S again, run another seed then S. Then run S in a fresh page.
 // Each run records a trace every EVERY sim seconds (positions/hp of all ships and live planes, plus WW.stats deltas);
 // all traces must match the first. On a mismatch it prints the first divergent time and entity.
-// Usage: node tests/determinism.js [seed=1] [seconds=300]   (BASE_URL=http://localhost:PORT/, CHROMIUM=headless shell,
-//        EVERY=5 sample interval in sim s)
+// Runs in sim-only mode (index.html?sim) unless --render.
+// --cross: the same seeds in a full (rendered) page and a sim-only page must give identical traces.
+// Usage: node tests/determinism.js [seed=1] [seconds=300] [--render]
+//        node tests/determinism.js --cross [seeds=1,2,3] [seconds=300]
+//        (BASE_URL=http://localhost:PORT/, CHROMIUM=headless shell, EVERY=5 sample interval in sim s)
 const { chromium } = require('playwright');
 const crypto = require('crypto');
-const SEED = +(process.argv[2] || 1), SECS = +(process.argv[3] || 300), EVERY = +(process.env.EVERY || 5);
-const URL = (process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now();
+const H = require('./headless');
+const CROSS = H.argv.includes('--cross'), pos = H.argv.filter(a => a !== '--cross');
+const SEEDS = (pos[0] || (CROSS ? '1,2,3' : '1')).split(',').map(Number), SEED = SEEDS[0];
+const SECS = +(pos[1] || 300), EVERY = +(process.env.EVERY || 5);
 
-async function openPage(b, errs) {
+async function openPage(b, errs, render = H.RENDER) {
   const p = await b.newPage({ viewport: { width: 640, height: 360 } });
   p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   p.on('pageerror', e => errs.push('PAGE ' + e.message));
-  await p.goto(URL);
-  await p.waitForTimeout(1500);
+  await p.goto(H.url('', render));
+  await p.waitForTimeout(H.settle(render));
   // same setup as sim_rounds.js: stop the render loop, the test drives the sim alone
   await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; });
   await p.waitForTimeout(200);
@@ -65,8 +70,27 @@ function compare(ref, tr) {
   return null;
 }
 
+// --cross: per seed, a rendered page and a sim-only page (one browser each) must match exactly
+async function cross() {
+  const errs = [], br = await H.launch(chromium, true), bs = await H.launch(chromium, false);
+  const pr = await openPage(br, errs, true), ps = await openPage(bs, errs, false);
+  let fail = 0;
+  for (const seed of SEEDS) {
+    const a = await trace(pr, seed, SECS), b = await trace(ps, seed, SECS), d = compare(a, b);
+    if (d) fail++;
+    const last = a[a.length - 1];
+    console.log(`seed ${seed}: render ${hash(a)}  sim ${hash(b)}  ${d ? 'DIVERGED at ' + d : 'identical'}  (${SECS} sim s, ${a.length} samples, ` +
+      `${Object.keys(last.ents).length} entities at end, ${last.stats})`);
+  }
+  await br.close(); await bs.close();
+  if (errs.length) console.log('page errors:\n' + errs.slice(0, 10).join('\n'));
+  console.log(fail || errs.length ? `FAIL: ${fail} seed(s) diverged between render and sim-only mode` : 'PASS: render and sim-only traces identical');
+  process.exit(fail || errs.length ? 1 : 0);
+}
+
 (async () => {
-  const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  if (CROSS) return cross();
+  const b = await H.launch(chromium);
   const errs = [];
   const other = SEED + 1000;
   const runs = [];
@@ -89,7 +113,7 @@ function compare(ref, tr) {
     console.log(`${hash(tr)}  ${name}${d ? '  DIVERGED at ' + d : ''}`);
   }
   const last = ref[ref.length - 1];
-  console.log(`seed ${SEED}, ${SECS} sim s, ${ref.length} samples; at end: ${Object.keys(last.ents).length} entities, ${last.stats}`);
+  console.log(`${H.RENDER ? 'render' : 'sim-only'} mode, seed ${SEED}, ${SECS} sim s, ${ref.length} samples; at end: ${Object.keys(last.ents).length} entities, ${last.stats}`);
   if (errs.length) console.log('page errors:\n' + errs.slice(0, 10).join('\n'));
   console.log(fail ? `FAIL: ${fail} run(s) diverged` : 'PASS: identical traces');
   process.exit(fail ? 1 : 0);

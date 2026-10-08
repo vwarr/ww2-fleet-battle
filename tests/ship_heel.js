@@ -1,20 +1,24 @@
 // Ship heel jitter: sample every live ship's turn heel (roll minus wave rock and damage list) every sim step
 // for 60 sim s of a few seeded rounds, and report per type: heel sign flips per minute (counted only when the
 // heel swings past ±0.5°), max |heel| and mean |roll rate|.
-// Usage: bash tests/run.sh ship_heel.js [rounds=3] [firstSeed=1]   (or BASE_URL=http://localhost:PORT/ node tests/ship_heel.js)
+// Usage: bash tests/run.sh ship_heel.js [rounds=3] [firstSeed=1] [--render]   (or BASE_URL=http://localhost:PORT/ node tests/ship_heel.js)
+// Sim-only mode (index.html?sim) unless --render: the heel is sim state (Ship.syncGroup), identical in both.
 const { chromium } = require('playwright');
-const N = +(process.argv[2] || 3), SEED0 = +(process.argv[3] || 1);
+const HL = require('./headless');
+const N = +(HL.argv[0] || 3), SEED0 = +(HL.argv[1] || 1);
 (async () => {
-  const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const b = await HL.launch(chromium);
   const p = await b.newPage({ viewport: { width: 640, height: 360 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message));
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
-  await p.waitForTimeout(1500);
-  await p.evaluate(() => { __sim.setScale(0.0001); });
+  await p.goto(HL.url('auto'));
+  await p.waitForTimeout(HL.settle());
+  // a seeded replay (docs/ARCHITECTURE.md): no render loop, time from 0, so --render and sim-only print the same numbers
+  await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; });
   const per = {};
   for (let i = 0; i < N; i++) {
     const r = await p.evaluate(seed => {
-      const G = WW.game; WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
+      const G = WW.game; if (WW.aces) WW.aces.reset();
+      WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
       G.composition = null; G.mode = 'auto'; // the page boots into setup with its own random fleets: start from this seed's fleets
       G.startRound({ keepMap: true });
       __sim.fastForward(20); // past the opening turns

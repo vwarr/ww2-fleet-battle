@@ -250,6 +250,17 @@ window.WW = window.WW || {};
     root = floorMesh = propsGroup = null; // prop geos/mats are shared, kept
   }
 
+  // floor mesh (vertex colours + baked AO), palms and huts, and the water's depth texture: visual only
+  function buildMeshes() {
+    root = new THREE.Group(); root.name = 'terrain';
+    floorMesh = new THREE.Mesh(buildFloorGeo(-MARGIN, -MARGIN, W + MARGIN, H + MARGIN, FLOOR_STEP), shared.floorMat);
+    floorMesh.receiveShadow = true;
+    root.add(floorMesh);
+    buildProps();
+    WW.scene && WW.scene.add(root);
+    if (WW.water) WW.water.setDepth(rawDepth, -MARGIN, -MARGIN, W + 2 * MARGIN, H + 2 * MARGIN);
+  }
+
   function generate(seed) {
     if (!shared) initShared();
     disposeOld();
@@ -265,14 +276,7 @@ window.WW = window.WW || {};
     }
     radScale = (lo + hi) / 2;
     buildGrid();
-
-    root = new THREE.Group(); root.name = 'terrain';
-    floorMesh = new THREE.Mesh(buildFloorGeo(-MARGIN, -MARGIN, W + MARGIN, H + MARGIN, FLOOR_STEP), shared.floorMat);
-    floorMesh.receiveShadow = true;
-    root.add(floorMesh);
-    buildProps();
-    WW.scene && WW.scene.add(root);
-    if (WW.water) WW.water.setDepth(rawDepth, -MARGIN, -MARGIN, W + 2 * MARGIN, H + 2 * MARGIN);
+    if (!WW.simOnly) buildMeshes(); // sim-only mode: the depth grid is all the sim reads
     WW.terrain.seed = seed;
     WW.terrain.landFraction = landFraction();
   }

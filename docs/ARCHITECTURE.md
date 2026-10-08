@@ -11,7 +11,7 @@ This document tells you how the code is organized. Read it before you change a m
 - Do not make a new geometry or a new material for each projectile, particle or plane. Make them one time and share them. Use object pools for projectiles and particles. In `clearAll()`, put the objects back in the pool.
 - Effects use `Math.random`. The simulation uses the seeded `WW.rand`. This keeps a round the same for the same seed.
   - Visual and sound code (effects, camera, audio, smoke/fire timers, how a dead plane falls or how long a ditched wreck floats) must not call `WW.rand`, and sim code must not depend on it: for example AA timers run only while a live plane exists, not while a wreck lingers. Per-round state that feeds the sim is reset in `clearAll()`/`roundStart` (ship ids, `WW.wind`, which steers carriers). The next auto round's seed comes from `WW.rand`.
-  - A replay: stop the render loop (`requestAnimationFrame = () => 0`, `WW.time.warp = 1`), then `WW.aces.reset()` (aces carry over between rounds by design), `WW.terrain.generate(seed)`, `WW.seedRandom(seed)`, `WW.time.now = 0`, `WW.game.startRound({ keepMap: true })`, and drive `__sim.fastForward`. `tests/determinism.js [seed] [seconds]` checks that this gives identical traces in one page, after another seed, and in a fresh page.
+  - A replay: stop the render loop (`requestAnimationFrame = () => 0`, `WW.time.warp = 1`), then `WW.aces.reset()` (aces carry over between rounds by design), `WW.terrain.generate(seed)`, `WW.seedRandom(seed)`, `WW.time.now = 0`, `WW.game.startRound({ keepMap: true })`, and drive `__sim.fastForward`. `tests/determinism.js [seed] [seconds]` checks that this gives identical traces in one page, after another seed, and in a fresh page; `tests/determinism.js --cross [seeds]` checks that a rendered page and a sim-only page (below) give identical traces.
 - Code that the combat code calls must not throw errors into the combat code. `WW.damage` catches its own errors.
 
 ## Load order
@@ -111,6 +111,31 @@ Each animation frame (`main.js`, `frame`):
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
 
+## Sim-only mode
+
+`index.html?sim` sets `WW.simOnly` (and `WW.cfg.SIM_ONLY`) in `core.js`, before any module initializes. The page runs the full simulation and renders nothing. The headless sim tests use it; players never see it.
+
+- `main.js bootSim()` makes a plain `THREE.Scene` and camera, but no `WebGLRenderer`. It initializes only `terrain`, `models`, `combat`, `ships` and `air`, starts the game as usual (`?auto` or setup), and never calls `requestAnimationFrame`. The test drives `__sim.fastForward`.
+- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` and `lifeboats` (no `init`, no `update`). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
+- Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
+- The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page and a sim-only page; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
+- Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
+
+### Running the tests
+
+Serve the folder (`python3 -m http.server PORT`, or `bash tests/run.sh <script> [args]` on port 8000), set `BASE_URL=http://localhost:PORT/` and `CHROMIUM=<headless shell>`. `tests/headless.js` holds the shared launch settings: sim-only by default, `--render` (or `RENDER=1`) for the full game on software GL (swiftshader).
+
+```
+node tests/sim_behaviour.js                          # behaviour suite, 11 scenarios x 8 seeds, 6 pages (~15 s)
+node tests/sim_behaviour.js --only balance --seeds 100   # balance gate (~25 s; --seeds 400 for tuning)
+node tests/sim_rounds.js [rounds=8] [firstSeed=1]    # per-round report, seeds across 6 pages (--pages K)
+node tests/determinism.js [seed] [seconds]           # same seed, same round: one page, after another seed, fresh page
+node tests/determinism.js --cross 1,2,3 300          # rendered page vs sim-only page (always launches both)
+node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
+```
+
+`--pages` (sim_behaviour, sim_rounds) defaults to 6, measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier), so 6 is the compromise. The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game.
+
 ## Data tables (core.js)
 
 ```js
@@ -142,7 +167,7 @@ Helpers: `WW.rand`, `WW.seedRandom`, `WW.randRange`, `WW.randInt`, `WW.pick`, `W
 
 ```js
 WW.terrain = {
-  generate(seed),                     // make a new map; remove the old meshes
+  generate(seed),                     // make a new map; remove the old meshes (sim-only mode: the depth grid only)
   depthAt(x, z) -> number,            // water depth in units; 0 or less is land; off the map is 0
   isNavigable(x, z, minDepth) -> bool,
   randomSeaPoint(minDepth, xMin, xMax) -> {x, z},
