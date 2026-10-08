@@ -27,6 +27,7 @@ js/ships.js           owner: C
 js/ships_ai.js        owner: C   (WW.shipAI)
 js/aircraft.js        owner: C
 js/camera.js          integrator (WW.cam: director / map camera; main calls init, resize, update)
+js/post.js            integrator (WW.post: HDR render target, bloom, filmic shoulder; main renders through it)
 js/ui.js              owner: A
 js/main.js            owner: A
 ```

@@ -52,40 +52,47 @@ window.WW = window.WW || {};
     return best || Object.assign(fleetCentre(), { d: 200 });
   }
 
+  // Calm, fish-tank pacing: long slow shots (12-25 s), soft cross-fades, wide diorama shots every other time.
+  const dur = (a, b) => WW.randRange(a, b);
   function candidates() {
     const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr: pr + WW.rand() * 2, kind, subj }, extra || {}));
     for (const s of WW.world.ships) {
       if (s.removed) continue;
-      if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: s.stats.length * 1.5 + 12, dur: 10, w: 0.12 });
-      if (s.wreck && s.wreckInfo && s.wreckInfo.top > 1 && s.wreckT < 12) add(1.5, 'orbit', s, { r: s.stats.length * 1.3 + 10, dur: 6, w: 0.08 });
+      if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: s.stats.length * 1.5 + 16, dur: dur(14, 18), w: 0.05 });
       if (!s.alive) continue;
-      if (s.hp < s.maxHp * 0.5 && s.type !== 'pt') add(5, 'orbit', s, { r: s.stats.length * 1.4 + 12, dur: 8, w: 0.1 }); // burning
+      if (s.hp < s.maxHp * 0.5 && s.type !== 'pt') add(5, 'orbit', s, { r: s.stats.length * 1.4 + 14, dur: dur(13, 18), w: 0.045 }); // burning
       const t = s.target, d = t ? WW.dist(s.x, s.z, t.x, t.z) : 1e9;
-      if (s.type === 'battleship' && t && d < 170) add(6, 'flyby', s, { dur: 11 });
-      else if (s.type === 'cruiser' && t && d < 120) add(4.5, 'chase', s, { dur: 9 });
-      else if ((s.type === 'destroyer' || s.type === 'pt') && t && d < 90) add(4, 'chase', s, { dur: 8 });
-      if (s.type === 'carrier' && WW.world.planes.some(p => p.carrier === s && p.state === 'takeoff')) add(6.5, 'flyby', s, { dur: 9 });
-      if (s.type === 'submarine' && s.ai && s.ai.evadeT > 7) add(5, 'chase', s, { dur: 8 });
+      if (s.type === 'battleship' && t && d < 170) add(6, 'flyby', s, { dur: dur(15, 20) });
+      else if (s.type === 'cruiser' && t && d < 120) add(4.5, 'chase', s, { dur: dur(13, 17) });
+      else if ((s.type === 'destroyer' || s.type === 'pt') && t && d < 90) add(4, 'chase', s, { dur: dur(12, 15) });
+      if (s.type === 'carrier' && WW.world.planes.some(p => p.carrier === s && p.state === 'takeoff')) add(6.5, 'flyby', s, { dur: dur(15, 20) });
+      if (s.type === 'submarine' && s.ai && s.ai.evadeT > 7) add(5, 'chase', s, { dur: dur(12, 15) });
     }
     for (const p of WW.world.planes) {
       if (!p.alive) continue;
-      if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8, 'chase', p, { dur: 8 });
-      else if (p.kind === 'dive' && p.state === 'attack' && p.target) add(7.5, 'orbit', p.target, { r: p.target.stats.length * 1.4 + 20, dur: 9, w: 0.1, hgt: 0.55 });
-      else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(5, 'chase', p, { dur: 6 });
-      else if (p.state === 'transit' && p.ordnance) add(3, 'chase', p, { dur: 7 });
+      if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8, 'chase', p, { dur: dur(12, 14) });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add(7.5, 'orbit', p.target, { r: p.target.stats.length * 1.4 + 22, dur: dur(13, 16), w: 0.05, hgt: 0.34 });
+      else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(5, 'chase', p, { dur: dur(10, 13) });
+      else if (p.state === 'transit' && p.ordnance) add(3, 'chase', p, { dur: dur(12, 15) });
     }
     return out;
   }
   function pickShot() {
     shotCount++;
     let best = null;
-    if (shotCount % 4 !== 1) for (const c of candidates()) {
+    if (shotCount % 2 === 0) for (const c of candidates()) {
       let s = c.pr;
       if (c.kind === lastKind) s -= 2.5;
       if (c.subj && recent.indexOf(c.subj) >= 0) s -= 5; // no repeats back-to-back
       if (!best || s > best.score) { best = c; best.score = s; }
     }
-    if (!best || best.score < 3) best = { kind: 'wide', dur: 10 };
+    if (!best || best.score < 3) {
+      if (shotCount % 4 === 1) best = { kind: 'wide', dur: dur(18, 25) };
+      else { // diorama: a slow, high-ish orbit around the front line
+        const f = frontCentre();
+        best = { kind: 'orbit', subj: { x: f.x, z: f.z, y: 0, diorama: true }, r: WW.clamp((f.d || 120) * 0.6 + 70, 100, 170), dur: dur(18, 24), w: 0.018, hgt: 0.3 };
+      }
+    }
     startShot(best);
   }
   function startShot(c) {
@@ -93,7 +100,7 @@ window.WW = window.WW || {};
     shot.side = WW.rand() < 0.5 ? -1 : 1;
     const s = c.subj;
     if (c.kind === 'orbit') {
-      shot.w = (c.w || 0.1) * shot.side; shot.hgt = c.hgt || 0.42;
+      shot.w = (c.w || 0.1) * shot.side; shot.hgt = c.hgt || 0.28; // low: the horizon stays in frame
       // start where the foreground (between subject and camera) is open water, not shoals
       let best = -1e9, off = WW.rand() * Math.PI * 2;
       for (let i = 0; i < 10; i++) {
@@ -112,11 +119,11 @@ window.WW = window.WW || {};
     } else if (c.kind === 'wide') {
       const f = WW.game && WW.game.state === 'victory' && WW.game.winner ? fleetCentre(WW.game.winner) : frontCentre();
       shot.cx = f.x; shot.cz = f.z; shot.r = WW.clamp((f.d || 150) * 0.9 + 80, 140, 300);
-      shot.a0 = WW.rand() * Math.PI * 2; shot.w = 0.025 * shot.side;
+      shot.a0 = WW.rand() * Math.PI * 2; shot.w = 0.012 * shot.side;
     }
     lastKind = c.kind; lastSubj = s || null;
     if (s) { recent.push(s); if (recent.length > 3) recent.shift(); }
-    snapNext = true; // hard cut
+    snapNext = true; // cut (softened by a cross-fade, see afterRender)
   }
 
   function shotGoal() {
@@ -140,7 +147,7 @@ window.WW = window.WW || {};
         }
         const lat = shot.side * back * 0.55;
         _f.set(Math.cos(h), 0, Math.sin(h));
-        gP.set(sp.x - _f.x * back - _f.z * lat, (isPlane ? sp.y : 0) + back * 0.38, sp.z - _f.z * back + _f.x * lat);
+        gP.set(sp.x - _f.x * back - _f.z * lat, (isPlane ? sp.y : 0) + back * 0.27, sp.z - _f.z * back + _f.x * lat);
         gL.set(sp.x + _f.x * back * 0.5, isPlane ? sp.y * 0.7 : 1.5, sp.z + _f.z * back * 0.5);
         break;
       }
@@ -177,21 +184,72 @@ window.WW = window.WW || {};
       if (y < ground) need = Math.max(need, v.y + (ground - y) / (1 - f));
     }
     v.y = need;
+    // never sit inside or right next to a ship or plane (a mast filling the frame)
+    for (const s of WW.world.ships) {
+      if (s.removed) continue;
+      const R = s.stats.length * 0.5 + 7, dx = v.x - s.x, dz = v.z - s.z, d = Math.hypot(dx, dz);
+      if (d < R && v.y < 14) { const k = (d > 0.01 ? R / d : 1); v.x = s.x + (d > 0.01 ? dx : 1) * k; v.z = s.z + (d > 0.01 ? dz : 0) * k; }
+    }
+    for (const p of WW.world.planes) {
+      if (p.removed) continue;
+      const dx = v.x - p.x, dy = v.y - p.y, dz = v.z - p.z, d = Math.hypot(dx, dy, dz);
+      if (d < 9 && d > 0.01) { const k = 9 / d; v.x = p.x + dx * k; v.y = p.y + dy * k; v.z = p.z + dz * k; }
+    }
+    v.y = Math.max(v.y, 4);
+  }
+
+  // Composition: aim so the subject sits in the middle band (slightly below centre, rule of thirds),
+  // which also lifts the view enough for the horizon to show in most shots.
+  const probe = new THREE.PerspectiveCamera(), _s = new THREE.Vector3(), _up = new THREE.Vector3(), _rt = new THREE.Vector3();
+  function compose(subj) {
+    probe.fov = camera.fov; probe.aspect = camera.aspect; probe.near = 1; probe.far = 4000; probe.updateProjectionMatrix();
+    const th = Math.tan(camera.fov * Math.PI / 360);
+    for (let i = 0; i < 3; i++) {
+      probe.position.copy(gP); probe.lookAt(gL); probe.updateMatrixWorld();
+      _s.copy(subj).project(probe);
+      const dist = probe.position.distanceTo(gL);
+      _up.set(0, 1, 0).applyQuaternion(probe.quaternion); _rt.set(1, 0, 0).applyQuaternion(probe.quaternion);
+      const dy = _s.y - (-0.12), dx = Math.abs(_s.x) > 0.3 ? _s.x - Math.sign(_s.x) * 0.3 : 0;
+      if (Math.abs(dy) < 0.04 && !dx) break;
+      gL.addScaledVector(_up, dy * dist * th).addScaledVector(_rt, dx * dist * th * camera.aspect);
+    }
+  }
+  // a subject stops being worth filming once it is gone or dead (a sinking ship stays interesting)
+  function dull(o) {
+    if (!o || o.diorama) return false;
+    if (gone(o)) return true;
+    if (o.stats) return !o.alive && !o.sinking;
+    return !o.alive;
+  }
+  // soft cross-fade: right after a render, copy the old frame to an overlay canvas and fade it out
+  let fade = null, fctx = null, fadeWant = false, fadeReady = false, first = true;
+  function makeFade() {
+    fade = document.createElement('canvas'); fade.id = 'fade';
+    fade.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;opacity:0;';
+    const g = document.getElementById('game');
+    g.parentNode.insertBefore(fade, g.nextSibling);
+    fctx = fade.getContext('2d');
   }
 
   const cam = {
     mode: 'director',
     init() {
       camera = WW.camera; cam.resize();
+      if (typeof document !== 'undefined') makeFade();
       WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; });
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
-      WW.on('shipSunk', s => { // a fresh sinking interrupts a weaker shot
-        if (shot && !forced && cam.mode === 'director' && shot.t > 2.5 && (shot.pr || 0) < 8 && s.type !== 'pt') {
-          startShot({ kind: 'orbit', subj: s, r: s.stats.length * 1.6 + 22, dur: 10, w: 0.12, pr: 10 });
-        }
-      });
     },
     resize() { if (camera) fitMap(); },
+    afterRender() {
+      if (!fadeWant || !fade) return;
+      fadeWant = false; fadeReady = true;
+      const src = WW.renderer.domElement;
+      fade.width = src.width; fade.height = src.height;
+      fctx.drawImage(src, 0, 0);
+      fade.style.transition = 'none'; fade.style.opacity = '1';
+      void fade.offsetWidth; // restart the transition
+      fade.style.transition = 'opacity 1.4s ease-in-out'; fade.style.opacity = '0';
+    },
     target() { return L; },
     isOverview() { const st = WW.game && WW.game.state; return st === 'setup' || !st || cam.mode === 'map'; },
     toggle() { cam.mode = cam.mode === 'director' ? 'map' : 'director'; snapNext = true; shot = null; return cam.mode === 'map' ? 'map' : 'cinematic'; },
@@ -201,7 +259,7 @@ window.WW = window.WW || {};
       startShot({ kind: 'orbit', subj: { x, z, y: 0 }, r: (width || 100) * 0.55, dur: hold || 8, w: 0.06, pr: 99 });
       cam.update(0);
     },
-    snap() { forced = null; shot = null; snapNext = true; cam.update(0); },
+    snap() { forced = null; shot = null; snapNext = true; fadeReady = true; cam.update(0); },
     update(rdt) {
       if (!camera) return;
       const st = WW.game && WW.game.state;
@@ -209,14 +267,16 @@ window.WW = window.WW || {};
         gP.set(W / 2, mapDist * Math.sin(OV_PITCH), mapTz + mapDist * Math.cos(OV_PITCH)); gL.set(W / 2, 0, mapTz);
       } else {
         if (shot) shot.t += rdt;
-        if (!shot || shot.t >= shot.dur) { forced = null; pickShot(); }
+        if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && dull(shot.subj))) { forced = null; pickShot(); }
         shotGoal();
         keepSane(gP, gL);
+        if (shot.kind !== 'wide' && shot.last) compose(shot.last);
       }
-      if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; }
+      if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)
+      else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; }
       else {
-        P.lerp(gP, 1 - Math.exp(-rdt * 1.6));
-        L.lerp(gL, 1 - Math.exp(-rdt * 2.6));
+        P.lerp(gP, 1 - Math.exp(-rdt * 0.9));   // heavy easing: slow, floaty moves
+        L.lerp(gL, 1 - Math.exp(-rdt * 1.3));
       }
       camera.position.copy(P);
       camera.lookAt(L);

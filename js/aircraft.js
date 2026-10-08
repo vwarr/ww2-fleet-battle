@@ -8,7 +8,6 @@ window.WW = window.WW || {};
   const REARM = 10;
   const PLANE_SCALE = 1.7;    // arcade scale: planes read clearly at the battle camera distance
   const DECK_Y = 0.75;        // fuselage centre above the flight deck (scaled model)
-  let shadowGeo = null, shadowMat = null;
 
   function getModel(kind, nation) {
     const k = kind + nation, p = pool[k];
@@ -17,20 +16,11 @@ window.WW = window.WW || {};
     else {
       m = WW.models.buildPlane(kind, nation); m.key = k; m.group.rotation.order = 'YZX';
       m.group.scale.setScalar(PLANE_SCALE);
-      if (!shadowGeo) {
-        const sp = new THREE.Shape(), P = [[1.3, 0.2], [0.65, 0.2], [0.65, 1.4], [0.05, 1.4], [0.05, 0.2], [-0.9, 0.15], [-0.9, 0.5], [-1.25, 0.5],
-          [-1.25, -0.5], [-0.9, -0.5], [-0.9, -0.15], [0.05, -0.2], [0.05, -1.4], [0.65, -1.4], [0.65, -0.2], [1.3, -0.2]];
-        P.forEach((q, i) => (i ? sp.lineTo(q[0], q[1]) : sp.moveTo(q[0], q[1])));
-        shadowGeo = new THREE.ShapeGeometry(sp); shadowGeo.rotateX(-Math.PI / 2); // plane silhouette (symmetric), facing up, lying flat
-        shadowMat = new THREE.MeshBasicMaterial({ color: 0x041018, transparent: true, opacity: 0.38, depthWrite: false });
-      }
-      m.shadow = new THREE.Mesh(shadowGeo, shadowMat); m.shadow.renderOrder = 2;
-      m.shadow.rotation.order = 'YXZ';
     }
-    if (WW.scene) { WW.scene.add(m.group); WW.scene.add(m.shadow); }
+    if (WW.scene) WW.scene.add(m.group); // real shadow maps now: no fake silhouette shadow
     return m;
   }
-  function release(m) { if (WW.scene) { WW.scene.remove(m.group); WW.scene.remove(m.shadow); } (pool[m.key] = pool[m.key] || []).push(m); }
+  function release(m) { if (WW.scene) WW.scene.remove(m.group); (pool[m.key] = pool[m.key] || []).push(m); }
 
   function deckInfo(c) {
     if (!v3) v3 = new THREE.Vector3();
@@ -38,11 +28,15 @@ window.WW = window.WW || {};
     return { x: c.x, y: 3, z: c.z };
   }
 
+  // Short soft streak from the gun toward the foe, fading out (visual only: Math.random, every other burst).
   function tracer(a, b) {
-    if (!tracers.length) return;
+    if (!tracers.length || Math.random() < 0.5) return;
     const ln = tracers[tracerIdx++ % tracers.length], pos = ln.geometry.attributes.position;
-    pos.setXYZ(0, a.x, a.y, a.z); pos.setXYZ(1, b.x + WW.randRange(-0.8, 0.8), b.y, b.z + WW.randRange(-0.8, 0.8));
-    pos.needsUpdate = true; ln.geometry.computeBoundingSphere(); ln.visible = true; ln.life = 0.09;
+    const tx = b.x + (Math.random() - 0.5) * 1.6, tz = b.z + (Math.random() - 0.5) * 1.6;
+    const dx = tx - a.x, dy = b.y - a.y, dz = tz - a.z, d = Math.hypot(dx, dy, dz) || 1, s0 = Math.min(1.5, d * 0.2) / d, s1 = s0 + Math.min(4, d * 0.4) / d;
+    pos.setXYZ(0, a.x + dx * s0, a.y + dy * s0, a.z + dz * s0); pos.setXYZ(1, a.x + dx * s1, a.y + dy * s1, a.z + dz * s1);
+    pos.needsUpdate = true; ln.geometry.computeBoundingSphere(); ln.visible = true; ln.life = ln.life0 = 0.16;
+    ln.material.opacity = 0.5;
   }
 
   class Plane {
@@ -89,12 +83,12 @@ window.WW = window.WW || {};
       const nx = this.x + c * n * 0.6, nz = this.z + sn * n * 0.6;
       this.flameT = (this.flameT || 0) - dt; // flickering flames at the engine (fire puffs trail behind fast planes, so keep them sparse)
       if (heavy && this.flameT <= 0) { this.flameT = falling ? 0.06 : 0.16; fx.fire(nx, this.y + 0.1, nz); }
-      const iv = falling ? 0.07 : heavy ? 0.08 : 0.11;
+      const iv = falling ? 0.09 : heavy ? 0.11 : 0.22; // light damage: sparse grey wisps (white puffs read as dotted lines)
       if (WW.damage) WW.damage.want(1 / iv);
       this.trailT -= dt;
       if (this.trailT > 0) return;
       this.trailT = iv * Math.min(3, ld);
-      fx.smoke(nx - c * 0.8, this.y + 0.1, nz - sn * 0.8, heavy, falling ? 0.9 : heavy ? 0.75 : 0.42);
+      fx.smoke(nx - c * 0.8, this.y + 0.1, nz - sn * 0.8, true, falling ? 0.9 : heavy ? 0.75 : 0.3);
     }
     shotDown() {
       this.alive = false; this.state = 'falling'; WW.stats.planesLost++;
@@ -183,14 +177,6 @@ window.WW = window.WW || {};
       this.roll += (WW.clamp(this.turn * 0.7, -1.2, 1.2) - this.roll) * Math.min(1, dt * 4);
       const f = this.hp / this.maxHp; // a badly damaged plane wobbles (visual only)
       g.rotation.x = this.roll + (f < 0.4 && this.alive && this.state !== 'rollout' ? Math.sin(this.t * 7.3) * 0.12 + Math.sin(this.t * 3.1) * 0.08 : 0);
-      const sh = this.model.shadow;
-      if (sh) { // dark blob on the water below the plane; hidden over the deck and while falling
-        const over = this.state === 'takeoff' || this.state === 'rollout' || this.state === 'landing' && this.y < this.deckY + 3;
-        sh.visible = !over && this.y > 0.5;
-        const k = WW.clamp(1.25 - this.y / 60, 0.55, 1.2) * PLANE_SCALE * 0.55;
-        const so = Math.min(4, this.y * 0.12); // sun is high in the west-north-west
-        sh.position.set(this.x + so, 0.32, this.z - so * 0.6); sh.rotation.y = -this.heading; sh.scale.set(k, 1, k * 0.95);
-      }
       if (this.prop) this.prop.rotation.x += dt * 45;
     }
 
@@ -359,8 +345,8 @@ window.WW = window.WW || {};
   WW.air = {
     init() {
       if (tracers.length || !WW.scene) return;
-      const mat = new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9 });
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 16; i++) { // one material per pooled line (created once) so each can fade on its own
+        const mat = new THREE.LineBasicMaterial({ color: 0xe6c27a, transparent: true, opacity: 0.5, depthWrite: false });
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
         const ln = new THREE.Line(g, mat); ln.visible = false; ln.life = 0; ln.frustumCulled = false;
@@ -376,7 +362,7 @@ window.WW = window.WW || {};
       return p;
     },
     update(dt) {
-      for (const ln of tracers) if (ln.visible && (ln.life -= dt) <= 0) ln.visible = false;
+      for (const ln of tracers) if (ln.visible) { if ((ln.life -= dt) <= 0) ln.visible = false; else ln.material.opacity = 0.5 * ln.life / ln.life0; }
       const now = WW.time.now;
       for (const s of WW.world.ships) {
         if (!s.rearm || !s.rearm.length || !s.alive) continue;

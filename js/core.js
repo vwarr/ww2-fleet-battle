@@ -72,7 +72,7 @@ window.WW = window.WW || {};
   };
 
   // Ship HP scale: tuned so a round at 1x lasts about 3-4 minutes.
-  const HP_SCALE = 1.8;
+  const HP_SCALE = 2.0;
   for (const k in WW.SHIP_TYPES) WW.SHIP_TYPES[k].hp = Math.round(WW.SHIP_TYPES[k].hp * HP_SCALE);
 
   WW.SHELL = { mg: { dmg: 2, speed: 120, splash: 0.6 }, small: { dmg: 12, speed: 90, splash: 1.2 },
@@ -84,4 +84,9 @@ window.WW = window.WW || {};
                      torpedo: { hp: 30, speed: 26, range: 500 } };
 
   WW.world = { ships: [], planes: [] };
+  // Soft pastel palette helper: a colour moved ~20% toward its own grey.
+  WW.pastel = function (hex, k) {
+    const c = new THREE.Color(hex), l = c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
+    return c.lerp(new THREE.Color(l, l, l), k === undefined ? 0.2 : k);
+  };
 })(window.WW);

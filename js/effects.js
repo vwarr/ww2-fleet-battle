@@ -10,7 +10,12 @@ window.WW = window.WW || {};
   function rr(a, b) { return a + (b - a) * R(); }
   var _m, _q, _q2, _e, _p, _s, _c, _z;
   var PAL = {};
-  function col(hex) { return PAL[hex] || (PAL[hex] = new THREE.Color(hex)); }
+  // golden-hour palette: every effect colour is desaturated ~20% (cached, so no per-spawn allocation)
+  function col(hex) {
+    var c = PAL[hex];
+    if (!c) { c = PAL[hex] = new THREE.Color(hex); var l = c.r * 0.299 + c.g * 0.587 + c.b * 0.114; c.r += (l - c.r) * 0.2; c.g += (l - c.g) * 0.2; c.b += (l - c.b) * 0.2; }
+    return c;
+  }
 
   var FIELDS = ['px', 'py', 'pz', 'vx', 'vy', 'vz', 'age', 'life', 's0', 's1', 'g', 'drag', 'ex', 'ey', 'spin',
     'r0', 'g0', 'b0', 'r1', 'g1', 'b1'];
@@ -103,10 +108,19 @@ window.WW = window.WW || {};
     TEX = new THREE.CanvasTexture(c);
     return TEX;
   }
+  // puffs get their own slightly rounder 4-step ramp so they read as 3D cotton balls under the strong sky fill
   function toonGrad() {
-    if (WW.models && WW.models._grad) return WW.models._grad();
-    var t = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255, 182, 182, 182, 255, 230, 230, 230, 255]), 3, 1, THREE.RGBAFormat);
-    t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t;
+    var t = new THREE.DataTexture(new Uint8Array([140, 140, 140, 255, 172, 172, 172, 255, 204, 204, 204, 255, 234, 234, 234, 255]), 4, 1, THREE.RGBAFormat);
+    t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t;
+  }
+  // toon-lit puff whose emissive glow scales with the instance colour (fire/explosion cores: shaded yet glowing)
+  function glowPuffMat(tg) {
+    var m = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg, emissive: 0x2c2c2c });
+    m.onBeforeCompile = function (sh) {
+      sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;',
+        'vec3 totalEmissiveRadiance = emissive;\n#ifdef USE_COLOR\n totalEmissiveRadiance *= vColor;\n#endif');
+    };
+    return m;
   }
 
   function init() {
@@ -123,12 +137,12 @@ window.WW = window.WW || {};
         blending: THREE.AdditiveBlending, fog: false });
     }
     // white foam whose per-instance alpha comes from the instance colour's red channel
-    var foamMat = new THREE.MeshBasicMaterial({ color: 0xf4fbfb, map: tex, transparent: true, depthWrite: false });
+    var foamMat = new THREE.MeshBasicMaterial({ color: 0xece6dc, map: tex, transparent: true, depthWrite: false });
     foamMat.onBeforeCompile = function (sh) {
       sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '#ifdef USE_COLOR\n diffuseColor.a *= vColor.r;\n#endif');
     };
     P = {
-      glow: new Pool(600, ball, new THREE.MeshBasicMaterial({ color: 0xffffff }), 'puff'),        // fire/flash cores (unlit)
+      glow: new Pool(600, ball, glowPuffMat(tg), 'puff'),                                        // fire/flash cores (lit + glow)
       solid: new Pool(500, ball, new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg }), 'puff'),   // splash/debris
       smoke: new Pool(900, ball, new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg }), 'puff'),
       halo: new Pool(400, quad, addMat(), 'glow'),                                                 // soft light glows, sparks
@@ -154,7 +168,7 @@ window.WW = window.WW || {};
   function windZ() { return WW.wind ? WW.wind.z : 0; }
 
   // ---- effect recipes ----
-  var W = 0xffffff, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4; // foam colours are peak alpha (grey level)
+  var W = 0xf2ece2, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4; // foam colours are peak alpha (grey level)
   function splash(x, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
     var sq = Math.sqrt(size), n = Math.min(14, 4 + Math.round(size * 2.5)), up = 2.6 * sq + 1.6;
@@ -162,12 +176,12 @@ window.WW = window.WW || {};
       var a = R() * 6.28, r = R() * 0.22 * size, out = rr(0.1, 0.7) * sq, f = i / n;
       P.solid.spawn(x + Math.cos(a) * r, 0.1 + f * 0.4 * size, z + Math.sin(a) * r, Math.cos(a) * out, up * (0.45 + 0.75 * f) * rr(0.85, 1.1), Math.sin(a) * out,
         rr(1.4, 2.0) * Math.sqrt(size * 0.6 + 0.4), (0.3 + 0.25 * (1 - f)) * size + 0.2, (0.55 + 0.35 * (1 - f)) * size + 0.3,
-        col(W), col(0xe4f0f2), 4.5, 0.9, rr(-0.6, 0.6), true);
+        col(W), col(0xdfe6e4), 4.5, 0.9, rr(-0.6, 0.6), true);
     }
     for (var d = 0; d < 2 + (size * 0.5 | 0); d++) {          // little droplet puffs
       var b = R() * 6.28, o = rr(1.5, 3) * sq;
       P.solid.spawn(x, 0.3, z, Math.cos(b) * o, up * rr(0.5, 0.9), Math.sin(b) * o, rr(0.7, 1.1), 0.25 * sq, 0.18 * sq,
-        col(W), col(0xe4f2f4), 12, 0.2, 0, true);
+        col(W), col(0xdfe6e4), 12, 0.2, 0, true);
     }
     for (var j = 0; j < 5; j++) {                        // foam ring
       var c = R() * 6.28;
@@ -178,12 +192,12 @@ window.WW = window.WW || {};
   function explosion(x, y, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
     var n = Math.min(14, 4 + Math.round(size * 2.5)), f = 0.5 + 0.45 * size;
-    P.halo.spawn(x, y + 0.5 * f, z, 0, 0.4, 0, 0.6, 1.6 * f, 3.2 * f, col(0x9a6a40), col(0x804020), 0, 0, 0);
+    P.halo.spawn(x, y + 0.5 * f, z, 0, 0.4, 0, 0.6, 1.1 * f, 2.2 * f, col(0x7a5434), col(0x5a2c14), 0, 0, 0);
     for (var i = 0; i < n; i++) {                       // warm fireball puffs
       var hot = i < n / 2;
       P.glow.spawn(x + rr(-0.5, 0.5) * f, y + rr(0, 0.6) * f, z + rr(-0.5, 0.5) * f,
         rr(-1.2, 1.2) * f, rr(0.6, 1.8) * f, rr(-1.2, 1.2) * f, rr(0.6, 1.1),
-        (hot ? 0.6 : 0.45) * f, (hot ? 1.3 : 1.05) * f, col(hot ? 0xffe0a8 : 0xf8b878), col(hot ? 0xf09a5a : 0xd8785a), -0.4, 2.2, rr(-1, 1));
+        (hot ? 0.6 : 0.45) * f, (hot ? 1.3 : 1.05) * f, col(hot ? 0xe8b070 : 0xe09058), col(hot ? 0xd07040 : 0xb85838), -0.4, 2.2, rr(-1, 1));
     }
     var nd = Math.min(6, 1 + Math.round(size));
     for (var d = 0; d < nd; d++) {                      // chunky debris bits
@@ -198,12 +212,12 @@ window.WW = window.WW || {};
   function muzzleFlash(x, y, z) {
     if (!P) return;
     P.halo.spawn(x, y, z, 0, 0, 0, 0.14, 0.8, 1.4, col(0x9a6e48), col(0x6a3a20), 0, 0, 0);
-    P.glow.spawn(x, y, z, rr(-0.3, 0.3), 0.3, rr(-0.3, 0.3), 0.14, 0.3, 0.5, col(0xffe2b0), col(0xf0a060), 0, 0, 0);
+    P.glow.spawn(x, y, z, rr(-0.3, 0.3), 0.3, rr(-0.3, 0.3), 0.14, 0.3, 0.5, col(0xe8c090), col(0xd08048), 0, 0, 0);
     P.smoke.spawn(x, y, z, rr(-0.3, 0.3), 0.8, rr(-0.3, 0.3), 1.1, 0.35, 1.0, col(0xc8c6c0), col(0xe6e4e0), 0, 0.5, 0.5);
   }
   function flak(x, y, z) {
     if (!P) return;
-    P.halo.spawn(x, y, z, 0, 0, 0, 0.18, 0.5, 1.0, col(0x8a6040), col(0x603018), 0, 0, 0);
+    P.halo.spawn(x, y, z, 0, 0, 0, 0.16, 0.4, 0.8, col(0x6a4a30), col(0x402010), 0, 0, 0);
     for (var i = 0; i < 3; i++)
       P.smoke.spawn(x + rr(-0.3, 0.3), y + rr(-0.3, 0.3), z + rr(-0.3, 0.3), rr(-0.6, 0.6), rr(-0.2, 0.5), rr(-0.6, 0.6),
         rr(1.2, 1.8), rr(0.3, 0.45), rr(0.9, 1.3), col(0x5c5c62), col(0x9a9aa0), 0, 2, rr(-1, 1));
@@ -213,12 +227,12 @@ window.WW = window.WW || {};
     var k = rr(0.7, 1.25) * size;                       // varied puff sizes: reads as separate cotton balls
     P.smoke.spawn(x + rr(-0.3, 0.3), y, z + rr(-0.3, 0.3), rr(-0.5, 0.5) + windX(), rr(1.1, 2.0), rr(-0.5, 0.5) + windZ(),
       rr(2.6, 3.8), 0.5 * k, rr(1.2, 1.6) * k,
-      col(dark ? (R() < 0.45 ? 0x55514e : 0x6e6964) : 0xd8d6d2), col(dark ? 0xc4bfb8 : 0xf4f2ee), -0.25, 0.25, rr(-0.5, 0.5));
+      col(dark ? (R() < 0.45 ? 0x55514e : 0x6e6964) : 0xd4d0c8), col(dark ? 0xc4bfb8 : 0xe8e2d8), -0.25, 0.25, rr(-0.5, 0.5));
   }
   function fire(x, y, z) {
     if (!P || R() > 0.55) return;             // throttle: ships call this every frame
     P.glow.spawn(x + rr(-0.35, 0.35), y + rr(0, 0.2), z + rr(-0.35, 0.35), rr(-0.3, 0.3) + windX() * 0.5, rr(1.4, 2.6), rr(-0.3, 0.3) + windZ() * 0.5,
-      rr(0.5, 0.85), rr(0.55, 0.8), rr(1.0, 1.4), col(R() < 0.5 ? 0xffe27a : 0xffb048), col(0xe0482a), -0.6, 0.8, rr(-3, 3));
+      rr(0.5, 0.85), rr(0.55, 0.8), rr(1.0, 1.4), col(R() < 0.5 ? 0xe8b458 : 0xe09040), col(0xc04428), -0.6, 0.8, rr(-3, 3));
     if (R() < 0.3) P.halo.spawn(x, y + 0.5, z, 0, 1, 0, 0.45, 1.4, 2.0, col(0x7a4a28), col(0x502810), 0, 0, 0);
   }
   function wake(x, z, heading, size) {
@@ -236,9 +250,10 @@ window.WW = window.WW || {};
   }
   function sparks(x, y, z) {
     if (!P) return;
-    var n = 2 + (R() * 3 | 0);
+    if (R() < 0.5) return;                    // planes call this repeatedly while being hit
+    var n = 1 + (R() * 2 | 0);
     for (var i = 0; i < n; i++)
-      P.halo.spawn(x, y, z, rr(-3, 3), rr(1.5, 4), rr(-3, 3), rr(0.3, 0.5), 0.4, 0.2, col(0xa08050), col(0x604020), 9, 0.8, 0, true);
+      P.halo.spawn(x, y, z, rr(-3, 3), rr(1.5, 4), rr(-3, 3), rr(0.25, 0.4), 0.3, 0.15, col(0x6a5034), col(0x3a2414), 9, 0.8, 0, true);
   }
 
   function update(dt) {

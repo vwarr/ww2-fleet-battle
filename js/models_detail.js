@@ -11,6 +11,7 @@ window.WW = window.WW || {};
     if (G2) return G2;
     G2 = { c6: new THREE.CylinderGeometry(0.5, 0.5, 1, 6), x6: new THREE.CylinderGeometry(0.5, 0.5, 1, 6), s8: new THREE.SphereGeometry(0.5, 8, 6) };
     G2.c6.translate(0, 0.5, 0); G2.x6.rotateZ(-Math.PI / 2);
+    for (var k in G2) WW.models._whiten(G2[k]);
     return G2;
   }
   // tiny parts: low-poly cylinder (bottom-based), cylinder along x (centred), low-poly ellipsoid, plain box (bottom-based)
@@ -20,7 +21,7 @@ window.WW = window.WW || {};
   function bx(p, m, w, h, d, x, y, z) { return M._bar(p, m, w, h, d, x, y, z); }
   function shade(hex, k) { return new THREE.Color(hex).multiplyScalar(k).getHex(); }
 
-  var RAIL = 0xdcd8cc, BOAT = 0xe9e3d3, LENS = 0xfff4c8;
+  var RAIL = 0xd8d2c4, BOAT = 0xe4dccb, LENS = 0xf4e2b0;
 
   // ---- detail parts ----
   // AA gun tub with 2 or 4 tiny barrels pointing outboard-up
@@ -217,19 +218,23 @@ window.WW = window.WW || {};
     })(root);
     return list;
   }
-  function buildMerged(root, list) {
+  // aoBase: local height of the surface parts stand on (deck); vertices near it get a soft contact-shadow darkening
+  function buildMerged(root, list, aoBase) {
     root.updateMatrixWorld(true);
     _inv.copy(root.matrixWorld).invert();
     var byMat = {}, order = [];
     list.forEach(function (c) {
       var id = c.material.uuid;
-      if (!byMat[id]) { byMat[id] = { mat: c.material, p: [], n: [] }; order.push(id); }
-      var e = byMat[id], geo = c.geometry, pa = geo.attributes.position, na = geo.attributes.normal, ix = geo.index;
+      if (!byMat[id]) { byMat[id] = { mat: c.material, p: [], n: [], c: [] }; order.push(id); }
+      var e = byMat[id], geo = c.geometry, pa = geo.attributes.position, na = geo.attributes.normal, ix = geo.index, cl = geo.attributes.color;
       _mw.multiplyMatrices(_inv, c.matrixWorld); _nm.getNormalMatrix(_mw);
       var cnt = ix ? ix.count : pa.count;
       for (var k = 0; k < cnt; k++) {
         var vi = ix ? ix.getX(k) : k;
         _v.fromBufferAttribute(pa, vi).applyMatrix4(_mw); e.p.push(_v.x, _v.y, _v.z);
+        var ao = 1;
+        if (aoBase != null) { var h = Math.max(0, Math.min(1, (_v.y - aoBase) / 0.5)); ao = 0.8 + 0.2 * h * h * (3 - 2 * h); }
+        var cv = cl ? cl.getX(vi) : 1; e.c.push(ao * cv, ao * cv, ao * cv);
         _v.fromBufferAttribute(na, vi).applyMatrix3(_nm).normalize(); e.n.push(_v.x, _v.y, _v.z);
       }
     });
@@ -237,14 +242,15 @@ window.WW = window.WW || {};
       var e = byMat[id], g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(e.p, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(e.n, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(e.c, 3));
       g.computeBoundingSphere();
       return { mat: e.mat, geo: g };
     });
   }
-  function merge(root, key, skip, keep) {
+  function merge(root, key, skip, keep, aoBase) {
     var list = collect(root, skip, keep);
     if (list.length < 2) return;
-    var m = cache[key] || (cache[key] = buildMerged(root, list));
+    var m = cache[key] || (cache[key] = buildMerged(root, list, aoBase));
     list.forEach(function (c) { c.parent.remove(c); });
     m.forEach(function (e) { root.add(new THREE.Mesh(e.geo, e.mat)); });
   }
@@ -254,8 +260,8 @@ window.WW = window.WW || {};
     var H = s._hg, fn = DET[type];
     if (fn && H) fn(s, P, H, P.id === 'IJN');
     var key = type + '|' + P.id, tobjs = s.turrets.map(function (t) { return t.obj; });
-    s.turrets.forEach(function (t, i) { merge(t.obj, key + '|t' + i, [], s.hullMats); });
-    merge(s.group, key, tobjs, s.hullMats);
+    s.turrets.forEach(function (t, i) { merge(t.obj, key + '|t' + i, [], s.hullMats, 0); });
+    merge(s.group, key, tobjs, s.hullMats, H ? H[2] : 0);
   }
   if (WW.models) { WW.models._finish = finish; WW.models._merge = merge; }
   else console.error('models_detail.js must load after models.js');

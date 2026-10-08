@@ -140,9 +140,9 @@ window.WW = window.WW || {};
   }
 
   // ---- colours: smooth gradients (soft pastel toy-box palette) ----
-  const C = hex => new THREE.Color(hex);
+  const C = hex => WW.pastel(hex, 0.08); // soft pastel palette (ACES tone mapping desaturates a little more)
   const FLOOR = [[0, C(0xf2e4bc)], [1.5, C(0xe6e2bc)], [4, C(0xb8dcc6)], [8, C(0x86c0c4)], [14, C(0x5f9cb8)], [24, C(0x4a82a8)]];
-  const LAND = [[0, C(0xf4e2b0)], [0.7, C(0xf0dcaa)], [1.3, C(0xa9d48a)], [3, C(0x8fc679)], [5.5, C(0x7ab868)], [8, C(0x86b872)]]; // soft green tops (no pale bald patch)
+  const LAND = [[0, C(0xf2dcae)], [0.7, C(0xead3a2)], [1.3, C(0xa6cc86)], [3, C(0x8cbf76)], [5.5, C(0x7aae68)], [8, C(0x739f62)]]; // sage-green tops, darker with height (no bald patch)
   const tmpC = new THREE.Color();
   function ramp(tbl, v) {
     if (v <= tbl[0][0]) return tmpC.copy(tbl[0][1]);
@@ -181,6 +181,11 @@ window.WW = window.WW || {};
     for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
       const x = x0 + i * step, z = z0 + j * step, h = -rawDepth(x, z);
       const c = h > 0 ? ramp(LAND, h) : ramp(FLOOR, -h);
+      // baked ambient occlusion: darken creases/hollows and the band where land meets water
+      const nb = (-rawDepth(x + step, z) - rawDepth(x - step, z) - rawDepth(x, z + step) - rawDepth(x, z - step)) * 0.25;
+      const crease = WW.clamp((nb - h) * 0.35, 0, 0.22);
+      const wet = h > -1.5 && h < 0.35 ? 0.1 * (1 - Math.abs(h + 0.55) / 0.95) : 0;
+      c.multiplyScalar(1 - crease - Math.max(0, wet));
       pos[p] = x; pos[p + 1] = h; pos[p + 2] = z;
       col[p] = c.r; col[p + 1] = c.g; col[p + 2] = c.b; p += 3;
     }
@@ -266,7 +271,7 @@ window.WW = window.WW || {};
     WW.terrain.landFraction = landFraction();
   }
 
-  function update(dt) { if (WW.water) WW.water.update(dt); }
+  function update() { /* water animates on real time (main calls WW.water.update) */ }
 
   function isNavigable(x, z, minDepth) { return depthAt(x, z) >= (minDepth || 0.5); }
 

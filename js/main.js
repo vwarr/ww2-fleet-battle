@@ -3,6 +3,7 @@ window.WW = window.WW || {};
 (function (WW) {
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
   const STEP = 0.05;          // max sim step
+  const BASE_SPEED = 0.5;     // calm pace: the UI's 1x runs the simulation at half speed
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
   const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: 365, x1: 465, cx: 415, heading: Math.PI } };
@@ -19,8 +20,9 @@ window.WW = window.WW || {};
     const canvas = document.getElementById('game');
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setClearColor(0xa6d6f2);
+    // tone mapping is done once in post.js (a soft filmic shoulder over the whole frame)
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.VSMShadowMap; // blurred, very soft shadows
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft edges (VSM left a faint box-shaped tint on the seabed)
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 4000);
     WW.renderer = renderer; WW.scene = scene; WW.camera = camera;
@@ -34,6 +36,7 @@ window.WW = window.WW || {};
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     call('cam', 'resize');
+    call('post', 'resize');
   }
   WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; } };
 
@@ -200,11 +203,13 @@ window.WW = window.WW || {};
     requestAnimationFrame(frame);
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
-    advance(rdt * WW.time.scale);
+    advance(rdt * WW.time.scale * BASE_SPEED);
+    call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
     call('sky', 'update', rdt);
     call('ui', 'update', rdt);
-    renderer.render(scene, camera);
+    if (WW.post) WW.post.render(scene, camera); else renderer.render(scene, camera);
+    call('cam', 'afterRender');
   }
 
   function setScale(n) { WW.time.scale = WW.clamp(+n || 1, 0.1, 64); }
@@ -221,6 +226,7 @@ window.WW = window.WW || {};
     ['sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
     });
+    call('post', 'init');
     resize();
     call('cam', 'init');
     game.startRound();

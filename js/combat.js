@@ -66,9 +66,12 @@ window.WW = window.WW || {};
     G.torp = new THREE.BoxGeometry(2.0, 0.3, 0.3);
     G.bomb = new THREE.BoxGeometry(0.9, 0.35, 0.35);
     G.dc = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    M.shell = new THREE.MeshBasicMaterial({ color: 0x3a3a3a });
-    M.tracer = new THREE.MeshBasicMaterial({ color: 0xffd040 });
-    M.tracerRed = new THREE.MeshBasicMaterial({ color: 0xff6a30 });
+    // shells in flight stay subtle: muzzle flash and splash should draw the eye, not the round
+    M.shell = new THREE.MeshBasicMaterial({ color: 0x7a7266, transparent: true, opacity: 0.6, depthWrite: false });
+    M.shellBig = new THREE.MeshBasicMaterial({ color: 0x4e4a45, transparent: true, opacity: 0.7, depthWrite: false });
+    // soft warm tracers (golden-hour + bloom: moderate, never pure white), partly see-through
+    M.tracer = new THREE.MeshBasicMaterial({ color: 0xe6c27a, transparent: true, opacity: 0.55, depthWrite: false });
+    M.tracerRed = new THREE.MeshBasicMaterial({ color: 0xe8946a, transparent: true, opacity: 0.55, depthWrite: false });
     M.torp = new THREE.MeshBasicMaterial({ color: 0x2a2f33 });
     M.bomb = new THREE.MeshBasicMaterial({ color: 0x353b2e });
     M.dc = new THREE.MeshBasicMaterial({ color: 0x222222 });
@@ -139,15 +142,15 @@ window.WW = window.WW || {};
       ax += Math.cos(a) * r; az += Math.sin(a) * r;
       T = Math.max(0.15, Math.hypot(ax - m.x, az - m.z) / hs);
 
-      var p = acquire('shell', G.shell, B.tracer ? (ship.nation === 'IJN' ? M.tracerRed : M.tracer) : M.shell);
+      var p = acquire('shell', G.shell, B.tracer ? (ship.nation === 'IJN' ? M.tracerRed : M.tracer) : cal === 'big' ? M.shellBig : M.shell);
       p.cal = cal; p.nation = ship.nation; p.target = target; p.owner = ship;
       p.x0 = m.x; p.y0 = m.y; p.z0 = m.z; p.T = T; p.g = B.g;
       p.vx = (ax - m.x) / T; p.vz = (az - m.z) / T;
       p.vy0 = (0.5 * B.g * T * T - m.y) / T;  // lands at y=0 exactly at T
       p.dmg = S.dmg * rr(0.8, 1.2);
       if (p.mesh) {
-        var k = cal === 'big' ? 1.6 : cal === 'med' ? 1.2 : cal === 'small' ? 0.9 : 0.6;
-        p.mesh.scale.set(B.len * k * (B.tracer ? 2 : 1), k, k);
+        var k = cal === 'big' ? 0.95 : cal === 'med' ? 0.7 : cal === 'small' ? 0.6 : 0.45;
+        if (B.tracer) p.mesh.scale.set(B.len * k * 1.2, k * 0.6, k * 0.6); else p.mesh.scale.set(B.len * k, k, k);
       }
       place(p, m.x, m.y, m.z); orient(p, p.vx, p.vy0, p.vz);
       fx('muzzleFlash', m.x, m.y, m.z);
@@ -193,18 +196,21 @@ window.WW = window.WW || {};
   function aaTracer(sx, sy, sz, px, py, pz, nation) {
     var dx = px - sx, dy = py - sy, dz = pz - sz;
     var d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-    var sp = 90, life = Math.min(0.5, (d / sp) * rr(0.5, 0.9));
+    var R = Math.random, sp = 90, life = Math.min(0.45, (d / sp) * (0.5 + 0.4 * R())); // visual only: Math.random
     var p = acquire('tracer', G.shell, nation === 'IJN' ? M.tracerRed : M.tracer);
     p.x0 = sx; p.y0 = sy; p.z0 = sz;
-    p.vx = dx / d * sp + rr(-6, 6); p.vy0 = dy / d * sp + rr(-6, 6); p.vz = dz / d * sp + rr(-6, 6);
+    p.vx = dx / d * sp + (R() - 0.5) * 12; p.vy0 = dy / d * sp + (R() - 0.5) * 12; p.vz = dz / d * sp + (R() - 0.5) * 12;
     p.life = life;
-    if (p.mesh) p.mesh.scale.set(2.2, 0.35, 0.35);
+    p.len = 1.3;
+    if (p.mesh) p.mesh.scale.set(p.len, 0.2, 0.2);
     place(p, sx, sy, sz); orient(p, p.vx, p.vy0, p.vz);
   }
   function updateTracer(p, dt) {
     p.t += dt;
     if (p.t >= p.life) { p.dead = true; return; }
     place(p, p.x0 + p.vx * p.t, p.y0 + p.vy0 * p.t, p.z0 + p.vz * p.t);
+    var f = Math.min(1, (p.life - p.t) / (p.life * 0.4)); // short fade-out: shrink over the last 40% of its life
+    if (p.mesh) p.mesh.scale.set(p.len * f, 0.2 * (0.4 + 0.6 * f), 0.2 * (0.4 + 0.6 * f));
   }
 
   function updateAA(dt) {
@@ -229,10 +235,10 @@ window.WW = window.WW || {};
       var hc = 0.35 * (1.4 - 0.8 * frac) * (best.kind === 'fighter' ? 0.6 : 1);
       try { if (best.damage) best.damage(aa.dps * AA_INTERVAL * hc); } catch (e) { /* ignore */ }
       if (rnd() < 0.7) fx('flak', best.x + rr(-3, 3), (best.y || 5) + rr(-2, 3), best.z + rr(-3, 3));
-      var nt = 1 + (rnd() < 0.5 ? 1 : 0);
-      for (var k = 0; k < nt; k++) {
-        aaTracer(s.x + rr(-2, 2), 2.5, s.z + rr(-2, 2),
-                 best.x + rr(-2, 2), (best.y || 5) + rr(-1, 1), best.z + rr(-2, 2), s.nation);
+      if (Math.random() < 0.5) { // about half as many tracers as before (visual only)
+        var R = Math.random;
+        aaTracer(s.x + (R() - 0.5) * 4, 2.5, s.z + (R() - 0.5) * 4,
+                 best.x + (R() - 0.5) * 4, (best.y || 5) + (R() - 0.5) * 2, best.z + (R() - 0.5) * 4, s.nation);
       }
     }
   }

@@ -21,7 +21,7 @@ window.WW = window.WW || {};
     uniform sampler2D depthTex;
     uniform vec4 extent;          // x0, z0, width, height
     uniform float time;
-    uniform vec3 cShallow, cMid, cDeep, cAbyss, cFoam, cSky;
+    uniform vec3 cShallow, cMid, cDeep, cAbyss, cFoam, cSky, sunDir, sunCol, hzAway, hzSun;
     varying vec3 vWorld;
     #include <fog_pars_fragment>
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -38,15 +38,20 @@ window.WW = window.WW || {};
       vec3 col = mix(cShallow, cMid, smoothstep(0.0, 4.0, d));
       col = mix(col, cDeep, smoothstep(3.0, 11.0, d));
       col = mix(col, cAbyss, smoothstep(10.0, 22.0, d));
-      float alpha = mix(0.56, 0.9, smoothstep(0.0, 12.0, d));
+      float alpha = mix(0.62, 0.92, smoothstep(0.0, 10.0, d));
+      // fade to fully opaque deep water toward the edge of the sea-floor mesh (no visible seam)
+      float edge = max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0;
+      float far = smoothstep(0.62, 0.95, edge);
+      col = mix(col, cAbyss, far * smoothstep(8.0, 16.0, d));
+      alpha = mix(alpha, 1.0, far);
       if (!inside) alpha = 1.0;
       // gentle large-scale swell shading
       float sw = vnoise(vWorld.xz * 0.035 + vec2(time * 0.05, time * 0.03)) * 0.6 + vnoise(vWorld.xz * 0.09 - vec2(time * 0.07, 0.0)) * 0.4;
       col *= 0.96 + 0.08 * sw;
       // soft caustic ripples over sandy shallows: reads as water over sand, not a solid surface
-      float cz = vnoise(vWorld.xz * 0.45 + vec2(time * 0.25, -time * 0.2)) + vnoise(vWorld.xz * 0.7 - vec2(time * 0.18, time * 0.22));
-      float caust = smoothstep(0.82, 1.0, 1.0 - abs(cz - 1.0)) * (1.0 - smoothstep(1.0, 5.0, d));
-      col = mix(col, vec3(0.93, 1.0, 0.97), caust * 0.35);
+      float cz = vnoise(vWorld.xz * 0.3 + vec2(time * 0.08, -time * 0.06)) + vnoise(vWorld.xz * 0.45 - vec2(time * 0.05, time * 0.07));
+      float caust = smoothstep(0.86, 1.0, 1.0 - abs(cz - 1.0)) * (1.0 - smoothstep(1.0, 4.0, d));
+      col = mix(col, vec3(0.95, 0.98, 0.94), caust * 0.18);   // calm, slow, faint
       // foam: a crisp outline at the shore plus a softer ring that breathes outward
       float wob = (vnoise(vWorld.xz * 0.25 + time * 0.15) - 0.5) * 0.35;
       float shore = 1.0 - smoothstep(0.75, 0.98, d + wob);
@@ -67,20 +72,37 @@ window.WW = window.WW || {};
       col = mix(col, vec3(1.0), glint * 0.45 * smoothstep(1.5, 6.0, d));
       // fresnel: grazing angles take on the sky colour (soft horizon)
       vec3 v = normalize(cameraPosition - vWorld);
+      // warm sun-glitter path toward the low sun: a soft sheen plus fine sparkles on a rippled normal
+      vec2 rip = vec2(vnoise(vWorld.xz * 1.4 + time * 0.35), vnoise(vWorld.xz * 1.4 - time * 0.3 + 9.0)) - 0.5;
+      vec3 nrm = normalize(vec3(rip.x * 0.35, 1.0, rip.y * 0.35));
+      float rs = max(dot(reflect(-v, nrm), sunDir), 0.0);
+      float sheen = pow(max(dot(reflect(-v, vec3(0.0, 1.0, 0.0)), sunDir), 0.0), 18.0);
+      col += sunCol * (sheen * 0.1 + pow(rs, 420.0) * 0.35) * smoothstep(1.0, 4.0, d);
       float fr = pow(1.0 - clamp(v.y, 0.0, 1.0), 4.0);
-      col = mix(col, cSky, fr * 0.3);
+      // the horizon colour depends on where we look: peach toward the sun, soft blue away from it
+      vec2 az = normalize(-v.xz + 1e-5);
+      float toward = dot(az, normalize(sunDir.xz)) * 0.5 + 0.5;
+      vec3 hz = mix(hzAway, hzSun, pow(toward, 2.5));
+      col = mix(col, hz, fr * 0.35);
       alpha = mix(alpha, 1.0, fr);
       gl_FragColor = vec4(col, alpha);
-      #include <fog_fragment>
+      #include <tonemapping_fragment>
+      #include <encodings_fragment>
+      #ifdef USE_FOG
+        float fogF = smoothstep(fogNear, fogFar, vFogDepth);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, hz, fogF);
+      #endif
     }`;
 
   function build() {
     mat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
         depthTex: { value: null }, extent: { value: new THREE.Vector4(0, 0, 1, 1) }, time: { value: 0 },
-        cShallow: { value: new THREE.Color(0x8fe4da) }, cMid: { value: new THREE.Color(0x5ccad0) },
-        cDeep: { value: new THREE.Color(0x3aa0c8) }, cAbyss: { value: new THREE.Color(0x2f7cb4) },
-        cFoam: { value: new THREE.Color(0xffffff) }, cSky: { value: new THREE.Color(0xa6d6f2) }
+        cShallow: { value: WW.pastel(0x86e2d8, 0.05) }, cMid: { value: WW.pastel(0x4cc4d0, 0.05) },
+        cDeep: { value: WW.pastel(0x2a94c4, 0.05) }, cAbyss: { value: WW.pastel(0x236ca8, 0.05) },
+        cFoam: { value: new THREE.Color(0xfffaf2) }, cSky: { value: WW.pastel(0xc4d6ea, 0.1) },
+        sunDir: { value: (WW.sky && WW.sky.SUN_DIR) || new THREE.Vector3(-0.86, 0.36, 0.36).normalize() }, sunCol: { value: WW.pastel(0xffd2a0) },
+        hzAway: { value: WW.pastel(0xbfd3ee, 0.1) }, hzSun: { value: WW.pastel(0xffc89a, 0.1) }
       }]),
       vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true,
       extensions: { derivatives: true }
@@ -92,7 +114,7 @@ window.WW = window.WW || {};
     WW.scene.add(mesh);
     // soft, cool-tinted shadow catcher just above the sea: ships and planes shade the water
     const sg = new THREE.PlaneGeometry(WW.cfg.MAP_W + 400, WW.cfg.MAP_H + 400); sg.rotateX(-Math.PI / 2);
-    const catcher = new THREE.Mesh(sg, new THREE.ShadowMaterial({ color: 0x24507a, opacity: 0.22, depthWrite: false }));
+    const catcher = new THREE.Mesh(sg, new THREE.ShadowMaterial({ color: 0x3a3f6a, opacity: 0.24, depthWrite: false }));
     catcher.position.set(WW.cfg.MAP_W / 2, 0.06, WW.cfg.MAP_H / 2);
     catcher.receiveShadow = true; catcher.renderOrder = 2;
     WW.scene.add(catcher);
@@ -120,6 +142,35 @@ window.WW = window.WW || {};
     mat.uniforms.extent.value.set(x0 - TEX_STEP / 2, z0 - TEX_STEP / 2, nx * TEX_STEP, nz * TEX_STEP);
     mat.uniforms.depthTex.value = tex;
   }
-  function update(dt) { t += dt; if (mat) mat.uniforms.time.value = t; }
+  // Soft contact shadows: a dark radial blob under each ship hull, where it meets the water (cheap AO).
+  const blobs = []; let blobGeo = null, blobMat = null;
+  function blobTexture() {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), grd = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+    grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.55, 'rgba(255,255,255,0.45)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  }
+  function updateBlobs() {
+    if (!WW.scene || typeof document === 'undefined') return;
+    if (!blobGeo) {
+      blobGeo = new THREE.PlaneGeometry(1, 1); blobGeo.rotateX(-Math.PI / 2);
+      blobMat = new THREE.MeshBasicMaterial({ color: 0x1c2a4a, alphaMap: blobTexture(), transparent: true, opacity: 0.32, depthWrite: false });
+    }
+    let n = 0;
+    for (const s of WW.world.ships) {
+      if (s.removed || s.wreck || s.submerged) continue;
+      let b = blobs[n];
+      if (!b) { b = blobs[n] = new THREE.Mesh(blobGeo, blobMat); b.renderOrder = 2; b.rotation.order = 'YXZ'; }
+      if (b.parent !== WW.scene) WW.scene.add(b);
+      const L = s.stats.length, k = s.sinking ? Math.max(0, 1 - s.sinkT / 6) : 1;
+      b.visible = k > 0.02;
+      b.position.set(s.x, 0.1, s.z); b.rotation.y = -s.heading;
+      b.scale.set(L * 1.25 * k + 0.01, 1, L * 0.42 * k + 0.01);
+      n++;
+    }
+    for (let i = n; i < blobs.length; i++) blobs[i].visible = false;
+  }
+  function update(dt) { t += dt; if (mat) mat.uniforms.time.value = t; updateBlobs(); }
   WW.water = { setDepth, update };
 })(window.WW);

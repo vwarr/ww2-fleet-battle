@@ -14,7 +14,7 @@ window.WW = window.WW || {};
   var burning = [];               // ships that carry damage sites (alive, sinking or wreck)
   var v = null;                   // scratch vector
   var load = 1, demand = 0;       // emission scale from last frame's demand (>= 1 when over budget)
-  var BUDGET = 110;               // wanted site smoke puffs per sim second across all ships (+ fires ~2x)
+  var BUDGET = 80;                // wanted site smoke puffs per sim second across all ships (+ fires ~2x)
   var WRECK_SMOKE = 30;           // seconds of residual smoke after a wreck settles
 
   function pickWind() {
@@ -59,19 +59,19 @@ window.WW = window.WW || {};
     var p = worldOf(ship, site), px = p.x, py = p.y, pz = p.z;
     if (fx) {
       if (kind === 'torpedo') {
-        fx.splash(px, pz, 4); fx.splash(px + rr(-1, 1), pz + rr(-1, 1), 3);
-        fx.explosion(px, 0.8, pz, 2.2);
+        fx.splash(px, pz, 3.5); fx.splash(px + rr(-1, 1), pz + rr(-1, 1), 2.2);
+        fx.explosion(px, 0.8, pz, 1.4);
       } else if (kind === 'dc') {
         // the depth charge already threw its water column
       } else if (under) {
         fx.splash(px, pz, 1.5);
       } else if (kind === 'bomb') {
-        fx.explosion(px, py + 0.3, pz, 2.4); fx.sparks(px, py + 0.5, pz);
-        fx.smoke(px, py + 0.8, pz, true, 1.6);
+        fx.explosion(px, py + 0.3, pz, 1.7); fx.sparks(px, py + 0.5, pz);
+        fx.smoke(px, py + 0.8, pz, true, 1.3);
       } else if (cal === 'mg') {
         fx.sparks(px, py + 0.2, pz);
       } else {
-        var sz = cal === 'big' ? 2.2 : cal === 'med' ? 1.3 : 0.75;
+        var sz = cal === 'big' ? 1.6 : cal === 'med' ? 1.0 : 0.6;
         fx.explosion(px, py + 0.2, pz, sz); fx.sparks(px, py + 0.4, pz);
         if (cal === 'big') fx.smoke(px, py + 0.6, pz, true, 1.4); // debris puff
       }
@@ -152,8 +152,8 @@ window.WW = window.WW || {};
       s.sT -= dt;
       if (s.sT <= 0) {
         var onFire = s.fire > 0 && wreckT < 0;
-        s.sT = (onFire ? 0.4 : 0.75) / Math.min(2.5, inten) * load;
-        if (wreckT >= 0) s.sT = rr(0.7, 1.4) * load;
+        s.sT = (onFire ? 0.58 : 1.05) / Math.min(2.5, inten) * load; // lazy columns
+        if (wreckT >= 0) s.sT = rr(1.0, 1.9) * load;
         var h = R() * (onFire ? 1.4 : 0.6), size = wreckT >= 0 ? 0.6 : (onFire ? 1.0 + 0.35 * s.sev + 0.5 * hpLoss : 0.7 + 0.2 * s.sev);
         var dark = wreckT >= 0 ? R() < 0.5 : (onFire || s.low || hpLoss > 0.4);
         fx.smoke(p.x + wind.x * h * 2, y + 0.5 + h, p.z + wind.z * h * 2, dark, size);
@@ -163,16 +163,16 @@ window.WW = window.WW || {};
       if (s.fire > 0) {
         s.fT -= dt;
         if (s.fT <= 0) {
-          s.fT = 0.12 / Math.min(2, 0.5 + 0.5 * s.sev) * load;
+          s.fT = 0.15 / Math.min(2, 0.5 + 0.5 * s.sev) * load; // soft flicker
           var spread = 0.3 + 0.25 * s.sev;
           fx.fire(p.x + rr(-spread, spread), y + 0.1, p.z + rr(-spread, spread));
-          if (s.sev > 1.5 && R() < 0.5) fx.fire(p.x + rr(-spread, spread), y + 0.2, p.z + rr(-spread, spread));
+          if (s.sev > 1.5 && R() < 0.3) fx.fire(p.x + rr(-spread, spread), y + 0.2, p.z + rr(-spread, spread));
         }
         // occasional secondary explosion (ammunition / fuel) at a big fire
         s.boomT -= dt;
         if (s.boomT <= 0) {
-          s.boomT = rr(7, 16);
-          if (s.sev > 1 && R() < 0.35 && !sinking) { fx.explosion(p.x, y + 0.3, p.z, 0.9 + 0.3 * s.sev); }
+          s.boomT = rr(12, 25);
+          if (s.sev > 1.2 && R() < 0.2 && !sinking) { fx.explosion(p.x, y + 0.3, p.z, 0.6 + 0.15 * s.sev); }
         }
       }
     }

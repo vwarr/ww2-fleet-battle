@@ -34,7 +34,7 @@ window.WW = window.WW || {};
       if (WW.game.state === 'setup') WW.game.enterAuto();
       else WW.game.enterSetup(false);
     });
-    $('div', 'row dim small', el.panel, 'H panel   C camera   P pixels');
+    $('div', 'row dim small', el.panel, 'H panel   C camera   T tilt-shift   P pixels');
 
     // setup palette
     el.setup = $('div', 'panel setup', root);
@@ -53,9 +53,9 @@ window.WW = window.WW || {};
     el.film = document.getElementById('film');
     el.cap = el.film.querySelector('.caption');
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
-    WW.on('roundStart', d => caption('Round ' + d.round, '', 4, true));
+    WW.on('roundStart', d => caption('Round ' + d.round, '', 3, true));
     WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); });
-    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', 'Round ' + d.round, 7, false));
+    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', 'Round ' + d.round, 5, false));
 
     const canvas = document.getElementById('game');
     canvas.addEventListener('mousedown', onMouse);
@@ -76,6 +76,7 @@ window.WW = window.WW || {};
     if (k === 'h') hudPeek = !hudPeek;
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
     else if (k === 'p' && WW.view) say('Pixel mode ' + (WW.view.togglePixel() ? 'on' : 'off'));
+    else if (k === 't') say('Tilt-shift ' + (el.film.classList.toggle('notilt') ? 'off' : 'on'));
     else if (k === '1' || k === '2' || k === '4') WW.time.scale = +k;
   }
 

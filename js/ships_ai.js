@@ -42,15 +42,18 @@ window.WW = window.WW || {};
   function retarget(ship) {
     const a = ship.ai, st = ship.stats, ships = WW.world.ships;
     let best = null, bestS = 1e9, sub = null, subD = 1e9, threat = null, threatD = 1e9, any = null, anyD = 1e9, fb = null, fbD = 1e9;
-    let cx = 0, cz = 0, cn = 0;
+    let cx = 0, cz = 0, cn = 0, cv = null, cvD = 1e9, near = null, nearD = 1e9;
     const big = ship.type === 'submarine' || ship.type === 'pt';
     for (const o of ships) {
       if (!o.alive) continue;
+      if (o === ship) continue;
+      const d = WW.dist(ship.x, ship.z, o.x, o.z);
+      if (!o.submerged && d < nearD) { nearD = d; near = o; }
       if (o.nation === ship.nation) {
-        if (o !== ship && o.type !== 'submarine' && o.type !== 'pt') { cx += o.x; cz += o.z; cn++; }
+        if (o.type !== 'submarine' && o.type !== 'pt') { cx += o.x; cz += o.z; cn++; }
+        if (o.type === 'carrier' && d < cvD) { cvD = d; cv = o; }
         continue;
       }
-      const d = WW.dist(ship.x, ship.z, o.x, o.z);
       if (d < anyD) { anyD = d; any = o; }
       if (o.type === 'submarine' && d < subD) { subD = d; sub = o; }
       if (o.type === 'submarine' && ship.type === 'submarine' && d < fbD) { fbD = d; fb = o; } // sub vs sub: last resort
@@ -61,6 +64,7 @@ window.WW = window.WW || {};
       if (s < bestS) { bestS = s; best = o; }
     }
     if (!best) best = fb;
+    a.cv = cv; a.near = near; a.nearD = nearD;
     ship.target = best; a.any = any; a.sub = sub; a.subD = subD; a.threat = threat; a.threatD = threatD;
     a.cn = cn; if (cn) { a.cx = cx / cn; a.cz = cz / cn; }
     // Per-calibre gun targets: main target if in range, else nearest visible enemy in range.
@@ -131,7 +135,12 @@ window.WW = window.WW || {};
     if (d > pref * 1.2) { h = b; ship.throttle = 1; }
     else if (d < pref * 0.65) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
     else { h = b + a.orbitDir * (PI / 2 - WW.clamp((d - pref) / pref, -0.5, 0.5) * 1.2); ship.throttle = 0.8; }
-    if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
+    const cv = a.cv && a.cv.alive ? a.cv : null;
+    if (cv && ship.type !== 'pt') { // loose screen around the carrier: 50-70 units out, never bunched on it
+      const dc = WW.dist(ship.x, ship.z, cv.x, cv.z);
+      if (dc > 80) h = blend(h, ship, cv.x, cv.z, 0.3);
+      else if (dc < 50) h = blend(h, ship, 2 * ship.x - cv.x, 2 * ship.z - cv.z, 0.6 * (50 - dc) / 50 + 0.2);
+    } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
     ship.desiredHeading = h;
     // Torpedoes.
     if (st.torpedoes && a.torpReload <= 0 && !t.submerged && d < st.torpedoes.range * 0.8 && d > 12) fireSpread(ship, t);
@@ -213,6 +222,12 @@ window.WW = window.WW || {};
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
       ship.desiredHeading = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
     } else { ship.desiredHeading = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; }
+    // Any ship closing inside ~90 units: turn away from it (separation in ships.js enforces the 70-unit space).
+    const n = a.near;
+    if (n && n.alive && (!late || n.nation === ship.nation) && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {
+      ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - n.x, 2 * ship.z - n.z, 0.8);
+      ship.throttle = Math.max(ship.throttle, 0.8);
+    }
     if (!WW.air || !ship.hangar) return;
     const hg = ship.hangar;
     // CAP when enemy planes come near.

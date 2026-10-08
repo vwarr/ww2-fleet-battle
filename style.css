@@ -11,16 +11,22 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
   background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 62%, rgba(22, 40, 64, 0.2) 100%); }
 #film .bar { position: absolute; left: 0; right: 0; height: 0; background: #0b0f14; transition: height 2.5s ease-in-out; }
 #film .bar.top { top: 0; } #film .bar.bottom { bottom: 0; }
-#film.cinema .bar { height: 7.5vh; }
-#film .caption { position: absolute; left: 0; right: 0; top: 40%; text-align: center; opacity: 0;
+#film.cinema .bar { height: 5vh; }
+#film .caption { position: absolute; left: 0; right: 0; top: 42%; text-align: center; opacity: 0;
   transition: opacity 1.8s ease-in-out; color: #fffaf0; text-shadow: 0 2px 18px rgba(10, 20, 30, 0.55); }
 #film .caption.on { opacity: 1; }
-#film .caption .main { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 300; font-size: clamp(28px, 5vw, 64px);
-  letter-spacing: 0.35em; text-transform: uppercase; }
+#film .caption .main { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 300; font-size: clamp(20px, 2.8vw, 38px);
+  letter-spacing: 0.32em; text-transform: uppercase; }
 #film .caption .sub { font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-weight: 300;
   font-size: clamp(14px, 1.6vw, 22px); letter-spacing: 0.15em; margin-top: 8px; opacity: 0.85; }
 #film .caption.small { top: auto; bottom: 11vh; }
-#film .caption.small .main { font-size: clamp(16px, 2vw, 26px); letter-spacing: 0.4em; }
+#film .caption.small .main { font-size: clamp(13px, 1.4vw, 19px); letter-spacing: 0.4em; opacity: 0.9; }
+/* tilt-shift: blur the top and bottom bands for a miniature / diorama feel (T toggles) */
+#film .tilt { position: absolute; left: 0; right: 0; height: 30%; pointer-events: none;
+  -webkit-backdrop-filter: blur(2.5px); backdrop-filter: blur(2.5px); transition: opacity 1s; }
+#film .tilt.top { top: 0; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
+#film .tilt.bottom { bottom: 0; -webkit-mask-image: linear-gradient(transparent, #000); mask-image: linear-gradient(transparent, #000); }
+#film.notilt .tilt, #film:not(.cinema) .tilt { opacity: 0; }
 
 /* ---- HUD: soft toy-box panels, shown in setup, faded out in battle ---- */
 #hud { position: fixed; inset: 0; pointer-events: none; font-size: 13px; line-height: 1.45; }

@@ -12,7 +12,7 @@ window.WW = window.WW || {};
     carrier: ['small', 'small'], battleship: ['big', 'big', 'big', 'small', 'small'],
     cruiser: ['med', 'med', 'med'], destroyer: ['small', 'small'], submarine: [], pt: ['mg']
   };
-  var C = { white: 0xf3eee2, dark: 0x464b53, gun: 0x585e66, red: 0xd2564c, glass: 0x34465a, wood: 0x9a7650, line: 0x2b313a };
+  var C = { white: 0xefe8da, dark: 0x464b53, gun: 0x585e66, red: 0xd2564c, glass: 0x34465a, wood: 0x9a7650, line: 0x2b313a };
 
   function nation(n) { return PAL[n] || PAL.USN; }
   function gunCals(type) {
@@ -35,11 +35,22 @@ window.WW = window.WW || {};
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     return GRAD;
   }
+  // golden-hour pastel: every model colour is desaturated ~20% toward its luminance
+  function soft(hex) {
+    var c = new THREE.Color(hex), l = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+    return c.lerp(new THREE.Color(l, l, l), 0.2);
+  }
+  // All model toon materials use vertex colours = baked AO (every shared geometry carries a white colour attribute).
   var matCache = {};
   function mat(color) {
     var m = matCache[color];
-    if (!m) m = matCache[color] = new THREE.MeshToonMaterial({ color: color, gradientMap: grad() });
+    if (!m) m = matCache[color] = new THREE.MeshToonMaterial({ color: soft(color), gradientMap: grad(), vertexColors: true });
     return m;
+  }
+  function whiten(g) {
+    var n = g.attributes.position.count, a = new Float32Array(n * 3).fill(1);
+    g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    return g;
   }
   var outlineMat = null;
   function lineMat() {
@@ -72,6 +83,7 @@ window.WW = window.WW || {};
     };
     G.box.translate(0, 0.5, 0); G.cyl.translate(0, 0.5, 0); G.cone.translate(0, 0.5, 0); G.disc.translate(0, 0.5, 0);
     G.xcyl.rotateZ(-Math.PI / 2);
+    for (var k in G) whiten(G[k]);
     return G;
   }
   function M(m) { return typeof m === 'number' ? mat(m) : m; }
@@ -143,6 +155,13 @@ window.WW = window.WW || {};
     g.setIndex(deckI.concat(sideI));
     g.addGroup(0, deckI.length, 0); g.addGroup(deckI.length, sideI.length, 1);
     g.computeVertexNormals();
+    // baked AO: hull sides darken softly toward the waterline / keel; deck stays full
+    var pa = g.attributes.position, ca = new Float32Array(pa.count * 3);
+    for (var v = 0; v < pa.count; v++) {
+      var y = pa.getY(v), t = Math.max(0, Math.min(1, (y + 0.1) / (top * 0.9 + 0.1))), ao = 0.8 + 0.2 * t * t * (3 - 2 * t);
+      ca[v * 3] = ca[v * 3 + 1] = ca[v * 3 + 2] = v >= dk ? 1 : ao;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(ca, 3));
     hullCache[key] = g;
     return g;
   }
@@ -294,7 +313,7 @@ window.WW = window.WW || {};
   BUILD.submarine = function (P, isJ) {
     var hc = new THREE.Color(P.hull).multiplyScalar(0.72).getHex();
     var D = 0.4, s = newShip(P, 10, 1.25, D, 3.4, 0.25, 0.15, hc), g = s.group;
-    s.hullMats[1].color.setHex(new THREE.Color(P.hull).multiplyScalar(0.6).getHex());
+    s.hullMats[1].color.copy(soft(new THREE.Color(P.hull).multiplyScalar(0.6).getHex()));
     var tm = s.hullMats[0];                                             // tower fades with the hull when submerged
     box(g, tm, 7.0, 0.14, 0.62, -0.4, D, 0);                            // casing
     box(g, tm, isJ ? 1.9 : 1.6, 0.9, 0.62, 0.6, D, 0);                 // conning tower
@@ -382,6 +401,6 @@ window.WW = window.WW || {};
     },
     // shared helpers for models_planes.js
     _mat: mat, _box: box, _bar: bar, _cyl: cyl, _disc: disc, _xc: xc, _sph: sph, _nation: nation, _C: C,
-    _grad: grad, _lineMat: lineMat, _hullAt: hullAt, _geo: geo, _mesh: mesh, _shadows: shadows
+    _grad: grad, _lineMat: lineMat, _hullAt: hullAt, _geo: geo, _mesh: mesh, _shadows: shadows, _whiten: whiten, _soft: soft
   };
 })();

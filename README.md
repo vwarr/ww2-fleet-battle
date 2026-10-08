@@ -27,13 +27,15 @@ Auto mode is the default mode.
 - The game makes a new map and two random fleets for each round.
 - The camera works like a film director. It selects an interesting subject and films it with a slow, smooth shot.
   Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
-  After 6 to 12 seconds, the camera cuts to a new shot.
+  Each shot lasts 12 to 25 seconds. Then the picture fades softly to a new shot.
+  Every second shot is a slow, wide view of the islands and the fleets.
 - During the battle, black bars show at the top and bottom of the screen. The panel and other controls are not shown.
 - A round ends when one side has no ships. A caption shows the winner.
 - A round has a time limit of 5.5 minutes. At the time limit, the side with more tonnage wins.
 - After the caption, the next round starts automatically.
 
-A typical round lasts 3 to 4 minutes at 1× speed.
+The game runs at a calm pace: at 1× speed, the ships and planes move at half of their normal speed.
+A typical round lasts 6 to 8 minutes at 1× speed.
 
 ## Setup mode
 
@@ -64,6 +66,7 @@ To go back to auto mode, click **Back to auto** in setup mode.
 |---|---|
 | `H` | Show or hide the panel during the battle. The panel always shows in setup mode. |
 | `C` | Change the camera: CINEMATIC (the director camera) or MAP (shows all of the map from above). |
+| `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
 | `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
 | **1× / 2× / 4×** buttons | Set the game speed. These buttons are in the panel. |

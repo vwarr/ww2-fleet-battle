@@ -12,6 +12,7 @@ window.WW = window.WW || {};
     }
     starGeo = new THREE.ShapeGeometry(s);
     starGeo.rotateX(-Math.PI / 2); // lie flat, facing up
+    if (WW.models._whiten) WW.models._whiten(starGeo);
     return starGeo;
   }
   var COL = {

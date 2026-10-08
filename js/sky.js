@@ -1,42 +1,46 @@
 // sky.js (integrator): sky dome, lights, fog. Soft "toy box" daylight.
 window.WW = window.WW || {};
 (function (WW) {
-  const HORIZON = 0xa6d6f2, ZENITH = 0x3d8ddb, SUN_GLOW = 0xfff0c8, FOG = 0xa6d6f2;
-  const SUN_DIR = new THREE.Vector3(-120, 170, 90).normalize();
+  // Golden hour: a low warm sun in the west-north-west, peach horizon near the sun, lavender-blue
+  // elsewhere, a gentle blue zenith. Palettes are pastel (about 20% desaturated).
+  const SUN_DIR = new THREE.Vector3(-0.86, 0.36, 0.36).normalize();   // ~21 degrees above the horizon
+  const C = h => WW.pastel ? WW.pastel(h, 0.1) : new THREE.Color(h);
+  const HORIZON = 0xd0dcee, ZENITH = 0x5a8fd6, SUN_SIDE = 0xffc89a, AWAY = 0xbfd3ee, SUN_GLOW = 0xffe0b0, FOG = 0xd0dcee;
   let dome = null, sun = null, hemi = null, clouds = null;
 
   function init() {
     const scene = WW.scene;
-    scene.background = new THREE.Color(HORIZON);
-    scene.fog = new THREE.Fog(FOG, 700, 2400); // haze only far out, in the horizon blue
-    // Soft light: a strong sky fill with a cool blue lower half (shadow sides go soft blue, never dark)
-    // plus a gentle warm sun that casts soft shadows.
-    hemi = new THREE.HemisphereLight(0xeef5ff, 0xc2d2e8, 1.02);
+    scene.background = C(HORIZON);
+    scene.fog = new THREE.Fog(C(FOG), 650, 2300); // haze only far out, lavender-peach like the horizon
+    // Soft light: a dominant cool-lavender sky fill so nothing goes dark, plus a modest peach-gold sun.
+    hemi = new THREE.HemisphereLight(C(0xe6ecfa), C(0xc4b8d8), 0.72);
     scene.add(hemi);
-    sun = new THREE.DirectionalLight(0xffeccc, 0.36);
-    sun.position.copy(SUN_DIR).multiplyScalar(400);
+    sun = new THREE.DirectionalLight(C(0xffc890), 1.15);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04;
-    sun.shadow.radius = 9; sun.shadow.blurSamples = 16; // wide, soft penumbra (VSM)
-    const sc = sun.shadow.camera; sc.near = 10; sc.far = 1000;
-    setShadowSize(110);
+    const sc = sun.shadow.camera; sc.near = 10; sc.far = 1600;
+    setShadowSize(120);
     scene.add(sun); scene.add(sun.target);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { horizon: { value: new THREE.Color(HORIZON) }, zenith: { value: new THREE.Color(ZENITH) },
-                  glow: { value: new THREE.Color(SUN_GLOW) }, sunDir: { value: SUN_DIR } },
+      uniforms: { zenith: { value: C(ZENITH) }, sunSide: { value: C(SUN_SIDE) }, away: { value: C(AWAY) },
+                  glow: { value: C(SUN_GLOW) }, sunDir: { value: SUN_DIR } },
       vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: [
-        'uniform vec3 horizon; uniform vec3 zenith; uniform vec3 glow; uniform vec3 sunDir; varying vec3 vDir;',
+        'uniform vec3 zenith; uniform vec3 sunSide; uniform vec3 away; uniform vec3 glow; uniform vec3 sunDir; varying vec3 vDir;',
         'void main(){',
-        '  float h = clamp(vDir.y, 0.0, 1.0);',
-        '  vec3 c = mix(horizon, zenith, pow(smoothstep(0.0, 0.5, h), 0.7));',
-        '  float s = max(dot(normalize(vDir), sunDir), 0.0);',
-        '  c = mix(c, glow, pow(s, 8.0) * 0.6 + pow(s, 64.0) * 0.4);',          // soft warm glow around the sun
-        '  if (vDir.y < 0.0) c = horizon;',
+        '  vec3 d = normalize(vDir);',
+        '  float h = clamp(d.y, 0.0, 1.0);',
+        '  vec2 az = normalize(d.xz + 1e-5), sa = normalize(sunDir.xz);',
+        '  float toward = dot(az, sa) * 0.5 + 0.5;',                       // 1 = looking at the sun
+        '  vec3 horizon = mix(away, sunSide, pow(toward, 2.5));',
+        '  vec3 c = mix(horizon, zenith, pow(smoothstep(0.0, 0.6, h), 0.75));',
+        '  float s = max(dot(d, sunDir), 0.0);',
+        '  c = mix(c, glow, pow(s, 10.0) * 0.55 + pow(s, 300.0) * 0.6);',   // soft halo + soft sun disc
+        '  if (d.y < 0.0) c = horizon;',
         '  gl_FragColor = vec4(c, 1.0);',
         '}'].join('\n'),
-      side: THREE.BackSide, depthWrite: false, fog: false
+      side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false // authored at display colour, like the fog
     });
     dome = new THREE.Mesh(new THREE.SphereGeometry(2500, 32, 16), mat);
     dome.renderOrder = -10; dome.frustumCulled = false;
@@ -46,7 +50,7 @@ window.WW = window.WW || {};
   // Soft puffy low-poly clouds that drift slowly and cast soft shadows on the sea.
   function buildClouds(scene) {
     const geo = new THREE.IcosahedronGeometry(1, 1);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x9fb8d0, emissiveIntensity: 0.35, flatShading: true, fog: false });
+    const mat = new THREE.MeshLambertMaterial({ color: 0xfff6ee, emissive: C(0xa89cc8), emissiveIntensity: 0.32, flatShading: true, fog: false }); // warm on the sun side, lilac in shade
     clouds = new THREE.Group(); clouds.name = 'clouds';
     let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const cx = WW.cfg.MAP_W / 2, cz = WW.cfg.MAP_H / 2;
@@ -92,7 +96,7 @@ window.WW = window.WW || {};
     const u = Math.round(tgt.dot(R) / texel) * texel, v = Math.round(tgt.dot(U) / texel) * texel, w = tgt.dot(SUN_DIR);
     tgt.copy(R).multiplyScalar(u).addScaledVector(U, v).addScaledVector(SUN_DIR, w);
     sun.target.position.copy(tgt);
-    sun.position.copy(tgt).addScaledVector(SUN_DIR, 400);
+    sun.position.copy(tgt).addScaledVector(SUN_DIR, 700);
   }
-  WW.sky = { init, update, HORIZON };
+  WW.sky = { init, update, HORIZON, SUN_DIR, sunColor: () => sun && sun.color };
 })(window.WW);
