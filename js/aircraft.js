@@ -172,6 +172,7 @@ window.WW = window.WW || {};
         case 'landing': this.landing(dt); break;
         case 'rollout': this.rollout(dt); return;
       }
+      if (this.jink && WW.combatAA) WW.combatAA.applyJink(this, dt); // flak weave (combat_aa.js)
       this.trail(dt, false);
       this.integrate(dt, false);
     }

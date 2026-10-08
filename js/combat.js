@@ -214,6 +214,7 @@ window.WW = window.WW || {};
   }
 
   function updateAA(dt) {
+    if (WW.combatAA) { WW.combatAA.update(dt); return; } // heavy/light AA, flak bursts, jinking: combat_aa.js
     var ships = (WW.world && WW.world.ships) || [], planes = (WW.world && WW.world.planes) || [];
     if (!planes.length || !aaTimer) return;
     for (var i = 0; i < ships.length; i++) {
@@ -270,6 +271,7 @@ window.WW = window.WW || {};
       for (var i = 0; i < active.length; i++) release(active[i]);
       active.length = 0;
       if (typeof WeakMap !== 'undefined') aaTimer = new WeakMap();
+      if (WW.combatAA) WW.combatAA.clearAll();
     },
     fireShell: fireShell,
     // internals shared with combat_weapons.js
