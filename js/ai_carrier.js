@@ -83,6 +83,9 @@ window.WW = window.WW || {};
     if (WW.threat) ship.desiredHeading = WW.threat.bestHeading(ship, ship.desiredHeading, B ? B.doctrine.risk.carrier : 0,
       { look: 80, k: calm ? 2 : 4, edge: EDGE_BAND, avoid: cone, cone: CONE });
     ship.navAvoid = cone.slice(); ship.navAvoidT = now; // ships_nav planNav: no detour toward them either
+    // Coming about while pointed at a known gun ship: back the engines (a slow carrier turning away is not charging).
+    if (Math.abs(WW.angleDiff(ship.heading, ship.desiredHeading)) > 1.2)
+      for (let i = 0; i < cone.length; i++) if (Math.abs(WW.angleDiff(cone[i], ship.heading)) < 1.4) { ship.throttle = 0.25; break; }
     // A reversal of course turns away from the nearest known gun ship: if the shortest turn would swing the bow
     // across its bearing, step the other way round (90 deg at a time) instead.
     const dd = WW.angleDiff(ship.heading, ship.desiredHeading);
