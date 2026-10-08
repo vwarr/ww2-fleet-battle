@@ -11,7 +11,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var EXIT = 7;                                   // units from the home edge: off the map
+  var EXIT = 20;                                  // units from the home edge: off the map (a corner can pin a big hull short of the line)
   var RESCUE_R = 320, PILOT_R = 220;              // a rescuer is sent from this far (ship survivors / aircrew)
   var WAIT_T = 150, RESCUE_AGE = 240;            // unassigned survivors are lost after WAIT_T s, any after RESCUE_AGE s
   var PICKUP_D = 10, PICKUP_V = 1.6, PICKUP_T = 10; // alongside (aircrew; a hull's survivors: + half its length + 4, clear of the wreck), nearly stopped, this long
