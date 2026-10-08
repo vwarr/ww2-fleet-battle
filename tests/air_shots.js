@@ -33,7 +33,7 @@ const SEED = +(process.argv[2] || 3);
   const shot = async (name) => { await p.waitForTimeout(400); await p.screenshot({ path: 'shots/air_' + name + '.png' }); console.log('shot shots/air_' + name + '.png'); };
 
   // 1. CAP over its carrier
-  const cap = await p.evaluate(() => until(() => { const cv = WW.world.ships.find(s => s.type === 'carrier' && s.nation === 'USN'); const n = WW.world.planes.filter(q => q.alive && q.carrier === cv && q.kind === 'fighter' && !q.target && q.state === 'transit' && !q.deckPh && Math.hypot(q.x - cv.x, q.z - cv.z) < 45 && q.y > 20).length; if (n >= 2) { look(cv, 45, 85, 0.9); return n; } return 0; }, 60));
+  const cap = await p.evaluate(() => until(() => { const cv = WW.world.ships.find(s => s.type === 'carrier' && s.nation === 'USN'); const n = WW.world.planes.filter(q => q.alive && q.carrier === cv && q.kind === 'fighter' && !q.target && q.state === 'transit' && !q.deckPh && Math.hypot(q.x - cv.x, q.z - cv.z) < 45 && q.y > 20).length; if (n >= 2) { const L = WW.world.planes.find(q => q.alive && q.carrier === cv && q.kind === 'fighter' && !q.target && q.wing === 0 && q.state === 'transit') || cv; window.__look = { x: (cv.x + L.x) / 2, y: 8, z: (cv.z + L.z) / 2, d: 70, h: 45, ax: Math.cos(L.heading + 2.4), az: Math.sin(L.heading + 2.4) }; return n; } return 0; }, 60));
   console.log('CAP fighters up:', cap); await shot('cap');
   // 2. a division / shotai in formation (element leader + wingmen in transit)
   const el = await p.evaluate(() => until(() => {
