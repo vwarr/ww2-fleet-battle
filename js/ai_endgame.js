@@ -26,6 +26,7 @@ window.WW = window.WW || {};
     const B = WW.fleetCmd.side(ship.nation), d = B && B.doctrine;
     if (!B) return false;
     if (WW.endgame.broken(ship.nation) && !(WW.game && WW.game.noRetire)) return retreat(ship, B, d); // noRetire: tests, no leaving
+    if (WW.charge && WW.charge.steer(ship, dt)) { ship.escapeEdge = 0; return true; } // escorts charging to save a carrier (ai_charge.js)
     ship.escapeEdge = 0; // (a broken side that turns to pursue a worse-broken enemy, fleet_cmd.js)
     if (ship.rescue) return rescueSteer(ship, B);
     return false;

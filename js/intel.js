@@ -52,6 +52,7 @@ window.WW = window.WW || {};
       var f = i / (n + 1);
       if (WW.terrain.depthAt(a.x + (b.x - a.x) * f, a.z + (b.z - a.z) * f) < -R.LAND) ok = false;
     }
+    if (ok && WW.smoke && WW.smoke.blocks(a.x, a.z, b.x, b.z)) ok = false; // a smoke screen (ai_charge.js)
     if (!ok) stats.losHit++;
     losCache.set(key, ok);
     return ok;

@@ -21,7 +21,11 @@
 // brokenAt, posture 'withdraw'): it is then running for its edge and is fair game for the pursuer; those samples are
 // reported as cv_brk_min / cv_brk_gun (info).
 // Endgame (endgame.js stats, info): wipeout (a kill with no CV / BB / CA / DD of the loser escaped earlier), carriers
-// escaped per round, pursuit kills, rescues and survivors (USN), cripples abandoned / scuttled (IJN),
+// escaped per round, pursuit kills,
+// Doctrine (ship_fires.js, ai_charge.js stats, info, per round unless noted): deck hits on a loaded flight deck that
+// set it off / that did not (deck_safe), planes lost on deck, fuel / magazine chain explosions, fires started, fires
+// put out per nation, ships sunk by fire, USN hp patched, magazine explosions (total), escort charges, destroyers
+// sent, charging destroyers lost, their torpedo hits, foes turned back, carriers lost during a charge; rescues and survivors (USN), cripples abandoned / scuttled (IJN),
 // ships escaped; spd_hp: mean speedK of live surface ships per hp band (<0.3, 0.3-0.5, 0.5-0.7, >=0.7).
 //
 // ---------------------------------------------------------------------------------------------------------
@@ -124,7 +128,9 @@ const CHECKS = [
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
-const INFO = ['end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const DOCTRINE_INFO = ['deck_hits', 'deck_safe', 'deck_planes', 'deck_chain', 'fires', 'fires_out_usn', 'fires_out_ijn', 'fire_kills', 'usn_repaired', 'magazines',
+  'charges', 'charge_dds', 'charge_lost', 'charge_torp', 'charge_turned', 'charge_cv_sunk'];
+const INFO = [...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -448,6 +454,8 @@ function install(P) {
     const out = { seed: spec.seed, aNation: spec.aNation || null, swap: !!spec.swap, winner: G.winner, len: +G.roundTime.toFixed(0),
       end: G.state === 'battle' ? 'cap' : G.endReason === 'stall' ? 'time' : G.endReason, comp: types,
       eg: WW.endgame && WW.endgame.stats ? JSON.parse(JSON.stringify(WW.endgame.stats)) : null, spd: R.spd, spdN: R.spdN,
+      sf: WW.shipFires && WW.shipFires.stats ? JSON.parse(JSON.stringify(WW.shipFires.stats)) : null,
+      ch: WW.charge && WW.charge.stats ? JSON.parse(JSON.stringify(WW.charge.stats)) : null,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
@@ -480,10 +488,17 @@ function aggregate(rounds) {
   const focus = C(r => r.focusCounts), intelOn = rounds.some(r => r.intelOn);
   const firsts = k => med(rounds.map(r => r[k]).filter(v => v !== null));
   const eg = (k, n) => (rounds.length ? S(r => (r.eg ? (n ? r.eg[k][n] : r.eg[k].USN + r.eg[k].IJN) : 0)) / rounds.length : null);
+  const both = (o, k, n) => (o && o[k] ? (n ? o[k][n] : o[k].USN + o[k].IJN) : 0);
+  const avgOf = (f, k, n) => (rounds.length ? S(r => both(r[f], k, n)) / rounds.length : null);
   const share = k => (rounds.length ? rounds.filter(r => r.end === k).length / rounds.length : null);
   const spd = [0, 1, 2, 3].map(k => ratio(S(r => (r.spd ? r.spd[k] : 0)), S(r => (r.spdN ? r.spdN[k] : 0))));
   return {
     rounds: rounds.length,
+    deck_hits: avgOf('sf', 'deckHits'), deck_safe: avgOf('sf', 'deckSafe'), deck_planes: avgOf('sf', 'deckPlanes'), deck_chain: avgOf('sf', 'chain'),
+    fires: avgOf('sf', 'started'), fires_out_usn: avgOf('sf', 'out', 'USN'), fires_out_ijn: avgOf('sf', 'out', 'IJN'), fire_kills: avgOf('sf', 'fireKills'),
+    usn_repaired: avgOf('sf', 'repaired', 'USN'), magazines: rounds.length ? S(r => both(r.sf, 'magazine')) : null,
+    charges: avgOf('ch', 'charges'), charge_dds: avgOf('ch', 'ships'), charge_lost: avgOf('ch', 'lost'), charge_torp: avgOf('ch', 'torpHits'),
+    charge_turned: avgOf('ch', 'turned'), charge_cv_sunk: avgOf('ch', 'cvSunk'),
     end_kill: share('kill'), end_time: share('time'), end_retire: share('retire'),
     // strict wipeout: a kill in which no carrier, battleship, cruiser or destroyer of the loser got away earlier
     wipeout: rounds.length ? rounds.filter(r => r.end === 'kill' && r.eg && !Object.keys(r.eg.escTypes).some(k => !/:(pt|submarine)$/.test(k))).length / rounds.length : null,
@@ -602,7 +617,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
         (sc.mirror ? `;  same fleet won both sides in ${pairs(rounds)} of ${rounds.length >> 1} pairs` : ''));
     }
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
-    else console.log('  info: ' + ['end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
+    else console.log('  info: ' + [...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
   }
   console.log('\n=== SUMMARY ===');
   console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);
