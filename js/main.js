@@ -203,7 +203,8 @@ window.WW = window.WW || {};
     requestAnimationFrame(frame);
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
-    advance(rdt * WW.time.scale * BASE_SPEED);
+    // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
+    advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
     call('sky', 'update', rdt);

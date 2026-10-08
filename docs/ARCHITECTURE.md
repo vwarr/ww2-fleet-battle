@@ -35,6 +35,7 @@ js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship 
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
+js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulder shot, slow motion
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, black bars, captions
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
@@ -54,6 +55,7 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 - `main.js` multiplies real time by `WW.time.scale` (the 1×, 2× and 4× buttons) and by `BASE_SPEED = 0.5`. Thus, at 1×, the battle moves at half speed.
 - Each simulation step is 0.05 s or less. At high speed, `main.js` does more steps in one frame.
 - The camera, the cross-fades, the captions, the clouds and the water animation use real time. They do not slow down.
+- `WW.time.warp` (normally 1) also multiplies the simulation time. The director camera sets it to approximately 0.5 for approximately 1.5 s when it films a kill or a direct bomb or torpedo hit (at most one time in 20 s, never in free camera or map view). `fastForward` ignores it.
 
 ## Main loop
 
@@ -209,6 +211,7 @@ Planes take off from the carrier deck, fly to the target and attack. Dive bomber
 ### camera.js, freecam.js
 
 - `WW.cam` (director): it selects a live subject (a sinking, a torpedo or dive-bomb attack, a carrier launch, a dogfight, a burning ship or a battleship that fires). It films the subject for 12 to 25 s with a slow orbit, chase, fly-by or wide shot, then cross-fades in 1.4 s. Every second shot is a wide shot. The subject stays in the middle third of the frame. The camera stays more than 7 units from a hull and above the terrain. Setup mode and map view (`C`) use a high overview.
+- `WW.camAction` (`camera_action.js`) adds action shots to the director. When the director films a dive-bomb attack and the bomb falls, the camera follows the bomb to the impact and holds on the explosion. When it films a torpedo run and the plane drops its torpedo, the camera follows the wake to the hit or the miss. These hand-offs do not cut. They change the current shot. A fighter with a foe can get an over-the-shoulder shot: behind and above the fighter, its foe ahead, with a slow, rate-limited turn. Planes with `kills` or `ace` (if present) get a higher priority. `combat_weapons.js` sends the events `weaponDropped` `{ kind: 'bomb' | 'torpedo', proj, plane, target }` and `weaponImpact` `{ kind, proj, x, z, ship }` (`ship` is null for a miss). Test hook: `WW.cam.film(candidate)`; `tests/action_cam.js` records each action shot.
 - `WW.freecam`: left-drag orbits, the wheel zooms, right-drag and `W` `A` `S` `D` pan, `Q` and `E` turn. A click follows a ship or a plane. After 20 s with no input, the director starts again.
 
 ### main.js, ui.js
