@@ -26,6 +26,7 @@ function runRound(p, seed) {
     let t = 0, snap = null, eg = null, I = null, maxUp = { USN: 0, IJN: 0 };
     while (G.state === 'battle' && t < WW.cfg.ROUND_TIMEOUT + 180) {
       __sim.fastForward(1); t++;
+      for (const q of WW.world.planes) if (q.kind === 'flyingboat') { q._minHp = Math.min(q._minHp || 1e9, q.hp); const f = WW.world.planes.filter(f => f.alive && f.foe === q).length; if (f) q._foeT = (q._foeT || 0) + 1; if (!q._logged && (!q.alive || q.removed || q.state === 'return')) { q._logged = 1; window.__fbLog.push(WW.game.roundTime.toFixed(0) + ' ' + q.nation + ' ' + q.mission + ' end ' + q.state + ' minHp ' + q._minHp.toFixed(0) + ' foeT ' + (q._foeT || 0)); } }
       for (const n of ['USN', 'IJN']) maxUp[n] = Math.max(maxUp[n], WW.world.planes.filter(q => q.kind === 'flyingboat' && q.alive && q.nation === n).length);
       if (G.state === 'battle') { snap = JSON.parse(JSON.stringify(WW.flyingBoats.stats)); eg = WW.endgame && JSON.parse(JSON.stringify(WW.endgame.stats)); I = Object.assign({}, WW.intel.stats); }
     }

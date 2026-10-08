@@ -6,12 +6,12 @@ require('fs').mkdirSync(require('path').join(__dirname, 'shots'), { recursive: t
 const { chromium } = require('playwright');
 const SH = n => 'shots/fb_' + n + '.png';
 const arg = k => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : null; };
-const ONLY = arg('--only'), SEED = +(arg('--seed') || 7);
+const ONLY = arg('--only'), SEED = +(arg('--seed') || 1);
 (async () => {
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
   const errs = []; p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&seed=' + SEED + '&v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
   await p.waitForTimeout(3000);
   await p.evaluate(() => {
     const cam = WW.cam, upd = cam.update, ar = cam.afterRender;
@@ -45,7 +45,11 @@ const ONLY = arg('--only'), SEED = +(arg('--seed') || 7);
     await p.evaluate(() => { __fb.forEach(m => WW.scene.remove(m.group)); window.__view = null; __sim.setScale(1); });
   }
   if (ONLY !== 'models' && process.argv.includes('--live')) {
-    // 2. live: wait for flying-boat moments in the seeded battle
+    // 2. live: the seeded round (as tests/flyingboats_probe.js plays it; the render loop adds a little drift), then
+    //    wait for flying-boat moments
+    await p.evaluate(seed => { const G = WW.game; if (WW.aces) WW.aces.reset(); WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
+      G.composition = null; G.mode = 'auto'; G.startRound({ keepMap: true }); __sim.setScale(0.1);
+      const cap = WW.ui.caption; WW.ui.caption = () => {}; window.__capOff = cap; }, SEED);   // no captions over the shots
     const until = async (cond, max) => p.evaluate(([c, max]) => {
       const f = new Function('q', 'return ' + c);
       for (let i = 0; i < max * 20; i++) { const q = WW.world.planes.find(q => q.alive && q.kind === 'flyingboat' && f(q)); if (q) { window.__q = q; return q.boatType + ' ' + q.state + ' t ' + WW.game.roundTime.toFixed(0); } __sim.fastForward(0.05); }
@@ -55,17 +59,24 @@ const ONLY = arg('--only'), SEED = +(arg('--seed') || 7);
       await p.evaluate(([ox, oy, oz]) => { window.__view = c => { const q = window.__q, h = q.heading, ch = Math.cos(h), sh = Math.sin(h); c.position.set(q.x + ch * ox - sh * oz, Math.max(2, q.y + oy), q.z + sh * ox + ch * oz); c.lookAt(q.x, q.y, q.z); }; }, [ox, oy, oz]);
       await p.waitForTimeout(900); await p.screenshot({ path: SH(name) });
     };
-    let r = await until("q.mission === 'patrol' && q.state === 'shadow'", 400);
+    let r = await until("q.mission === 'patrol' && q.state === 'shadow' && q.nation === 'IJN'", 400);
     console.log('shadow:', r);
     if (r) {
       await follow('live_mavis_shadow', -30, 14, 22);
       await p.evaluate(() => { const q = window.__q, s = q.shadowOf; window.__view = c => { c.position.set(q.x + (q.x - s.x) * 0.35, q.y + 22, q.z + (q.z - s.z) * 0.35 + 10); c.lookAt((q.x + s.x) / 2, 0, (q.z + s.z) / 2); }; });
       await p.waitForTimeout(900); await p.screenshot({ path: SH('live_shadow_standoff') });
     }
-    r = await until("q.mission === 'patrol' && WW.world.planes.some(f => f.alive && f.foe === q)", 300);
+    r = await until("q.mission === 'patrol' && q.nation === 'IJN' && WW.world.planes.some(f => f.alive && f.foe === q && WW.dist(f.x, f.z, q.x, q.z) < 40)", 200)
+      || await until("q.mission === 'patrol' && WW.world.planes.some(f => f.alive && f.foe === q && WW.dist(f.x, f.z, q.x, q.z) < 60)", 200);
     console.log('cap on patrol:', r);
-    if (r) { await p.evaluate(() => { window.__q = WW.world.planes.find(f => f.alive && f.foe === __q) || __q; }); await follow('live_cap_attack', -14, 5, 6); }
-    r = await until("q.mission === 'rescue' && q.state === 'afloat' && q.waterT > 4", 500);
+    if (r) for (let i = 0; i < 3; i++) {   // behind the fighter, looking past it at the flying boat
+      const ok = await p.evaluate(() => { const v = window.__q, f = WW.world.planes.find(f => f.alive && f.foe === v); if (!f) return false;
+        window.__view = c => { const dx = v.x - f.x, dy = v.y - f.y, dz = v.z - f.z, d = Math.hypot(dx, dz) || 1; c.position.set(f.x - dx / d * 12, f.y + 4, f.z - dz / d * 12); c.lookAt((f.x + v.x) / 2, (f.y + v.y) / 2, (f.z + v.z) / 2); }; return true; });
+      if (!ok) break;
+      await p.waitForTimeout(300); await p.screenshot({ path: SH('live_cap_attack' + i) });
+      await p.evaluate(() => __sim.fastForward(0.6));
+    }
+    r = await until("q.mission === 'rescue' && q.state === 'afloat' && q.waterT > 7", 500);
     console.log('rescue landed:', r);
     if (r) { await follow('live_dumbo_afloat', 10, 6, 16); await follow('live_dumbo_afloat2', -16, 9, -12); }
     console.log('stats', JSON.stringify(await p.evaluate(() => WW.flyingBoats && WW.flyingBoats.stats)));
