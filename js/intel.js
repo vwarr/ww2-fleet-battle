@@ -149,10 +149,16 @@ window.WW = window.WW || {};
 
   // Torpedo tracks: an enemy torpedo within R.TORP of any of the side's ships is seen (its wake). One entry
   // object per running torpedo, { proj, x, z, h, speed, seenAt, firstSeenAt }, dropped when the torpedo ends.
-  // Pooled projectiles are reused: a run distance that went down means a new torpedo in the same object.
+  // Pooled projectiles are reused, so a track ends on the torpedo's own events (weaponImpact when it ends,
+  // weaponDropped when the pooled object is fired again), never on the pool's state: replays stay exact.
+  function dropTrack(proj) {
+    for (var n = 0; n < NATIONS.length; n++) { var T = sideOf(NATIONS[n]).torps; for (var i = T.length - 1; i >= 0; i--) if (T[i].proj === proj) T.splice(i, 1); }
+  }
+  WW.on('weaponImpact', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
+  WW.on('weaponDropped', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
   function scanTorps(nation, now) {
     var S = sideOf(nation), T = S.torps, act = WW.combat && WW.combat._i && WW.combat._i.active, ships = WW.world.ships, i, j;
-    for (i = T.length - 1; i >= 0; i--) { var q = T[i].proj; if (q.dead || q.kind !== 'torp' || q.run < T[i].run) T.splice(i, 1); }
+    for (i = T.length - 1; i >= 0; i--) if (T[i].proj.dead || T[i].proj.kind !== 'torp') T.splice(i, 1);
     if (!act) return;
     for (i = 0; i < act.length; i++) {
       var p = act[i];
