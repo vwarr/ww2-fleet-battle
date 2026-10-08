@@ -78,6 +78,8 @@ window.WW = window.WW || {};
     const pr = $('div', 'row grid', el.setup);
     el.typeBtns = TYPES.map(t => btn(pr, WW.SHIP_TYPES[t].name, () => { selType = t; }));
     el.nat = btn($('div', 'row', el.setup), 'Side: USN', b => { selNation = WW.enemyOf(selNation); b.textContent = 'Side: ' + selNation; b.style.color = (selNation === 'USN' ? '#3d6fb0' : '#c0504a'); });
+    el.base = btn($('div', 'row', el.setup), 'Base: -', cycleBase); // the island air base's owner (island_base.js)
+    el.base.title = 'Who holds the island airfield';
     $('div', 'row dim small', el.setup, 'Click water: place    Right-click: remove');
     const ar = $('div', 'row', el.setup);
     btn(ar, 'Randomize', randomizeFleets);
@@ -91,7 +93,7 @@ window.WW = window.WW || {};
     el.cap = el.film.querySelector('.caption');
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
     WW.on('roundStart', () => { s0 = Object.assign({}, WW.stats); hudPeek = false; });
-    WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); });
+    WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); setTimeout(baseLabel, 0); });
     WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : lossLine(), 5, false));
 
     const canvas = document.getElementById('game');
@@ -179,9 +181,23 @@ window.WW = window.WW || {};
     if (WW.game.mode === 'auto' && WW.game.state !== 'setup') { WW.game.startRound(); say('New battle'); }
     else WW.game.enterSetup(true, true);
   }
+  // the island base: the ready screen shows a preview owner; the button picks USN / IJN / none; Start keeps it
+  const baseNow = () => WW.game.baseChoice || WW.game.basePreview || 'none';
+  function baseLabel() {
+    if (!el.base) return;
+    const o = baseNow(), b = WW.islandBase && WW.islandBase.base;
+    el.base.textContent = 'Base: ' + (o === 'none' ? 'none' : o + (b ? ' (' + b.name + ')' : ''));
+    el.base.style.color = o === 'USN' ? '#3d6fb0' : o === 'IJN' ? '#c0504a' : '';
+  }
+  function cycleBase() {
+    if (!WW.islandBase || !WW.terrain.site) return say('No airfield on this map');
+    const next = { USN: 'IJN', IJN: 'none', none: 'USN' }[baseNow()];
+    WW.game.baseChoice = next; WW.islandBase.build(next); baseLabel();
+  }
   function startBattle() {
     const c = WW.game.composition || [];
     if (!c.some(s => s.nation === 'USN') || !c.some(s => s.nation === 'IJN')) return uiError('Both sides need ships');
+    WW.game.baseChoice = baseNow(); // the base the ready screen shows
     WW.game.startRound({ keepMap: true });
   }
 

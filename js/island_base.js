@@ -43,7 +43,7 @@ window.WW = window.WW || {};
     const c = Math.cos(S.h), s = Math.sin(S.h);
     for (let k = 1; k >= 0.3; k -= 0.1) {
       const x = S.x + (c * u - s * v) * k, z = S.z + (s * u + c * v) * k;
-      if (onLand(x, z) && (pad || WW.terrain.padDist(x, z) > 2.5)) return { x, z };
+      if (onLand(x, z) && WW.terrain.depthAt(x, z) > -3.2 && (pad || WW.terrain.padDist(x, z) > 2.5)) return { x, z }; // low, flat ground
     }
     return null;
   }

@@ -71,7 +71,9 @@ window.WW = window.WW || {};
     centres.push([cx, cz, rx + 30]);
     // the field on the flank: a coastal plain a little outside the island's long axis
     const side = K.rnd() < 0.5 ? 1 : -1, a = rot + Math.PI / 2 * side + K.rr(-0.4, 0.4), d = rz * 0.85;
-    airfield(cx + Math.cos(a) * d, cz + Math.sin(a) * d, rot + K.rr(-0.25, 0.25), 'volcanic', { island: { x: cx, z: cz } });
+    let h = rot + K.rr(-0.25, 0.25);
+    if (-Math.sin(h) * Math.cos(a) + Math.cos(h) * Math.sin(a) < 0) h += Math.PI; // the apron side (+lateral) faces the sea, not the mountain
+    airfield(cx + Math.cos(a) * d, cz + Math.sin(a) * d, h, 'volcanic', { island: { x: cx, z: cz } });
     for (let i = 0; i < 2; i++) { // fringing reefs off the far side
       const b = a + Math.PI + K.rr(-1, 1), r = rx + K.rr(14, 24);
       add('reef', cx + Math.cos(b) * r, cz + Math.sin(b) * r, K.rr(8, 14), K.rr(4, 7), b + Math.PI / 2, K.rr(-2.2, -1.3), true);

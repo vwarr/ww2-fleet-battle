@@ -27,7 +27,7 @@ window.WW = window.WW || {};
     b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: 62, bombs: 3 } },
     a6m:  { kind: 'fighter', model: null, sq: 'Tainan Kokutai' },
     g4m:  { kind: 'torpedo', model: 'g4m', sq: 'Misawa Kokutai', st: { hp: 34, speed: 30, turn: 0.85, climb: 4, range: 1500 }, gear: 1.0 },
-    g4mL: { kind: 'dive', model: 'g4m', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: 48, bombs: 2 } }
+    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: 48, bombs: 2 } }
   };
   const ROSTER = { USN: { f4f: 5, sbd: 4, b26: 2, b17: 3 }, IJN: { a6m: 5, g4m: 4, g4mL: 3 } };
   const KATE = { alt: 40, bombs: 1 };

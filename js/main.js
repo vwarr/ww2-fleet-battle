@@ -255,6 +255,7 @@ window.WW = window.WW || {};
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
+    call('baseFx', 'update', rdt);  // the island base: craters, fires, parked planes (base_fx.js), visual only
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);
     call('ui', 'update', rdt);
