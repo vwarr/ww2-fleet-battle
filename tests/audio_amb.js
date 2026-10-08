@@ -126,7 +126,7 @@ function clicks(x, rate, from, to) {
     ['amb.rumble', {}, 16, true, 0, 0, 400, 0.01],
     ['amb.thud', {}, 5, false, 1, 4, 400, 0.02],
     ['amb.gull', { n: 3 }, 3, false, 0.6, 2.5, 3200, 0.2],
-    ['cine.slow', {}, 4, false, 1, 3.2, 500, 0.03],
+    ['cine.slow', {}, 4, false, 1, 3.6, 500, 0.03], // ~3.25 s incl. its reverb tail
     ['cine.whoosh', {}, 2.5, false, 0.6, 1.6, 1800, 0.12],
     ['cine.bell', { strikes: 2 }, 9, false, 2.5, 8.5, 2200, 0.12],
     ['cine.bell', { strikes: 3, gap: 1.1 }, 10, false, 3, 9.5, 2200, 0.12, 'cine.bell_3'],
@@ -270,7 +270,7 @@ function clicks(x, rate, from, to) {
   const vic = await p.evaluate(async () => {
     const c = WW.ambState.counts, h0 = c['cine.horn'] || 0, b0 = c['cine.bell'] || 0;
     WW.game.endRound('USN'); await new Promise(r => setTimeout(r, 7000));
-    WW.game.startRound(); await new Promise(r => setTimeout(r, 1500));
+    WW.game.startRound(); await new Promise(r => setTimeout(r, 2500)); // > the bell's 2 s minGap
     WW.game.endRound(null); await new Promise(r => setTimeout(r, 5000));
     return { horn: (c['cine.horn'] || 0) - h0, bell: (c['cine.bell'] || 0) - b0 };
   });
