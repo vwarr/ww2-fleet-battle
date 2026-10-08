@@ -91,5 +91,12 @@ window.WW = window.WW || {};
       else if (p.kind === 'fighter' && !p.target && p.wing === 0 && p.element && p.element.members.length >= 2 && p.state === 'transit') add(3.5, 'chase', p, { dur: dur(11, 14) });
     }
   });
-  WW.airCaptions = { stats: ST, lineFor, tick };
+  // story mode title card (camera_story.js): shown only when the throttle allows; true if shown
+  function say(main, sub) {
+    if (!WW.ui || !WW.ui.caption || wall() - lastCap < GAP || (WW.ui.captionOn && WW.ui.captionOn())) return false;
+    WW.ui.caption(main, sub || '', SECS, true);
+    lastCap = wall(); ST.shown++; ST.last = [main, sub];
+    return true;
+  }
+  WW.airCaptions = { stats: ST, lineFor, tick, say };
 })();

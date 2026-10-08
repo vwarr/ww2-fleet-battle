@@ -76,6 +76,7 @@ During a battle, push `H` and click **Edit fleet** to go back to your fleets.
 | `M`, or the 🔊 / 🔇 **Sound** button | Set the sound on or off. The default is off. The game remembers your choice. If the sound was on last time, the button shows **Tap to start**: the first click or key press starts the sound (browsers need this). |
 | Volume slider in the panel | Set the sound volume. |
 | `C` | Change the camera: CINEMATIC (the director camera) or MAP (shows all of the map from above). |
+| `F` | Follow the action: start a story now. The camera picks a squadron or a fighter division and follows its mission like a film: the launch, the form-up, the flight out, the attack and the flight home. Push `F` again to stop. The director also tells a story by itself every few minutes. |
 | `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
 | `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
@@ -91,8 +92,9 @@ During a battle, you can move the camera yourself:
 | Mouse wheel | Move the camera nearer or farther. |
 | Drag with the right mouse button, or `W` `A` `S` `D`, or the arrow keys | Move the camera across the sea. |
 | `Q`, `E` | Turn the camera left or right. |
-| `R`, `F` (or `Page Up`, `Page Down`) | Move the camera up or down. |
-| Click a ship or a plane | Follow it. |
+| `R`, `V` (or `Page Up`, `Page Down`) | Move the camera up or down. |
+| Click a ship | Follow it. |
+| Click a plane | Follow that plane and its wingmen as a story (the director camera takes over). |
 | `Esc`, or click empty water | Stop following. |
 
 When you do not touch the mouse or the keys for 20 seconds, the director camera starts again.
@@ -134,6 +136,7 @@ The game does not show health bars.
 | `js/ships_ai.js` | Ship AI: targets, guns, torpedoes, submarines, PT boats and carriers. |
 | `js/aircraft.js` | Planes. |
 | `js/camera.js` | The director camera and the map camera. |
+| `js/camera_story.js`, `js/camera_story_shots.js` | Story mode: the camera follows one squadron or fighter division through its mission (key `F`). |
 | `js/freecam.js` | The free camera (mouse and keys). |
 | `js/post.js` | The bloom and the soft tone curve. |
 | `js/ui.js` | The panels, the setup clicks, the captions and fullscreen. |

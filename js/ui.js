@@ -68,8 +68,8 @@ window.WW = window.WW || {};
     el.sound.dataset.audio = el.soundPanel.dataset.audio = '1'; // the gesture that starts a remembered "on" is the toggle itself
     if (!AU()) { el.sound.style.display = 'none'; sr.style.display = 'none'; }
     soundLabels();
-    $('div', 'row dim small', el.panel, 'H panel   N new battle   C camera   T tilt-shift   P pixels   M sound');
-    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R F camera up / down \u00b7 Click ship follow');
+    $('div', 'row dim small', el.panel, 'H panel   N new battle   C camera   F follow action   T tilt-shift   P pixels   M sound');
+    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R V camera up / down \u00b7 Click ship follow \u00b7 Click plane story');
 
     // setup palette
     el.setup = $('div', 'panel setup', root);
@@ -128,6 +128,7 @@ window.WW = window.WW || {};
     if (k === 'h') hudPeek = !hudPeek;
     else if (k === 'n') newRound();
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
+    else if (k === 'f' && !e.repeat && WW.camStory) say(WW.camStory.toggle());
     else if (k === 'p' && WW.view) say('Pixel mode ' + (WW.view.togglePixel() ? 'on' : 'off'));
     else if (k === 'm' && !e.repeat) toggleSound();
     else if (k === 't') say('Tilt-shift ' + (el.film.classList.toggle('notilt') ? 'off' : 'on'));
