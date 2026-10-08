@@ -356,6 +356,7 @@ window.WW = window.WW || {};
     remove() {
       if (this.removed) return;
       this.removed = true; this.alive = false;
+      if (WW.airDeck) WW.airDeck.unfold(this.model);
       release(this.model);
     }
   }

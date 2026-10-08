@@ -19,8 +19,7 @@ window.WW = window.WW || {};
   function lenOf(kind) { return ({ fighter: 2.48, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * P().scale; }
   // Wing fold: wingL / wingR pivot at the wing root; rotation.x lifts the tip (side from the pivot's z).
   function setFold(m, f) {
-    if (!m.wingL || !m.wingR || m._fold === f) return;
-    m._fold = f;
+    if (!m.wingL || !m.wingR) return;
     const a = FOLD * f * f * (3 - 2 * f);
     for (const w of [m.wingL, m.wingR]) {
       const z = w.position.z, side = z > 1e-3 ? 1 : z < -1e-3 ? -1 : (w === m.wingL ? -1 : 1);
@@ -56,9 +55,10 @@ window.WW = window.WW || {};
     if (!D.fold) return fits(D, b, extra) ? b : null; // wings cannot fold: one column, on the open side
     return fits(D, pref, extra) ? pref : fits(D, pref === a ? b : a, extra) ? (pref === a ? b : a) : null;
   }
-  function counts(c) {
+  function counts(c) { // planes the carrier holds: hangar, rearming, and launched but still waiting below
     const t = { fighter: c.hangar.fighter, dive: c.hangar.dive, torpedo: c.hangar.torpedo };
     if (c.rearm) for (const r of c.rearm) t[r.kind]++;
+    if (c._deck) for (const q of c._deck.launchers) if (q.deckPh === 'queued') t[q.kind]++;
     return t;
   }
 
@@ -218,6 +218,7 @@ window.WW = window.WW || {};
     clearAll() { for (const D of decks) this.drop(D); decks.length = 0; },
     parkedCount() { let n = 0; for (const D of decks) { n += D.loose.length; for (const col of D.cols) n += col.e.length; } return n; },
     deck: deckOf,
+    unfold(m) { setFold(m, 0); }, // Plane.remove(): a plane lost on deck goes back to the pool unfolded
 
     // carrierAI hook: into the wind while planes launch or come aboard (separation still applies after this).
     steer(ship, late) {
