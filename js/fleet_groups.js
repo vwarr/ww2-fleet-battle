@@ -36,10 +36,10 @@ window.WW = window.WW || {};
   //                shadows closer and longer)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
+  //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
   //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
   //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
   //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
-  //   (jointStrike, followUp and reserveFrac are not rolled: they are doctrine, not tuning)
   //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
   //                ring (~80). USN 35: the 1942 circular screen, the AA umbrella over the carrier
   //   ringDD       destroyers per carrier in its ring (at least one); ringBB (flag): a side with two or more
@@ -182,7 +182,7 @@ window.WW = window.WW || {};
         cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
         set(q, p); return;
       }
-      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q; set(q, at(g.x, g.z, r[0], r[1])); }
+      if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
     });
     if (WW.formation) { WW.formation.ringStations(B, set, at); WW.formation.zigzag(B); }
     G.screen.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });

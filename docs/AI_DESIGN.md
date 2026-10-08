@@ -156,3 +156,13 @@ Over 100 rounds of randomized fleets for both sides, each nation wins 50 ± 5. N
 - Strike doctrine (doctrine parameters, not rolled): IJN joint first strike and deck-load follow-ups, USN group first strike and squadron-by-squadron follow-ups (less coordinated, no fuel burned circling); form-up circling costs fuel; the reserve strike (IJN 0.4, USN 0.2 of the bombers held for enemy carriers; rearmed after 110 s, 20 s on a loaded deck).
 - Composition fuzz (`--only fuzz`): per seed one named odd fleet (3 CV vs 10 PT, 8 PT vs 8 PT, 4 SS vs 2 CV, 8 DD vs BB, and the coordinator's survey list) and one random lopsided one. Checks: first sighting within 120 s (240 when both sides are only PT boats and subs), first damage within 150 s of it (240 when a side is only subs; a sub hunt the stall rule ends with no damage passes), stale time-outs, PT spacing (10th percentile of the nearest same-side boat that is not the pair-mate >= 25, after the first 30 s), stuck, NaN (ships and planes), errors.
 - Balance is not tuned on this branch (one 100-round gate run as information: USN 55 / IJN 45).
+## 9. Admirals, flagships and command (user asked: toys manned by 1942 admirals)
+
+- **The admirals.** Each round, each side gets a named admiral, picked with `WW.rand`:
+  - USN: Spruance (calculating), Halsey (aggressive) or Fletcher (cautious);
+  - IJN: Nagumo (cautious, by the book), Yamaguchi (aggressive), Kondo (gunnery) or Tanaka (destroyers, night torpedoes).
+- **The personality.** It is a set of moderate changes to the side's rolled doctrine (×0.85–1.2, plus the reserve share and strike modes). A personality flavours a battle; it must not decide it. Check this with the per-matchup table that the balance gate prints.
+- **The flagship.** The admiral flies his flag in a flagship. Losing it (sunk or crippled) freezes the side's commander for 30 to 60 s: no new posture, stations or strike orders. Then the flag passes to the best ship left, as Nagumo moved to Nagara at Midway. The enemy rates the flagship a little higher as a target (×1.15).
+- **The orders.** The admiral's orders are `admiralOrder` events (launch, reserve, press, retire, pursue, flag lost, transfer), for the captions and the war diary.
+- **What you see.** Flag hoists, a pennant and night blinker lamps show the command on the models.
+- **Details.** See ARCHITECTURE.md, "Admirals".

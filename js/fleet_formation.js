@@ -58,7 +58,7 @@ window.WW = window.WW || {};
       if (q.type === 'carrier') return;
       var o = B.orders.get(q.id); if (!o) return;
       var cv = o.ringCv && o.ringCv.alive ? o.ringCv : null, g = cv || q;
-      if (!(d.ringR > 0) || !cv) { var r = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]][(o.ringSlot || 0) % 5]; o.ringR = 0; set(q, at(g.x, g.z, r[0], r[1])); return; }
+      if (!(d.ringR > 0) || !cv) { var r = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]][(o.ringSlot || 0) % 5]; o.ringR = 0; var rk = WW.admirals && cv ? WW.admirals.ringK(cv) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); return; } // rk: the admiral's flagship (admirals.js) keeps its escorts closer
       var th = ec ? Math.atan2(ec.z - cv.z, ec.x - cv.x) : B.axis.h;
       o.ringA = th + RING_A[(o.ringSlot || 0) % RING_A.length];
       o.ringR = Math.max(d.ringR, (q.stats.length + cv.stats.length) * 0.6 + 6);
