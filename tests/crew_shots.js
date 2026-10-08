@@ -37,6 +37,10 @@ require('fs').mkdirSync(out, { recursive: true });
   const scenes = {
     aa: { setup: () => { const s = __S.bb; window.__aaI = setInterval(() => { const pl = { x: s.x + 30, y: 14, z: s.z + 25, alive: true, nation: 'IJN' }; WW.emit('aaLightFired', { ship: s, target: pl, hit: false }); if (Math.random() < 0.3) WW.emit('aaHeavyFired', { ship: s, target: pl, x: s.x, y: 3, z: s.z }); }, 200);
       window.__shot = [s, -1, 4.5, 7.5, -2, 1.4, 0]; }, wait: 2500 },
+    guns: { setup: () => { clearInterval(window.__aaI); const s = __S.bb; window.__gI = setInterval(() => { const w = s.toWorld(-10, 0); WW.emit('shellFired', { ship: s, cal: 'big', x: w[0], y: 2, z: w[1], proj: null }); }, 900);
+      window.__shot = [s, -4.5, 3.2, 5.5, -7.5, 1.3, 0]; }, wait: 5000 },
+    look: { setup: () => { clearInterval(window.__gI); const s = __S.dd; WW.emit('contact', { nation: 'USN', unit: { x: s.x + 60, z: s.z - 70, type: 'cruiser' }, first: true, by: s });
+      window.__shot = [s, 2, 2.4, 5, 0, 1.2, 0]; }, wait: 1500 },
     hose: { setup: () => { clearInterval(window.__aaI); const s = __S.ca; const w = s.toWorld(-3.5, 0.6); WW.damage.hit(s, 60, w[0], w[1], 'shell', 'med'); s.dmgSites.forEach(q => { q.fire = 300; q.sev = 1.2; });
       window.__shot = [s, -3.0, 3.0, 6.5, -3.0, 1.0, 0]; }, wait: 7000 },
     turret: { setup: () => { const s = __S.bb; s.ai.turrets[0].disabled = true; const w = s.toWorld(7.6, 0); WW.damage.hit(s, 130, w[0], w[1], 'shell', 'big');

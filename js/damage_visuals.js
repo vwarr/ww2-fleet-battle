@@ -170,7 +170,11 @@ window.WW = window.WW || {};
     var side = R() < 0.5 ? -1 : 1, sideways = R() < 0.3, aft = p[7] > -1 ? 1 : -1;
     var axis = sideways ? new THREE.Vector3(side, 0, (R() - 0.5) * 0.6).normalize() : new THREE.Vector3((R() - 0.5) * 0.5, 0, mast ? aft : side).normalize();
     var A = mast ? 1.0 + R() * 0.35 : 0.35 + R() * 0.2;
-    D.anim.push({ sel: sel, axis: axis, A: A, piv: new THREE.Vector3(p[7], p[3], p[4]), t: 0, mast: mast });
+    var an = { sel: sel, axis: axis, A: A, piv: new THREE.Vector3(p[7], p[3], p[4]), t: 0, mast: mast, rigs: [] };
+    sh.group.children.forEach(function (c) {   // a flag hoist on this masthead (admirals_flags.js) comes down with it
+      if (mast && c.name === 'admRig' && c.position.x >= p[1] - 0.5 && c.position.x <= p[2] + 0.5 && c.position.y > p[3]) an.rigs.push({ o: c, p: c.position.clone(), q: c.quaternion.clone() });
+    });
+    D.anim.push(an);
     if (!mast) (sh.model.stacks || []).forEach(function (st) {     // the smoke leaves the bent funnel's mouth
       var f = st.parent; if (!f || Math.abs(f.position.x - p[7]) > 0.6 || Math.abs(f.position.z - p[4]) > 0.6) return;
       f.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, A)); sh._stackL = null;
@@ -195,6 +199,8 @@ window.WW = window.WW || {};
         }
         P.needsUpdate = true; N.needsUpdate = true;
       });
+      _q.setFromAxisAngle(an.axis, th);
+      an.rigs.forEach(function (r) { if (r.o.parent !== sh.group) return; r.o.position.copy(r.p).sub(an.piv).applyQuaternion(_q).add(an.piv); r.o.quaternion.copy(_q).multiply(r.q); });
       if (an.t > T + 1.2) D.anim.splice(a, 1);
     }
   }
