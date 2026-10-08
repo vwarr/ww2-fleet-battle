@@ -6,6 +6,8 @@ window.WW = window.WW || {};
   let nextId = 1;
   const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
   const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
+  const HEEL = { carrier: 0.045, battleship: 0.04, cruiser: 0.08, destroyer: 0.12, pt: 0.14, submarine: 0.07 }; // rad at full speed + full turn
+  const BAND = 0.35, HELM = 0.4; // turn rate is proportional below BAND rad of heading error; HELM s to full rudder
 
   const wreckShips = [];             // settled wrecks (not in WW.world.ships)
   let wreckCol = null;
@@ -40,7 +42,7 @@ window.WW = window.WW || {};
       this.target = null; this.ai = {};
       this.wantSurface = !this.submerged;
       // Navigation state.
-      this.navHeading = this.heading; this.navT = 0; this.clearAhead = 99; this.turnRate = 0;
+      this.navHeading = this.heading; this.navT = 0; this.clearAhead = 99; this.turnRate = 0; this.rudder = 0; this.trS = 0; this.heel = 0;
       this.lookDist = Math.max(30, 2.2 * st.speed / st.turn);
       // Visual / fx state.
       this.bob = WW.rand() * TAU; this.wakeT = WW.rand() * 0.2; this.smokeT = 0; this.fireT = 0;
@@ -75,6 +77,10 @@ window.WW = window.WW || {};
 
     move(dt) {
       const st = this.stats, md = st.minDepth;
+      // Heel: outward lean ∝ speed × (smoothed) turn rate, easing in and out over about a roll period.
+      this.trS += (this.turnRate - this.trS) * (1 - Math.exp(-dt / 0.3));
+      const hm = HEEL[this.type] || 0.06, hw = WW.clamp(-hm * this.speed * this.trS / (st.speed * st.turn), -hm, hm);
+      this.heel += (hw - this.heel) * (1 - Math.exp(-dt / Math.max(0.6, st.length * 0.08)));
       // Wanted direction plus separation: each type keeps a personal space (the larger of the two applies).
       let dx = Math.cos(this.desiredHeading), dz = Math.sin(this.desiredHeading);
       const list = WW.world.ships, rs = SPACE[this.type] || 20;
@@ -108,8 +114,10 @@ window.WW = window.WW || {};
         pivot = pivot && Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 0.6; } // swing to face it first, then go
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
       const diff = WW.angleDiff(this.heading, this.navHeading);
-      const maxT = st.turn * sf * dt;
-      const turn = WW.clamp(diff, -maxT, maxT), h0 = this.heading;
+      // Helm: rate ∝ heading error (full rate past BAND), and the rudder takes HELM s to swing hard over.
+      const maxR = st.turn * sf, cmd = maxR * WW.clamp(diff / BAND, -1, 1);
+      this.rudder += WW.clamp(cmd - this.rudder, -maxR * dt / HELM, maxR * dt / HELM);
+      const turn = WW.clamp(this.rudder * dt, -maxR * dt, maxR * dt), h0 = this.heading;
 
       // Speed: slow down when the way ahead is short or the turn is large.
       let ts = st.speed * WW.clamp(this.throttle, 0, 1);
@@ -199,7 +207,7 @@ window.WW = window.WW || {};
       const g = this.group, amp = 0.35 / Math.sqrt(this.stats.length);
       g.position.set(this.x, this.depthY + Math.sin(t * 1.1 + this.bob) * amp * 0.5, this.z);
       g.rotation.y = -this.heading;
-      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.turnRate * 0.25 + this.listRoll;
+      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.heel + this.listRoll;
       g.rotation.z = Math.sin(t * 0.9 + this.bob) * amp * 0.12;
     }
 
@@ -298,7 +306,7 @@ window.WW = window.WW || {};
       this.restTop = flatY + this.hullTop * Math.cos(roll) + L * sn;
       g.position.set(this.x, WW.lerp(this.startY, this.restY, k * k), this.z);
       g.rotation.y = -this.heading;
-      g.rotation.x = WW.lerp(this.listRoll, roll, Math.min(1, this.sinkT / 4));
+      g.rotation.x = WW.lerp(this.listRoll + this.heel, roll, Math.min(1, this.sinkT / 4)); // heel at the fatal hit eases out
       g.rotation.z = WW.lerp(this.sinkPitch, th || this.sinkPitch, k) * k;
       if (!wreckCol) wreckCol = new THREE.Color(0x7a5a44); // rust: stays visible under the water
       this.model.hullMats.forEach((m, i) => {
