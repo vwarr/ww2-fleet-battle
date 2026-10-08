@@ -116,6 +116,12 @@ window.WW = window.WW || {};
     return best;
   }
 
+  // The plane's own element: its leader and wingmen (air_squadrons.js), alive, not itself.
+  function elementMates(p) {
+    const el = p.element;
+    return el ? el.members.filter(w => w !== p && w.alive && w.kind === 'fighter').concat(el.div && el.div.members[0] && el.div.members[0] !== p ? [el.div.members[0]] : []) : [];
+  }
+
   // Energy: climbing bleeds speed, diving builds it, hard turns cost speed; the engine pulls back to cruise.
   function energy(p, dt, cruise) {
     const pt = p.pt;
@@ -194,7 +200,8 @@ window.WW = window.WW || {};
     let mate = null;
     if (slasher(p)) { // Thach weave: turn toward a wingman who swings head-on into the attacker
       let bd = 75;
-      for (const w of WW.world.planes) {
+      for (const w of elementMates(p)) if (!(w.df && w.df.def) && (w.state === 'attack' || w.state === 'transit') && d3(w, p) < 110) { mate = w; bd = -1; break; } // own section first
+      if (!mate) for (const w of WW.world.planes) {
         if (w === p || !w.alive || w.kind !== 'fighter' || w.nation !== p.nation || (w.df && w.df.def)) continue;
         if (w.state !== 'attack' && w.state !== 'transit') continue;
         const d = d3(w, p); if (d < bd) { bd = d; mate = w; }
@@ -304,6 +311,7 @@ window.WW = window.WW || {};
       if (s.lock > 0 && cur && cur.alive) return cur;
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;
+      for (const m of elementMates(p)) { const t = threat(m, 60); if (t && d3(p, t) < 90) return t; } // cover the leader / wingman
       if (cur && cur.alive && best && cur !== best && d3(p, cur) < d3(p, best) * 1.5 + 10 && d3(p, cur) < 120) return cur;
       return best;
     },
@@ -335,7 +343,7 @@ window.WW = window.WW || {};
     },
     update: updateTracers,
     clearAll: clearTracers,
-    _tracers: T, stats: DS
+    threat, _tracers: T, stats: DS
   };
   WW.on('roundStart', clearTracers);
   WW.on('setupStart', clearTracers);

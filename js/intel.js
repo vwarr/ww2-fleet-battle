@@ -5,7 +5,7 @@
 // submerged subs, and ships / planes see enemy planes. AI decision code asks intel what is known; physics
 // (hit tests, flak, crashes) stays omniscient. Detection has no dice, so a seeded round stays the same.
 // A contact is { unit, x, z, heading, speed, seenAt, firstSeenAt, quality, by }: x..speed are the last seen
-// values, quality 'visual' | 'sonar' | 'scout' | 'air', by = the observer. A contact seen within FRESH s is a
+// values, quality 'visual' | 'radar' | 'sonar' | 'scout' | 'air', by = the observer. A contact seen within FRESH s is a
 // firing solution (visible); an older one is a last-known position, dropped after SHIP_TTL / PLANE_TTL s.
 // Events: 'contact' { nation, unit, first, by } when a ship is sighted for the first time this round, or again
 // after REGAIN s out of sight; 'firstSighting' { nation, unit } once per side per enemy carrier or battleship.
@@ -20,7 +20,8 @@ window.WW = window.WW || {};
     FLASH: { big: 400, med: 320, small: 240, mg: 110 }, FLASH_T: 6, // a ship that fired in the last FLASH_T s
     SONAR: 65,                                         // destroyer sonar on submerged subs (ships_ai.js SONAR)
     AIR: 100, SCOUT: 120, SPOT: 85,                    // airborne planes / scouts see ships; scouts spot for the guns within SPOT
-    SEE_PLANE: { carrier: 170, battleship: 130, cruiser: 130, destroyer: 110, submarine: 40, pt: 60 }, // ships see planes (AA directors, CAP radar)
+    SEE_PLANE: { carrier: 170, battleship: 130, cruiser: 130, destroyer: 110, submarine: 40, pt: 60 }, // ships see planes (AA directors, lookouts)
+    SEE_PLANE_NATION: { USN: { carrier: 250 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE)
     PLANE_PLANE: 100,                                  // planes see planes
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
     TORP: 45                                           // a ship sees an enemy torpedo track this close (scanTorps)
@@ -59,7 +60,7 @@ window.WW = window.WW || {};
   function airborne(p) { return p.alive && !p.removed && p.y > 4 && p.state !== 'catapult' && p.state !== 'afloat' && p.state !== 'alight'; }
 
   // Record a sighting of unit u by observer `by` this tick (best quality wins: visual > sonar > scout > air).
-  var QRANK = { visual: 4, sonar: 3, scout: 2, air: 1 };
+  var QRANK = { visual: 4, radar: 3.5, sonar: 3, scout: 2, air: 1 };
   function sight(nation, S, u, by, q, now) {
     var c = S.map.get(u);
     if (c && c.seenAt === now && QRANK[c.quality] >= QRANK[q]) return;
@@ -124,9 +125,12 @@ window.WW = window.WW || {};
       for (j = 0; j < ships.length && !got; j++) {
         s = ships[j];
         if (s.nation !== nation || !usableShip(s)) continue;
+        if (s.submerged) continue;
         r = R.SEE_PLANE[s.type] || 110;
-        if (s.submerged) r = 0;
-        if (WW.dist2(s.x, s.z, o.x, o.z) < r * r) { sight(nation, S, o, s, 'visual', now); got = true; }
+        var rn = R.SEE_PLANE_NATION[nation], rr = (rn && rn[s.type]) || r;   // radar fighter direction reaches farther
+        d2 = WW.dist2(s.x, s.z, o.x, o.z);
+        if (d2 < r * r) { sight(nation, S, o, s, 'visual', now); got = true; }
+        else if (d2 < rr * rr) sight(nation, S, o, s, 'radar', now);   // keep looking: another ship may see it
       }
       for (j = 0; j < planes.length && !got; j++) {
         p = planes[j];
@@ -149,10 +153,16 @@ window.WW = window.WW || {};
 
   // Torpedo tracks: an enemy torpedo within R.TORP of any of the side's ships is seen (its wake). One entry
   // object per running torpedo, { proj, x, z, h, speed, seenAt, firstSeenAt }, dropped when the torpedo ends.
-  // Pooled projectiles are reused: a run distance that went down means a new torpedo in the same object.
+  // Pooled projectiles are reused, so a track ends on the torpedo's own events (weaponImpact when it ends,
+  // weaponDropped when the pooled object is fired again), never on the pool's state: replays stay exact.
+  function dropTrack(proj) {
+    for (var n = 0; n < NATIONS.length; n++) { var T = sideOf(NATIONS[n]).torps; for (var i = T.length - 1; i >= 0; i--) if (T[i].proj === proj) T.splice(i, 1); }
+  }
+  WW.on('weaponImpact', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
+  WW.on('weaponDropped', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
   function scanTorps(nation, now) {
     var S = sideOf(nation), T = S.torps, act = WW.combat && WW.combat._i && WW.combat._i.active, ships = WW.world.ships, i, j;
-    for (i = T.length - 1; i >= 0; i--) { var q = T[i].proj; if (q.dead || q.kind !== 'torp' || q.run < T[i].run) T.splice(i, 1); }
+    for (i = T.length - 1; i >= 0; i--) if (T[i].proj.dead || T[i].proj.kind !== 'torp') T.splice(i, 1);
     if (!act) return;
     for (i = 0; i < act.length; i++) {
       var p = act[i];
