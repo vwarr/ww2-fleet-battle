@@ -71,7 +71,7 @@ window.WW = window.WW || {};
     FIRE_MAX: 55,
     EX_MAX: 9,        // acceptable path danger from ships other than the target (dps)
     PEN_RUN: 0.12, PEN_ABORT: 0.16, PEN_LURK: -0.06, // midline limits (x half-map)
-    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240
+    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240, FLEE_DG: 0.6, IDLE_R: 40, IDLE_THR: 0.9
   };
   function partner(ship) {
     const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null;
@@ -240,10 +240,10 @@ window.WW = window.WW || {};
       let h = from ? Math.atan2(ship.z - from.z, ship.x - from.x) : (homeX(ship) < 0 ? PI : 0);
       const home = homeX(ship) < 0 ? PI : 0;
       const aw = h;
-      h += WW.clamp(WW.angleDiff(h, home), -0.35, 0.35) + jink * 0.6;
+      h += WW.clamp(WW.angleDiff(h, home), -0.25, 0.25) + jink * 0.4;
       // a hard reversal bleeds speed: take the nearest heading still well clear of the threat's bearing first
-      if (Math.abs(WW.angleDiff(ship.heading, h)) > 1.2) h = aw + WW.clamp(WW.angleDiff(aw, ship.heading), -0.85, 0.85);
-      const deep = pen(ship, ship.x) > -0.02; // past the midline: home first, whatever the threat bearing
+      if (Math.abs(WW.angleDiff(ship.heading, h)) > 1.2) h = aw + WW.clamp(WW.angleDiff(aw, ship.heading), -0.75, 0.75);
+      const deep = pen(ship, ship.x) > 0.02; // past the midline: home first, whatever the threat bearing
       if (deep) h = home + WW.clamp(WW.angleDiff(home, aw), -0.6, 0.6) + jink * 0.5;
       ship.desiredHeading = h; ship.throttle = 1;
       const el = T - L.t0, clear = (!nb || nb.margin > 35) && danger(n, ship.x, ship.z) < 1;
@@ -251,7 +251,7 @@ window.WW = window.WW || {};
       return;
     }
     // ---- lurk ----
-    if (decide && nb && (nb.margin < 25 || danger(n, ship.x, ship.z) > 2.5)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
+    if (decide && nb && (nb.margin < 25 || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
     L.spotT -= dt;
     if (L.spotT <= 0) { L.spotT = 4; lurkSpot(ship, L); }
     if (decide && a.torpReload <= 0 && ship.hp >= ship.maxHp * 0.35) {
@@ -265,14 +265,18 @@ window.WW = window.WW || {};
       if (!tgt) { const o = opportunity(ship, L); if (o) { tgt = o.c.unit; L.side = sideOf(ship, tgt, L.pair.lead); } }
       if (tgt) { L.state = 'run'; L.tgt = tgt; L.t0 = T; L.hp0 = ship.hp; ship.target = tgt; return; }
     }
+    // At the spot: a patrol leg stern-on to the enemy (a break-off then needs no turn), and a slower leg back.
     const d = WW.dist(ship.x, ship.z, L.lx, L.lz);
-    if (d > 12) {
+    if (L.leg === 'back' && d > PT.IDLE_R) L.leg = 'fwd';
+    else if (L.leg !== 'back' && d < 8) L.leg = 'back';
+    if (L.leg === 'back') {
+      const ec = WW.intel && WW.intel.centre ? WW.intel.centre(n) : null;
+      ship.desiredHeading = (ec ? Math.atan2(ship.z - ec.z, ship.x - ec.x) : homeX(ship) < 0 ? PI : 0) + 0.3 * Math.sin(T * 0.4 + ship.id);
+      ship.throttle = PT.IDLE_THR; // brisk: a heavy ship sighted astern is already being run from
+    } else {
       const want = Math.atan2(L.lz - ship.z, L.lx - ship.x);
       ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0.1) : want;
-      ship.throttle = d > 60 ? 0.85 : 0.45;
-    } else { // idle at the spot: drift slowly around it, bow to the enemy
-      ship.desiredHeading = Math.atan2(L.lz - ship.z, L.lx - ship.x) + a.orbitDir * PI / 2;
-      ship.throttle = 0.5; // under way, so a break-off reaches full speed fast
+      ship.throttle = d > 60 ? 0.85 : 0.5;
     }
   }
 
