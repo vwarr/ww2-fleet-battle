@@ -23,7 +23,7 @@ function wav(file, ch, rate, int16b64) { // interleaved 16-bit PCM
 (async () => {
   let server = null;
   if (!process.env.BASE_URL) { server = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: path.join(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 1000)); }
-  const URL = (process.env.BASE_URL || `http://localhost:${PORT}/`) + 'index.html?v=' + Date.now();
+  const URL = (process.env.BASE_URL || `http://localhost:${PORT}/`) + 'index.html?auto&v=' + Date.now();
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const A = [], chk = (name, v) => { A.push((v ? 'PASS ' : 'FAIL ') + name); console.log((v ? 'PASS ' : 'FAIL ') + name); };
   const p = await b.newPage({ viewport: { width: 960, height: 540 } });

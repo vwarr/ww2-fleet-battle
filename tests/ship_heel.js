@@ -8,7 +8,7 @@ const N = +(process.argv[2] || 3), SEED0 = +(process.argv[3] || 1);
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 640, height: 360 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message));
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
   await p.waitForTimeout(1500);
   await p.evaluate(() => { __sim.setScale(0.0001); });
   const per = {};

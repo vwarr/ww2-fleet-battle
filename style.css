@@ -44,10 +44,10 @@ body { font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif; 
 #hud .btn:hover { background: #dfeaf2; }
 #hud .btn.on { background: #ffd98a; color: #4a3a18; }
 #hud .btn.go { background: #9fd8a0; color: #1f4a22; }
-#hud .corner { position: absolute; left: 16px; top: 16px; pointer-events: auto; transition: opacity 0.4s ease-in-out; }
+#hud .corner { position: absolute; left: 10px; top: 10px; pointer-events: auto; transition: opacity 0.4s ease-in-out; }
 #hud .corner.hidden { opacity: 0; pointer-events: none; }
-#hud .btn.menu { margin-right: 6px;
-  opacity: 0.55; transition: opacity 0.4s ease-in-out; }
+#hud .btn.menu { margin-right: 4px; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 7px;
+  opacity: 0.45; transition: opacity 0.4s ease-in-out; }
 #hud .btn.menu:hover { opacity: 1; }
 #hud input.vol { width: 120px; vertical-align: middle; accent-color: #3d5a78; cursor: pointer; }
 #hud .msg { display: none; position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center;

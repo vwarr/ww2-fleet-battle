@@ -14,7 +14,7 @@ const WHICH = (process.argv[2] || 'bomb,torp,ots').split(','), SECS = +(process.
     window.requestAnimationFrame = cb => { __raf.push(cb); return __raf.length; };
     window.__step = n => { for (let i = 0; i < n; i++) { __fakeT += 1000 / 30; const cbs = __raf.splice(0); cbs.forEach(cb => cb(__fakeT)); } };
   });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html');
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto');
   await p.waitForTimeout(1500);
   await p.evaluate(() => {
     const pr = WW.post.render.bind(WW.post); WW.post.render = (a, b) => { if (__render) pr(a, b); };

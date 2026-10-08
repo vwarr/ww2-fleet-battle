@@ -10,7 +10,7 @@ const PORT = process.argv[2] || 8000, ROUNDS = +(process.argv[3] || 10), TAG = p
   const errs = []; p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
   // deterministic maps / RNG (frames between evaluate calls still add some jitter)
   await p.addInitScript(() => { let s = 12345; Math.random = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; });
-  await p.goto((process.env.BASE_URL || `http://localhost:${PORT}/`) + 'index.html');
+  await p.goto((process.env.BASE_URL || `http://localhost:${PORT}/`) + 'index.html?auto');
   await p.waitForTimeout(1500);
   await p.evaluate(() => {
     // measured beam per type (bow on +x, so beam = z extent)

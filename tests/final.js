@@ -6,7 +6,7 @@ const SH = n => 'shots/final_' + n + '.png';
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html');
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto');
   await p.waitForTimeout(2000);
   await p.screenshot({ path: SH('01_load') });
   // install the nav probe: run sim in chunks, checking every step

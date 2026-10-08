@@ -29,52 +29,47 @@ Play it online: <https://varunwarrier.com/fleet-battle/>
 You can also open `index.html` directly from the disk. The game does not need a build step.
 The game uses two web fonts from Google Fonts. If you are offline, the game uses system fonts.
 
-## Auto mode
+## Start a battle
 
-Auto mode is the default mode.
+When the game opens, it makes a new map and places two random fleets. The fleets wait for you.
 
-- The game makes a new map and two random fleets for each round.
+- Click **Start** to start the battle.
+- Click **Randomize** for two new random fleets, **New map** for a new map with the same fleets, or **Clear** to remove all ships.
+- To change the fleets, see [Set up your own fleets](#set-up-your-own-fleets).
+
+Each battle stands alone. During the battle, the panel is not shown. Only three small buttons (menu, fullscreen and sound) show at the top left. In fullscreen, these buttons are hidden too; push `H` for the panel.
+
 - The camera works like a film director. It selects an interesting subject and films it with a slow, smooth shot.
   Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
-  Each shot lasts 12 to 25 seconds. Then the picture fades softly to a new shot.
-  Every second shot is a slow, wide view of the islands and the fleets.
-- During the battle, the panel is not shown. Only the **Menu**, **Fullscreen** and **Sound** buttons show at the top left.
-- A round ends when one side has no ships. A caption shows the winner.
-- A round has a time limit of 5.5 minutes. At the time limit, the side with more tonnage wins.
-- After the caption, the next round starts automatically.
+- A battle ends when one side has no ships. A caption shows the winner and the ships that each side lost.
+- At the time limit, the side with more tonnage wins.
+- After the caption, the game goes back to the start: a new map with fleets placed and waiting. If you placed your own fleets, the game keeps them.
 
 The game runs at a calm pace: at 1× speed, the ships and planes move at half of their normal speed.
-A typical round lasts 6 to 8 minutes at 1× speed.
 
-## Setup mode
+## Auto battles (screensaver)
 
-Use setup mode to put your own ships on the map.
+Click **Auto battles** in the panel to watch endless random battles on new maps. A new battle starts automatically after each one.
+You can also open `index.html?auto` to start in this mode.
 
-1. Push `H` (or click **Menu** at the top left) to show the panel. Then click **Set up fleets** in the panel.
-2. In the **Fleet setup** panel, click a ship type (for example, **Destroyer**).
-3. Click **Side** to select the nation (USN or IJN).
-4. Click the water to put a ship there.
+## Set up your own fleets
+
+1. In the **Fleet setup** panel, click a ship type (for example, **Destroyer**).
+2. Click **Side** to select the nation (USN or IJN).
+3. Click the water to put a ship there.
    - The water must be deep enough for that ship type. If it is too shallow, a message shows.
    - Do not put ships too near to other ships.
-5. Right-click near a ship to remove it.
-6. Click **Start** to start the battle. Each side must have at least one ship.
-   The panels go away when the battle starts.
+4. Right-click near a ship to remove it.
+5. Click **Start** to start the battle. Each side must have at least one ship.
 
-Other buttons:
-
-- **Randomize** makes two random fleets.
-- **Clear** removes all ships.
-
-After a battle in setup mode, the game uses your fleets again on a new map.
-To change the fleets again, push `H` and click **Edit fleet**.
-To go back to auto mode, click **Back to auto** in setup mode.
+During a battle, push `H` and click **Edit fleet** to go back to your fleets.
 
 ## Controls
 
 | Key or button | Action |
 |---|---|
 | `H`, or the **Menu** button | Show or hide the panel during the battle. The panel always shows in setup mode. |
-| `N`, or **New round** in the panel | Start a new round now, on a new map. |
+| `N`, or **New battle** in the panel | Make a new map with new random fleets, placed and waiting. In auto battles, the next battle starts at once. |
 | **Fullscreen** button | Show the game on the full screen. Click again (or push `Esc`) to go back. |
 | `M`, or the 🔊 / 🔇 **Sound** button | Set the sound on or off. The default is off. The game remembers your choice. If the sound was on last time, the button shows **Tap to start**: the first click or key press starts the sound (browsers need this). |
 | Volume slider in the panel | Set the sound volume. |
