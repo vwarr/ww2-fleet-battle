@@ -37,10 +37,10 @@ window.WW = window.WW || {};
       const d2 = (x - L.x) * (x - L.x) + (y - L.y) * (y - L.y) + (z - L.z) * (z - L.z);
       if (d2 < best) { best = d2; bt = t; bx = x; by = y; bz = z; }
     }
-    if (best > 28 * 28) return;
+    if (best > 45 * 45) return;
     const delay = bt / simRate() - 0.75;
     if (delay < -0.3) return;
-    A.play('shell.whistle', { x: bx, y: by, z: bz, delay: Math.max(0, delay), size: e.cal === 'big' ? 1 : 0.6 });
+    A.play('shell.whistle', { x: bx, y: by, z: bz, delay: Math.max(0, delay), size: e.cal === 'big' ? 1 : 0.6, vol: clamp(1.4 - Math.sqrt(best) / 45, 0.4, 1) });
   }
 
   // ---------- misses and hits ----------

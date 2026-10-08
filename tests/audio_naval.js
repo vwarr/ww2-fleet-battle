@@ -91,14 +91,16 @@ const PATCHES = [ // name, params, render seconds, max duration
       const r = await WW.audio.renderOffline(name, prm, secs);
       if (!r) return null;
       const hf = await __hf(r.buffer);
-      return { peak: r.peak, rms: r.rms, dur: r.dur, nan: r.nan, hf, wav: __wav([r.buffer.getChannelData(0), r.buffer.getChannelData(1)], r.buffer.sampleRate) };
+      let peak = r.peak, nan = r.nan, durMax = r.dur;
+      for (let i = 0; i < 3; i++) { const q = await WW.audio.renderOffline(name, prm, secs); peak = Math.max(peak, q.peak); nan = nan || q.nan; durMax = Math.max(durMax, q.dur); } // random layers: check the worst of 4
+      return { peak, rms: r.rms, dur: durMax, nan, hf, wav: __wav([r.buffer.getChannelData(0), r.buffer.getChannelData(1)], r.buffer.sampleRate) };
     }, [name, prm, secs]);
     const tag = name + (Object.keys(prm).length ? '_' + Object.entries(prm).map(([k, v]) => k + v).join('_') : '');
     if (!r) { chk('render ' + tag + ': missing', false); continue; }
     fs.writeFileSync(path.join(DEMO, tag + '.wav'), Buffer.from(r.wav, 'base64'));
     const ok = !r.nan && r.peak >= 0.05 && r.peak <= 1 && r.dur > 0.05 && r.dur <= maxDur && r.hf < 0.06;
     renders.push(ok);
-    chk(`render ${tag.padEnd(34)} peak ${r.peak.toFixed(3)} rms ${r.rms.toFixed(4)} dur ${r.dur.toFixed(2)}s (<= ${maxDur}) >6kHz ${(r.hf * 100).toFixed(2)}%`, ok);
+    chk(`render ${tag.padEnd(34)} max peak of 4 ${r.peak.toFixed(3)} rms ${r.rms.toFixed(4)} dur ${r.dur.toFixed(2)}s (<= ${maxDur}) >6kHz ${(r.hf * 100).toFixed(2)}%`, ok);
   }
   // variation: two renders of the same patch differ
   const vary = await p.evaluate(async () => { const a = await WW.audio.renderOffline('gun.big', { size: 1 }, 3), b = await WW.audio.renderOffline('gun.big', { size: 1 }, 3);

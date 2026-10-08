@@ -153,7 +153,7 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 
 | Event | Data | Sound |
 |---|---|---|
-| `shellFired` (combat.js `fireShell`) | `{ ship, cal, x, y, z, proj }` | `gun.big` / `gun.med` / `gun.small` / `gun.mg`, one play per ship salvo (barrels of one frame grouped, `n` = barrels); `shell.whistle` if a big/med shell's path passes within 28 units of the camera, timed to the closest approach |
+| `shellFired` (combat.js `fireShell`) | `{ ship, cal, x, y, z, proj }` | `gun.big` / `gun.med` / `gun.small` / `gun.mg`, one play per ship salvo (barrels of one frame grouped, `n` = barrels); `shell.whistle` if a big/med shell's path passes within 45 units of the camera, timed to the closest approach |
 | `shellLanded` (combat.js `landShell`) | `{ cal, x, z, ship }` | miss: `shell.splash` (big, med), `shell.splash.small` (small, mg), `shell.land` on an island |
 | `shipHit` (ships.js `takeDamage`) | `{ ship, amount, x, z, kind, cal }` | shell: `ship.hit` scaled by damage (ducks at size > 1.5), mg: `ship.ping`; bomb: `ship.hit` with `bang: 0` (the clang only; the blast is the aircraft family's); torpedo: `torp.hit` |
 | `shipBoom` (damage.js, ships.js) | `{ ship, x, y, z, size }` | `ship.boom` |

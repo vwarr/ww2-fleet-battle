@@ -34,9 +34,10 @@ window.WW = window.WW || {};
     ref: 70, max: 3, minGap: 0.14, sos: true, reverb: 0.5, duck: 0.3, dur: 4, params: { size: 1, n: 1 },
     build(ctx, out, p) {
       const k = p.size || 1, r = p.rate, t = p.t, n = Math.min(4, p.n || 1), parts = [];
-      parts.push(S.boom(ctx, out, t, { f0: V(58) / Math.sqrt(k), f1: 24, dur: 2.1 * k, gain: 0.47, body: 1, crack: 0.3, bright: 0.65, rate: r }));
+      const g0 = 0.47 / (1 + 0.18 * (n - 1));
+      parts.push(S.boom(ctx, out, t, { f0: V(58) / Math.sqrt(k), f1: 24, dur: 2.1 * k, gain: g0, body: 1, crack: 0.3, bright: 0.65, rate: r }));
       for (let i = 1; i < n; i++) // the other barrels: a ragged, overlapping roll rather than separate clicks
-        parts.push(S.boom(ctx, out, t + R(0.025, 0.11) * i / r, { f0: V(52, 0.12) / Math.sqrt(k), f1: 22, dur: 1.7 * k, gain: 0.26, body: 0.8, crack: 0.12, bright: 0.55, rate: r }));
+        parts.push(S.boom(ctx, out, t + R(0.025, 0.11) * i / r, { f0: V(52, 0.12) / Math.sqrt(k), f1: 22, dur: 1.7 * k, gain: 0.18, body: 0.75, crack: 0.12, bright: 0.55, rate: r }));
       parts.push(S.burst(ctx, out, t + 0.04 / r, { noise: 'pink', type: 'lowpass', f: 650, f1: 90, q: 0.3, a: 0.06, d: 1.9 * k, gain: 0.28, rate: r }));
       // distant thunder: the report rolling back off the islands
       parts.push(S.burst(ctx, out, t + R(0.55, 0.9) / r, { noise: 'brown', type: 'lowpass', f: V(210, 0.15), f1: 70, q: 0.5, a: 0.35, d: 1.4 * k, gain: 0.22 * Math.min(1.4, 0.8 + 0.2 * n), rate: r }));
@@ -47,7 +48,7 @@ window.WW = window.WW || {};
     ref: 55, max: 3, minGap: 0.1, sos: true, reverb: 0.4, duck: 0.12, dur: 2.5, params: { size: 1, n: 1 },
     build(ctx, out, p) {
       const r = p.rate, t = p.t, n = Math.min(3, p.n || 1), parts = [];
-      parts.push(S.boom(ctx, out, t, { f0: V(88), f1: 38, dur: 1.15, gain: 0.5, body: 0.85, crack: 0.5, bright: 0.85, rate: r }));
+      parts.push(S.boom(ctx, out, t, { f0: V(88), f1: 38, dur: 1.15, gain: 0.5 / (1 + 0.15 * (n - 1)), body: 0.85, crack: 0.5, bright: 0.85, rate: r }));
       for (let i = 1; i < n; i++) parts.push(S.boom(ctx, out, t + R(0.02, 0.07) * i / r, { f0: V(80, 0.12), f1: 36, dur: 0.9, gain: 0.22, body: 0.6, crack: 0.2, bright: 0.7, rate: r }));
       parts.push(S.burst(ctx, out, t, { type: 'bandpass', f: V(950), f1: 300, q: 0.9, a: 0.002, d: 0.22, gain: 0.3, rate: r })); // the bark
       parts.push(S.burst(ctx, out, t + 0.03 / r, { noise: 'pink', type: 'lowpass', f: 700, f1: 120, q: 0.3, a: 0.04, d: 1.1, gain: 0.2, rate: r }));
@@ -143,7 +144,7 @@ window.WW = window.WW || {};
       const parts = clang(ctx, out, t, { f: V(260, 0.18) / Math.sqrt(k), d: 0.5 + 0.25 * k, gain: 0.16, rate: r });
       parts.push(S.burst(ctx, out, t, { type: 'bandpass', f: V(700), f1: 260, q: 0.9, a: 0.002, d: 0.18 + 0.06 * k, gain: 0.32, rate: r })); // crunch
       parts.push(S.crackle(ctx, out, t + 0.01 / r, { dur: 0.25 + 0.2 * k, f: 1300, q: 0.7, gain: 0.5, density: 0.7, rate: r }));
-      if (bang > 0) parts.push(S.boom(ctx, out, t + 0.01 / r, { f0: V(72) / Math.sqrt(k), f1: 32, dur: 0.7 + 0.6 * k, gain: 0.5 * bang * Math.min(1.2, 0.5 + 0.4 * k), body: 0.9, crack: 0.25, bright: 0.7, rate: r }));
+      if (bang > 0) parts.push(S.boom(ctx, out, t + 0.01 / r, { f0: V(72) / Math.sqrt(k), f1: 32, dur: 0.7 + 0.6 * k, gain: 0.45 * bang * Math.min(1, 0.5 + 0.3 * k), body: 0.85, crack: 0.25, bright: 0.7, rate: r }));
       return S.done(p, parts);
     }
   });
@@ -248,7 +249,7 @@ window.WW = window.WW || {};
     build(ctx, out, p) {
       const r = p.rate, t = p.t;
       return S.done(p, [
-        S.boom(ctx, out, t, { f0: V(42), f1: 20, dur: 2.4, gain: 0.52, body: 1.05, crack: 0, bright: 0.35, rate: r }),
+        S.boom(ctx, out, t, { f0: V(42), f1: 20, dur: 2.4, gain: 0.43, body: 0.95, crack: 0, bright: 0.35, rate: r }),
         S.burst(ctx, out, t + 0.12 / r, { noise: 'pink', type: 'lowpass', f: 1300, f1: 350, q: 0.4, a: 0.25, d: 1.4, gain: 0.32, rate: r }), // column rising
         S.burst(ctx, out, t + R(1.1, 1.5) / r, { noise: 'pink', type: 'bandpass', f: V(900), f1: 350, q: 0.5, a: 0.3, d: 1.5, gain: 0.2, rate: r }) // falling back
       ]);
@@ -282,7 +283,7 @@ window.WW = window.WW || {};
     build(ctx, out, p) {
       const r = p.rate, t = p.t;
       return S.done(p, [
-        S.boom(ctx, out, t, { f0: V(36), f1: 19, dur: 1.7, gain: 0.52, body: 1.0, crack: 0, bright: 0.3, rate: r }),
+        S.boom(ctx, out, t, { f0: V(36), f1: 19, dur: 1.7, gain: 0.44, body: 0.9, crack: 0, bright: 0.3, rate: r }),
         S.tone(ctx, out, t + 0.02 / r, { f: V(28), f1: 22, a: 0.02, d: 1.0, gain: 0.22, rate: r }),
         S.burst(ctx, out, t + 0.15 / r, { noise: 'pink', type: 'lowpass', f: 1100, f1: 300, q: 0.4, a: 0.2, d: 1.2, gain: 0.25, rate: r })
       ]);

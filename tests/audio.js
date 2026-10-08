@@ -156,6 +156,7 @@ const PORT = +(process.env.PORT || 8794);
   console.log('fps sound on', fOn.fps.toFixed(1), 'worst frame', fOn.worst.toFixed(0), 'ms | sound off', fOff.fps.toFixed(1), 'worst', fOff.worst.toFixed(0), 'ms');
   chk('M again turns sound off: no voices, context suspended (' + JSON.stringify(offState) + ')', !offState.live && offState.voices === 0 && offState.state === 'suspended');
   await p.keyboard.press('m'); await p.waitForTimeout(800);
+  await p.waitForFunction(() => WW.audio.stats().loopVoices >= 1, null, { timeout: 5000 }).catch(() => {}); // slow headless frames: give the loop a few frames to come back
   const again = await p.evaluate(() => ({ live: WW.audio.live, loopVoices: WW.audio.stats().loopVoices }));
   chk('on again: ambience loop comes back (' + JSON.stringify(again) + ')', again.live && again.loopVoices >= 1);
   // hidden tab
