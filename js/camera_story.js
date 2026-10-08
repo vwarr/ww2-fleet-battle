@@ -78,7 +78,8 @@ window.WW = window.WW || {};
     const sq = p.squadron ? p.squadron.short : null, who = rank(p);
     const main = [sq, who].filter(Boolean).join(' · ') || 'Strike leader';
     let sub = '';
-    if (mission === 'strike') { const t = p.target || (p.wave && p.wave.target); sub = (p.wave && p.wave.cag === p ? 'leads the strike' : 'strike') + (t && KIND[t.type] ? ' on a ' + KIND[t.type] : ''); }
+    if (mission === 'strike' && p.kind === 'fighter') sub = 'escort' + (p.wave && p.wave.target && KIND[p.wave.target.type] ? ' for a strike on a ' + KIND[p.wave.target.type] : '');
+    else if (mission === 'strike') { const t = p.target || (p.wave && p.wave.target); sub = (p.wave && p.wave.cag === p ? 'leads the strike' : 'strike') + (t && KIND[t.type] ? ' on a ' + KIND[t.type] : ''); }
     else if (mission === 'cap') sub = 'CAP' + (p.carrier && p.carrier.name ? ' over ' + p.carrier.name : '');
     else if (mission === 'ace') sub = 'ace · ' + ((p.pilot && p.pilot.kills) || p.kills || 0) + ' kills';
     return [main, sub];
@@ -114,7 +115,7 @@ window.WW = window.WW || {};
   }
   // shot menu per phase: [sub-kind, weight]
   const MENU = {
-    launch: [['deck', 3], ['side', 1]],
+    launch: [['deck', 3], ['high', 1], ['side', 1]],
     form: [['side', 3], ['high', 2], ['chase', 2], ['wing', 2]],
     transit: [['chase', 3], ['wing', 3], ['side', 2], ['high', 2]],
     bandits: [['ots', 4], ['chase', 2], ['wing', 2]],

@@ -22,7 +22,7 @@ window.WW = window.WW || {};
   }
   // eased formation centre of the story's group (falls back to the leader)
   function centre(shot, rdt) {
-    const M = (shot.group || []).filter(airborne), L = shot.subj;
+    const L = shot.subj, M = (shot.group || []).filter(m => airborne(m) && Math.hypot(m.x - L.x, m.y - L.y, m.z - L.z) < 60); // stragglers stay out
     _c.set(0, 0, 0);
     if (M.length) { for (const m of M) _c.x += m.x, _c.y += m.y, _c.z += m.z; _c.multiplyScalar(1 / M.length); }
     else _c.set(L.x, L.y || 0, L.z);
@@ -91,7 +91,7 @@ window.WW = window.WW || {};
           gP.set(L.x - _f.x * 15 + _r.x * shot.side * 4, ly + 5.5, L.z - _f.z * 15 + _r.z * shot.side * 4);
           const d = Math.min(_t.length(), 160);
           gL.set(L.x + _f.x * d, Math.max(1.5, ly * (1 - d / 160)), L.z + _f.z * d);
-          shot.aim.set(L.x + _f.x * 10, ly, L.z + _f.z * 10);
+          shot.aim.set(L.x, ly, L.z);
           break;
         }
         case 'side': {
@@ -129,16 +129,17 @@ window.WW = window.WW || {};
           const dist = Math.max(1, _t.length()); _t.multiplyScalar(1 / dist);
           if (shot.u === undefined) shot.u = _t.clone(); else shot.u.lerp(_t, 1 - Math.exp(-rdt * 0.5)).normalize();
           const u = shot.u, far = Math.min(dist, 260);
-          gP.set(C.x - u.x * 70 - u.z * shot.side * 50, Math.max(C.y, 20) + 85, C.z - u.z * 70 + u.x * shot.side * 50);
-          gL.set(C.x + u.x * far * 0.45, 0, C.z + u.z * far * 0.45);
-          shot.aim.set(C.x + u.x * far * 0.25, C.y * 0.5, C.z + u.z * far * 0.25);
+          // well behind and above the strike, looking down the line of its run: strike in front, the enemy beyond, horizon on top
+          gP.set(C.x - u.x * 130 - u.z * shot.side * 45, Math.max(C.y, 20) + 38, C.z - u.z * 130 + u.x * shot.side * 45);
+          gL.set(C.x + u.x * far * 0.6, 0, C.z + u.z * far * 0.6);
+          shot.aim.set(C.x + u.x * far * 0.35, C.y * 0.5, C.z + u.z * far * 0.35);
           break;
         }
         case 'deck': {
           const cv = L.carrier && !L.carrier.removed ? L.carrier : null;
           if (!cv) { shot.sk = 'side'; return S.goal(shot, gP, gL, rdt); }
           const h = cv.heading; _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
-          gP.set(cv.x + _f.x * 4 + _r.x * shot.side * 34, 13, cv.z + _f.z * 4 + _r.z * shot.side * 34);
+          gP.set(cv.x + _f.x * 4 + _r.x * shot.side * 42, 12, cv.z + _f.z * 4 + _r.z * shot.side * 42);
           gL.set(L.x, ly, L.z);
           shot.aim.set(L.x, ly, L.z);
           if (L.state !== 'takeoff' && ly > 25) shot.dur = Math.min(shot.dur, shot.t + 1.5);

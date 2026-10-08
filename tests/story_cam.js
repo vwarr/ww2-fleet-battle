@@ -30,7 +30,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
     const f = (n, x, s) => [{ type: 'carrier', nation: n, x, z: H / 2 }, { type: 'cruiser', nation: n, x: x + s * 60, z: H / 2 - 50 }, { type: 'destroyer', nation: n, x: x + s * 70, z: H / 2 + 50 }];
     G.composition = [...f('USN', 70, 1), ...f('IJN', W - 70, -1)];
     G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null;
-    window.__rec = [];
+    window.__rec = []; __rec.ids = 0;
     const orig = WW.cam.afterRender;
     WW.cam.afterRender = function () {
       orig.call(this);
@@ -38,7 +38,8 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
       let hull = 99; for (const o of WW.world.ships) if (!o.removed) hull = Math.min(hull, Math.hypot(c.position.x - o.x, c.position.z - o.z) - o.stats.length / 2 + (c.position.y > 14 ? 99 : 0));
       const am = s && (s.aim || s.last), nd = am ? am.clone().project(c) : { x: 0, y: 0 };
       const f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
-      __rec.push({ t: __fakeT / 1000, sk: s ? (s.sk || s.kind) + (s.stage ? ':' + s.stage : '') : '-', x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z,
+      if (s && !s.__id) s.__id = ++__rec.ids;
+      __rec.push({ id: s ? s.__id : 0, t: __fakeT / 1000, sk: s ? (s.sk || s.kind) + (s.stage ? ':' + s.stage : '') : '-', x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z,
         hull, nx: nd.x, ny: nd.y, ground: c.position.y + Math.min(0, WW.terrain.depthAt(c.position.x, c.position.z)) });
     };
   }, SEED);
@@ -93,7 +94,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
   for (const k of want) {
     const r = await p.evaluate((k) => {
       __sim.setScale(1);
-      const L = until(() => WW.world.planes.find(q => q.alive && q.squadron && q.kind !== 'fighter' && q.state !== 'takeoff' && q.state !== 'landing' && WW.storyShots.valid(k, q, q.element ? q.element.members : [q])), 300);
+      const L = until(() => WW.world.planes.find(q => q.alive && q.squadron && (k === 'wing' || q.kind !== 'fighter') && q.state !== 'takeoff' && q.state !== 'landing' && WW.storyShots.valid(k, q, q.element ? q.element.members : [q])), 300);
       if (!L) return 'none';
       WW.camStory.start(L, 'strike');
       WW.cam.film({ kind: 'story', sk: k, subj: L, group: L.element ? L.element.members.slice() : [L], dur: 12, story: true, kP: k === 'high' || k === 'side' ? 2.5 : 4.5, kL: 4.5, side: 1 });
@@ -157,14 +158,14 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
 
   // camera sanity over the whole recording
   const rec = await p.evaluate(() => __rec.slice());
-  let minG = 99, minH = 99, out = 0, nsub = 0, maxRot = 0;
+  let minG = 99, minH = 99, out = 0, nsub = 0, maxRot = 0, rotAt = '';
   const ang = (a, c) => Math.acos(Math.min(1, a.fx * c.fx + a.fy * c.fy + a.fz * c.fz));
   rec.forEach((f, i) => {
     minG = Math.min(minG, f.ground); minH = Math.min(minH, f.hull);
     if (f.sk !== '-' && f.sk !== 'high') { nsub++; if (Math.abs(f.nx) > 0.6 || Math.abs(f.ny) > 0.6) out++; }
-    if (i > 2 && rec[i - 1].sk === f.sk && rec[i - 2].sk === f.sk) maxRot = Math.max(maxRot, ang(f, rec[i - 1]) / Math.max(1e-3, f.t - rec[i - 1].t));
+    if (i > 4 && f.id && rec[i - 4].id === f.id && rec[i - 1].sk === f.sk && f.t - rec[i - 1].t < 0.25) { const w = ang(f, rec[i - 1]) / Math.max(1e-3, f.t - rec[i - 1].t); if (w > maxRot) { maxRot = w; rotAt = f.sk + ' @' + f.t.toFixed(1); } }
   });
-  console.log(`[camera] frames ${rec.length}, min height over ground ${minG.toFixed(1)}, min hull clearance (below 14) ${minH.toFixed(1)}, subject off-frame ${out}/${nsub}, max view rotation ${maxRot.toFixed(2)} rad/s`);
+  console.log(`[camera] frames ${rec.length}, min height over ground ${minG.toFixed(1)}, min hull clearance (below 14) ${minH.toFixed(1)}, subject off-frame ${out}/${nsub}, max view rotation ${maxRot.toFixed(2)} rad/s (${rotAt})`);
   console.log('errors', errs.length, errs.slice(0, 5).join(' / '));
   await b.close();
 })();
