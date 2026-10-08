@@ -167,6 +167,7 @@ window.WW = window.WW || {};
           if (this.kind === 'fighter') this.fighter(dt);
           else if (this.kind === 'dive') this.diveBomber(dt);
           else this.torpBomber(dt);
+          if (WW.dogfight && this.kind !== 'fighter') WW.dogfight.jink(this, dt); // bombers under attack weave
           break;
         case 'return': this.goHome(dt); break;
         case 'landing': this.landing(dt); break;
@@ -217,11 +218,12 @@ window.WW = window.WW || {};
           const d = WW.dist(cx, cz, p.x, p.z);
           if (d < bd) { bd = d; best = p; }
         }
-        this.foe = best;
+        this.foe = WW.dogfight ? WW.dogfight.pick(this, best) : best;
       }
       const f = this.foe;
       if (f) {
         this.state = 'attack';
+        if (WW.dogfight) { WW.dogfight.fight(this, f, dt); return; } // air_dogfight.js
         const tt = Math.min(1, this.hd(f) / 60);
         const px = f.x + Math.cos(f.heading) * f.speed * tt, pz = f.z + Math.sin(f.heading) * f.speed * tt;
         const d = this.fly(px, pz, f.y, dt, this.pt.speed * 1.1, 1.7);
@@ -372,12 +374,14 @@ window.WW = window.WW || {};
       if (!carrier || !carrier.alive || !carrier.hangar || !(carrier.hangar[kind] > 0)) return null;
       carrier.hangar[kind]--;
       const p = new Plane(kind, carrier.nation, carrier, target, getModel(kind, carrier.nation));
+      if (WW.dogfight) WW.dogfight.equip(p); // per-nation flight stats
       WW.world.planes.push(p);
       WW.stats.planesLaunched++;
       return p;
     },
     update(dt) {
       for (const ln of tracers) if (ln.visible) { if ((ln.life -= dt) <= 0) ln.visible = false; else ln.material.opacity = 0.5 * ln.life / ln.life0; }
+      if (WW.dogfight) WW.dogfight.update(dt); // wing-gun tracer rounds
       const now = WW.time.now;
       for (const s of WW.world.ships) {
         if (!s.rearm || !s.rearm.length || !s.alive) continue;
@@ -398,6 +402,7 @@ window.WW = window.WW || {};
       for (const p of WW.world.planes) p.remove();
       WW.world.planes.length = 0;
       for (const ln of tracers) ln.visible = false;
+      if (WW.dogfight) WW.dogfight.clearAll();
     }
   };
 })();

@@ -82,6 +82,19 @@ window.WW = window.WW || {};
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
   WW.PLANE_TYPES = { fighter: { hp: 20, speed: 38, range: 500 }, dive: { hp: 28, speed: 30, range: 500 },
                      torpedo: { hp: 30, speed: 26, range: 500 } };
+  // Flight model for air combat: turn (rad/s), climb (units/s), dive (top speed in a dive). Added to each type,
+  // so WW.PLANE_TYPES[kind] keeps working; WW.PLANE_NATION overrides per nation (Zero: nimble, fragile, light guns; Wildcat: tough, dives, six .50s); gun = damage per hitting round.
+  const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52 }, dive: { turn: 1.1, climb: 5, dive: 44 }, torpedo: { turn: 1.0, climb: 4.5, dive: 38 } };
+  for (const k in PLANE_FLIGHT) for (const f in PLANE_FLIGHT[k]) if (WW.PLANE_TYPES[k][f] === undefined) WW.PLANE_TYPES[k][f] = PLANE_FLIGHT[k][f];
+  WW.PLANE_NATION = {
+    IJN: { fighter: { hp: 14, speed: 39, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' }, dive: { hp: 26 }, torpedo: { hp: 27 } },
+    USN: { fighter: { hp: 28, speed: 37, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' }, dive: { hp: 30 }, torpedo: { hp: 33 } }
+  };
+  const _ptCache = {};
+  WW.planeType = function (kind, nation) { // merged per-nation stats (cached; falls back to WW.PLANE_TYPES[kind])
+    const key = kind + '|' + nation;
+    return _ptCache[key] || (_ptCache[key] = Object.assign({}, WW.PLANE_TYPES[kind], (WW.PLANE_NATION[nation] || {})[kind]));
+  };
 
   WW.world = { ships: [], planes: [] };
   // Soft pastel palette helper: a colour moved ~20% toward its own grey.
