@@ -138,7 +138,10 @@ window.WW = window.WW || {};
       const u = c.unit, d = WW.dist(ship.x, ship.z, c.x, c.z);
       if (u.submerged || !(u.type === 'pt' || u.type === 'submarine') || d >= bd || pen(ship, c.x) > lim(ship, 'PEN_RUN')) continue;
       if (danger(ship.nation, c.x, c.z) - ownDps(u, 0) > PT.EX_MAX) continue;
-      bd = d; best = u;
+      let busy = 0; // other pairs already on it: spread the boats over the enemy's (no pile-up on one)
+      for (const o of WW.world.ships) if (o !== ship && o.alive && o.type === 'pt' && o.nation === ship.nation && o.ai.lt && o.ai.lt.state === 'gun' && o.ai.lt.tgt === u && o !== (ship.ai.lt && ship.ai.lt.pair.p)) busy++;
+      const v = d + busy * 80; if (v >= bd) continue;
+      bd = v; best = u;
     }
     return best;
   }
