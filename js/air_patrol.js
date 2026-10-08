@@ -64,7 +64,7 @@ window.WW = window.WW || {};
   // a lone ship for a Mavis to bomb: no other enemy ship within 90 of it, light AA, no fighters about
   function loneTarget(p) {
     if (!WW.intel || p.nation !== 'IJN' || !(p.bombs > 0)) return null;
-    var cs = WW.intel.enemyShips(p.nation, { fresh: 2 });
+    var cs = WW.intel.enemyShips(p.nation, { fresh: 2 }).slice();   // a copy: fighterNear() reuses intel's scratch array
     for (var i = 0; i < cs.length; i++) {
       var u = cs[i].unit; if (!u || !u.alive || u.sinking || u.submerged || u.type === 'carrier' || u.type === 'battleship' || u.type === 'pt') continue;
       if (WW.dist(p.x, p.z, u.x, u.z) > 160 || air(p.nation, u.x, u.z) > 9) continue;

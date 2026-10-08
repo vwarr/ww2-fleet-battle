@@ -23,6 +23,10 @@
 // Endgame (endgame.js stats, info): wipeout (a kill with no CV / BB / CA / DD of the loser escaped earlier), carriers
 // escaped per round, pursuit kills, rescues and survivors (USN), cripples abandoned / scuttled (IJN),
 // ships escaped; spd_hp: mean speedK of live surface ships per hp band (<0.3, 0.3-0.5, 0.5-0.7, >=0.7).
+// Flying boats (air_flyingboats.js / air_patrol.js stats, info, per round): fb_rescues / fb_survivors (Catalina pickups),
+// cat_lost (rescue Catalinas lost), pat_sight_* / pat_lost_* (ships reported / boats lost on patrol per nation); intel.js
+// sighting reports: misid (misidentified first reports), bad_strikes (strikes launched on a misidentified or > 25 off
+// plot), bad_redirects (of those, strike leaders that redirected on arrival).
 //
 // ---------------------------------------------------------------------------------------------------------
 // BASELINE on the pre-roles AI (ai-strategy @ 1d327fa, 8 seeds/scenario, --pages 4: 62 s wall; --quick ~30 s).
@@ -124,7 +128,7 @@ const CHECKS = [
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
 ];
-const INFO = ['end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = ['fb_rescues', 'fb_survivors', 'cat_lost', 'pat_sight_usn', 'pat_sight_ijn', 'pat_lost_usn', 'pat_lost_ijn', 'misid', 'bad_strikes', 'bad_redirects', 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -447,7 +451,8 @@ function install(P) {
     for (const k in R.ddP) if (R.ddP[k].in && !R.ddP[k].done) R.dd.missed++;
     const out = { seed: spec.seed, aNation: spec.aNation || null, swap: !!spec.swap, winner: G.winner, len: +G.roundTime.toFixed(0),
       end: G.state === 'battle' ? 'cap' : G.endReason === 'stall' ? 'time' : G.endReason, comp: types,
-      eg: WW.endgame && WW.endgame.stats ? JSON.parse(JSON.stringify(WW.endgame.stats)) : null, spd: R.spd, spdN: R.spdN,
+      eg: WW.endgame && WW.endgame.stats ? JSON.parse(JSON.stringify(WW.endgame.stats)) : null,
+      fb: WW.flyingBoats && WW.flyingBoats.stats ? JSON.parse(JSON.stringify(WW.flyingBoats.stats)) : null, rep: WW.intel && WW.intel.stats ? Object.assign({}, WW.intel.stats) : null, spd: R.spd, spdN: R.spdN,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
@@ -480,6 +485,8 @@ function aggregate(rounds) {
   const focus = C(r => r.focusCounts), intelOn = rounds.some(r => r.intelOn);
   const firsts = k => med(rounds.map(r => r[k]).filter(v => v !== null));
   const eg = (k, n) => (rounds.length ? S(r => (r.eg ? (n ? r.eg[k][n] : r.eg[k].USN + r.eg[k].IJN) : 0)) / rounds.length : null);
+  const fbm = (f) => (rounds.length && rounds.some(r => r.fb) ? S(r => (r.fb ? f(r.fb) : 0)) / rounds.length : null);   // flying boats, per round
+  const repm = k => (rounds.length && rounds.some(r => r.rep) ? S(r => (r.rep ? r.rep[k] || 0 : 0)) / rounds.length : null);
   const share = k => (rounds.length ? rounds.filter(r => r.end === k).length / rounds.length : null);
   const spd = [0, 1, 2, 3].map(k => ratio(S(r => (r.spd ? r.spd[k] : 0)), S(r => (r.spdN ? r.spdN[k] : 0))));
   return {
@@ -488,6 +495,9 @@ function aggregate(rounds) {
     // strict wipeout: a kill in which no carrier, battleship, cruiser or destroyer of the loser got away earlier
     wipeout: rounds.length ? rounds.filter(r => r.end === 'kill' && r.eg && !Object.keys(r.eg.escTypes).some(k => !/:(pt|submarine)$/.test(k))).length / rounds.length : null,
     cv_escaped: rounds.length ? S(r => (r.eg ? Object.keys(r.eg.escTypes).filter(k => /:carrier$/.test(k)).reduce((a, k) => a + r.eg.escTypes[k], 0) : 0)) / rounds.length : null,
+    fb_rescues: fbm(f => f.rescues), fb_survivors: fbm(f => f.survivors), cat_lost: fbm(f => f.catLost),
+    pat_sight_usn: fbm(f => f.sightings.USN), pat_sight_ijn: fbm(f => f.sightings.IJN), pat_lost_usn: fbm(f => f.lost.USN - f.catLost), pat_lost_ijn: fbm(f => f.lost.IJN),
+    misid: repm('misid'), bad_strikes: repm('wrongStrikes'), bad_redirects: repm('wrongRedirects'),
     pursuit_kills: eg('pursuitKills'), escaped: eg('escaped'), usn_rescues: eg('rescues', 'USN'), usn_survivors: eg('survivors', 'USN'),
     usn_pilots: eg('pilots', 'USN'), usn_lost_srv: eg('lost', 'USN'), ijn_abandoned: eg('abandoned', 'IJN'), ijn_scuttled: eg('scuttled', 'IJN'),
     spd_hp: spd.every(v => v === null) ? null : spd.map(v => (v === null ? '-' : v.toFixed(2))).join('/'),
@@ -602,7 +612,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
         (sc.mirror ? `;  same fleet won both sides in ${pairs(rounds)} of ${rounds.length >> 1} pairs` : ''));
     }
     if (!sc.light) console.log('  info: ' + INFO.map(k => `${k} ${fmt(M[k])}`).join('  '));
-    else console.log('  info: ' + ['end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
+    else console.log('  info: ' + ['fb_rescues', 'fb_survivors', 'cat_lost', 'pat_sight_usn', 'pat_sight_ijn', 'pat_lost_usn', 'pat_lost_ijn', 'misid', 'bad_strikes', 'bad_redirects', 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled'].map(k => `${k} ${fmt(M[k])}`).join('  '));
   }
   console.log('\n=== SUMMARY ===');
   console.log(`checks: PASS ${totals.PASS}  FAIL ${totals.FAIL}  WARN ${totals.WARN}  SKIP ${totals.SKIP}   scenarios ${scens.length} x ${SEEDS} seeds   wall ${((Date.now() - T0) / 1000).toFixed(0)}s (${HL.RENDER ? 'render' : 'sim-only'}, ${PAGES} pages)`);

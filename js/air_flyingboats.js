@@ -17,7 +17,7 @@ window.WW = window.WW || {};
   var SCALE = 1.7, WATER_Y = 0.62, OFF = 34;          // flight scale (span ~11-13 units), hull resting height, spawn / exit beyond the edge
   var ALT_R = 18, CIRCLE_R = 34, SAFE_DPS = 10, HOLD_MAX = 80, FTR_R = 150, ESC_R = 70; // rescue: altitude, orbit, landing rules
   var PICK_T = { pilot: 9, ship: 16 }, SHIP_WAIT = 30, PILOT_WAIT = 5, MAX_UP = 2, MAX_RESCUE = 4;
-  if (WW.PLANE_TYPES && !WW.PLANE_TYPES.flyingboat) WW.PLANE_TYPES.flyingboat = { hp: 70, speed: 20, range: 4000 };
+  if (WW.PLANE_TYPES && !WW.PLANE_TYPES.flyingboat) WW.PLANE_TYPES.flyingboat = { hp: 48, speed: 22, range: 4000 };
   var pool = {}, base = WW.Plane.prototype, stats = null;
   var OWN = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, alight: 1, afloat: 1, liftoff: 1, 'return': 1 };
   var WATER = { afloat: 1, liftoff: 1 };
@@ -301,7 +301,8 @@ window.WW = window.WW || {};
   };
   WW.on('roundStart', function () { reset(); tick = 0; });
   WW.on('setupStart', reset);
-  WW.on('contact', function (e) { if (stats && e && e.first && e.by && e.by.kind === 'flyingboat') stats.sightings[e.nation]++; });
+  // patrol sightings: each enemy ship a flying boat reports (intel.js 'report'), once per boat
+  WW.on('report', function (e) { var b = e && e.by; if (!stats || !b || b.kind !== 'flyingboat') return; var S = b.seen || (b.seen = new Set()); if (!S.has(e.unit)) { S.add(e.unit); stats.sightings[e.nation]++; } });
 
   WW.FlyingBoat = FlyingBoat;
   WW.flyingBoats = { SCALE: SCALE, WATER_Y: WATER_Y, stats: null, launch: launch, count: count, openTask: openTask,
