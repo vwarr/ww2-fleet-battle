@@ -402,6 +402,7 @@ function install(P) {
     }
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
+    G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
     R = { stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},

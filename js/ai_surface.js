@@ -82,7 +82,7 @@ window.WW = window.WW || {};
     // Mutual support: a sub known close to an ally is hunted from SUB_HELP_R away.
     const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) &&
       WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
-    if (st.depthCharges && (a.dcLeft > 0 || ds || (a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
+    if (st.depthCharges && (a.dcLeft > 0 || ds || (a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
       a.dcReload -= dt;
       if (a.dcLeft > 0) { dcPattern(ship, a, dt); return; }
       const fresh = !!ds || seen(ship, a.sub), s = ds || (fresh ? a.sub : a.subC);
@@ -234,6 +234,8 @@ window.WW = window.WW || {};
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
     return true;
   }
+  // the commander's ASW screen (and a carrier escort) hunts subs out to twice SUB_HUNT
+  function aswRole(ship) { const o = WW.fleetCmd && WW.fleetCmd.order(ship); return !!o && (o.role === 'asw' || o.role === 'escort'); }
   function subNearAlly(ship, a) {
     if (a.subD > SUB_HELP_R) return false;
     const c = a.subC;

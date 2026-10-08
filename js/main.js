@@ -124,7 +124,7 @@ window.WW = window.WW || {};
   // ---------- round logic ----------
   const game = {
     mode: 'setup', state: 'setup', composition: null, winner: null, custom: false,
-    roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0,
+    roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
     // opts.keepMap: start on the current map (used by "Start battle" in setup mode)
     startRound(opts) {
       opts = opts || {};
@@ -177,9 +177,9 @@ window.WW = window.WW || {};
   // cruiser or destroyer left in fighting shape, for RETIRE_HOLD s) and every ship it has left (subs aside) has got
   // clear: out of the enemy's sight for RETIRE_LOST s, or back in its own start band at its home map edge.
   // Returns the retiring nation or null (both sides at once: neither; the time limit decides).
-  const RETIRE_HOLD = 20, RETIRE_LOST = 25, RETIRE_MIN = 120, HOME_BAND = W * 0.18; // the carrier's withdraw station is 0.08-0.1 W from its edge (fleet_groups.js)
+  const RETIRE_HOLD = 30, RETIRE_LOST = 45, RETIRE_MIN = 120, HOME_BAND = W * 0.18; // the carrier's withdraw station is 0.08-0.1 W from its edge (fleet_groups.js)
   function retiring() {
-    if (!WW.fleetCmd || !WW.intel || game.roundTime < RETIRE_MIN) return null;
+    if (game.noRetire || !WW.fleetCmd || !WW.intel || game.roundTime < RETIRE_MIN) return null; // noRetire: test hook
     let out = null;
     for (const n of ['USN', 'IJN']) {
       const B = WW.fleetCmd.side(n);
