@@ -268,6 +268,19 @@ window.WW = window.WW || {};
       ]);
     }
   });
+  // a dud (USN Mk 14 / 15, 1942): the warhead strikes the hull and does not go off. A dull iron clunk through the
+  // water, a ring of the plating, a small slap of spray. No boom: that missing boom is the point.
+  A.register('torp.dud', {
+    ref: 30, max: 2, minGap: 0.25, sos: true, reverb: 0.3, dur: 1.6,
+    build(ctx, out, p) {
+      const r = p.rate, t = p.t;
+      const parts = clang(ctx, out, t, { f: V(150, 0.12), d: 0.9, gain: 0.07, rate: r });          // the plating rings, low
+      parts.push(S.tone(ctx, out, t, { f: V(70), f1: 48, a: 0.002, d: 0.22, gain: 0.4, rate: r })); // the clunk
+      parts.push(S.burst(ctx, out, t, { noise: 'pink', type: 'bandpass', f: V(500), f1: 220, q: 0.9, a: 0.002, d: 0.12, gain: 0.22, rate: r }));
+      parts.push(S.burst(ctx, out, t + 0.05 / r, { noise: 'pink', type: 'bandpass', f: V(1500), f1: 700, q: 0.6, a: 0.02, d: 0.35, gain: 0.12, rate: r })); // spray
+      return S.done(p, parts);
+    }
+  });
   // end of a missed run: a faint fizz
   A.register('torp.fizz', {
     ref: 10, max: 2, minGap: 0.3, sos: true, reverb: 0.1, dur: 1.5,

@@ -293,7 +293,7 @@ function install(P) {
   const parallel = (h, th) => { let a = Math.abs(WW.angleDiff(h, th)); a = Math.min(a, PI - a); return a < P.TORP_PAR * D2R; };
   WW.on('weaponImpact', e => {
     if (!R || !e || e.kind !== 'torpedo') return;
-    const ow = e.proj && e.proj.owner; if (e.ship && ow && (ow.type === 'pt' || ow.type === 'submarine')) R.th[ow.type].hit++;
+    const ow = e.proj && e.proj.owner; if (e.ship && !e.dud && ow && (ow.type === 'pt' || ow.type === 'submarine')) R.th[ow.type].hit++;
     const tr = R.torps.find(q => q.p === e.proj && !q.done); if (!tr) return;
     if (e.ship) tr.best[e.ship.id] = { d: 0, par: parallel(e.ship.heading, e.proj.h) };
     finishTorp(tr);

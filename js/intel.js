@@ -211,10 +211,12 @@ window.WW = window.WW || {};
       var e = null;
       for (j = 0; j < T.length; j++) if (T[j].proj === p) { e = T[j]; break; }
       if (!e) {
-        var r2 = R.TORP * R.TORP, seen = false;
-        for (j = 0; j < ships.length && !seen; j++) { var s = ships[j]; if (s.nation === nation && usableShip(s) && WW.dist2(s.x, s.z, p.x, p.z) < r2) seen = true; }
+        // the track's wake: an oxygen torpedo (sight < 1, IJN) is seen only closer in (core.js WW.TORPEDO_NATION)
+        var rt = R.TORP * (p.sight || 1), r2 = rt * rt, seen = false, sd = 1e9;
+        for (j = 0; j < ships.length; j++) { var s = ships[j]; if (s.nation === nation && usableShip(s)) { var q2 = WW.dist2(s.x, s.z, p.x, p.z); if (q2 < r2) { seen = true; if (q2 < sd) sd = q2; } } }
         if (!seen) continue;
         e = { proj: p, firstSeenAt: now }; T.push(e);
+        if (WW.dstat) { WW.dstat('torpSeenN', p.nation); WW.dstat('torpSeenD', p.nation, Math.sqrt(sd)); }
       }
       e.x = p.x; e.z = p.z; e.h = p.h; e.speed = p.sp; e.run = p.run; e.seenAt = now;
     }

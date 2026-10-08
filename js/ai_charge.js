@@ -111,7 +111,7 @@ window.WW = window.WW || {};
     return true;
   }
   WW.on('weaponImpact', function (e) {
-    var o = e && e.kind === 'torpedo' && e.ship && e.proj && e.proj.owner;
+    var o = e && e.kind === 'torpedo' && e.ship && !e.dud && e.proj && e.proj.owner;
     if (o && o.ai && o.ai.charge && stats) stats.torpHits[o.nation]++;
   });
   WW.on('shipSunk', function (s) {
