@@ -16,7 +16,7 @@ window.WW = window.WW || {};
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
   var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
-  var STRIKE_AGE = 45, STRIKE_R = 650; // strike only on contacts this fresh and this close to the carrier
+  var STRIKE_AGE = 45, STRIKE_R = 650, STRIKE_FAR = 1150; // strike only on contacts this fresh and this close to the carrier
   var RAID_R = 130;     // enemy bombers this close to an own carrier: air raid
   var TTK = 20;         // s: a target whose incoming fire kills it within TTK is saturated (no more shooters)
   var SECT_X = 6, SECT_Z = 4, LOOK_R = 110; // scout sectors; an own unit within LOOK_R of a sector centre has looked
@@ -93,6 +93,7 @@ window.WW = window.WW || {};
     WW.fleetGroups.stations(B); // sets B.axis.x/z (main guide); uses last tick's axis heading
     B.axis.h = Math.atan2(tgt.z - B.axis.z, tgt.x - B.axis.x);
     WW.fleetGroups.stations(B);
+    if (WW.fleetSearch) WW.fleetSearch.tick(B, cs, now); // long search, PT pair spots, PT deep runs (fleet_search.js)
     // ---- incoming fire, focus targets, strikes, air raid ----
     B.incoming.clear();
     for (i = 0; i < ships.length; i++) {
@@ -166,17 +167,18 @@ window.WW = window.WW || {};
   }
   // Strike orders: per carrier, the best detected / last-known target within STRIKE_R (value, freshness,
   // distance, AA around it). No contact in range: no order (a strike needs a reason).
-  var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 0, pt: 0.5 };
+  var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 1, pt: 0.5 }; // a surfaced sub is worth a strike
   function strikes(B, cs, now) {
     B.strikes.clear();
     var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R * (B.doctrine.strikeRange || 1); // strikeRange: the admiral (admirals.js)
     for (var k = 0; k < cvs.length; k++) {
       var cv = cvs[k]; if (cv.type !== 'carrier') continue;
       var best = null, bc = null, bs = 0;
-      for (var i = 0; i < cs.length; i++) {
+      // within STRIKE_R first; with nothing there, anything known on the map (the planes have the fuel for it)
+      for (var pass = 0; pass < 2 && !best; pass++) for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit, age = now - c.seenAt;
         if (!u || !u.alive || u.submerged || age > AGE) continue;
-        var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > RANGE) continue;
+        var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > (pass ? Math.max(STRIKE_FAR, RANGE) : RANGE)) continue;
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sc = dfd * Math.max(STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
