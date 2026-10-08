@@ -67,7 +67,7 @@ window.WW = window.WW || {};
   function ready(w, formed, now) {
     const up = w.t1 >= 0, all = w.pendN <= 0, late = (up && now - w.t1 > FORM_WAIT) || now - w.t0 > FORM_WAIT + 25;
     if (w.mode === 'squadron') return up;
-    if (w.mode === 'deckload') return (up && all) || late;
+    if (w.mode === 'deckload') return (up && (all || now - w.t1 > 10)) || late; // the load goes when it is up (a straggler catches up)
     return (all && formed && up) || late;
   }
   // First call from a launched plane once airborne: join this carrier's forming wave if a slot is pending.
