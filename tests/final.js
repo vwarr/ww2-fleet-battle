@@ -62,8 +62,8 @@ const SH = n => 'shots/final_' + n + '.png';
   const mem = [];
   const lengths = [];
   for (let r = 0; r < 10; r++) {
-    const L = await p.evaluate(() => { until(() => WW.game.state === 'victory', 400); const t = WW.game.roundTime; until(() => WW.game.state === 'battle', 30); return t; });
-    lengths.push(Math.round(L) + (L >= 329.9 ? 'T' : ''));
+    const L = await p.evaluate(() => { until(() => WW.game.state === 'victory', WW.cfg.ROUND_TIMEOUT + 70); const t = WW.game.roundTime; until(() => WW.game.state === 'battle', 30); return { t, cap: WW.cfg.ROUND_TIMEOUT }; });
+    lengths.push(Math.round(L.t) + (L.t >= L.cap - 0.1 ? 'T' : ''));
     await p.waitForTimeout(150); // let a real frame render
     mem.push(await p.evaluate(() => ({ g: WW.renderer.info.memory.geometries, t: WW.renderer.info.memory.textures, c: WW.scene.children.length - WW.world.ships.length - 2 * WW.world.planes.length, ships: WW.world.ships.length, round: WW.stats.round })));
   }
@@ -72,10 +72,11 @@ const SH = n => 'shots/final_' + n + '.png';
   // setup mode with clicks
   await p.evaluate(() => { WW.game.enterSetup(true); WW.game.composition = []; WW.game.enterSetup(false); });
   await p.waitForTimeout(1000); // camera cuts to the map view
+  await p.evaluate(() => new Promise(r => { let k = 0; (function f() { if (++k >= 4) r(); else requestAnimationFrame(f); })(); })); // headless frames can take ~1 s on the big map
   const clicks = await p.evaluate(() => {
-    const v = new THREE.Vector3(), out = [];
+    const v = new THREE.Vector3(), out = [], W = WW.cfg.MAP_W;
     const want = [['carrier', 'USN', 20, 70], ['battleship', 'USN', 60, 110], ['destroyer', 'USN', 90, 130], ['destroyer', 'USN', 90, 130],
-                  ['carrier', 'IJN', 400, 460], ['cruiser', 'IJN', 360, 420], ['destroyer', 'IJN', 340, 390], ['pt', 'IJN', 330, 380]];
+                  ['carrier', 'IJN', W - 80, W - 20], ['cruiser', 'IJN', W - 120, W - 60], ['destroyer', 'IJN', W - 140, W - 90], ['pt', 'IJN', W - 150, W - 100]];
     for (const [type, nation, a, b] of want) {
       const q = WW.terrain.randomSeaPoint(WW.SHIP_TYPES[type].minDepth + 1, a, b);
       v.set(q.x, 0, q.z).project(WW.camera);

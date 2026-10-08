@@ -44,7 +44,7 @@ Auto mode is the default mode.
 - After the caption, the next round starts automatically.
 
 The game runs at a calm pace: at 1× speed, the ships and planes move at half of their normal speed.
-The fleets start on opposite sides of a large map, so each round begins with an approach: the carriers launch strikes and the scouts search first, and the gun battle starts after a few minutes.
+The fleets start on opposite sides of a large map, so each round begins with an approach: the carriers launch strikes and the scouts search first. The light forces meet after about a minute, and the big guns open after about three minutes.
 A typical round lasts 9 to 13 minutes at 1× speed.
 
 ## Setup mode
