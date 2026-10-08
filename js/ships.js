@@ -232,6 +232,7 @@ window.WW = window.WW || {};
     takeDamage(amount, hx, hz, kind, cal) {
       if (!this.alive) return;
       this.hp -= amount;
+      WW.emit('shipHit', { ship: this, amount, x: hx, z: hz, kind, cal }); // sound hook (audio_naval_wire.js)
       if (WW.damage) WW.damage.hit(this, amount, hx, hz, kind, cal);
       if (this.hp <= 0) { this.hp = 0; this.startSinking(); return; }
       this.applyLook();
@@ -309,6 +310,7 @@ window.WW = window.WW || {};
         this.boomT = WW.randRange(1.4, 2.8);
         const p = this.toWorld(WW.randRange(-L * 0.4, L * 0.4), 0);
         WW.fx.explosion(p[0], 1, p[1], WW.clamp(L / 12, 0.6, 1.8));
+        WW.emit('shipBoom', { ship: this, x: p[0], y: 1, z: p[1], size: WW.clamp(L / 16, 0.5, 1.4) }); // sound hook
       }
       if (this.sinkT < 6 && !this.dmgSites.length) { // damaged ships burn at their hit sites (WW.damage)
         this.fireT -= dt;

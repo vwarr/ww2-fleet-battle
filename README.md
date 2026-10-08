@@ -123,6 +123,7 @@ The game does not show health bars.
 | `vendor/three.min.js` | Three.js r149 (MIT licence). |
 | `js/core.js` | Settings, ship data, the random number generator, the event bus and helpers. |
 | `js/audio.js`, `js/audio_synth.js`, `js/audio_base.js` | The sound engine, the shared synth parts and the first sounds. All sound is made by the code (no audio files). |
+| `js/audio_naval.js`, `js/audio_naval_wire.js` | Naval sounds: guns by calibre, shell whistles, splashes, hits, fires, sinking, torpedoes, depth charges, submarines, ship engines. |
 | `js/sky.js` | The sky, the clouds, the lights and the haze. |
 | `js/water.js` | The water surface, the foam, the depth colours and the contact shadows under hulls. |
 | `js/terrain.js` | The sea floor, the islands and the depth grid. |

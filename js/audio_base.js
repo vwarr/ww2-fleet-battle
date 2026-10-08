@@ -1,8 +1,8 @@
 // audio_base.js: the first example patches, wired to real events.
 //   ui.click  soft click for the panel buttons (ui.js calls it)
-//   gun.big   battleship main-gun boom on 'shellFired' (cal 'big'), with the speed-of-sound delay
 //   amb.sea   sea ambience loop; its level and brightness follow the camera height
-// The full sound families (guns, aircraft, AA, ambience) live in their own audio_*.js files.
+// The full sound families (guns, aircraft, AA, ambience) live in their own audio_*.js files
+// (gun.big moved to audio_naval.js).
 window.WW = window.WW || {};
 (function (WW) {
   const A = WW.audio; if (!A) return;
@@ -17,19 +17,6 @@ window.WW = window.WW || {};
       ]);
     }
   });
-
-  // p.size (default 1) scales length and depth
-  A.register('gun.big', {
-    bus: 'sfx', ref: 70, max: 6, minGap: 0.12, sos: true, reverb: 0.45, duck: 0.3, dur: 3,
-    build(ctx, out, p) {
-      const k = p.size || 1;
-      return S.done(p, [
-        S.boom(ctx, out, p.t, { f0: 64 / Math.sqrt(k), f1: 27, dur: 2.2 * k, gain: 0.6, body: 1, crack: 0.55, rate: p.rate }),
-        S.burst(ctx, out, p.t + 0.05 / p.rate, { noise: 'pink', type: 'lowpass', f: 900, f1: 120, q: 0.3, a: 0.05, d: 1.6 * k, gain: 0.3, rate: p.rate })
-      ]);
-    }
-  });
-  WW.on('shellFired', e => { if (e.cal === 'big') A.play('gun.big', e); });
 
   // loop: { height } (camera height, units) darkens and thins the surf high up; { rate }
   A.register('amb.sea', {

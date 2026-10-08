@@ -2,7 +2,7 @@
 
 All sound is synthesized with the Web Audio API. There are no audio files and no music: only sound effects and ambience.
 The engine is `WW.audio` (`js/audio.js`). The shared synth parts are `WW.audio.syn` (`js/audio_synth.js`).
-The first example patches are in `js/audio_base.js`.
+The first example patches are in `js/audio_base.js`. The naval family (guns, shells, hits, ships) is in `js/audio_naval.js` and `js/audio_naval_wire.js`.
 
 ## Rules
 
@@ -118,8 +118,8 @@ A shorter form: `register(name, build)` uses all the defaults.
 | Family | Examples | Owner |
 |---|---|---|
 | `gun.*` | `gun.big`, `gun.med`, `gun.small`, `gun.mg` | naval guns |
-| `shell.*`, `splash.*`, `hit.*`, `ship.*` | `shell.whistle`, `splash.big`, `hit.armor`, `ship.sink`, `ship.fire` | ship damage |
-| `torpedo.*`, `bomb.*`, `dc.*` | `torpedo.launch`, `bomb.whistle`, `dc.blast` | weapons |
+| `shell.*`, `ship.*`, `fire.*`, `sub.*` | `shell.whistle`, `shell.splash`, `ship.hit`, `ship.sink`, `fire.ship`, `sub.dive` | naval (audio_naval.js) |
+| `torp.*`, `dc.*`, `bomb.*` | `torp.launch`, `torp.hit`, `dc.blast`, `bomb.whistle` | `torp.*`, `dc.*`: naval; `bomb.*`: aircraft |
 | `plane.*` | `plane.engine.radial`, `plane.dive`, `plane.gun`, `plane.crash` | aircraft |
 | `aa.*`, `flak.*` | `aa.light`, `aa.heavy`, `flak.burst` | anti-aircraft |
 | `amb.*` | `amb.sea`, `amb.wind`, `amb.gulls` | ambience |
@@ -153,7 +153,15 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 
 | Event | Data | Sound |
 |---|---|---|
-| `shellFired` (combat.js `fireShell`) | `{ ship, cal, x, y, z }` | `gun.big` for `cal === 'big'` |
+| `shellFired` (combat.js `fireShell`) | `{ ship, cal, x, y, z, proj }` | `gun.big` / `gun.med` / `gun.small` / `gun.mg`, one play per ship salvo (barrels of one frame grouped, `n` = barrels); `shell.whistle` if a big/med shell's path passes within 28 units of the camera, timed to the closest approach |
+| `shellLanded` (combat.js `landShell`) | `{ cal, x, z, ship }` | miss: `shell.splash` (big, med), `shell.splash.small` (small, mg), `shell.land` on an island |
+| `shipHit` (ships.js `takeDamage`) | `{ ship, amount, x, z, kind, cal }` | shell: `ship.hit` scaled by damage (ducks at size > 1.5), mg: `ship.ping`; bomb: `ship.hit` with `bang: 0` (the clang only; the blast is the aircraft family's); torpedo: `torp.hit` |
+| `shipBoom` (damage.js, ships.js) | `{ ship, x, y, z, size }` | `ship.boom` |
+| `shipSunk` | ship | `ship.magazine` (ducks) and `ship.sink`; when the wreck settles the sink voice fades and `ship.settle` plays |
+| `weaponDropped` kind torpedo | | `torp.launch` (ship, PT or sub tube; not for plane drops), a `torp.run` loop that follows the torpedo |
+| `weaponImpact` kind torpedo | | stops `torp.run`; a miss: `torp.fizz` |
+| `dcDropped`, `dcBlast` (combat_weapons.js) | `{ x, z }` | `dc.splash`, `dc.blast` (the sim's fuse is the delay) |
+| polled (audio_naval_wire.js, 4 Hz, only while on) | | `ship.engine` loops for the 3 nearest moving ships within 150 units, `ship.engine.pt` for the 2 nearest PT boats within 110; `fire.ship` per burning ship (`n` = burning sites); `sub.dive` / `sub.surface` when a sub's `wantSurface` flips |
 | `weaponDropped`, `weaponImpact` | see ARCHITECTURE.md | (for the weapons family) |
 | `shipSunk`, `planeKill`, `ace`, `roundStart`, `victory` | | |
 | UI buttons (ui.js `btn`) | | `ui.click` |
@@ -164,3 +172,5 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 `WW.audio.renderOffline(name, params, seconds)` renders one patch in an OfflineAudioContext (sound does not need to be on)
 and resolves `{ peak, rms, dur, nan, buffer }`. `WW.audio.meter()` gives `{ peak, rms, nan }` of the live master output over the last 0.68 s.
 `WW.audio.stats()` gives voice, node and counter totals. `tests/audio.js` checks all of this (`npm run test:audio`).
+`tests/audio_naval.js` (`npm run test:audio:naval`) renders every naval patch (peak, duration, NaN, energy above 6 kHz) and saves WAVs,
+then runs a battle with sound on at 1x and 4x and prints per-patch play / throttle / cull / drop counts and records 20 s of the master mix.

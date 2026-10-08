@@ -13,6 +13,7 @@
     "test:deaths": "bash tests/run.sh deaths.js",
     "test:realtime": "node tests/realtime.js",
     "test:audio": "node tests/audio.js",
+    "test:audio:naval": "node tests/audio_naval.js",
     "shots": "bash tests/run.sh peek.js"
   },
   "devDependencies": {
