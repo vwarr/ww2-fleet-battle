@@ -398,6 +398,7 @@ function install(P) {
     // ---- fighters on CAP ----
     for (const p of WW.world.planes) {
       if (!p.alive || p.kind !== 'fighter' || p.target || p.search || !live(p.carrier) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
+      if (p.foe && p.foe.kind === 'flyingboat') continue;   // a sanctioned snooper hunt (air_ops.js SNOOP_R), like a search flight
       R.ftr.t += dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.inLeash += dt;
     }
     // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
