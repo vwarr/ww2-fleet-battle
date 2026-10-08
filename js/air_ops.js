@@ -32,7 +32,7 @@ window.WW = window.WW || {};
     A.t = now; A.near = 0; A.armed = 0; A.raidD = 1e9;
     if (!WW.intel) return A;
     for (const c of WW.intel.enemyPlanes(cv.nation)) {
-      const u = c.unit; if (!u || !u.alive || u.kind === 'scout') continue;
+      const u = c.unit; if (!u || !u.alive || u.kind === 'scout' || u.kind === 'flyingboat') continue;   // snoopers: CAP hunts them (capPick), no scramble
       const d = WW.dist(cv.x, cv.z, c.x, c.z); if (d > WARN_R) continue;
       A.near++;
       if (armed(u)) { A.armed++; if (d < RAID_R) A.attackT = now; }
@@ -68,7 +68,7 @@ window.WW = window.WW || {};
       const d = WW.dist(from.x, from.z, c.x, c.z);
       if (near && d > near) continue;
       const crip = 1 - o.hp / o.maxHp;
-      const s = (VALUE[o.type] || 0) + crip * (near ? 260 : 120) - (now - c.seenAt) * 2 - d * (near ? 1.5 : 1) - aaAround(nation, c.x, c.z, o) * 3;
+      const s = (VALUE[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type] || 0) + crip * (near ? 260 : 120) - (now - c.seenAt) * 2 - d * (near ? 1.5 : 1) - aaAround(nation, c.x, c.z, o) * 3;
       if (s > bs) { bs = s; best = o; }
     }
     return best;
@@ -140,8 +140,9 @@ window.WW = window.WW || {};
     if (a.strikeT <= 0 && !a.queue.some(q => q.target) && attacked && (a.holdT || 0) < HOLD_MAX) {
       if (!a.holdT) ST.holds++;
       a.holdT = (a.holdT || 0) + dt;
-    } else if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
-      a.strikeT = WW.randRange(35, 55); a.holdT = 0;
+    } else if (a.strikeT <= 0 && !a.queue.some(q => q.target) && !(WW.endgame && WW.endgame.broken(cv.nation))) { // broken: no new strikes, it is running
+      const pur = WW.fleetCmd && WW.fleetCmd.side(cv.nation) && WW.fleetCmd.side(cv.nation).posture === 'pursue';
+      a.strikeT = WW.randRange(35, 55) * (pur ? 0.55 : 1); a.holdT = 0; // pursuit: every spare plane, sooner
       const tgt = pickTarget(cv);
       const hold = tgt && hg.dive + hg.torpedo > 0 ? reserveHold(cv, tgt) : null;
       const nd = hold ? hg.dive - hold.dive : 0, nt = hold ? hg.torpedo - hold.torpedo : 0;
@@ -194,11 +195,12 @@ window.WW = window.WW || {};
       const u = ct.unit;
       if (!u || !u.alive) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      if (dc > (arm && inbound(u, c) ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
+      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
       else if (arm && u.kind === 'dive' && (u.phase || u.state === 'attack')) pr = 320;
       else if (arm) pr = 220;
+      else if (u.kind === 'flyingboat') pr = 200;   // a snooper shadowing the fleet: shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
       const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4;
@@ -212,6 +214,7 @@ window.WW = window.WW || {};
     const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z);
     if (d <= LEASH) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
+    if (f.kind === 'flyingboat') return d <= LEASH2;              // hunt a shadower out to the long leash
     if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= LEASH2 * 0.75) return true;   // finish a damaged bomber turning for home
     return d <= LEASH2 && armed(f) && inbound(f, c);
   }

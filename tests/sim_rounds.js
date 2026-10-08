@@ -37,7 +37,7 @@ async function openPage(b) {
 // one seeded round in page p
 function runRound(p, seed) {
   return p.evaluate(seed => {
-    const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 30, BIG = { battleship: 1, cruiser: 1 };
+    const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 180, BIG = { battleship: 1, cruiser: 1 };
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: start each seed with fresh rosters
     WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
     const s0 = Object.assign({}, WW.stats);
@@ -71,12 +71,14 @@ function runRound(p, seed) {
         }
       }
     }
-    const end = G.state === 'battle' ? 'cap' : G.endReason === 'retire' ? 'retire' : (WW.world.ships.some(s => s.alive && s.nation === 'USN') && WW.world.ships.some(s => s.alive && s.nation === 'IJN')) ? 'time' : 'kill';
+    const end = G.state === 'battle' ? 'cap' : G.endReason === 'stall' ? 'time' : G.endReason; // main.js: kill / retire / time (the limit stretches up to 150 s for a pursuit)
+    const eg = WW.endgame && WW.endgame.stats ? WW.endgame.stats : null;
     const d = k => WW.stats[k] - s0[k];
     const out = { seed, winner: G.winner, end, len: +G.roundTime.toFixed(0), contact, heavy, sunk, comp,
       cvMin: Object.values(cv).map(v => +v.toFixed(0)), stuck, nan,
       sightUSN: H.sight.USN === undefined ? null : H.sight.USN, sightIJN: H.sight.IJN === undefined ? null : H.sight.IJN,
       fire: H.fire, blind: H.blind, shotsAtShips: H.shots,
+      escaped: eg ? eg.escaped.USN + eg.escaped.IJN : 0, rescued: eg ? eg.survivors.USN : 0, scuttled: eg ? eg.scuttled.IJN : 0,
       torps: d('torpedoesFired'), shells: d('shellsFired'), launched: d('planesLaunched'), lost: d('planesLost'), hits: d('hits') };
     // detach our listener (the bus has no off(): blank it)
     onSunk.dead = true; sunk.push = () => 0;
@@ -85,7 +87,7 @@ function runRound(p, seed) {
 }
 function print(r) {
   const lost = n => r.sunk.filter(s => s.nation === n).map(s => s.type[0] + s.type[1]).join(',') || '-';
-  console.log(`seed ${r.seed}: ${r.winner || 'draw'} by ${r.end} @${r.len}s  contact ${r.contact}s heavy ${r.heavy}s  sighted U${r.sightUSN}/J${r.sightIJN}s fire ${r.fire}s${r.blind ? ' BLIND ' + r.blind : ''}  USN lost[${lost('USN')}] IJN lost[${lost('IJN')}]  cvMin ${r.cvMin.join('/')}  torps ${r.torps} planes ${r.launched}/${r.lost}lost  stuck ${r.stuck}${r.nan ? ' NaN!' : ''}  (${r.wall}s)`);
+  console.log(`seed ${r.seed}: ${r.winner || 'draw'} by ${r.end} @${r.len}s  contact ${r.contact}s heavy ${r.heavy}s  sighted U${r.sightUSN}/J${r.sightIJN}s fire ${r.fire}s${r.blind ? ' BLIND ' + r.blind : ''}  USN lost[${lost('USN')}] IJN lost[${lost('IJN')}]  cvMin ${r.cvMin.join('/')}  escaped ${r.escaped} rescued ${r.rescued} scuttled ${r.scuttled}  torps ${r.torps} planes ${r.launched}/${r.lost}lost  stuck ${r.stuck}${r.nan ? ' NaN!' : ''}  (${r.wall}s)`);
 }
 
 (async () => {

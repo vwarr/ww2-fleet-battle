@@ -132,6 +132,20 @@ window.WW = window.WW || {};
     if (burning.indexOf(ship) < 0) burning.push(ship);
   }
 
+  // Visual side of the sim fires (ship_fires.js, called once a sim second): keep n sites burning (deck sites added
+  // when there are fewer; an avgas fire burns bigger). Sites beyond n burn out on their own timers. Math.random only.
+  function syncFires(ship, n, avgas) {
+    if (WW.simOnly || !ship.group || typeof THREE === 'undefined') return;
+    var H = hullInfo(ship), S = ship.dmgSites = ship.dmgSites || [], want = Math.min(n, H.maxSites + (avgas ? 2 : 0));
+    while (S.length < want) S.push({ lx: rr(-0.4, 0.4) * H.L, ly: H.deck, lz: rr(-0.5, 0.5) * H.beam, sev: 1, fire: 0, smoke: 0, low: false,
+      fT: R() * 0.1, sT: R() * 0.3, boomT: rr(3, 8), perm: false });
+    for (var i = 0; i < want; i++) {
+      var q = S[i]; q.fire = Math.max(q.fire, 2.5); q.smoke = Math.max(q.smoke, 6);
+      if (avgas) { q.sev = Math.max(q.sev, 2.2); q.boomT = Math.min(q.boomT, rr(2, 6)); }
+    }
+    if (want && burning.indexOf(ship) < 0) burning.push(ship);
+  }
+
   // One puff of a plume: random height along a column that leans downwind and broadens with height.
   // Neighbouring puffs overlap, so a steady stream reads as one soft billowing plume.
   function plumePuff(x, y, z, H, base, top, dark, life) {
@@ -235,6 +249,7 @@ window.WW = window.WW || {};
     },
     // Share of the smoke budget in use (>1 = over budget). Other emitters (planes, stacks) scale by this.
     load: function () { return load; },
+    syncFires: function (ship, n, avgas) { try { syncFires(ship, n, avgas); } catch (e) { /* visual only: never throw */ } },
     stackSmoke: function (ship, f, dt) { try { stackSmoke(ship, f, dt); } catch (e) { /* never throw */ } },
     want: function (perSec) { demand += perSec * 0.35; }, // other emitters (plane trails) report their puff rate
     clearAll: function () {

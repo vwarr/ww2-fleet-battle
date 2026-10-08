@@ -116,7 +116,7 @@ window.WW = window.WW || {};
   // fleet_cmd.js sectors() uses B.barrier as the search point while it is set.
   function barrier(B, rt) {
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
-    if (B.searchFor < BARRIER_T || B.blind || !(G.main.members.length + G.screen.members.length + G.flotilla.members.length)) { B.barrier = null; return; }
+    if (B.searchFor < BARRIER_T || B.blind || B.posture === 'pursue' || B.posture === 'withdraw' || !(G.main.members.length + G.screen.members.length + G.flotilla.members.length)) { B.barrier = null; return; }
     var x = xAt(B.nation, -0.08), g = B.axis;
     if (!B.barrier) B.barrier = { x: x, z: g.z < H / 2 ? H - 90 : 90 };
     else if (WW.dist(g.x, g.z, B.barrier.x, B.barrier.z) < 70) B.barrier.z = B.barrier.z < H / 2 ? H - 90 : 90;

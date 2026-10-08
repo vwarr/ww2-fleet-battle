@@ -189,10 +189,12 @@ window.WW = window.WW || {};
   P.clearance = function (h) {
     const md = this.stats.minDepth + 0.6, look = this.lookDist, step = Math.max(2.5, look / 12); // plan with a margin
     const c = Math.cos(h), s = Math.sin(h), hl = this.stats.length * 0.5, hb = this.beam * 0.5 + 0.5, bt = this.bowDepth;
-    const D = depthIn, em = Math.min(this.beam + 4, edgeDist(this.x, this.z)), d0 = WW.terrain.depthAt(this.x, this.z);
+    // a ship leaving the map (escapeEdge, endgame.js) plans as if the sea went on past that edge
+    const ex = this.escapeEdge, W = WW.cfg.MAP_W, eDist = ex ? (x, z) => Math.min(ex < 0 ? 1e9 : x, ex > 0 ? 1e9 : W - x, z, WW.cfg.MAP_H - z) : edgeDist;
+    const D = depthIn, em = Math.min(this.beam + 4, eDist(this.x, this.z)), d0 = WW.terrain.depthAt(this.x, this.z);
     const ok = d => {
-      const x = this.x + c * d, z = this.z + s * d;
-      if (edgeDist(x, z) < em) return false;
+      const x = ex ? WW.clamp(this.x + c * d, EDGE + 1, W - EDGE - 1) : this.x + c * d, z = this.z + s * d;
+      if (eDist(x, z) < em) return false;
       if (!nav(x, z, md) && !(d0 < md && nav(x, z, this.stats.minDepth) && WW.terrain.depthAt(x, z) >= d0)) return false;
       return D(x + c * hl, z + s * hl) >= bt && D(x - s * hb, z + c * hb) >= bt && D(x + s * hb, z - c * hb) >= bt;
     };
