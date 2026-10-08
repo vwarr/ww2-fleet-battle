@@ -272,7 +272,7 @@ WW.shipAI = {
 - Ship AI, per step: `ships_ai.js` retargets every 1 to 1.5 s, runs the role (`roles[type]`, else `roles.surface`), then the shared overrides `withdraw` (unless `ship.ai.ownWithdraw`) and `comb` (unless `ship.ai.ownComb`), then the guns. Roles write only `ship.desiredHeading` and `ship.throttle`, plus their own state on `ship.ai`.
 - **Target score** (`h.score`): `ROLE_W[type][target] × VALUE[target] × pHit × finishBonus × WW.fleetCmd.assignment − exposure`. Only fresh contacts count.
   - pHit falls with range, rises when the target is broadside on, and is ×0.8 on a plane or scout sighting.
-  - finishBonus is 1 + 0.8 × damage taken, +0.1 when the target is burning.
+  - finishBonus is 1 + 0.8 × damage taken, +0.1 when the target has its big fire (`dmgCrit`, under 30% hp). Not `dmgSites.length`: hit-site fires last a `Math.random` time, and reading them broke seeded replays.
   - exposure is the danger at the target's position × (1 − risk).
   - Stickiness: a ship switches targets only for a score 1.3× the current one, recomputed each time.
   - A destroyer scores a carrier or battleship only when another own destroyer is within 150 (a flotilla attack, never a solo charge).
@@ -282,17 +282,23 @@ WW.shipAI = {
   - secondaries take the closest small threat in range (`SEC_W`);
   - a PT boat's MG never fires at a battleship or cruiser (`GUN_W.mg`).
 - `fireSpread` returns false and holds fire for 1.5 s when an allied surface ship is inside the fan, out to torpedo range.
-- **Cripples** (`h.withdraw`): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
+- **Cripples** (`h.withdraw`, used by carriers' own code and PT boats; surface ships use `crippleHome` below): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
 - **Torpedo combing** (`h.comb`): a track from `WW.intel.torpedoes` that will pass within half a hull length + 6 inside 70 units. After a reaction delay (PT 0.4 s, DD 0.7 s, sub 1 s, CA 1.2 s, CV 1.8 s, BB 2 s), the ship turns parallel to the track, bow or stern on, whichever is the smaller turn, until the torpedo has passed.
-- Surface ships (`ai_surface.js`):
-  - with no target, they keep their commander station;
+- Surface ships (`ai_surface.js`; the order inside `surfaceAI`: sub hunt, then AA cover / press / station / engage, torpedoes, torpedo angling, early combing, the carrier keep-off, and last `crippleHome`):
+  - with no target, they keep their commander station. While the side presses (`posture 'press'`) they steam instead for the nearest last-known enemy contact up to 60 s old (`pressContact`, `closeOn`): never a carrier, never a PT boat for a BB / CA, never a contact within 230 of a known enemy carrier (its lair) or inside the enemy's home waters (0.35 of the width from its edge). A target out of gun range in those home waters is not chased either (`homeWaters`): the press holds at the edge of the band and a broken enemy that gets home retires (main.js);
   - otherwise they orbit at `prefRange`: `doctrine.rangeFrac` × main range, and inside torpedo range for DDs;
-    - while the side presses: × (0.55 + 0.15 × (1 − night));
+    - while the side presses: × (0.72 + 0.15 × (1 − night)) (IJN closer);
     - while the side withdraws: × 1.15;
-  - they are tied to the station when more than 110 from it (escorts: 60), and every heading goes through `bestHeading` with the type's risk;
+    - against a carrier: at least `CV_KEEP` + 5;
+  - the orbit holds a pure broadside within ±10% of `prefRange`; a battleship or cruiser picks its orbit side (re-chosen every 20 s or on a new target) so that it runs across its target's bow: crossing the T;
+  - they are tied to the station when more than 110 from it (escorts: 60; not while pressing), and every heading goes through `bestHeading` with the type's risk;
   - they launch torpedoes inside `(0.6 + 0.3 × doctrine.torpedo)` × torpedo range.
-  The late-round `pref × 0.55` hack is gone.
-- Destroyers hunt a known sub inside `SUB_HUNT` (100) before surface targets. The attack run is in `ai_surface.js` (`dcApproach`, the `DC_*` constants above `surfaceAI`): it steers for the sub's predicted position at detonation, lays a stern stick of 5 charges plus a K-gun pair as it passes over, then comes round to re-attack.
+  - **Destroyer torpedo attack** (`torpedoRun`, a battleship or carrier target, which `h.score` only allows with another own destroyer within 150): the DD waits at 1.35 × its launch distance until a second destroyer is within 1.8 × that distance of the same quarry, runs in from the flank (flotilla members alternate sides by slot, so the pair come from different angles), launches beam on, then turns away for 14 s. It never goes inside 0.8 × the launch distance, the target's secondary range + 8, or `CV_KEEP` of a carrier: no ram-closing. Smoke is not modelled.
+  - **AA cover** (`aaCover`): while `B.airRaid` names an own carrier, cruisers (and a battleship of the carrier group) within 300 of it with nothing in gun range close to 45 of it.
+  - **Torpedo threats**: big ships turn parallel to any side-wide torpedo track (`WW.intel.torpedoes`, so an escort's sighting counts) that will pass close within 150 (BB) / 120 (CA), after the type's reaction delay (`earlyComb`); the core comb then holds it. A battleship also angles bow or stern on to a known DD / PT (seen in the last 5 s) inside 1.1 × its torpedo range that has it in its bow arc (`angleOnBoats`).
+  - **Carrier keep-off**: no surface ship closes inside `CV_KEEP` (108) of a known enemy carrier (contact ≤ 10 s old, moved along its course).
+  - **Cripples** (`crippleHome`, replaces `h.withdraw` for surface ships: `ai.ownWithdraw`): below `CRIP` hp, head home (60 behind the own carrier, else the own map edge), pushed away from every known enemy that could shoot (contacts ≤ 45 s, within 1.2 × its gun range + 20), at full speed through `bestHeading` with risk 0.
+- Destroyers hunt a known sub inside `SUB_HUNT` (100; ×2 for the commander's ASW screen and escorts, and out to 250 when the sub is known within 70 of an ally) before surface targets. The attack run is in `ai_surface.js` (`dcApproach`, the `DC_*` constants above `surfaceAI`): it steers for the sub's predicted position at detonation, lays a stern stick of 5 charges plus a K-gun pair as it passes over, then comes round to re-attack.
 - **Carriers** (`ai_carrier.js`) never charge.
   - Station: the commander's, `cvStandoff` behind the battle line. It is kept 0.15 to 0.35 of the width from the carrier's own edge and 150 from the north and south edges; with no battle line it is a fixed home at 0.2 of the width.
   - Flee: the carrier runs from every known gun ship (contacts up to 90 s old, moved along their course for up to 20 s) inside `max(210, 1.5 × gun range + 50)`, summed with weights (1 − d / r)².
@@ -384,6 +390,8 @@ Blackboard = {
   focus: { main, carrier, screen, flotilla, pt, sub },    // Ship[] (0 to 2) per group
   incoming: Map(target Ship -> dps),
   strikes: Map(carrier.id -> { target, contact, score, hold }),
+  fit, hadFit, brokenAt,                   // fit: own BB / CA / DD at >= CRIP hp; brokenAt: sim time the side lost its last
+                                           // one (0 while it has one; never set for a side that never had one)
   airRaid: { carrier, n } | null,          // armed enemy bombers detected within 130 of an own carrier
   defend: [{ carrier, enemy, d }],         // per own carrier: nearest known enemy gun ship within 280 (seen in the last 30 s)
   sectors: [{ x, z, looked, stale, prio }] // 6 x 4 scout sectors
@@ -394,7 +402,7 @@ Order = { ship, group, role, slot, sx, sz, t };
 // (sx, sz): the formation station. It is clamped 30 units inside the map; land is the nav layer's job.
 ```
 
-- **Posture**: `search` while the side has no contacts. `withdraw` after 60 s if the known strength ratio is below `doctrine.withdrawRatio`. `press` late in the round if the ratio is at least `pressRatio × (1.15 − 0.3 × aggression)`. Otherwise `engage` when any known enemy is within 260 of an own ship, else `approach`. Carriers never press.
+- **Posture**: `withdraw` after 60 s once the side is *broken* (`brokenAt`: no battleship, cruiser or destroyer left at ≥ `CRIP` hp, after having had one), whatever the ratio says; main.js then ends the round when the side has got clear ("retires"). Otherwise `search` while the side has no contacts. `withdraw` after 60 s if the known strength ratio is below `doctrine.withdrawRatio`. `press` late in the round if the ratio is at least `pressRatio × (1.15 − 0.3 × aggression)`. Otherwise `engage` when any known enemy is within 260 of an own ship, else `approach`. Carriers never press.
 - **Groups** (`WW.fleetGroups.assign`):
   - carriers go to `carrier`, together with the first cruiser (when there are 2 or more) and the first destroyer as escorts;
   - battleships and the other cruisers go to `main`;
@@ -403,7 +411,7 @@ Order = { ship, group, role, slot, sx, sz, t };
   - any ship (not a sub) below `WW.fleetGroups.CRIP = 0.35` hp gets role `withdraw`.
 - **Stations** (`WW.fleetGroups.stations`) are offsets (forward, lateral) along `axis.h`:
   - main: line abreast at lateral 0, ±45, ±90, …, advanced by the posture lead (search / approach +45, press +35, engage 0, withdraw −45);
-  - carriers: `cvStandoff` behind the main guide;
+  - carriers: `cvStandoff` behind the main guide (the guide is the centroid of the main group's ships that are not withdrawing cripples), in the band 0.15–0.35 of the width from the own edge; while the side withdraws, straight home to 0.08–0.1 of the width at the carrier's own z. Then `cvSafe` slides the station away from every known enemy gun ship (contacts ≤ 60 s) to 1.9 × its gun range + 20;
   - escorts: a ring about 80 out around the first carrier;
   - screen: `screenAhead` ahead of the main body;
   - flotilla: on the flanks (lateral ±110);
@@ -419,10 +427,10 @@ Order = { ship, group, role, slot, sx, sz, t };
 | field | USN | IJN | used by |
 |---|---|---|---|
 | aggression | 0.5 | 0.65 | press threshold |
-| rangeFrac | 0.84 | 0.78 | battleship / cruiser preferred range (× main battery range) |
+| rangeFrac | 0.78 | 0.78 | battleship / cruiser preferred range (× main battery range) |
 | torpedo | 0.35 | 0.8 | launch distance (× torpedo range: 0.6 + 0.3 × torpedo) |
 | carrier | 0.8 | 0.55 | strike tempo (interval × (1.25 − 0.5 × carrier)) |
-| night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.55 + 0.15 × (1 − night))) |
+| night | 0.2 | 0.8 | how much closer the side fights when it presses (`prefRange` × (0.72 + 0.15 × (1 − night))) |
 | cvStandoff | 230 | 200 | carrier station behind the main body |
 | screenAhead | 70 | 60 | ASW screen station |
 | flotilla | 1 | 2 | destroyers in the torpedo flotilla |
@@ -542,11 +550,21 @@ WW.game = {
   mode: 'auto' | 'setup', state: 'setup' | 'battle' | 'victory',
   composition: null | [ { type, nation, x, z } ],
   startRound(opts),        // opts.keepMap keeps the current map (Start in setup mode)
-  enterSetup(newMap), enterAuto(), randomComposition(), tonnage(nation), endRound(winner), winner
+  enterSetup(newMap), enterAuto(), randomComposition(), tonnage(nation), endRound(winner, reason, loser), winner,
+  endReason,               // 'kill' | 'retire' | 'time' | 'stall' (null while a round runs)
+  noRetire                 // test hook: no retire ending (the ASW scenarios of sim_behaviour.js)
 };
 window.__sim = { stats, game, world, fastForward(seconds, onStep), setScale(n), focus(x, z, width, hold), snapCamera() };
 ```
 
-Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 destroyers, 1 submarine and 2 PT boats in a task-force formation. A round ends when one side has no ships, when only submarines are left and nothing sinks for 60 s, or at the time limit (420 simulation seconds, 14 minutes at 1×). At the time limit, the side with more tonnage wins. The victory caption shows for 9 s.
+Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 destroyers, 1 submarine and 2 PT boats in a task-force formation. A round ends (`game.endReason`):
+- `kill`: one side has no ships;
+- `retire` (`retiring()` in main.js): a side's commander has been broken (posture `withdraw`, no fit BB / CA / DD, `brokenAt`) for 30 s, the round is past 120 s, the side still has a ship that is not a submarine, and every such ship is either in its home band (0.18 of the width from its own edge) or has not been seen by the enemy (`WW.intel`) for 45 s. The other side wins. If both sides qualify at once, neither retires;
+- `stall`: only submarines are left and nothing sinks for 60 s (tonnage decides);
+- `time`: the time limit (420 simulation seconds, 14 minutes at 1×); the side with more tonnage wins.
+
+`tests/sim_rounds.js` and `tests/sim_behaviour.js` report each round's end reason (kill / retire / time / cap). The behaviour suite's `cv_closing` judges a carrier on its own side's picture (`WW.intel.known`, last-known positions), not raw positions.
+
+`endRound` emits `victory` `{ winner, round, reason, loser }`. The caption shows "<winner> victory" for 9 s, with "<loser> fleet retires" as the subtitle after a retire, else the ships each side lost.
 
 `ui.js` shows the panels only in setup mode. In battle, `H` shows the panel. It also controls the captions, the tilt-shift bands (`T`) and fullscreen. There is no letterbox.

@@ -35,6 +35,8 @@ Goal (user): World-of-Warships feel. Each type plays its role and avoids fights 
 
 **Morale / withdrawal.** HP < ~30–35%, or flooding, or alone and outgunned → withdraw toward own carrier, own fleet or land cover. A DD lays smoke if available. A withdrawing ship still shoots back but doesn't chase.
 
+**Breaking off and retiring (implemented).** A side whose last battleship, cruiser or destroyer in fighting shape (hp ≥ 35%) is gone is *broken*: its commander goes to `withdraw`, its cripples head home, and its carrier runs for its own edge. Once it has stayed broken for 30 s and every ship it has left (subs aside) is either back in its home waters or out of the enemy's sight for 45 s, the round ends: "<winner> victory / <loser> fleet retires" (`victory` event with `reason: 'retire'`). That gives a decision without hunting a lone carrier for minutes. The stronger side presses late with its gun ships, but not into the enemy carrier's lair or the enemy's home waters. Round ends: kill (annihilation), retire, stall (only subs left), time (tonnage at the cap).
+
 **Commander (js/fleet_cmd.js)**, per side, every ~2 s:
 - Posture from known strength ratio × time: search → approach → engage → (withdraw | press). Late round, the stronger side presses for a decision with gun ships. The carrier never presses.
 - Assigns: focus targets, screen stations, ASW hunter group, PT ambush spots, strike targets (only on detected or last-known contacts), scout search sectors.
@@ -101,7 +103,7 @@ Goal (user): World-of-Warships feel. Each type plays its role and avoids fights 
 - DD: sub kills by DDs vs total sub deaths; time to kill a detected sub.
 - Fighter time over own carrier vs away; bombers shot down before release.
 - Focus fire: average distinct targets per side per minute (should drop); overkill shells.
-- First-contact time, round length, win split by nation (aim ~50/50 across seeds), end reasons.
+- First-contact time, round length (median 300–420 s), win split by nation (aim ~50/50 across seeds), end reasons (kill / retire / time; at least ~60% decided before the cap).
 - Stuck 0, NaN 0, errors 0.
 
 ## 3. Acceptance (user requirement)

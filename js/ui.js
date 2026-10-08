@@ -92,7 +92,7 @@ window.WW = window.WW || {};
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
     WW.on('roundStart', () => { s0 = Object.assign({}, WW.stats); hudPeek = false; });
     WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); });
-    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', lossLine(), 5, false));
+    WW.on('victory', d => caption(d.winner ? d.winner + ' victory' : 'Stalemate', d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : lossLine(), 5, false));
 
     const canvas = document.getElementById('game');
     canvas.addEventListener('mousedown', onMouse);

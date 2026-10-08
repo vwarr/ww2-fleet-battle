@@ -10,6 +10,10 @@
 //         npm run test:ai            (tests/run.sh serves on port 8000)
 // Env:    CHROMIUM = headless shell path;  JSON=path writes raw per-scenario metrics and per-round records.
 // Exit code 1 if any hard check FAILs (WARN = fuzzy check, reported but not fatal).
+// cv_closing uses the carrier side's own picture (WW.intel.known, last-known positions up to 90 s old), not raw
+// positions: its 1.5 x range radius is 255 for a battleship, but a carrier only sees a battleship at 240, so the raw
+// metric blamed carriers for steaming toward ships they could not know about. cv_min_dist / cv_in_gun stay raw.
+// End reasons per round: kill (a side annihilated), retire (main.js: the loser broke off), time, cap.
 //
 // ---------------------------------------------------------------------------------------------------------
 // BASELINE on the pre-roles AI (ai-strategy @ 1d327fa, 8 seeds/scenario, --pages 4: 62 s wall; --quick ~30 s).
@@ -62,7 +66,7 @@ const CHECKS = [
   { id: 'cv_min_dist',   desc: 'carrier min dist to enemy gun ship (u)', op: '>=', thr: 100, level: 'FAIL' },
   { id: 'cv_med_dist',   desc: 'carrier median dist to nearest gun ship', op: '>=', thr: 200, level: 'WARN' },
   { id: 'cv_in_gun',     desc: 'carrier time inside enemy gun range',    op: '<=', thr: 0.01, level: 'FAIL' },
-  { id: 'cv_closing',    desc: 'carrier heading toward gun ship <1.5xR', op: '<=', thr: 0.10, level: 'FAIL' },
+  { id: 'cv_closing',    desc: 'carrier heading toward known gun ship <1.5xR', op: '<=', thr: 0.10, level: 'FAIL' }, // intel contacts, see sample()
   { id: 'cvcv_min',      desc: 'min carrier-carrier distance (u)',       op: '>=', thr: 150, level: 'WARN', only: ['carrier_duel'] },
   { id: 'air_drops',     desc: 'air weapon drops per round (strikes)',   op: '>=', thr: 2, level: 'FAIL', only: ['carrier_duel', 'carrier_vs_surface'] },
   // PT
@@ -287,7 +291,13 @@ function install(P) {
           if (d <= g.range) inGun = true;
           if (!GUN[o.type]) continue;
           dmin = Math.min(dmin, d);
-          if (d < P.CV_THREAT_K * g.range && d / g.range < thrK) { thrK = d / g.range; thr = o; }
+          // cv_closing judges the carrier on what its side knows (WW.intel contact, last-known position), not on
+          // raw positions: with raw positions a battleship at 241-255 (inside 1.5 x 170) that the carrier cannot
+          // see yet (a battleship is seen at 240) counted as "closing on a threat" (the sensing-gap quirk).
+          const k = B.known ? B.known(s.nation, o) : o;
+          if (!k) continue;
+          const dk = WW.dist(s.x, s.z, k.x, k.z);
+          if (dk < P.CV_THREAT_K * g.range && dk / g.range < thrK) { thrK = dk / g.range; thr = k; }
         }
         R.cv.samples++; if (inGun) R.cv.inGun++; if (dmin < 1e9) R.cv.d.push(Math.round(dmin));
         if (thr) { R.cv.thr++; if (sp > 0.3 && Math.cos(WW.angleDiff(s.heading, brg(s, thr))) > Math.cos(P.CV_CLOSE_DEG * D2R)) R.cv.closing++; }
@@ -382,6 +392,7 @@ function install(P) {
   B.run = function (spec) {
     const G = WW.game, W = WW.cfg.MAP_W, cap = WW.cfg.ROUND_TIMEOUT + 30;
     B.sees = intelSees();
+    B.known = WW.intel && typeof WW.intel.known === 'function' ? (n, u) => { const c = WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= 90 ? c : null; } : null;
     WW.terrain.generate(spec.seed); WW.seedRandom(spec.seed); G.seed = spec.seed;
     let comp;
     if (spec.random) {
@@ -394,6 +405,7 @@ function install(P) {
     }
     if (WW.aces) WW.aces.reset(); // aces carry over between rounds by design: fresh rosters keep seeds repeatable
     WW.seedRandom(spec.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
+    G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null;
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
     R = { th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
@@ -415,7 +427,7 @@ function install(P) {
     for (const k in R.ddP) if (R.ddP[k].in && !R.ddP[k].done) R.dd.missed++;
     const alive = n => WW.world.ships.some(s => s.alive && s.nation === n);
     const out = { seed: spec.seed, aNation: spec.aNation || null, swap: !!spec.swap, winner: G.winner, len: +G.roundTime.toFixed(0),
-      end: G.state === 'battle' ? 'cap' : alive('USN') && alive('IJN') ? 'time' : 'kill', comp: types,
+      end: G.state === 'battle' ? 'cap' : G.endReason === 'retire' ? 'retire' : alive('USN') && alive('IJN') ? 'time' : 'kill', comp: types,
       firstFire: R.firstFire, firstContact: R.firstContact, firstSight: R.firstSight, stuck: R.stuck, stuckWho: R.stuckWho, nan: R.nan, sunk: R.sunk,
       cv: Object.assign({}, R.cv), pt: Object.assign({}, R.pt, { pen: Object.values(R.ptS).map(s => +s.pen.toFixed(3)) }), dd: R.dd, sub: R.sub,
       ftr: R.ftr, big: R.big, focusCounts: Object.values(R.focus).map(o => Object.keys(o).length), intel: R.intel, intelOn: !!B.sees,
@@ -523,7 +535,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     const wall = ((Date.now() - t0) / 1000).toFixed(1);
     const wins = { USN: 0, IJN: 0, draw: 0, A: 0, B: 0 };
     for (const r of rounds) { wins[r.winner || 'draw']++; if (r.aNation && r.winner) wins[r.winner === r.aNation ? 'A' : 'B']++; }
-    console.log(`\n== ${sc.name}  (${rounds.length} rounds, ${wall}s)  USN ${wins.USN} IJN ${wins.IJN} draw ${wins.draw}${sc.A ? `  fleetA ${wins.A} fleetB ${wins.B}` : ''}  len ${M.len_min}/${M.len_med}/${M.len_max}s`);
+    console.log(`\n== ${sc.name}  (${rounds.length} rounds, ${wall}s)  USN ${wins.USN} IJN ${wins.IJN} draw ${wins.draw}${sc.A ? `  fleetA ${wins.A} fleetB ${wins.B}` : ''}  len ${M.len_min}/${M.len_med}/${M.len_max}s  ends ${['kill', 'retire', 'time', 'cap'].map(k => k + ' ' + rounds.filter(r => r.end === k).length).join(' ')}`);
     const rows = [];
     for (const c of CHECKS) {
       if (c.intel && M.unseen_shots === null) { if (sc.light) continue; if (!c.only || c.only.includes(sc.name)) rows.push([c.id, M.intel_on ? `intel API err ${M.intel_err}` : 'no WW.intel', fmtThr(c), 'SKIP']); continue; }
