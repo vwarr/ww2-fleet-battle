@@ -1,0 +1,72 @@
+// Headless AI harness: run N seeded rounds with no rendering (__sim.fastForward) and report how they play out:
+// winner, end reason, length, losses by type, first contact, how close carriers get to enemy guns, stuck ships.
+// Usage: bash tests/run.sh sim_rounds.js [rounds=8] [firstSeed=1]   (or BASE_URL=http://localhost:PORT/ node tests/sim_rounds.js)
+// Env: CHROMIUM = path to a headless shell build; JSON=path writes the raw per-round results.
+const { chromium } = require('playwright');
+const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
+(async () => {
+  const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const p = await b.newPage({ viewport: { width: 640, height: 360 } });
+  const errs = []; p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
+  await p.waitForTimeout(1500);
+  await p.evaluate(() => { __sim.setScale(0.0001); }); // the render loop barely advances the sim; we drive it
+  const rounds = [];
+  for (let i = 0; i < N; i++) {
+    const seed = SEED0 + i, t0 = Date.now();
+    const r = await p.evaluate(seed => {
+      const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 30;
+      WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
+      const s0 = Object.assign({}, WW.stats);
+      const sunk = [];
+      const onSunk = s => sunk.push({ type: s.type, nation: s.nation, t: +G.roundTime.toFixed(1) });
+      WW.on('shipSunk', onSunk);
+      let contact = null; // first time any two enemy surface ships are within gun range of each other's main battery
+      const cv = {};      // per carrier id: closest approach to any live enemy gun ship
+      const moved = {};   // per ship id: [x, z, t of last real move]
+      let stuck = 0, nan = 0;
+      G.startRound({ keepMap: true });
+      const comp = {}; for (const s of WW.world.ships) comp[s.nation + ':' + s.type] = (comp[s.nation + ':' + s.type] || 0) + 1;
+      let t = 0;
+      while (G.state === 'battle' && t < cap) {
+        __sim.fastForward(1); t += 1;
+        const live = WW.world.ships.filter(s => s.alive && !s.sinking);
+        for (const s of live) {
+          if (!isFinite(s.x) || !isFinite(s.z)) nan++;
+          const m = moved[s.id] || (moved[s.id] = [s.x, s.z, t]);
+          if (WW.dist(m[0], m[1], s.x, s.z) > 3) { m[0] = s.x; m[1] = s.z; m[2] = t; }
+          else if (t - m[2] > 30 && !m.flag) { m.flag = true; stuck++; }
+          for (const o of live) {
+            if (o.nation === s.nation || o.submerged) continue;
+            const d = WW.dist(s.x, s.z, o.x, o.z);
+            if (contact === null && s.stats.guns[0] && d <= s.stats.guns[0].range && s.type !== 'submarine') contact = t;
+            if (s.type === 'carrier' && o.stats.guns.length && o.type !== 'carrier' && o.type !== 'submarine') cv[s.id] = Math.min(cv[s.id] || 1e9, d);
+          }
+        }
+      }
+      const end = G.state === 'battle' ? 'cap' : (WW.world.ships.some(s => s.alive && s.nation === 'USN') && WW.world.ships.some(s => s.alive && s.nation === 'IJN')) ? 'time' : 'kill';
+      const d = k => WW.stats[k] - s0[k];
+      const out = { seed, winner: G.winner, end, len: +G.roundTime.toFixed(0), contact, sunk, comp,
+        cvMin: Object.values(cv).map(v => +v.toFixed(0)), stuck, nan,
+        torps: d('torpedoesFired'), shells: d('shellsFired'), launched: d('planesLaunched'), lost: d('planesLost'), hits: d('hits') };
+      // detach our listener (the bus has no off(): blank it)
+      onSunk.dead = true; sunk.push = () => 0;
+      return out;
+    }, seed);
+    r.wall = ((Date.now() - t0) / 1000).toFixed(1);
+    rounds.push(r);
+    const lost = n => r.sunk.filter(s => s.nation === n).map(s => s.type[0] + s.type[1]).join(',') || '-';
+    console.log(`seed ${r.seed}: ${r.winner || 'draw'} by ${r.end} @${r.len}s  contact ${r.contact}s  USN lost[${lost('USN')}] IJN lost[${lost('IJN')}]  cvMin ${r.cvMin.join('/')}  torps ${r.torps} planes ${r.launched}/${r.lost}lost  stuck ${r.stuck}${r.nan ? ' NaN!' : ''}  (${r.wall}s)`);
+  }
+  const avg = f => (rounds.reduce((s, r) => s + f(r), 0) / rounds.length).toFixed(1);
+  const cvs = rounds.flatMap(r => r.cvMin);
+  console.log('---');
+  console.log(`USN ${rounds.filter(r => r.winner === 'USN').length}  IJN ${rounds.filter(r => r.winner === 'IJN').length}  draw ${rounds.filter(r => !r.winner).length}` +
+    `   ends: kill ${rounds.filter(r => r.end === 'kill').length} time ${rounds.filter(r => r.end === 'time').length}`);
+  console.log(`avg length ${avg(r => r.len)}s  avg first contact ${avg(r => r.contact || 0)}s  avg sunk ${avg(r => r.sunk.length)}  avg torps ${avg(r => r.torps)}  planes lost ${avg(r => r.lost)}`);
+  console.log(`carrier closest approach to enemy gun ships: median ${cvs.sort((a, b) => a - b)[cvs.length >> 1]}  min ${Math.min(...cvs)}`);
+  console.log(`stuck ships ${rounds.reduce((s, r) => s + r.stuck, 0)}  NaN ${rounds.reduce((s, r) => s + r.nan, 0)}  errors ${errs.length}`);
+  if (errs.length) console.log(errs.slice(0, 10).join('\n'));
+  if (process.env.JSON) require('fs').writeFileSync(process.env.JSON, JSON.stringify(rounds, null, 1));
+  await b.close();
+})();
