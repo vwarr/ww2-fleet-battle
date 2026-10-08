@@ -11,6 +11,7 @@ window.WW = window.WW || {};
   const TURRET_RATE = { big: 0.5, med: 0.8, small: 1.6, mg: 3 };
 
   function bearing(a, b) { return Math.atan2(b.z - a.z, b.x - a.x); }
+  function seen(ship, t) { return !WW.intel || WW.intel.visible(ship.nation, t); } // a current detection (intel.js)
   function gunFor(st, cal) { return st.guns.find(g => g.cal === cal) || st.guns[0] || null; }
 
   // Simple lead point for a projectile of speed v.
@@ -39,26 +40,35 @@ window.WW = window.WW || {};
     return Math.atan2(Math.sin(h) + Math.sin(b) * w, Math.cos(h) + Math.cos(b) * w);
   }
 
+  // Targets come from what the side knows (intel.js): only a fresh contact (a firing solution) can be a target;
+  // the threat a carrier runs from and the sub a destroyer hunts may be older last-known positions.
+  // Allies (formation centre, carrier, near) stay omniscient: a fleet knows where its own ships are.
+  const THREAT_AGE = 20, SUB_AGE = 30;
   function retarget(ship) {
-    const a = ship.ai, st = ship.stats, ships = WW.world.ships;
+    const a = ship.ai, st = ship.stats, ships = WW.world.ships, now = WW.time.now;
     let best = null, bestS = 1e9, sub = null, subD = 1e9, threat = null, threatD = 1e9, any = null, anyD = 1e9, fb = null, fbD = 1e9;
     let cx = 0, cz = 0, cn = 0, cv = null, cvD = 1e9, near = null, nearD = 1e9;
     const big = ship.type === 'submarine' || ship.type === 'pt';
     for (const o of ships) {
-      if (!o.alive) continue;
-      if (o === ship) continue;
+      if (!o.alive || o === ship || o.nation !== ship.nation) continue;
       const d = WW.dist(ship.x, ship.z, o.x, o.z);
       if (!o.submerged && d < nearD) { nearD = d; near = o; }
-      if (o.nation === ship.nation) {
-        if (o.type !== 'submarine' && o.type !== 'pt') { cx += o.x; cz += o.z; cn++; }
-        if (o.type === 'carrier' && d < cvD) { cvD = d; cv = o; }
-        continue;
-      }
-      if (d < anyD) { anyD = d; any = o; }
-      if (o.type === 'submarine' && d < subD) { subD = d; sub = o; }
+      if (o.type !== 'submarine' && o.type !== 'pt') { cx += o.x; cz += o.z; cn++; }
+      if (o.type === 'carrier' && d < cvD) { cvD = d; cv = o; }
+    }
+    const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], FRESH = WW.intel ? WW.intel.T.FRESH : 3;
+    a.subC = null; a.anyC = null;
+    for (const c of cs) {
+      const o = c.unit;
+      if (!o || !o.alive) continue;
+      const age = now - c.seenAt, d = WW.dist(ship.x, ship.z, c.x, c.z);
+      if (d < anyD) { anyD = d; any = o; a.anyC = c; }
+      if (o.type === 'submarine' && age <= SUB_AGE && a.datumDone !== c.seenAt && d < subD) { subD = d; sub = o; a.subC = c; }
+      if (age <= THREAT_AGE && !o.submerged && o.stats.guns.length && o.type !== 'carrier' && d < threatD) { threatD = d; threat = o; }
+      if (age > FRESH) continue;
+      if (!o.submerged && d < nearD) { nearD = d; near = o; }
       if (o.type === 'submarine' && ship.type === 'submarine' && d < fbD) { fbD = d; fb = o; } // sub vs sub: last resort
       if (o.submerged) continue;
-      if (o.stats.guns.length && o.type !== 'carrier' && d < threatD) { threatD = d; threat = o; }
       let s = big ? d - BIG_PRIO[o.type] : d - o.stats.tons / 2000;
       if (big && o.type === 'submarine') { if (d < fbD) { fbD = d; fb = o; } continue; } // surfaced subs: last resort
       if (s < bestS) { bestS = s; best = o; }
@@ -68,19 +78,20 @@ window.WW = window.WW || {};
     ship.target = best; a.any = any; a.sub = sub; a.subD = subD; a.threat = threat; a.threatD = threatD;
     a.cn = cn; if (cn) { a.cx = cx / cn; a.cz = cz / cn; }
     // Per-calibre gun targets: main target if in range, else nearest visible enemy in range.
-    a.calTarget = {};
+    const ct = a.calTarget || (a.calTarget = {});
     for (const g of st.guns) {
       let t = null;
       if (best && WW.dist(ship.x, ship.z, best.x, best.z) <= g.range) t = best;
       else {
         let bd = g.range;
-        for (const o of ships) {
-          if (!o.alive || o.nation === ship.nation || o.submerged) continue;
+        for (const c of cs) {
+          const o = c.unit;
+          if (!o || !o.alive || o.submerged || now - c.seenAt > FRESH) continue;
           const d = WW.dist(ship.x, ship.z, o.x, o.z);
           if (d < bd) { bd = d; t = o; }
         }
       }
-      a.calTarget[g.cal] = t;
+      ct[g.cal] = t;
     }
   }
 
@@ -91,7 +102,7 @@ window.WW = window.WW || {};
       ts.reload -= dt;
       if (!ts.gun || ts.disabled) continue; // knocked out by a heavy hit (WW.damage)
       let tgt = a.calTarget && a.calTarget[ts.gun.cal];
-      if (tgt && (!tgt.alive || tgt.submerged)) tgt = null;
+      if (tgt && (!tgt.alive || tgt.submerged || !seen(ship, tgt))) tgt = null; // fire only on a current detection
       // Aim as an offset from the turret's rest angle (aft turrets rest at PI) so it never swings through the bridge.
       let off = 0, rel = 0, d = 1e9;
       if (tgt) {
@@ -114,11 +125,13 @@ window.WW = window.WW || {};
     const a = ship.ai, st = ship.stats, t = ship.target;
     // Destroyers hunt nearby subs.
     // Destroyers hunt subs on sonar (radius SONAR), or at any range when no surface target is left.
-    if (st.depthCharges && a.sub && a.sub.alive && (a.subD < SONAR || !t || t.type === 'submarine')) {
-      const s = a.sub, p = lead(ship, s, st.speed);
+    // A lost sub: run to its last-known position (datum) and give it up there if sonar finds nothing.
+    if (st.depthCharges && a.sub && a.sub.alive && a.subC && (a.subD < SONAR || !t || t.type === 'submarine')) {
+      const fresh = seen(ship, a.sub), s = fresh ? a.sub : a.subC, p = lead(ship, s, st.speed);
       ship.desiredHeading = Math.atan2(p.z - ship.z, p.x - ship.x); ship.throttle = 1;
       a.dcReload -= dt;
-      if (a.dcReload <= 0 && WW.dist(ship.x, ship.z, s.x, s.z) < 9) {
+      if (!fresh && WW.dist(ship.x, ship.z, s.x, s.z) < 10) { a.datumDone = a.subC.seenAt; a.sub = a.subC = null; a.retargetT = 0; return; }
+      if (fresh && a.dcReload <= 0 && WW.dist(ship.x, ship.z, s.x, s.z) < 9) {
         const q = ship.toWorld(-st.length * 0.5, 0);
         WW.combat.dropDepthCharge(ship, q[0], q[1]);
         a.dcReload = 1.3;
@@ -143,13 +156,23 @@ window.WW = window.WW || {};
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
     ship.desiredHeading = h;
     // Torpedoes.
-    if (st.torpedoes && a.torpReload <= 0 && !t.submerged && d < st.torpedoes.range * 0.8 && d > 12) fireSpread(ship, t);
+    if (st.torpedoes && a.torpReload <= 0 && !t.submerged && d < st.torpedoes.range * 0.8 && d > 12 && seen(ship, t)) fireSpread(ship, t);
   }
 
+  // Nothing to shoot: go to the nearest last-known contact, else search toward the enemy's half of the map
+  // (the side away from our own fleet), then sweep north / south of it.
   function idle(ship) {
-    const a = ship.ai, o = a.any;
-    if (o) { ship.desiredHeading = bearing(ship, o); ship.throttle = 0.8; }
-    else { ship.desiredHeading = Math.atan2(WW.cfg.MAP_H / 2 - ship.z, WW.cfg.MAP_W / 2 - ship.x); ship.throttle = 0.4; }
+    const a = ship.ai, c = a.anyC && a.anyC.unit && a.anyC.unit.alive ? a.anyC : null;
+    if (c && WW.dist(ship.x, ship.z, c.x, c.z) > 15) { ship.desiredHeading = bearing(ship, c); ship.throttle = 0.8; return; }
+    const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, sp = a.search || (a.search = { x: 0, z: 0, leg: 0, east: (a.cn ? a.cx : ship.x) < W / 2 });
+    if (!sp.leg || WW.dist(ship.x, ship.z, sp.x, sp.z) < 30) {
+      sp.leg++;
+      const k = sp.leg > 1 ? 0.85 : 0.7;
+      sp.x = sp.east ? W * k : W * (1 - k);
+      sp.z = H * (0.5 + (sp.leg > 1 ? (sp.leg & 1 ? 0.3 : -0.3) * a.orbitDir : 0));
+      if (sp.leg > 2) sp.east = !sp.east; // swept the far side: come back the other way
+    }
+    ship.desiredHeading = Math.atan2(sp.z - ship.z, sp.x - ship.x); ship.throttle = 0.75;
   }
 
   function subAI(ship, dt) {
@@ -174,7 +197,7 @@ window.WW = window.WW || {};
     if (a.evadeT > 0) { ship.desiredHeading = bearing(ship, t) + PI + a.orbitDir * 0.6; ship.throttle = 1; }
     else if (d > 75) { ship.desiredHeading = lb; ship.throttle = 1; }
     else { ship.desiredHeading = lb; ship.throttle = 0.5; }
-    if (a.torpReload <= 0 && d < st.torpedoes.range * 0.8 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3) {
+    if (a.torpReload <= 0 && d < st.torpedoes.range * 0.8 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, t)) {
       fireSpread(ship, t); a.evadeT = 10;
     }
   }
@@ -188,7 +211,7 @@ window.WW = window.WW || {};
     if (a.ptState === 'in') {
       const p = lead(ship, t, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
       ship.desiredHeading = lb;
-      if (a.torpReload <= 0 && d < st.torpedoes.range * 0.7 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.35) {
+      if (a.torpReload <= 0 && d < st.torpedoes.range * 0.7 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.35 && seen(ship, t)) {
         fireSpread(ship, t); a.ptState = 'out'; a.ptT = 12;
       } else if (a.torpReload > 0 && d < 80) { a.ptState = 'out'; a.ptT = 8; }
     } else {
@@ -199,11 +222,17 @@ window.WW = window.WW || {};
     }
   }
 
+  // Strikes go only after what the side knows: a fresh contact, or one seen in the last STRIKE_AGE s (at a penalty).
+  // ship may be a bare { x, z, nation } (air_strikes.js wave guide) or a Plane.
+  const STRIKE_AGE = 45;
   function pickStrikeTarget(ship) {
+    if (!WW.intel) return null;
     let best = null, bs = 1e9;
-    for (const o of WW.world.ships) {
-      if (!o.alive || o.nation === ship.nation || o.submerged) continue;
-      const s = WW.dist(ship.x, ship.z, o.x, o.z) - (STRIKE_PRIO[o.type] || 0);
+    const now = WW.time.now;
+    for (const c of WW.intel.enemyShips(ship.nation, { fresh: STRIKE_AGE })) {
+      const o = c.unit;
+      if (!o || !o.alive || o.submerged) continue;
+      const s = WW.dist(ship.x, ship.z, c.x, c.z) - (STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;
       if (s < bs) { bs = s; best = o; }
     }
     return best;
@@ -236,11 +265,8 @@ window.WW = window.WW || {};
     if (a.capT <= 0) {
       a.capT = 3;
       let near = 0, cap = 0;
-      for (const p of WW.world.planes) {
-        if (!p.alive) continue;
-        if (p.nation !== ship.nation && WW.dist(ship.x, ship.z, p.x, p.z) < 140) near++;
-        if (p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
-      }
+      if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (WW.dist(ship.x, ship.z, c.x, c.z) < 140) near++; // detected raiders
+      for (const p of WW.world.planes) if (p.alive && p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
       if (near && cap < 3 && hg.fighter > 0 && !a.queue.some(q => q.kind === 'fighter' && !q.target)) a.queue.unshift({ kind: 'fighter', target: null });
     }
     // Strike waves.

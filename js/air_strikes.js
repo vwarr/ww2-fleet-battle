@@ -62,10 +62,11 @@ window.WW = window.WW || {};
     let t = w.target;
     if (!t || !t.alive || t.submerged) t = w.target = WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
     if (!t) { w.done = true; return; }
-    const want = Math.atan2(t.z - w.z, t.x - w.x);
+    const k = WW.intel && WW.intel.known(w.nation, t) || t;   // fly to where the side last saw it (intel.js)
+    const want = Math.atan2(k.z - w.z, k.x - w.x);
     w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
     w.x += Math.cos(w.h) * GUIDE_V * dt; w.z += Math.sin(w.h) * GUIDE_V * dt;
-    w.dT = WW.dist(w.x, w.z, t.x, t.z);
+    w.dT = WW.dist(w.x, w.z, k.x, k.z);
   }
   // Fly to slot (a = ahead, s = right of the guide, alt): aim a little ahead of the slot, speed by along-track error.
   function keep(pl, w, a, s, alt, dt) {

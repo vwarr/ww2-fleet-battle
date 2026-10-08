@@ -187,6 +187,7 @@ window.WW = window.WW || {};
   function step(dt) {
     WW.time.dt = dt; WW.time.now += dt;
     call('terrain', 'update', dt);
+    call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
     call('ships', 'update', dt);
     call('air', 'update', dt);
     call('combat', 'update', dt);

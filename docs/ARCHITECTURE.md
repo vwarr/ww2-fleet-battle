@@ -41,6 +41,7 @@ js/combat_weapons.js    torpedoes, bombs, depth charges
 js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts, plane jinking
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
+js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
 js/ships_ai.js          WW.shipAI: targets, guns, torpedoes, behaviour per ship type
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
@@ -79,7 +80,7 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 Each animation frame (`main.js`, `frame`):
 
 1. Advance the simulation. For each step (`step`):
-   1. `WW.terrain.update`
+   1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s)
    2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
@@ -226,6 +227,34 @@ WW.shipAI = { setup(ship), update(ship, dt) };
 - Sinking takes approximately 8 s. The ship moves at most 15 units and does not go into another wreck or onto land. The wreck stays on the seabed until the next round. In shallow water, one end of the wreck stays above the water.
 - A submarine must come to the surface for 25 s after 45 s under water. A submerged submarine casts no shadow.
 - Ship AI: each ship selects a target and keeps a range that is correct for its weapons. Destroyers find submarines in a 65-unit radius and attack with depth charges. PT boats move in fast, fire torpedoes and move away. Carriers stay back and launch strikes. Late in a round, they move nearer to the enemy.
+- The AI sees the enemy only through `WW.intel` (below). A ship's target and its per-calibre gun targets are fresh contacts, and guns and torpedoes fire only while `WW.intel.visible` is true. A destroyer that loses a sub runs to its last-known position and gives it up there. With no fresh target, a ship goes to the nearest last-known contact; with none, it searches toward the enemy's half of the map (the half away from its own fleet), then sweeps north and south.
+
+### intel.js
+
+```js
+WW.intel = {
+  update(dt), clear(),                       // main.js step(); cleared on roundStart / setupStart
+  contacts(nation) -> Contact[],             // every live contact of that side (shared array, do not modify)
+  known(nation, unit) -> Contact | null,     // any age up to its expiry
+  lastKnown(nation, unit) -> Contact | null, // the same object: read x, z, heading, speed, seenAt
+  visible(nation, unit, maxAge = 3) -> bool, // a firing solution: seen within maxAge s by any ship, plane or scout of the side
+  canSee(nation, unit) -> bool,              // visible() with the default age
+  enemyShips(nation, { fresh }) -> Contact[],  // fresh: true (3 s) or a number of s; filtered result is a shared scratch array
+  enemyPlanes(nation, { fresh }) -> Contact[], // default fresh: true
+  centre(nation) -> { x, z } | null,         // centre of the ship contacts' last-known positions
+  age(contact) -> s, R, T, stats             // R: every detection range, T: timing (one table each, top of intel.js)
+};
+// Contact: { unit, x, z, heading, speed, seenAt, firstSeenAt, quality: 'visual' | 'sonar' | 'scout' | 'air', by }
+```
+
+- Every 0.5 s of sim time (both sides in one tick) each side looks for enemy ships and planes. Detection uses no random numbers.
+- A ship sees an enemy ship at `R.SEEN[target type] × R.EYE[observer type]` (battleship or carrier 240, cruiser 210, destroyer 170, surfaced sub 70, PT boat 75; a destroyer's eye is 0.85, a PT boat's 0.55, a submerged sub's periscope 0.5). A ship that fired its guns in the last 6 s is seen at `R.FLASH[cal]` (big 400). Land more than 0.4 above the sea between two ships blocks the view (up to 10 samples of `WW.terrain.depthAt`, cached per pair per tick).
+- Destroyer sonar finds a submerged sub within 65. Nothing else sees a submerged sub.
+- Airborne planes see ships within 100, scouts within 120, with no line-of-sight test. A scout also sets `ship.spottedUntil` / `spottedBy` within 85 for `combat.js` `SPOT_DISP`.
+- Ships see planes at `R.SEE_PLANE` (carrier 170, battleship and cruiser 130, destroyer 110). Planes see planes within 100.
+- A contact keeps its last-seen position. It is dropped after 90 s (ships) or 10 s (planes) out of sight, or when the unit dies.
+- Events: `contact` `{ nation, unit, first, by }` when an enemy ship is sighted for the first time this round (`first: true`) or again after 30 s out of sight; `firstSighting` `{ nation, unit }` once per side per enemy carrier or battleship.
+- What uses it: `ships_ai.js` retarget, guns, torpedoes, idle search, sub hunt, `pickStrikeTarget` (contacts up to 45 s old) and the carrier's CAP scan; `aircraft.js` fighter scan and `validTarget`; `air_strikes.js` (a wave flies to the last-known position); `air_scouts.js` search area; `combat_aa.js` target choice. Hit tests, flak bursts, crash targets and dogfight tail checks stay omniscient. The camera is omniscient.
 
 ### aircraft.js
 
@@ -242,7 +271,7 @@ Each carrier plane gets a pilot (`plane.pilot = { name, kills, sorties, ace }`) 
 
 ### air_scouts.js, models_scout.js
 
-Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-style monoplane, IJN: Pete-style biplane, both with one centre float and two wing floats). 5 to 25 s into a round, the catapult trains outboard and fires. The plane on the catapult model (`ship.model.floatplane`, from models_detail.js) is hidden while the scout flies. The scout is a `WW.Scout` (a `WW.Plane` with kind `'scout'`, `WW.PLANE_TYPES.scout`) in `WW.world.planes`, so fighters, AA and the camera see it. Its states are `catapult`, `transit` (search), `return`, `alight` and `afloat`. Other states, such as `falling` and `ditch`, use the Plane code. It flies a search arc 90 units from the enemy fleet's centre on the near side. It sets `ship.spottedUntil = now + 20` (and `ship.spottedBy`) on enemy ships within 85 units. In `combat.fireShell`, the dispersion of a shot at a spotted target farther than 60 units is multiplied by `SPOT_DISP = 0.85`. After 85 s, or below 50% hp, the scout flies home, alights beside its ship, taxis alongside for approximately 3.5 s and is taken back aboard. There are at most 2 sorties per ship, with 50 s between them.
+Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-style monoplane, IJN: Pete-style biplane, both with one centre float and two wing floats). 5 to 25 s into a round, the catapult trains outboard and fires. The plane on the catapult model (`ship.model.floatplane`, from models_detail.js) is hidden while the scout flies. The scout is a `WW.Scout` (a `WW.Plane` with kind `'scout'`, `WW.PLANE_TYPES.scout`) in `WW.world.planes`, so fighters, AA and the camera see it. Its states are `catapult`, `transit` (search), `return`, `alight` and `afloat`. Other states, such as `falling` and `ditch`, use the Plane code. It flies a search arc 90 units from the centre of the enemy contacts (`WW.intel.centre`) on the near side, or around the middle of the enemy's half of the map when nothing is known. `intel.js` does its spotting: it reports contacts and sets `ship.spottedUntil = now + 20` (and `ship.spottedBy`) on enemy ships within 85 units. In `combat.fireShell`, the dispersion of a shot at a spotted target farther than 60 units is multiplied by `SPOT_DISP = 0.85`. After 85 s, or below 50% hp, the scout flies home, alights beside its ship, taxis alongside for approximately 3.5 s and is taken back aboard. There are at most 2 sorties per ship, with 50 s between them.
 
 `camera.js` `candidates()` calls each function in `WW.camHooks` (`fn(add, dur)`). The aces module adds aces in dogfights. The scouts module adds catapult launches and alightings.
 
