@@ -17,7 +17,7 @@ window.WW = window.WW || {};
   var PICKUP_D = 10, PICKUP_V = 1.6, PICKUP_T = 10; // alongside (aircrew; a hull's survivors: + half its length + 4, clear of the wreck), nearly stopped, this long
   var SAFE_DPS = 12;                              // known enemy fire at the survivors' position a rescuer accepts (not broken)
   var BOATS = { carrier: 4, battleship: 3, cruiser: 2, destroyer: 1, submarine: 0, pt: 1 }, PER_BOAT = 12; // lifeboats.js boats
-  var CREW = { fighter: 1, dive: 2, torpedo: 3, scout: 2 };
+  var CREW = { fighter: 1, dive: 2, torpedo: 3, scout: 2, flyingboat: 8 };
   var SCUT_T = 4, SCUT_P = 0.08, SCUT_HP = 0.25, SCUT_K = 0.6, SCUT_GRACE = 30, SCUT_FAST = 1.3; // check interval, chance per check,
                                                   // hp share and speedK below which, s after the break, pursuer speed ratio
   var NATIONS = ['USN', 'IJN'];
@@ -61,6 +61,7 @@ window.WW = window.WW || {};
     var ships = WW.world.ships;
     for (var i = 0; i < tasks.length; i++) {
       var t = tasks[i]; if (t.done) continue;
+      if (t.air) { if (t.air.alive && !t.air.removed) continue; t.air = null; } // a Catalina is on it (air_flyingboats.js): no destroyer, no expiry
       var br = broken(t.nation);
       if (t.by && (!t.by.alive || t.by.escaped || t.by.rescue !== t || (!br && engaged(t.by)))) release(t); // called away to fight
       var age = now - t.t0;
@@ -85,6 +86,14 @@ window.WW = window.WW || {};
       release(t);
       WW.emit('rescue', { ship: s, x: t.x, z: t.z, n: t.n, kind: t.kind });
     }
+  }
+  // Survivors picked up by a rescuer that is not a destroyer (a Catalina, air_flyingboats.js): as pickup() does.
+  function complete(t, by) {
+    if (t.done) return;
+    t.done = true; stats.rescues[t.nation]++; stats.survivors[t.nation] += t.n; if (t.kind === 'pilot') stats.pilots[t.nation] += t.n;
+    if (t.air === by) t.air = null;
+    release(t);
+    WW.emit('rescue', { ship: null, air: by, x: t.x, z: t.z, n: t.n, kind: t.kind });
   }
   function escape(s) {
     s.escaped = true; stats.escaped[s.nation]++; if (MAJOR[s.type]) last[s.nation] = 'escaped';
@@ -152,14 +161,14 @@ window.WW = window.WW || {};
     if (foe && foe.posture === 'pursue') stats.pursuitKills[foe.nation]++;
     addTask(s.nation, s.x, s.z, (BOATS[s.type] || 0) * PER_BOAT, 'ship', s.stats.length);
   });
-  // Aircrew in the water: a ditched plane, or one the crew abandoned (air_deaths.js picks the mode with WW.rand).
+  // Aircrew in the water: a ditched plane, one the crew abandoned, or a crew that bailed out (air_deaths.js picks the mode with WW.rand); at the sim position of the moment.
   function hookPlanes() {
     var P = WW.Plane && WW.Plane.prototype; if (!P) return;
     ['shotDown', 'ditch'].forEach(function (nm) {
       var orig = P[nm];
       P[nm] = function () {
         var was = this.alive, r = orig.apply(this, arguments);
-        try { if (was && !this.alive && (this.deathMode === 'ditch' || this.deathMode === 'abandon')) addTask(this.nation, this.x, this.z, CREW[this.kind] || 1, 'pilot'); } catch (e) { /* never into the air code */ }
+        try { if (was && !this.alive && (this.deathMode === 'ditch' || this.deathMode === 'abandon' || this.bailAt != null)) addTask(this.nation, this.x, this.z, CREW[this.kind] || 1, 'pilot'); } catch (e) { /* never into the air code */ }
         return r;
       };
     });
@@ -173,7 +182,7 @@ window.WW = window.WW || {};
     broken: broken, homeX: homeX, engaged: engaged,
     // how the side's last major ship (CV / BB / CA / DD) left the battle: 'sunk' | 'escaped' | undefined (main.js)
     lastOut: function (n) { return last[n]; },
-    tasks: function () { return tasks; },
+    tasks: function () { return tasks; }, complete: complete,   // task.air: a Catalina's claim (air_flyingboats.js)
     // open survivor pickups of a side: assigned ones, and fresh ones still waiting for a rescuer
     pending: function (n) { var c = 0, now = WW.time.now; for (var i = 0; i < tasks.length; i++) { var t = tasks[i]; if (!t.done && t.nation === n && (t.by || now - t.t0 < 20)) c++; } return c; },
     // visual helpers (lifeboats.js; they read the sim only): an open survivor pickup of side n within r of (x, z)

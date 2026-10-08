@@ -107,7 +107,7 @@ window.WW = window.WW || {};
   // intel.js SEE_PLANE_NATION; IJN lookouts see ~170, so the IJN scrambles later). air_ops.js keeps it relieved on fuel.
   function capWanted(ship) {
     let near = 0;
-    if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && WW.dist(ship.x, ship.z, c.x, c.z) < 250) near++;
+    if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && c.unit.kind !== 'flyingboat' && WW.dist(ship.x, ship.z, c.x, c.z) < 250) near++;
     const elem = ship.nation === 'IJN' ? 3 : 2;
     return near ? 4 : elem;
   }
