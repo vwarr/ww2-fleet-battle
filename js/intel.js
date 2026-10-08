@@ -139,6 +139,8 @@ window.WW = window.WW || {};
         if (WW.dist2(p.x, p.z, o.x, o.z) < R.PLANE_PLANE * R.PLANE_PLANE) { sight(nation, S, o, p, 'air', now); got = true; }
       }
     }
+    // the island base: on the enemy's chart, and its owner's radar / lookout station (island_base.js)
+    if (WW.islandBase && WW.islandBase.base) WW.islandBase.scan(nation, function (u, by, q) { sight(nation, S, u, by, q, now); });
     // expire and sort into ships / planes (in place, no allocation)
     var L = S.list, w = 0;
     S.ships.length = 0; S.planes.length = 0;

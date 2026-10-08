@@ -213,6 +213,7 @@ window.WW = window.WW || {};
     }
 
     takeoff(dt) {
+      if (this.carrier.isBase && WW.landAir) return WW.landAir.takeoff(this, dt); // runway (land_air.js)
       if (WW.airDeck) return WW.airDeck.takeoff(this, dt); // deck spot, taxi, run, climb-out (air_deck.js)
       const c = this.carrier, dk = deckInfo(c);
       this.deckY = dk.y; this.heading = c.heading; this.turn = 0;
@@ -284,6 +285,7 @@ window.WW = window.WW || {};
     torpBomber(dt) { if (WW.strike) WW.strike.torp(this, dt); else this.state = 'return'; }
 
     goHome(dt) {
+      if (this.carrier.isBase && WW.landAir) return WW.landAir.goHome(this, dt);
       if (WW.airDeck) return WW.airDeck.goHome(this, dt);
       const c = this.carrier, dk = deckInfo(c), L = c.stats.length, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       this.foe = null;
@@ -294,6 +296,7 @@ window.WW = window.WW || {};
     }
 
     landing(dt) {
+      if (this.carrier.isBase && WW.landAir) return WW.landAir.landing(this, dt);
       if (WW.airDeck) return WW.airDeck.landing(this, dt); // pattern, groove, wave-off, trap
       const c = this.carrier, dk = deckInfo(c), L = c.stats.length, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       const px = dk.x - ch * L * 0.25, pz = dk.z - sh * L * 0.25, dh = WW.dist(this.x, this.z, px, pz);
@@ -313,6 +316,7 @@ window.WW = window.WW || {};
     }
 
     rollout(dt) {
+      if (this.carrier.isBase && WW.landAir) return WW.landAir.rollout(this, dt);
       if (WW.airDeck) return WW.airDeck.rollout(this, dt); // arrestor jolt, then the deck takes the model
       const c = this.carrier, dk = deckInfo(c), ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       this.rel = Math.max(0, this.rel - 12 * dt); this.lx += this.rel * dt;
@@ -355,7 +359,8 @@ window.WW = window.WW || {};
       if (WW.dogfight) WW.dogfight.equip(p); // per-nation flight stats
       WW.world.planes.push(p);
       WW.stats.planesLaunched++;
-      if (WW.airDeck) WW.airDeck.launched(p);
+      if (carrier.isBase && WW.landAir) WW.landAir.launched(p); // an island base: its runway (land_air.js)
+      else if (WW.airDeck) WW.airDeck.launched(p);
       return p;
     },
     update(dt) {

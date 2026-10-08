@@ -56,7 +56,7 @@ window.WW = window.WW || {};
     for (i = 0; i < cs.length; i++) {
       c = cs[i]; var u = c.unit; if (!u || !u.alive) continue;
       var age = now - c.seenAt, w = Math.max(0.3, 1 - age / 90);
-      known += POWER[u.type] * (0.3 + 0.7 * u.hp / u.maxHp) * w;
+      known += (u.isBase ? u.power : POWER[u.type]) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power
       ex += c.x * w; ez += c.z * w; ew += w;
       for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); }
     }
@@ -103,6 +103,7 @@ window.WW = window.WW || {};
     defend(B, cs, now);
     focus(B, cs, now);
     strikes(B, cs, now);
+    B.objective = WW.baseAI ? WW.baseAI.objective(B) : null; // the fight for the island (base_ai.js)
     B.airRaid = null;
     var pl = I ? I.enemyPlanes(B.nation) : [];
     for (i = 0; i < pl.length; i++) {
@@ -179,7 +180,9 @@ window.WW = window.WW || {};
         var dd = WW.dist(cv.x, cv.z, c.x, c.z); if (dd > RANGE) continue;
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
-        var sc = dfd * Math.max(STRIKE_V[u.type], dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
+        var sv = u.isBase ? (WW.baseAI ? WW.baseAI.strikeValue(B, cv) : 0) : STRIKE_V[u.type]; // the island base (base_ai.js)
+        if (!sv) continue;
+        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
         if (pur) sc *= runaway(B, u, c);
         if (sc > bs) { bs = sc; best = u; bc = c; }
       }
@@ -252,6 +255,7 @@ window.WW = window.WW || {};
     // within TTK s, not counting this shooter's own share) x0.6; else 1
     assignment: function (ship, target) {
       var B = sides[ship.nation]; if (!B) return 1;
+      var bf = WW.baseAI ? WW.baseAI.assign(ship, target) : 0; if (bf) return bf; // an enemy at the own island base
       for (var i = 0; i < B.defend.length; i++) {
         var q = B.defend[i];
         if (q.enemy === target && ship !== q.carrier && WW.dist(ship.x, ship.z, q.carrier.x, q.carrier.z) < DEFEND_HELP) return 2.5; // protect the carrier

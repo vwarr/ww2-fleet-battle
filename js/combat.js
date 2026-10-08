@@ -40,7 +40,7 @@ window.WW = window.WW || {};
   }
   // First enemy ship (of shooterNation) whose hull covers (x,z). opts.subs: include submerged subs.
   function findHit(shooterNation, x, z, pad, includeSubmerged, prefer) {
-    if (prefer && shipUsable(prefer) && prefer.nation !== shooterNation &&
+    if (prefer && !prefer.isBase && shipUsable(prefer) && prefer.nation !== shooterNation &&
         (includeSubmerged || !prefer.submerged) && onHull(prefer, x, z, pad)) return prefer;
     var list = (WW.world && WW.world.ships) || [];
     for (var i = 0; i < list.length; i++) {
@@ -186,6 +186,7 @@ window.WW = window.WW || {};
       else { fx('explosion', x, 1.2, z, S.splash * 0.6); if (big) fx('sparks', x, 1.5, z); else fx('sparks', x, 1, z); }
       return;
     }
+    if (WW.islandBase) WW.islandBase.impact(p.nation, x, z, p.dmg, 'shell', p.cal); // the island base (craters, facilities)
     if (depthAt(x, z) <= 0) {
       fx('explosion', x, 0.6, z, Math.max(0.4, S.splash * 0.35));
       fx('smoke', x, 0.8, z, false, S.splash * 0.5);

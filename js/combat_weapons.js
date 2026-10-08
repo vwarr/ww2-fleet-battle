@@ -102,6 +102,8 @@ window.WW = window.WW || {};
     if (hit) {
       I.damage(hit, p.dmg, p.x, p.z, 'bomb');
       if (!WW.damage) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
+    } else if (WW.islandBase && WW.islandBase.impact(p.nation, p.x, p.z, p.dmg, 'bomb')) {
+      I.fx('explosion', p.x, 1, p.z, 2); I.fx('smoke', p.x, 1.4, p.z, true, 2.2);   // on the island base
     } else if (I.depthAt(p.x, p.z) <= 0) {
       I.fx('explosion', p.x, 0.6, p.z, 1.2); I.fx('smoke', p.x, 1, p.z, true, 1.5);
     } else {

@@ -162,10 +162,10 @@ window.WW = window.WW || {};
       WW.emit('setupStart', {});
     },
     // auto (screensaver): endless random battles on new maps
-    enterAuto() { game.mode = 'auto'; game.composition = null; game.startRound(); },
+    enterAuto() { game.mode = 'auto'; game.composition = null; game.baseChoice = null; game.startRound(); }, // baseChoice: setup's Base button (island_base.js)
     randomComposition, minSpacing,
     spawnComposition,
-    tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0); },
+    tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0) + (WW.islandBase ? WW.islandBase.tons(nation) : 0); }, // + an intact island base
     // reason: 'kill' (a side's surface fleet sunk) | 'retire' (the loser's survivors left the map) | 'time' | 'stall'
     endRound(winner, reason, loser) {
       game.state = 'victory'; game.winner = winner; game.victoryTime = 0; game.endReason = reason || 'time';
@@ -231,6 +231,7 @@ window.WW = window.WW || {};
     call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
     call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
+    call('islandBase', 'update', dt); // the island air base: repairs, coastal guns, base planes (island_base.js, land_air.js)
     call('endgame', 'update', dt);  // escapes off the map, survivor pickups, scuttling (endgame.js)
     call('shipFires', 'update', dt); // fires, flooding, damage control (ship_fires.js)
     call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)
