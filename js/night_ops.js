@@ -14,12 +14,12 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var NIGHT_EYE = { USN: 0.3, IJN: 0.5 },                 // visual range in full dark (x the day range)
-      FLASH_NIGHT = 0.3,                                  // gun flash range + 30% in full dark
+  var FLASH_NIGHT = 0.3,                                  // gun flash range + 30% in full dark
       RADAR = 170, RADAR_SIZE = { carrier: 1, battleship: 1, cruiser: 0.9, destroyer: 0.7, submarine: 0.4, pt: 0.3 },
       RADAR_SHIPS = { battleship: 1, cruiser: 1, destroyer: 1 }, CLUTTER = 2.5,  // a target in water shallower than this: lost in the land echo
       RAIN_VIS = 0.7,                                     // rain on the line of sight: visual range x (1 - RAIN_VIS x cover)
-      STAR = { R: 160, MIN: 15, AGE: 15, CD: { USN: 45, IJN: 28 }, MAX: 3, H: 50, FLIGHT: 2.5, LIFE: 24, FALL: 1.2, LIT: 95, BEHIND: 22,
+      STAR = { R: 160, MIN: 15, AGE: 15, CD: 48, CD_NIGHT: 22,  // cooldown: CD - CD_NIGHT x doctrine.night
+               MAX: 3, H: 50, FLIGHT: 2.5, LIFE: 24, FALL: 1.2, LIT: 95, BEHIND: 22,
                SHIPS: { USN: { cruiser: 1, destroyer: 1, battleship: 1 }, IJN: { cruiser: 1, destroyer: 1 } } },
       SL = { R: 120, ON: 14, CD: 30, AGE: 8, BEAM: 18 },  // searchlight reach, time on, cooldown, contact age, lit radius round the target
       DARK_OPS = 0.4;                                     // star shells and searchlights below this daylight
@@ -33,7 +33,7 @@ window.WW = window.WW || {};
   function dayAt(x, z) { return WW.daylight * (1 - 0.55 * cover(x, z)); }
   // visual range factor of observer s on target o (no flash): darkness by the observer's night optics, rain on the LOS
   function visK(s, o) {
-    var d = dayAt(o.x, o.z), ne = NIGHT_EYE[s.nation] || 0.35, k = ne + (1 - ne) * d;
+    var dc = doc(s.nation), d = dayAt(o.x, o.z), ne = dc ? dc.nightEye : 0.35, k = ne + (1 - ne) * d;
     var rain = WW.weather ? WW.weather.along(s.x, s.z, o.x, o.z) : 0;
     if (lit(o)) k = Math.max(k, 0.9);
     return k * (1 - RAIN_VIS * rain);
@@ -106,7 +106,8 @@ window.WW = window.WW || {};
       bd = d2; best = c;
     }
     if (!best) return;
-    nextStar.set(s.id, now + STAR.CD[s.nation]);
+    var dc = doc(s.nation);
+    nextStar.set(s.id, now + STAR.CD - STAR.CD_NIGHT * (dc ? dc.night : 0.5));
     fireStar(s, best, now);
   }
   function lightOff(L, i) { L.ship.searchOn = false; lights.splice(i, 1); WW.emit('searchlight', { ship: L.ship, on: false }); }
@@ -159,5 +160,5 @@ window.WW = window.WW || {};
 
   WW.nightOps = { update: update, clear: clear, seeR: seeR, visK: visK, lit: lit, radarR: radarR, airK: airK, dayAt: dayAt,
     torpK: torpK, rangeK: rangeK, pressK: pressK, cvFleeK: cvFleeK, subUp: subUp,
-    shells: shells, lights: lights, stats: stats, NIGHT_EYE: NIGHT_EYE, RADAR: RADAR, STAR: STAR, SL: SL };
+    shells: shells, lights: lights, stats: stats, RADAR: RADAR, STAR: STAR, SL: SL };
 })();

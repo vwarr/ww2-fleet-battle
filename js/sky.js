@@ -24,10 +24,12 @@ window.WW = window.WW || {};
     scene.add(sun); scene.add(sun.target);
     const mat = new THREE.ShaderMaterial({
       uniforms: { zenith: { value: C(ZENITH) }, sunSide: { value: C(SUN_SIDE) }, away: { value: C(AWAY) },
-                  glow: { value: C(SUN_GLOW) }, sunDir: { value: SUN_DIR } },
+                  glow: { value: C(SUN_GLOW) }, sunDir: { value: SUN_DIR.clone() },   // the dome's sun sets at dusk (sky_time.js)
+                  moonDir: { value: new THREE.Vector3(0.82, 0.26, -0.5).normalize() }, night: { value: 0 }, time: { value: 0 } },
       vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: [
-        'uniform vec3 zenith; uniform vec3 sunSide; uniform vec3 away; uniform vec3 glow; uniform vec3 sunDir; varying vec3 vDir;',
+        'uniform vec3 zenith; uniform vec3 sunSide; uniform vec3 away; uniform vec3 glow; uniform vec3 sunDir; uniform vec3 moonDir; uniform float night, time; varying vec3 vDir;',
+        'float hash3(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }',
         'void main(){',
         '  vec3 d = normalize(vDir);',
         '  float h = clamp(d.y, 0.0, 1.0);',
@@ -38,6 +40,14 @@ window.WW = window.WW || {};
         '  float s = max(dot(d, sunDir), 0.0);',
         '  c = mix(c, glow, pow(s, 10.0) * 0.55 + pow(s, 300.0) * 0.6);',   // soft halo + soft sun disc
         '  if (d.y < 0.0) c = horizon;',
+        '  if (night > 0.01) {',                                              // stars and a moon (sky_time.js sets night)
+        '    vec3 g = d * 170.0, f = fract(g) - 0.5; float hs = hash3(floor(g));',
+        '    float st = step(0.986, hs) * smoothstep(0.4, 0.05, length(f)) * smoothstep(0.03, 0.3, d.y);',
+        '    c += vec3(0.85, 0.9, 1.0) * st * night * (0.55 + 0.45 * sin(time * (1.5 + hs * 3.0) + hs * 90.0)) * (0.6 + (hs - 0.986) * 60.0);',
+        '    float m = max(dot(d, moonDir), 0.0);',
+        '    c += vec3(0.32, 0.4, 0.62) * (pow(m, 60.0) * 0.45 + pow(m, 8.0) * 0.12) * night;',   // halo
+        '    c = mix(c, vec3(1.25, 1.22, 1.1), smoothstep(0.99935, 0.9996, m) * night);',      // disc
+        '  }',
         '  gl_FragColor = vec4(c, 1.0);',
         '}'].join('\n'),
       side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false // authored at display colour, like the fog
@@ -82,8 +92,8 @@ window.WW = window.WW || {};
     const sc = sun.shadow.camera; sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.updateProjectionMatrix();
   }
   // light-space basis, for snapping the shadow frustum to whole texels (no shimmer as the camera moves)
-  const R = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), SUN_DIR).normalize();
-  const U = new THREE.Vector3().crossVectors(SUN_DIR, R).normalize();
+  // (the light direction moves at dusk: sky_time.js lowers the sun, then swaps it for the moon; the basis follows)
+  const UP = new THREE.Vector3(0, 1, 0), R = new THREE.Vector3(), U = new THREE.Vector3();
   const tgt = new THREE.Vector3();
   function update(rdt) {
     const cam = WW.camera;
@@ -98,14 +108,16 @@ window.WW = window.WW || {};
     const wide = !WW.cam || WW.cam.isOverview();
     setShadowSize(wide ? 520 : 120);   // the overview covers the whole 960 x 600 map
     const fog = WW.scene && WW.scene.fog; // the overview sits ~1300 units up: push the haze out so the far side of the map reads
-    if (fog) { fog.near = wide ? 1500 : 650; fog.far = wide ? 4200 : 2300; }
+    if (fog) { fog.near = wide ? 1500 : 650; fog.far = wide ? 4200 : 2300; } // sky_time.js pulls it in under rain
     if (WW.cam && WW.cam.target) tgt.copy(WW.cam.target()); else tgt.set(WW.cfg.MAP_W / 2, 0, WW.cfg.MAP_H / 2);
     tgt.y = 0;
+    if (WW.skyTime) WW.skyTime.update(rdt);   // time of day and weather: palette, light, fog (sky_time.js)
+    R.crossVectors(UP, SUN_DIR).normalize(); U.crossVectors(SUN_DIR, R).normalize();
     const texel = (2 * shadowSize) / sun.shadow.mapSize.x;
     const u = Math.round(tgt.dot(R) / texel) * texel, v = Math.round(tgt.dot(U) / texel) * texel, w = tgt.dot(SUN_DIR);
     tgt.copy(R).multiplyScalar(u).addScaledVector(U, v).addScaledVector(SUN_DIR, w);
     sun.target.position.copy(tgt);
     sun.position.copy(tgt).addScaledVector(SUN_DIR, 700);
   }
-  WW.sky = { init, update, HORIZON, SUN_DIR, sunColor: () => sun && sun.color };
+  WW.sky = { init, update, HORIZON, SUN_DIR, sunColor: () => sun && sun.color, parts: () => ({ dome, sun, hemi, clouds }) };
 })(window.WW);

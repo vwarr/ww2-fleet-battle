@@ -17,7 +17,7 @@ window.WW = window.WW || {};
   var stats = { rounds: 0, kinds: { day: 0, dusk: 0, night: 0 }, launchesDark: 0, blocked: 0, recalls: 0,
                 nightLandings: 0, nightLandingLoss: 0, nightTorps: { USN: 0, IJN: 0 } };
   var D = {
-    kind: 'day', startHour: 13, duskAt: 1e9, t0: 0, force: null, stats: stats, FLY_MIN: FLY_MIN,
+    kind: 'day', pin: null, startHour: 13, duskAt: 1e9, t0: 0, force: null, stats: stats, FLY_MIN: FLY_MIN,
     DUSK_LEN: DUSK_LEN, PER_H: PER_H,
     hourAt: function (t) { return D.startHour + t / PER_H; },
     level: function (t) { var x = (t - D.duskAt) / DUSK_LEN; x = x < 0 ? 0 : x > 1 ? 1 : x; return 1 - x * x * (3 - 2 * x); },
@@ -70,7 +70,7 @@ window.WW = window.WW || {};
   function update() {
     if (!WW.game || WW.game.state === 'setup') return;
     wrapLaunch();
-    WW.daylight = D.level(D.roundT());
+    WW.daylight = D.pin != null ? D.pin : D.level(D.roundT());   // pin: test hook (screenshots)
     if (WW.game.state !== 'battle') return;
     if (WW.stats.planesLaunched > D.lastLaunched) { if (!D.canFly()) stats.launchesDark += WW.stats.planesLaunched - D.lastLaunched; }
     D.lastLaunched = WW.stats.planesLaunched;

@@ -6,7 +6,8 @@
 // --cross: the same seeds in a full (rendered) page and a sim-only page must give identical traces.
 // Usage: node tests/determinism.js [seed=1] [seconds=300] [--render]
 //        node tests/determinism.js --cross [seeds=1,2,3] [seconds=300]
-//        (BASE_URL=http://localhost:PORT/, CHROMIUM=headless shell, EVERY=5 sample interval in sim s)
+//        (BASE_URL=http://localhost:PORT/, CHROMIUM=headless shell, EVERY=5 sample interval in sim s,
+//         TOD=dusk|night and WX=line force the time of day and the weather: daylight.js, weather.js)
 const { chromium } = require('playwright');
 const crypto = require('crypto');
 const H = require('./headless');
@@ -28,13 +29,14 @@ async function openPage(b, errs, render = H.RENDER) {
 
 // Run one seeded round for `secs` sim seconds; return [{ t, ents: {key: string}, stats: string }]
 function trace(p, seed, secs) {
-  return p.evaluate(([seed, secs, every]) => {
+  return p.evaluate(([seed, secs, every, tod, wx]) => {
     const G = WW.game;
     // aces carry over between rounds by design (air_aces.js); a seeded replay starts with fresh rosters
     if (WW.aces) WW.aces.reset();
     WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
     const s0 = Object.assign({}, WW.stats);
     G.composition = null; G.mode = 'auto'; // the page boots into setup with its own random fleets: start from this seed's fleets
+    if (WW.dayNight) WW.dayNight.force = tod; if (WW.weather) WW.weather.force = wx; // TOD=night|dusk|day, WX=line|scatter|clear
     G.startRound({ keepMap: true });
     const n = v => typeof v === 'number' ? (Object.is(v, -0) ? 0 : v) : v;
     const snap = t => {
@@ -47,12 +49,13 @@ function trace(p, seed, secs) {
         ents[`plane#${i} ${q.nation} ${q.kind}`] = [q.x, q.y, q.z, q.heading, q.hp, q.state, q.alive].map(n).join(',');
       });
       const st = {}; for (const k in WW.stats) if (typeof WW.stats[k] === 'number' && k !== 'round') st[k] = WW.stats[k] - (s0[k] || 0);
-      return { t, ents, stats: JSON.stringify(st) + ' state=' + G.state + ' winner=' + G.winner };
+      const night = (WW.daylight === undefined ? '' : ' dl=' + WW.daylight) + (WW.nightOps ? ' shells=' + WW.nightOps.shells.map(q => q.x.toFixed(3) + ':' + q.z.toFixed(3)).join('|') + ' lights=' + WW.nightOps.lights.length : '') + (WW.weather ? ' wx=' + WW.weather.cells.map(c => c.x.toFixed(3)).join('|') : '');
+      return { t, ents, stats: JSON.stringify(st) + ' state=' + G.state + ' winner=' + G.winner + night };
     };
     const out = [snap(0)];
     for (let t = every; t <= secs + 1e-9; t += every) { __sim.fastForward(every); out.push(snap(+t.toFixed(3))); }
     return out;
-  }, [seed, secs, EVERY]);
+  }, [seed, secs, EVERY, process.env.TOD || null, process.env.WX || null]);
 }
 
 const hash = tr => crypto.createHash('sha1').update(JSON.stringify(tr)).digest('hex').slice(0, 12);
