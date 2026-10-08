@@ -256,7 +256,7 @@ window.WW = window.WW || {};
   }
 
   // ---------------- submarines ----------------
-  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 26, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3, DD_FIRE: 38, AIM_T: 6 }; // DD_FIRE: a destroyer is a narrow, fast target: only close shots hit
+  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 18, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3, DD_FIRE: 38, AIM_T: 6, SCUTTLE: 60 }; // DD_FIRE: a destroyer is a narrow, fast target: only close shots hit
   // The best ambush: { c, ax, az, score } — a point beside the target's predicted track (from its last-known
   // heading and speed) that the sub can reach before the target passes. Never a destroyer (that is cornered fire).
   function ambush(ship) {
@@ -302,17 +302,18 @@ window.WW = window.WW || {};
 
   function subAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now(), st = ship.stats;
-    const L = a.ls || (a.ls = { decT: 0, amb: null, dds: [], dd: null, ddTgt: null, ddD: 1e9, air: false, near: false });
+    const L = a.ls || (a.ls = { decT: 0, amb: null, dds: [], dd: null, ddTgt: null, thr: null, thrD: 1e9, ddD: 1e9, air: false, near: false });
     L.decT -= dt;
     if (L.decT <= 0) {
       L.decT = 0.5;
       // what the side knows around the boat: destroyers (sonar hunters), any gun ship, aircraft
-      L.dd = null; L.ddD = 1e9; L.near = false; L.air = false; L.dds = [];
+      L.dd = null; L.ddD = 1e9; L.thr = null; L.thrD = 1e9; L.near = false; L.air = false; L.dds = [];
       for (const c of contacts(ship, 12)) {
         const d = WW.dist(ship.x, ship.z, c.x, c.z), u = c.unit;
         if (u.type === 'destroyer' && d < L.ddD) { L.ddD = d; L.dd = c; }
         if (u.type === 'destroyer' && d < 220) L.dds.push({ x: c.x, z: c.z, h: c.heading, sp: age(c) < 4 ? c.speed : 0 });
         if (!u.submerged && u.stats.guns.length && d < SUB.DIVE_SHIP) L.near = true;
+        if (!u.submerged && u.stats.guns.length && d < L.thrD) { L.thrD = d; L.thr = c; } // nearest gun ship
       }
       const ps = WW.intel && WW.intel.enemyPlanes ? WW.intel.enemyPlanes(n) : [];
       for (const p of ps) if (p.unit && p.unit.alive && WW.dist(ship.x, ship.z, p.x, p.z) < SUB.DIVE_AIR) { L.air = true; break; }
@@ -325,7 +326,7 @@ window.WW = window.WW || {};
     // Hard threats keep the boat down (and abort a surfacing). A destroyer out past DD_SAFE, or a target still
     // closing, only keeps it down while the air is fresh: with the clock past REFRESH it surfaces now, while it is
     // still safe, rather than be forced up later in the middle of a hunt.
-    const hard = L.ddD < SUB.DD_SAFE || L.air || L.near || a.evadeT > 0 || (d < SUB.DIVE_TGT && a.diveT < SUB.REFRESH + 8);
+    const hard = L.ddD < SUB.DD_SAFE || L.air || L.near || a.evadeT > 0 || (d < SUB.DIVE_TGT && a.diveT < SUB.REFRESH + 4);
     const soft = L.ddD < SUB.DIVE_DD || d < SUB.DIVE_TGT;
     if (a.forcedT > 0) { a.forcedT -= dt; ship.wantSurface = true; }
     else ship.wantSurface = !hard && (!soft || a.diveT > SUB.REFRESH);
@@ -350,13 +351,15 @@ window.WW = window.WW || {};
       ship.desiredHeading = ddSteer(ship, away(L.dd), L); ship.throttle = SUB.SILENT_THR;
       return;
     }
-    // Air running low with a destroyer about: open the distance before the boat has to come up.
-    if (!(a.forcedT > 0) && ship.submerged && a.diveT > SUB.REFRESH && L.dd && L.ddD < SUB.DIVE_DD) {
-      ship.desiredHeading = ddSteer(ship, away(L.dd), L); ship.throttle = 1;
+    // Air running low with a destroyer or gun ship about: open the distance before the boat has to come up.
+    if (!(a.forcedT > 0) && ship.submerged && a.diveT > SUB.REFRESH && L.thr && L.thrD < SUB.DIVE_DD) {
+      ship.desiredHeading = ddSteer(ship, away(L.dd && L.ddD < L.thrD + 30 ? L.dd : L.thr), L); ship.throttle = 1;
       return;
     }
     // ---- forced up, or evading after a shot: turn away from the threat ----
     if (a.forcedT > 0 && (L.ddD < 160 || L.near || L.air)) {
+      // Badly hurt, out of air and forced up under the guns of a hunter it cannot outrun: the crew scuttles her.
+      if (!ship.submerged && ship.hp < ship.maxHp * 0.35 && (L.ddD < SUB.SCUTTLE || L.thrD < SUB.SCUTTLE)) { ship.startSinking(); return; }
       const from = L.dd || (tgt ? { x: tgt.x, z: tgt.z } : null);
       let h = from ? away(from) : (WW.threat && WW.threat.away(n, ship.x, ship.z)) || ship.heading;
       h = ddSteer(ship, h, L);
