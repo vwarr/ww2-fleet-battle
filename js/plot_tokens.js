@@ -180,11 +180,16 @@ window.WW = window.WW || {};
     }
     strikes(g, P, owner);
     const capital = s => s.type === 'carrier' || s.type === 'battleship';
+    // omniscient: what each side wrongly believes a ship to be ("USN plot: BB?"), from its misidentified contacts
+    const misid = new Map();
+    if (!owner && WW.intel) for (const n of ['USN', 'IJN']) for (const c of WW.intel.contacts(n)) if (c.misid && c.unit && c.unit.stats) misid.set(c.unit, n + ' plot: ' + (SHORT[c.reportedType] || c.reportedType) + '?');
     // own (or all) ships at their true positions
     for (const s of ships) {
       if (!s.alive || s.removed || (owner && s.nation !== owner)) continue;
       token(g, P, s.type, s.nation, s.x, s.z, s.heading, s.submerged ? 0.55 : 1, false);
       if (capital(s) && WW.diary) label(g, WW.diary.nameOf(s), WW.plot.sx(s.x), WW.plot.sy(s.z) + tokLen(s.type) * P.s * 0.3 + 4, PAINT[s.nation][1], 11, true);
+      const mi = misid.get(s);
+      if (mi) label(g, mi, WW.plot.sx(s.x), WW.plot.sy(s.z) - tokLen(s.type) * P.s * 0.3 - 18, PENCIL[WW.enemyOf(s.nation)] + '0.95)', 12, true);
     }
     if (owner && WW.intel) {
       const foe = WW.enemyOf(owner), col = PENCIL[foe] || PENCIL.IJN;
@@ -196,7 +201,6 @@ window.WW = window.WW || {};
         if (r > 2) wobble(g, X, Y, Math.max(r * P.s, 9), ph, col + (0.3 + 0.35 * a).toFixed(2) + ')', 1.4);
         token(g, P, t, foe, c.x, c.z, c.heading, a, !fresh);
         if ((c.speed || 0) > 0.3) arrow(g, X, Y, c.heading, Math.min(60, 10 + c.speed * 5), col + (0.3 + 0.5 * a).toFixed(2) + ')', !fresh);
-        if (c.misid) { g.fillStyle = col + '0.9)'; g.font = 'bold 15px "Special Elite", "Courier New", monospace'; g.textAlign = 'left'; g.fillText('?', X + tokLen(t) * P.s * 0.45, Y - 6); }
         if (!fresh || capital(u)) label(g, SHORT[t] + (fresh ? '' : ' ' + Math.round(age / 2) + ' min'), X, Y + tokLen(t) * P.s * 0.28 + 3, col + '0.85)', 10, true);
       }
       for (const c of WW.intel.contacts(owner)) {
