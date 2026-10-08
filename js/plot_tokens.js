@@ -181,7 +181,7 @@ window.WW = window.WW || {};
     strikes(g, P, owner);
     const capital = s => s.type === 'carrier' || s.type === 'battleship';
     // omniscient: what each side wrongly believes a ship to be ("USN plot: BB?"), from its misidentified contacts
-    const misid = new Map();
+    const misid = new Map(), late = [];
     if (!owner && WW.intel) for (const n of ['USN', 'IJN']) for (const c of WW.intel.contacts(n)) if (c.misid && c.unit && c.unit.stats) misid.set(c.unit, n + ' plot: ' + (SHORT[c.reportedType] || c.reportedType) + '?');
     // own (or all) ships at their true positions
     for (const s of ships) {
@@ -189,7 +189,7 @@ window.WW = window.WW || {};
       token(g, P, s.type, s.nation, s.x, s.z, s.heading, s.submerged ? 0.55 : 1, false);
       if (capital(s) && WW.diary) label(g, WW.diary.nameOf(s), WW.plot.sx(s.x), WW.plot.sy(s.z) + tokLen(s.type) * P.s * 0.3 + 4, PAINT[s.nation][1], 11, true);
       const mi = misid.get(s);
-      if (mi) label(g, mi, WW.plot.sx(s.x), WW.plot.sy(s.z) - tokLen(s.type) * P.s * 0.3 - 18, PENCIL[WW.enemyOf(s.nation)] + '0.95)', 12, true);
+      if (mi) late.push([mi, WW.plot.sx(s.x), WW.plot.sy(s.z) - tokLen(s.type) * P.s * 0.3 - 18, PENCIL[WW.enemyOf(s.nation)] + '1)']);
     }
     if (owner && WW.intel) {
       const foe = WW.enemyOf(owner), col = PENCIL[foe] || PENCIL.IJN;
@@ -211,6 +211,7 @@ window.WW = window.WW || {};
       for (let i = Math.max(0, NS.length - 5); i < NS.length; i++) note(g, NS[i], owner, now, placed);
     }
     for (const p of planes) if (p.alive && !p.removed && p.y > 2 && (!owner || p.nation === owner)) plane(g, p, p.x, p.z, p.heading, p.nation, 1);
+    for (const l of late) label(g, l[0], l[1], l[2], l[3], 13, true); // over the planes
   }
   // the cartouche: whose plot, the admiral, the clock, the keys
   function caption(g, P) {
