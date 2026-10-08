@@ -28,7 +28,7 @@ window.WW = window.WW || {};
     const fall = (r) => (d <= r ? 1.3 - 0.3 * d / r : d < r + 25 ? 1 - (d - r) / 25 : 0);
     for (const g of u.stats.guns) { const sh = WW.SHELL[g.cal]; v += 0.5 * (sh ? sh.dmg : 10) * g.count / g.reload * fall(g.range); }
     const tp = u.stats.torpedoes;
-    if (tp) v += 0.3 * WW.TORPEDO.dmg * tp.count / tp.reload * fall(tp.range * 0.85);
+    if (tp) v += 0.3 * WW.TORPEDO.dmg * (1 - (tp.dud || 0)) * tp.count / tp.reload * fall(tp.range * 0.85);
     return v * (0.5 + 0.5 * u.hp / u.maxHp);
   }
   // Allies-in-the-fan and land check along a spread at bearing b out to range (torpedoes die in shallow water).
@@ -151,7 +151,7 @@ window.WW = window.WW || {};
       if (L.ddD < SUB.SILENT || (bowOn && L.ddD < SUB.CORNER)) L.ddTgt = u;
     }
     if (L.ddTgt && (ship.submerged || a.forcedT > 0) && a.torpReload < SUB.AIM_T) { // tubes (nearly) ready: bow on
-      const u = L.ddTgt, du = WW.dist(ship.x, ship.z, u.x, u.z), p = lead(ship, u, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
+      const u = L.ddTgt, du = WW.dist(ship.x, ship.z, u.x, u.z), p = lead(ship, u, st.torpedoes.speed || WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
       ship.desiredHeading = lb; ship.throttle = a.torpReload > 2 ? SUB.SILENT_THR : 0.5;
       if (a.torpReload <= 0 && du > 10 && du < SUB.DD_FIRE && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, u) && fanClear(ship, lb, du + 10)) H.fireSpread(ship, u);
       return;
@@ -191,7 +191,7 @@ window.WW = window.WW || {};
       return;
     }
     // ---- ambush: get to the point beside the predicted track, then wait bow-on to the lead point ----
-    const p = lead(ship, tgt, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
+    const p = lead(ship, tgt, st.torpedoes.speed || WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
     const da = WW.dist(ship.x, ship.z, L.amb.ax, L.amb.az);
     if (da > 14 && d > SUB.FIRE + 10) { ship.desiredHeading = ddSteer(ship, Math.atan2(L.amb.az - ship.z, L.amb.ax - ship.x), L); ship.throttle = 1; }
     else { ship.desiredHeading = lb; ship.throttle = d > SUB.FIRE ? 0.3 : 0.25; }

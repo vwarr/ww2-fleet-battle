@@ -30,7 +30,7 @@ window.WW = window.WW || {};
 
   class Ship {
     constructor(type, nation, x, z, heading) {
-      const st = WW.SHIP_TYPES[type];
+      const st = WW.shipType ? WW.shipType(type, nation) : WW.SHIP_TYPES[type]; // per-nation torpedoes (core.js)
       this.id = nextId++; this.type = type; this.stats = st; this.nation = nation;
       this.x = x; this.z = z; this.heading = wrap(heading || 0); this.speed = 0;
       this.hp = this.maxHp = st.hp;

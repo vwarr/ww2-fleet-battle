@@ -168,7 +168,7 @@ window.WW = window.WW || {};
   function windZ() { return WW.wind ? WW.wind.z : 0; }
 
   // ---- effect recipes ----
-  var W = 0xf2ece2, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4; // foam colours are peak alpha (grey level)
+  var W = 0xf2ece2, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4, WAKE_F = 0x585858; // foam colours are peak alpha (grey level)
   function splash(x, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
     var sq = Math.sqrt(size), n = Math.min(14, 4 + Math.round(size * 2.5)), up = 2.6 * sq + 1.6;
@@ -241,11 +241,21 @@ window.WW = window.WW || {};
       rr(0.5, 0.85), rr(0.55, 0.8), rr(1.0, 1.4), col(R() < 0.5 ? 0xe8b458 : 0xe09040), col(0xc04428), -0.6, 0.8, rr(-3, 3));
     if (R() < 0.3) P.halo.spawn(x, y + 0.5, z, 0, 1, 0, 0.45, 1.4, 2.0, col(0x7a4a28), col(0x502810), 0, 0, 0);
   }
-  function wake(x, z, heading, size) {
+  function wake(x, z, heading, size, faint) { // faint: a barely-there trace (an oxygen torpedo's track)
     if (!P) return; size = size || 1;
+    var wc = col(faint ? WAKE_F : WAKE_A);
     var i = P.flat.spawn(x + rr(-0.15, 0.15) * size, 0.3, z + rr(-0.15, 0.15) * size, 0, 0, 0,
-      rr(1.4, 2.0), 0.7 * size, 2.0 * size, col(WAKE_A), col(WAKE_A), 0, 0, 0);
+      rr(1.4, 2.0), 0.7 * size, 2.0 * size, wc, wc, 0, 0, 0);
     P.flat.ey[i] = -(heading || 0); P.flat.ex[i] = 6; // ex > PI: stretch along heading
+  }
+  // A steam torpedo's track: exhaust bubbles boiling up in a white streak behind it (combat_weapons.js updateTorp)
+  function torpBubbles(x, z, heading) {
+    if (!P) return;
+    var c = Math.cos(heading || 0), s = Math.sin(heading || 0);
+    for (var k = 0; k < 2; k++) {
+      var b = -rr(0.5, 3), l = rr(-0.5, 0.5);
+      P.flat.spawn(x + c * b - s * l, 0.31, z + s * b + c * l, 0, 0, 0, rr(2.2, 3.4), rr(0.25, 0.4), rr(0.9, 1.4), col(FOAM_A), col(WAKE_A), 0, 0, 0);
+    }
   }
   function oilSlick(x, z, size) {
     if (!P) return;
@@ -283,7 +293,7 @@ window.WW = window.WW || {};
   WW.fx = {
     init: init, update: update, clearAll: clearAll,
     splash: splash, explosion: explosion, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
-    fire: fire, wake: wake, oilSlick: oilSlick, sparks: sparks, trail: trail,
+    fire: fire, wake: wake, torpBubbles: torpBubbles, oilSlick: oilSlick, sparks: sparks, trail: trail,
     _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; }
   };
 })();
