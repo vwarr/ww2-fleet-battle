@@ -19,7 +19,7 @@ window.WW = window.WW || {};
   const ok = p => p && !p.removed && p.alive;
   const airborne = p => ok(p) && p.state !== 'takeoff' && p.state !== 'rollout' && p.state !== 'landing';
   const KIND = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
-  let S = null, nextAt = 0, checkT = 0, lastSq = null, scrambles = [];
+  let S = null, nextAt = 0, lastEnd = -1e9, checkT = 0, lastSq = null, scrambles = [];
   const log = [];                                         // recent shots (tests): { sk, kind, phase, at, dur, hard }
   const ST = { stories: 0, handoffs: 0, cutaways: 0, ended: 0 };
 
@@ -40,6 +40,13 @@ window.WW = window.WW || {};
       score += Math.random();
       if (!best || score > best.score) best = { lead, score, mission };
     };
+    // the imminent-action finder (camera_finder.js): an attack 8-45 s away beats everything else
+    if (WW.camFinder) for (const it of WW.camFinder.list()) {
+      const p = it.subj;
+      if (!p || !p.pt || !airborne(p) || it.etaReal < 8 || it.etaReal > 45) continue;
+      add(p, 10 + it.drama + 2 * it.score / Math.max(0.1, it.drama), p.kind === 'fighter' ? 'cap' : 'strike');
+      if (best && best.lead === p) best.item = it;
+    }
     for (const w of wavesNow()) {
       const lead = leadOfWave(w);
       if (!lead) continue;
@@ -90,18 +97,20 @@ window.WW = window.WW || {};
   }
   function start(arc, user) {
     const p = arc.lead;
+    if (S) end(true);
     S = { lead: p, group: groupOf(p), mission: arc.mission, nation: p.nation, t0: wall(), user: !!user, shots: 0,
-      last: '', phase: '', fall: null, ending: 0, cutaway: null, lastCutaway: -1e9, title: titleOf(p, arc.mission), titleUntil: wall() + CAPS };
+      last: '', phase: '', fall: null, ending: 0, cutaway: null, lastCutaway: -1e9, title: titleOf(p, arc.mission), title0: titleOf(p, arc.mission), titleUntil: wall() + CAPS };
     lastSq = p.squadron || null; ST.stories++;
     log.push({ start: true, lead: p.kind + ' ' + (p.squadron ? p.squadron.short : ''), mission: arc.mission, at: wall() });
-    S.begun = false;
+    S.begun = false; S.item = arc.item || null; S.imminent = !!arc.item;
     if (user) WW.cam.cut(); // the director's own pick waits for the current shot to end (never cuts an action shot)
     return true;
   }
   function end(quiet) {
     if (!S) return;
-    S = null; ST.ended++;
-    nextAt = wall() + dur(GAP[0], GAP[1]);
+    const short = S.user || S.imminent;
+    S = null; ST.ended++; lastEnd = wall();
+    nextAt = wall() + (short ? dur(40, 60) : dur(GAP[0], GAP[1]));
     log.push({ end: true, at: wall() });
     if (!quiet && WW.cam) WW.cam.cut();
   }
@@ -210,19 +219,33 @@ window.WW = window.WW || {};
   // per frame, before the director (wraps WW.cam.update)
   function tick(rdt) {
     const st = WW.game && WW.game.state, fc = WW.freecam && WW.freecam.active();
-    const can = st === 'battle' && WW.cam.mode === 'director' && !fc;
-    if (!can) { if (S) end(true); return; }
+    if (st !== 'battle' || WW.cam.mode !== 'director') { if (S) end(true); return; }
     const now = wall();
+    if (fc) { // the user drives the camera: a story on the subject they follow pauses and resumes when they let go
+      if (!S) return;
+      const f = WW.freecam.following();
+      if (!f || (f !== S.lead && S.group.indexOf(f) < 0)) { end(true); return; }
+      S.begun = true;
+      if (!ok(S.lead)) { // the leader went down while the user watched: after the fall, hand on to the wingman
+        S.pauseFall = S.pauseFall || now;
+        if (now - S.pauseFall > FALL) { const n = successor(); S.pauseFall = 0; if (n) { S.lead = n; ST.handoffs++; log.push({ handoff: n.kind + ' ' + (rank(n) || ''), at: now }); WW.freecam.retarget(n); } }
+      }
+      return;
+    }
     if (!S) {
-      if ((checkT -= rdt) > 0 || now < nextAt) return;
-      checkT = 2;
+      if ((checkT -= rdt) > 0) return;
+      checkT = 1;
       if (WW.game.roundTime !== undefined && WW.game.roundTime < 20) return;
       const a = bestArc();
-      if (a && a.score >= 7) start(a, false);
+      // an imminent attack may start after a short rest; anything else waits for the long one
+      if (a && (a.item ? now - lastEnd >= 40 : now >= nextAt && a.score >= 7)) start(a, false);
       return;
     }
     const shot = WW.cam._shot();
-    if (!S.begun) return; // waiting for the director's current shot to end
+    if (!S.begun) { // waiting for the director's current shot to end; an imminent attack cuts in (not into an action / test shot)
+      if (S.imminent && shot && !shot.stage && !shot.story && shot.t > 4 && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
+      return;
+    }
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
       S.regroupT = 2; const g = groupOf(S.lead);
       for (const m of S.group) if (ok(m) && g.indexOf(m) < 0) g.push(m);
@@ -252,7 +275,7 @@ window.WW = window.WW || {};
 
   WW.camStory = {
     init() {
-      WW.on('roundStart', () => { S = null; nextAt = wall() + dur(30, 60); scrambles = []; });
+      WW.on('roundStart', () => { S = null; nextAt = wall() + dur(30, 60); lastEnd = -1e9; scrambles = []; });
       WW.on('setupStart', () => { S = null; });
       WW.on('victory', () => { if (S) end(false); });
       WW.on('shipSunk', s => { if (S && s && !s.removed && wall() - S.lastCutaway > CUTAWAY_GAP) S.cutaway = { s, at: wall() }; });
@@ -266,6 +289,7 @@ window.WW = window.WW || {};
     active() { return !!S; },
     // key F: start a story now on the best arc, or end the current one
     toggle() {
+      if (WW.camFollow) return WW.camFollow.f();
       if (S) { end(false); return 'Follow: off'; }
       const st = WW.game && WW.game.state;
       if (st !== 'battle') return 'Follow: only in battle';
@@ -285,6 +309,10 @@ window.WW = window.WW || {};
     // tests
     start(p, mission) { if (S) end(true); return start({ lead: p, score: 0, mission: mission || (p.ordnance ? 'strike' : 'cap') }, true); },
     stop() { end(false); },
+    // camera_follow.js: start on an arc { lead, mission, item } as the user's story; the running story, if any
+    begin(arc) { return start(arc, true); },
+    story() { return S ? { lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
+    titleOf, anyArc,
     lead() { return S && S.lead; },
     _dbg() { return S ? { phase: S.phase, lead: S.lead && S.lead.kind, shots: S.shots, last: S.last, fall: !!S.fall, ending: S.ending, age: wall() - S.t0 } : null; },
     log, stats: ST, bestArc
