@@ -37,20 +37,27 @@ window.WW = window.WW || {};
     sph(g, C.gun, 0.16, 0.16, 0.16, half + 0.05, 0, 0);                 // spinner
     sph(g, C.glass, sp.canopy, fw * 0.75, fw * 0.62, L * 0.06, fw * 0.4, 0);
     // wings (low wing, rounded tips), belly, tailplane, fin
-    box(g, col, sp.chord, 0.09, sp.span, L * 0.1, -fw * 0.42, 0);
-    box(g, cs.belly, sp.chord * 0.96, 0.03, sp.span * 0.97, L * 0.1, -fw * 0.42 - 0.015, 0);
+    // wing panels on root pivots (wingL = port / -z, wingR = starboard / +z) so they can fold
+    var wr = fw * 0.5, wh = sp.span / 2 - wr, wings = [-1, 1].map(function (sgn) {
+      var w = new THREE.Group(); w.position.set(L * 0.1, -fw * 0.42, sgn * wr); g.add(w);
+      box(w, col, sp.chord, 0.09, wh, 0, 0, sgn * wh / 2);
+      box(w, cs.belly, sp.chord * 0.96, 0.03, wh * 0.97, 0, -0.015, sgn * wh / 2);
+      return w;
+    });
+    box(g, col, sp.chord, 0.09, wr * 2, L * 0.1, -fw * 0.42, 0);
     box(g, col, 0.42, 0.06, 1.05, -half + 0.22, -0.02, 0);
     box(g, col, 0.46, 0.5, 0.08, -half + 0.2, 0.0, 0);
     // wing marks (top of both wings)
-    var wy = -fw * 0.42 + 0.088, wz = sp.span * 0.3, wx = L * 0.1;
+    var wz = sp.span * 0.3;
     [-1, 1].forEach(function (sgn) {
+      var wg = wings[sgn > 0 ? 1 : 0], mz = sgn * (wz - wr), my = 0.088;
       if (isJ) {
-        disc(g, C.white, 0.27, 0.01, wx, wy, sgn * wz);
-        disc(g, C.red, 0.22, 0.015, wx, wy, sgn * wz);
+        disc(wg, C.white, 0.27, 0.01, 0, my, mz);
+        disc(wg, C.red, 0.22, 0.015, 0, my, mz);
       } else {
-        disc(g, nat.accent, 0.27, 0.01, wx, wy, sgn * wz);
+        disc(wg, nat.accent, 0.27, 0.01, 0, my, mz);
         var st = new THREE.Mesh(star(), mat(C.white));
-        st.scale.set(0.46, 1, 0.46); st.position.set(wx, wy + 0.016, sgn * wz); g.add(st);
+        st.scale.set(0.46, 1, 0.46); st.position.set(0, my + 0.016, mz); wg.add(st);
       }
       // fuselage side roundel (reads well from the low camera)
       var r0 = disc(g, isJ ? C.white : nat.accent, 0.17, 0.02, -L * 0.22, 0.03, sgn * fw * 0.33);
@@ -76,9 +83,12 @@ window.WW = window.WW || {};
     var b2 = box(prop, C.dark, 0.05, 1.0, 0.13, 0, 0, 0); b2.rotation.x = Math.PI / 2; b2.position.set(0, 0, -0.5);
     void b1;
     // merge static parts (prop and payload stay separate: they spin / hide)
-    if (m._merge) m._merge(g, 'plane|' + kind + '|' + nat.id, payload ? [prop, payload] : [prop], []);
+    if (m._merge) {
+      m._merge(g, 'plane|' + kind + '|' + nat.id, (payload ? [prop, payload] : [prop]).concat(wings), []);
+      wings.forEach(function (w, i) { m._merge(w, 'plane|' + kind + '|' + nat.id + '|w' + i, [], []); });
+    }
     if (m._shadows) m._shadows(g, false);
-    return { group: g, prop: prop, payload: payload };
+    return { group: g, prop: prop, payload: payload, wingL: wings[0], wingR: wings[1] };
   }
   if (WW.models) WW.models.buildPlane = buildPlane;
   else console.error('models_planes.js must load after models.js');

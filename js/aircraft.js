@@ -196,6 +196,7 @@ window.WW = window.WW || {};
     }
 
     takeoff(dt) {
+      if (WW.airDeck) return WW.airDeck.takeoff(this, dt); // deck spot, taxi, run, climb-out (air_deck.js)
       const c = this.carrier, dk = deckInfo(c);
       this.deckY = dk.y; this.heading = c.heading; this.turn = 0;
       this.speedTo(this.pt.speed * 0.8, dt);
@@ -310,6 +311,7 @@ window.WW = window.WW || {};
     }
 
     goHome(dt) {
+      if (WW.airDeck) return WW.airDeck.goHome(this, dt);
       const c = this.carrier, dk = deckInfo(c), L = c.stats.length, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       this.foe = null;
       const ex = dk.x - ch * (L * 0.5 + 35), ez = dk.z - sh * (L * 0.5 + 35);
@@ -319,6 +321,7 @@ window.WW = window.WW || {};
     }
 
     landing(dt) {
+      if (WW.airDeck) return WW.airDeck.landing(this, dt); // pattern, groove, wave-off, trap
       const c = this.carrier, dk = deckInfo(c), L = c.stats.length, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       const px = dk.x - ch * L * 0.25, pz = dk.z - sh * L * 0.25, dh = WW.dist(this.x, this.z, px, pz);
       const b = Math.atan2(pz - this.z, px - this.x);
@@ -337,6 +340,7 @@ window.WW = window.WW || {};
     }
 
     rollout(dt) {
+      if (WW.airDeck) return WW.airDeck.rollout(this, dt); // arrestor jolt, then the deck takes the model
       const c = this.carrier, dk = deckInfo(c), ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       this.rel = Math.max(0, this.rel - 12 * dt); this.lx += this.rel * dt;
       const ox = dk.x - c.x, oz = dk.z - c.z;
@@ -358,6 +362,7 @@ window.WW = window.WW || {};
 
   WW.Plane = Plane;
   WW.air = {
+    _pool: { get: getModel, release, scale: PLANE_SCALE, deckY: DECK_Y, rearm: REARM, pool }, // for air_deck.js
     init() {
       if (tracers.length || !WW.scene) return;
       for (let i = 0; i < 16; i++) { // one material per pooled line (created once) so each can fade on its own
@@ -374,9 +379,11 @@ window.WW = window.WW || {};
       const p = new Plane(kind, carrier.nation, carrier, target, getModel(kind, carrier.nation));
       WW.world.planes.push(p);
       WW.stats.planesLaunched++;
+      if (WW.airDeck) WW.airDeck.launched(p);
       return p;
     },
     update(dt) {
+      if (WW.airDeck) WW.airDeck.update(dt);
       for (const ln of tracers) if (ln.visible) { if ((ln.life -= dt) <= 0) ln.visible = false; else ln.material.opacity = 0.5 * ln.life / ln.life0; }
       const now = WW.time.now;
       for (const s of WW.world.ships) {
@@ -397,6 +404,7 @@ window.WW = window.WW || {};
     clearAll() {
       for (const p of WW.world.planes) p.remove();
       WW.world.planes.length = 0;
+      if (WW.airDeck) WW.airDeck.clearAll();
       for (const ln of tracers) ln.visible = false;
     }
   };
