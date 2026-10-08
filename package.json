@@ -17,7 +17,9 @@
     "test:audio-amb": "node tests/audio_amb.js",
     "test:audio:naval": "node tests/audio_naval.js",
     "test:audio:air": "node tests/audio_air.js",
-    "shots": "bash tests/run.sh peek.js"
+    "shots": "bash tests/run.sh peek.js",
+    "test:ai": "bash tests/run.sh sim_behaviour.js",
+    "test:balance": "bash tests/run.sh sim_behaviour.js --only balance --seeds 100 --pages 4"
   },
   "devDependencies": {
     "playwright": "^1.64.0"
