@@ -30,13 +30,16 @@ window.WW = window.WW || {};
   //   reportErr    air sighting reports (intel.js): position error per unit of the observer's range; misId: chance
   //                to report the wrong type (cruiser -> carrier...). IJN 0.07 / 0.12: its observers were the better
   //                trained early in the war; USN 0.09 / 0.18 (the Midway PBY and SBD reports)
+  //   patrol*      long-range flying boats (air_patrol.js): standoff from the shadowed ship, time on station (s),
+  //                mean s between patrols after the first, bombs carried (IJN 2: a Mavis may bomb a lone ship; it
+  //                shadows closer and longer)
   //   scuttle      (flag) once broken, every ship runs home at its best speed; a slowed cripple about to be caught
   //                may be scuttled
   //   jointStrike  the first deck loads of all the side's carriers form up together into one strike (Kido Butai)
   //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
   //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
   //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
-  //   (jointStrike, followUp and reserveFrac are not rolled: they are doctrine, not tuning)
+  //   (jointStrike, followUp, reserveFrac and patrolBombs are not rolled: they are doctrine, not tuning)
   //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
   //                ring (~80). USN 35: the 1942 circular screen, the AA umbrella over the carrier
   //   ringDD       destroyers per carrier in its ring (at least one); ringBB (flag): a side with two or more
@@ -54,14 +57,16 @@ window.WW = window.WW || {};
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
+      patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
       jointStrike: true, followUp: 'deckload', reserveFrac: 0.4,
       ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
+      patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
-  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1 }; // doctrine fields that are not rolled
+  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, patrolBombs: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
