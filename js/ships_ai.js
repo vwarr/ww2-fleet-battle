@@ -1,12 +1,11 @@
-// ships_ai.js — owner C. Ship AI: targeting, steering goals, turrets, torpedoes,
-// depth charges, submarine / PT / carrier behaviour. Called by WW.ships.update.
+// ships_ai.js — owner C. Ship AI core: setup, the per-ship update (retarget, dispatch to the role file, guns),
+// turrets, and the helpers the role files share (WW.shipAI.h). Called by WW.ships.update.
+// Behaviour per type lives in the role files, which register into WW.shipAI.roles:
+//   ai_surface.js (battleship / cruiser / destroyer), ai_carrier.js (carrier + air ops), ai_light.js (sub + PT).
 window.WW = window.WW || {};
 (function () {
   const PI = Math.PI;
-  const STRIKE_PRIO = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };
   const BIG_PRIO = { carrier: 90, battleship: 80, cruiser: 50, destroyer: 10, submarine: -999, pt: -60 };
-  const SONAR = 65;      // destroyer sub-detection radius
-  const SUB_MAX_DIVE = 45, SUB_SURFACE = 25; // a sub must surface after this long submerged, for this long
   const ARC = 2.5; // max turret swing either side of its rest angle
   const TURRET_RATE = { big: 0.5, med: 0.8, small: 1.6, mg: 3 };
 
@@ -96,7 +95,7 @@ window.WW = window.WW || {};
   }
 
   function guns(ship, dt) {
-    const a = ship.ai, st = ship.stats;
+    const a = ship.ai;
     let mw = false;
     for (const ts of a.turrets) {
       ts.reload -= dt;
@@ -121,44 +120,6 @@ window.WW = window.WW || {};
     }
   }
 
-  function surfaceAI(ship, dt) {
-    const a = ship.ai, st = ship.stats, t = ship.target;
-    // Destroyers hunt nearby subs.
-    // Destroyers hunt subs on sonar (radius SONAR), or at any range when no surface target is left.
-    // A lost sub: run to its last-known position (datum) and give it up there if sonar finds nothing.
-    if (st.depthCharges && a.sub && a.sub.alive && a.subC && (a.subD < SONAR || !t || t.type === 'submarine')) {
-      const fresh = seen(ship, a.sub), s = fresh ? a.sub : a.subC, p = lead(ship, s, st.speed);
-      ship.desiredHeading = Math.atan2(p.z - ship.z, p.x - ship.x); ship.throttle = 1;
-      a.dcReload -= dt;
-      if (!fresh && WW.dist(ship.x, ship.z, s.x, s.z) < 10) { a.datumDone = a.subC.seenAt; a.sub = a.subC = null; a.retargetT = 0; return; }
-      if (fresh && a.dcReload <= 0 && WW.dist(ship.x, ship.z, s.x, s.z) < 9) {
-        const q = ship.toWorld(-st.length * 0.5, 0);
-        WW.combat.dropDepthCharge(ship, q[0], q[1]);
-        a.dcReload = 1.3;
-      }
-      return;
-    }
-    if (!t) { idle(ship); return; }
-    const d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t);
-    const main = st.guns[0];
-    let pref = main ? main.range * 0.7 : 60;
-    if (st.torpedoes && ship.type === 'destroyer') pref = Math.min(pref, st.torpedoes.range * 0.6);
-    if (WW.game && WW.game.roundTime > WW.cfg.ROUND_TIMEOUT * 0.6) pref *= 0.55; // late round: close in to finish it
-    let h;
-    if (d > pref * 1.2) { h = b; ship.throttle = 1; }
-    else if (d < pref * 0.65) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
-    else { h = b + a.orbitDir * (PI / 2 - WW.clamp((d - pref) / pref, -0.5, 0.5) * 1.2); ship.throttle = 0.8; }
-    const cv = a.cv && a.cv.alive ? a.cv : null;
-    if (cv && ship.type !== 'pt') { // loose screen around the carrier: 50-70 units out, never bunched on it
-      const dc = WW.dist(ship.x, ship.z, cv.x, cv.z);
-      if (dc > 80) h = blend(h, ship, cv.x, cv.z, 0.3);
-      else if (dc < 50) h = blend(h, ship, 2 * ship.x - cv.x, 2 * ship.z - cv.z, 0.6 * (50 - dc) / 50 + 0.2);
-    } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
-    ship.desiredHeading = h;
-    // Torpedoes.
-    if (st.torpedoes && a.torpReload <= 0 && !t.submerged && d < st.torpedoes.range * 0.8 && d > 12 && seen(ship, t)) fireSpread(ship, t);
-  }
-
   // Nothing to shoot: go to the nearest last-known contact, else search toward the enemy's half of the map
   // (the side away from our own fleet), then sweep north / south of it.
   function idle(ship) {
@@ -175,127 +136,10 @@ window.WW = window.WW || {};
     ship.desiredHeading = Math.atan2(sp.z - ship.z, sp.x - ship.x); ship.throttle = 0.75;
   }
 
-  function subAI(ship, dt) {
-    const a = ship.ai, st = ship.stats, t = ship.target;
-    a.subT -= dt;
-    // Air and batteries run out: after SUB_MAX_DIVE s under water the sub must surface for SUB_SURFACE s.
-    a.diveT = ship.submerged ? (a.diveT || 0) + dt : 0;
-    if (a.diveT > SUB_MAX_DIVE && !(a.forcedT > 0)) { a.forcedT = SUB_SURFACE; }
-    if (a.forcedT > 0) { a.forcedT -= dt; ship.wantSurface = true; a.subT = Math.max(a.subT, 1); }
-    else if (ship.hp < ship.maxHp * 0.35) ship.wantSurface = true;
-    else if (a.subT <= 0) {
-      if (ship.wantSurface) { ship.wantSurface = false; a.subT = WW.randRange(30, 45); }
-      else { ship.wantSurface = true; a.subT = WW.randRange(12, 20); }
-    }
-    if (!(a.forcedT > 0) && ship.wantSurface && ship.hp >= ship.maxHp * 0.35 && a.threat && a.threat.type === 'destroyer' && a.threatD < 60) {
-      ship.wantSurface = false; a.subT = WW.randRange(25, 40);
-    }
-    if (!t) { idle(ship); ship.throttle = 0.6; return; }
-    const d = WW.dist(ship.x, ship.z, t.x, t.z), p = lead(ship, t, WW.TORPEDO.speed);
-    const lb = Math.atan2(p.z - ship.z, p.x - ship.x);
-    a.evadeT -= dt;
-    if (a.evadeT > 0) { ship.desiredHeading = bearing(ship, t) + PI + a.orbitDir * 0.6; ship.throttle = 1; }
-    else if (d > 75) { ship.desiredHeading = lb; ship.throttle = 1; }
-    else { ship.desiredHeading = lb; ship.throttle = 0.5; }
-    if (a.torpReload <= 0 && d < st.torpedoes.range * 0.8 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, t)) {
-      fireSpread(ship, t); a.evadeT = 10;
-    }
-  }
-
-  function ptAI(ship, dt) {
-    const a = ship.ai, st = ship.stats, t = ship.target;
-    if (!t) { idle(ship); return; }
-    const d = WW.dist(ship.x, ship.z, t.x, t.z), b = bearing(ship, t);
-    ship.throttle = 1;
-    a.ptT -= dt;
-    if (a.ptState === 'in') {
-      const p = lead(ship, t, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
-      ship.desiredHeading = lb;
-      if (a.torpReload <= 0 && d < st.torpedoes.range * 0.7 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.35 && seen(ship, t)) {
-        fireSpread(ship, t); a.ptState = 'out'; a.ptT = 12;
-      } else if (a.torpReload > 0 && d < 80) { a.ptState = 'out'; a.ptT = 8; }
-    } else {
-      // Dash out with a jink, then hold off until torpedoes are nearly reloaded.
-      const jink = Math.sin(WW.time.now * 1.7 + ship.id) * 0.5;
-      ship.desiredHeading = d < 100 ? b + PI + jink : b + a.orbitDir * PI / 2;
-      if (a.ptT <= 0 && a.torpReload <= 3) a.ptState = 'in';
-    }
-  }
-
-  // Strikes go only after what the side knows: a fresh contact, or one seen in the last STRIKE_AGE s (at a penalty).
-  // ship may be a bare { x, z, nation } (air_strikes.js wave guide) or a Plane.
-  const STRIKE_AGE = 45;
-  function pickStrikeTarget(ship) {
-    if (!WW.intel) return null;
-    let best = null, bs = 1e9;
-    const now = WW.time.now;
-    for (const c of WW.intel.enemyShips(ship.nation, { fresh: STRIKE_AGE })) {
-      const o = c.unit;
-      if (!o || !o.alive || o.submerged) continue;
-      const s = WW.dist(ship.x, ship.z, c.x, c.z) - (STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;
-      if (s < bs) { bs = s; best = o; }
-    }
-    return best;
-  }
-
-  function carrierAI(ship, dt) {
-    const a = ship.ai;
-    // Movement: stay out of enemy gun range, keep near the fleet.
-    // Late in a round a carrier stops running, so a lone carrier cannot stall the round.
-    const late = WW.game && WW.game.roundTime > WW.cfg.ROUND_TIMEOUT * 0.6;
-    if (late && a.threat) { ship.desiredHeading = bearing(ship, a.threat); ship.throttle = 0.8; } // close in to finish the round
-    else if (a.threat && a.threatD < 160) {
-      let h = bearing(ship, a.threat) + PI;
-      if (a.cn) h = blend(h, ship, a.cx, a.cz, 0.3);
-      ship.desiredHeading = h; ship.throttle = 1;
-    } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
-      ship.desiredHeading = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
-    } else { ship.desiredHeading = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; }
-    if (WW.airDeck) WW.airDeck.steer(ship, late); // into the wind while launching / recovering (air_deck.js)
-    // Any ship closing inside ~90 units: turn away from it (separation in ships.js enforces the 70-unit space).
-    const n = a.near;
-    if (n && n.alive && (!late || n.nation === ship.nation) && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {
-      ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - n.x, 2 * ship.z - n.z, 0.8);
-      ship.throttle = Math.max(ship.throttle, 0.8);
-    }
-    if (!WW.air || !ship.hangar) return;
-    const hg = ship.hangar;
-    // CAP when enemy planes come near.
-    a.capT -= dt;
-    if (a.capT <= 0) {
-      a.capT = 3;
-      let near = 0, cap = 0;
-      if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (WW.dist(ship.x, ship.z, c.x, c.z) < 200) near++; // detected raiders (strikes come from far off: scramble early)
-      for (const p of WW.world.planes) if (p.alive && p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
-      if (near && cap < 3 && hg.fighter > 0 && !a.queue.some(q => q.kind === 'fighter' && !q.target)) a.queue.unshift({ kind: 'fighter', target: null });
-    }
-    // Strike waves.
-    a.strikeT -= dt;
-    if (a.strikeT <= 0 && a.queue.length === 0) {
-      a.strikeT = WW.randRange(35, 55);
-      const tgt = pickStrikeTarget(ship);
-      if (tgt && hg.dive + hg.torpedo > 0) {
-        const esc = Math.min(Math.max(0, hg.fighter - 2), 3);
-        for (let i = 0; i < esc; i++) a.queue.push({ kind: 'fighter', target: tgt });
-        const n = Math.max(hg.dive, hg.torpedo);
-        for (let i = 0; i < n; i++) {
-          if (i < hg.dive) a.queue.push({ kind: 'dive', target: tgt });
-          if (i < hg.torpedo) a.queue.push({ kind: 'torpedo', target: tgt });
-        }
-        if (WW.strike) WW.strike.newWave(ship, tgt, a.queue); // air_strikes.js: form up before departing
-      }
-    }
-    a.launchT -= dt;
-    if (a.queue.length && a.launchT <= 0) {
-      const q = a.queue.shift();
-      let tgt = q.target;
-      if (tgt && (!tgt.alive || tgt.submerged)) tgt = pickStrikeTarget(ship);
-      if (q.target && !tgt) return;
-      if (WW.air.launch(ship, q.kind, tgt)) a.launchT = 1.5;
-    }
-  }
-
+  const roles = {}; // type -> fn(ship, dt), filled by the role files; 'surface' is the default
   WW.shipAI = {
+    roles,
+    h: { bearing, seen, lead, fireSpread, blend, idle }, // shared helpers for the role files
     setup(ship) {
       const st = ship.stats;
       ship.ai = {
@@ -319,14 +163,10 @@ window.WW = window.WW || {};
       // Flip orbit side when boxed in for a while.
       if (ship.clearAhead < ship.lookDist * 0.4) { a.blockedT += dt; if (a.blockedT > 4) { a.blockedT = 0; a.orbitDir *= -1; } }
       else a.blockedT = 0;
-      switch (ship.type) {
-        case 'carrier': carrierAI(ship, dt); break;
-        case 'submarine': subAI(ship, dt); break;
-        case 'pt': ptAI(ship, dt); break;
-        default: surfaceAI(ship, dt);
-      }
+      const role = roles[ship.type] || roles.surface;
+      if (role) role(ship, dt);
       if (a.turrets.length) guns(ship, dt);
     },
-    pickStrikeTarget
+    pickStrikeTarget: () => null // ai_carrier.js replaces it
   };
 })();
