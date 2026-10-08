@@ -60,7 +60,7 @@ window.WW = window.WW || {};
     el.vol = $('input', 'vol', sr);
     Object.assign(el.vol, { type: 'range', min: 0, max: 100, step: 1, title: 'Volume' });
     el.vol.value = Math.round((WW.audio ? WW.audio.volume : 0.7) * 100);
-    el.vol.addEventListener('input', () => { if (WW.audio) WW.audio.setVolume(el.vol.value / 100); });
+    el.vol.addEventListener('input', () => { if (WW.audio) WW.audio.setVolume(el.vol.value / 100); WW.emit('uiVolume', { v: el.vol.value / 100 }); });
     el.vol.addEventListener('keydown', e => e.stopPropagation()); // arrow keys change the volume, not the camera
     el.sound.dataset.audio = el.soundPanel.dataset.audio = '1'; // the gesture that starts a remembered "on" is the toggle itself
     if (!AU()) { el.sound.style.display = 'none'; sr.style.display = 'none'; }
@@ -121,6 +121,7 @@ window.WW = window.WW || {};
     else if (k === 'm' && !e.repeat) toggleSound();
     else if (k === 't') say('Tilt-shift ' + (el.film.classList.toggle('notilt') ? 'off' : 'on'));
     else if (k === '1' || k === '2' || k === '4') WW.time.scale = +k;
+    if (k.length === 1 && 'cptm'.includes(k) && !e.repeat) WW.emit('uiToggle', { on: !/off|map/.test(el.msg.textContent) }); // toggle tick (audio_amb.js)
   }
 
   // ---- setup placement ----
@@ -138,21 +139,24 @@ window.WW = window.WW || {};
     if (e.button === 2) return removeNearest(p.x, p.z);
     if (e.button !== 0) return;
     const st = WW.SHIP_TYPES[selType];
-    if (!WW.terrain.isNavigable(p.x, p.z, st.minDepth)) return say('Too shallow for a ' + st.name.toLowerCase());
+    if (!WW.terrain.isNavigable(p.x, p.z, st.minDepth)) return uiError('Too shallow for a ' + st.name.toLowerCase());
     for (const c of WW.game.composition) {
       const need = WW.game.minSpacing ? WW.game.minSpacing(selType, c.type) : (st.length + WW.SHIP_TYPES[c.type].length) * 0.5;
-      if (WW.dist2(p.x, p.z, c.x, c.z) < need * need) return say('Too close to another ship');
+      if (WW.dist2(p.x, p.z, c.x, c.z) < need * need) return uiError('Too close to another ship');
     }
     const c = { type: selType, nation: selNation, x: p.x, z: p.z };
     WW.game.composition.push(c);
     WW.game.spawnComposition([c]);
+    WW.emit('uiPlace', { x: p.x, z: p.z });
   }
+  function uiError(text) { say(text); WW.emit('uiError', {}); }
   function removeNearest(x, z) {
     const comp = WW.game.composition;
     let best = -1, bd = 40 * 40;
     comp.forEach((c, i) => { const d = WW.dist2(x, z, c.x, c.z); if (d < bd) { bd = d; best = i; } });
     if (best < 0) return;
     comp.splice(best, 1);
+    WW.emit('uiRemove', {});
     respawnSetup(); // clearAll + respawn the remaining composition
   }
   function respawnSetup() { WW.game.enterSetup(false); }
@@ -162,7 +166,7 @@ window.WW = window.WW || {};
   function newRound() { if (WW.game.state !== 'setup') { WW.game.startRound(); say('New round'); } }
   function startBattle() {
     const c = WW.game.composition || [];
-    if (!c.some(s => s.nation === 'USN') || !c.some(s => s.nation === 'IJN')) return say('Both sides need ships');
+    if (!c.some(s => s.nation === 'USN') || !c.some(s => s.nation === 'IJN')) return uiError('Both sides need ships');
     WW.game.startRound({ keepMap: true });
   }
 

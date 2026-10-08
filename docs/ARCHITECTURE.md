@@ -21,7 +21,8 @@ vendor/three.min.js     Three.js r149 (UMD build, global THREE)
 js/core.js              WW.cfg, data tables, helpers, event bus
 js/audio.js             WW.audio: synthesized sound engine (buses, voices, spatial model, loops)
 js/audio_synth.js       WW.audio.syn: noise buffers, envelopes, bursts, booms, crackle
-js/audio_base.js        example patches: ui.click, gun.big, amb.sea
+js/audio_base.js        example patch: gun.big
+js/audio_amb.js         ambience (sea, wind, surf, gulls, battle rumble), cinematic cues, UI sounds
 js/sky.js               WW.sky: sky dome, clouds, lights, fog
 js/water.js             WW.water: water shader, foam, contact shadows
 js/terrain.js           WW.terrain: sea floor, islands, depth grid
@@ -249,7 +250,7 @@ Each cruiser and battleship has one floatplane on its catapult (USN: Kingfisher-
 - `WW.camAction` (`camera_action.js`) adds action shots to the director. When the director films a dive-bomb attack and the bomb falls, the camera follows the bomb to the impact and holds on the explosion. When it films a torpedo run and the plane drops its torpedo, the camera follows the wake to the hit or the miss. These hand-offs do not cut. They change the current shot. A fighter with a foe can get an over-the-shoulder shot: behind and above the fighter, its foe ahead, with a slow, rate-limited turn. Planes with `kills` or `ace` (if present) get a higher priority. `combat_weapons.js` sends the events `weaponDropped` `{ kind: 'bomb' | 'torpedo', proj, plane, target }` and `weaponImpact` `{ kind, proj, x, z, ship }` (`ship` is null for a miss). Test hook: `WW.cam.film(candidate)`; `tests/action_cam.js` records each action shot.
 - `WW.freecam`: left-drag orbits, the wheel zooms, right-drag and `W` `A` `S` `D` pan, `Q` and `E` turn. A click follows a ship or a plane. After 20 s with no input, the director starts again.
 
-### audio.js, audio_synth.js, audio_base.js
+### audio.js, audio_synth.js, audio_base.js, audio_amb.js
 
 All sound is synthesized (no files, no music). Sound starts muted. Read [AUDIO.md](AUDIO.md) before you add sounds.
 
