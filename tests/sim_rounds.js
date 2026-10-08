@@ -10,13 +10,16 @@ const N = +(process.argv[2] || 8), SEED0 = +(process.argv[3] || 1);
   const errs = []; p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push('PAGE ' + e.message));
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?v=' + Date.now());
   await p.waitForTimeout(1500);
-  await p.evaluate(() => { __sim.setScale(0.0001); }); // the render loop barely advances the sim; we drive it
+  // Stop the render loop: it would advance the sim on real-frame timing (setScale clamps to >= 0.1) and the
+  // director's slow-motion warp, making seeded rounds unrepeatable. The test drives the sim alone.
+  await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; });
+  await p.waitForTimeout(200);
   const rounds = [];
   for (let i = 0; i < N; i++) {
     const seed = SEED0 + i, t0 = Date.now();
     const r = await p.evaluate(seed => {
       const G = WW.game, cap = WW.cfg.ROUND_TIMEOUT + 30;
-      WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
+      WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
       const s0 = Object.assign({}, WW.stats);
       const sunk = [];
       const onSunk = s => sunk.push({ type: s.type, nation: s.nation, t: +G.roundTime.toFixed(1) });
