@@ -62,9 +62,13 @@ js/air_deaths.js        WW.airDeaths: shoot-down / ditch / bail-out / deck slide
 js/air_deck.js          WW.airDeck: deck parking, wing folding, takeoff runs, into-the-wind turns, landing pattern
 js/air_fx.js            WW.airFx: prop disc, dive brakes, wing-tip vapour, exhaust flicker, canopy glint
 js/air_strikes.js       WW.strike: strike waves (form-up, vics), sequential dive bombing, anvil torpedo attack
+js/air_squadrons.js     WW.squadrons: carrier names, VF/VB/VT squadrons per carrier slot, sections / divisions / shotai, wingman slots
+js/air_ops.js           WW.airOps: air boss (CAP relief, scrambles, strike hold, deck-aware launches), fighter director, jettison, scout sectors
+js/air_cag.js           WW.cag: strike leader (handover, redirect, AA detour), VT/VB timing, close and top cover escorts
 js/camera.js            WW.cam: director camera and map camera
 js/freecam.js           WW.freecam: camera that the user controls
 js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulder shot, slow motion
+js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
@@ -250,7 +254,7 @@ WW.shipAI = {
   h: { bearing, seen, lead, fireSpread, blend, idle,      // shared helpers (ships_ai.js)
        withdraw, comb, score, riskOf, unreachable },
   surface: { followStation, prefRange, engage, torpedoes }, // ai_surface.js seams
-  pickStrikeTarget(unit), capWanted(carrier), strikeTarget(carrier)  // ai_carrier.js
+  pickStrikeTarget(unit), capWanted(carrier) -> n, strikeTarget(carrier)  // ai_carrier.js; capWanted: CAP fighters wanted (air_ops.js)
 };
 ```
 
@@ -438,7 +442,35 @@ WW.air = { init(), update(dt), clearAll(), launch(carrier, kind, target) -> Plan
 // Plane: kind, nation, carrier, x, y, z, heading, hp, alive, state, group, damage(amount)
 ```
 
-Planes take off from the carrier deck, fly to the target and attack. Dive bombers dive and drop bombs. Torpedo bombers fly low and drop torpedoes. Fighters escort the bombers and fight enemy planes. Planes that survive fly back, land and rearm in 10 s. If the carrier sinks, its planes in the air ditch. A damaged plane trails smoke (grey below 50% hp, charcoal below 30% hp). A plane with less than 35% hp can drop its weapon and fly home.
+Planes take off from the carrier deck, fly to the target and attack. Dive bombers dive and drop bombs. Torpedo bombers fly low and drop torpedoes. Fighters escort the bombers and fight enemy planes. Planes that survive fly back, land and rearm in 10 s. If the carrier sinks, its planes in the air ditch. A damaged plane trails smoke (grey below 50% hp, charcoal below 30% hp). A bomber with less than 35% hp drops its weapon and flies home. `Plane.fighter` hands over to `WW.airOps.fighter`, bombers call `WW.airOps.bomber` every step, and `validTarget` retargets through `WW.cag.retarget`; the old code stays as the fallback.
+
+### Air command: air_squadrons.js, air_ops.js, air_cag.js, air_captions.js
+
+The air side has a command structure: squadrons and elements, an air boss and fighter director per carrier, and a strike leader (CAG) per strike. All of it is sim code (`WW.rand` only, names from slots, element ids restart each round), except `air_captions.js`, which is visual only.
+
+```js
+WW.squadrons = { group(carrier) -> { name, sq: { fighter, dive, torpedo } }, squadronOf(carrier, kind), follow(plane, dt) -> bool,
+                 rank(plane) -> 'Lt. Cmdr. Thach', elements() -> Element[], stats, SIZE };
+// Squadron: { kind, nation, name ('VF-6' | 'Akagi fighter unit'), short, cvName, leader (pilot), sorties, lost }
+// Element:  { id, key, kind, nation, sq, size, members: [leader, wingmen...], div (USN: the section it pairs with) }
+// Plane:    squadron, element, leader (null for the element leader), wing (0 = leader), cover ('close' | 'top', escorts)
+WW.airOps = { plan(carrier, dt), fighter(plane, dt), bomber(plane, dt), pickTarget(from, { near }), capWanted(carrier),
+              picture(carrier), underAttack(carrier), CAP_R: 35, LEASH: 52.5, LEASH2: 157.5, RAID_R: 120, stats };
+WW.cag = { waveTick(wave), detour(wave, heading, target), retarget(plane), diveOK(plane, target, grp), vtWait(plane, target, grp),
+           escortPick(plane), escort(plane, target, dt), cover(plane), stats };
+WW.airCaptions = { lineFor(subject), tick(), stats };
+```
+
+- **Squadrons** (`air_squadrons.js`): each carrier slot (the n-th carrier of a nation, like the aces rosters) has a name (USN Enterprise, Yorktown, Hornet, ...; IJN Akagi, Kaga, Soryu, ...) and one fighter, dive bomber and torpedo squadron (USN VF-6 / VB-6 / VT-6; IJN "Akagi fighter unit", "dive-bomber unit", "attack unit"). They carry over between rounds; `WW.aces.reset()` resets them too. A launched plane joins its squadron and an element of its mission (CAP or strike) for 30 s: USN fighters fly 2-plane sections paired into 4-plane divisions, IJN fighters 3-plane shotai, bombers 3-plane vics. `follow()` keeps a wingman on its slot off the leader (CAP and transit); in a fight the wingman covers the leader. A lost leader or a leader going home: the next plane leads ('reform'); a lone survivor joins another element of the mission ('rejoin'). Pilots belong to their squadron (`pilot.squadron`); the squadron leader is its senior pilot in the air. `air_dogfight.js`: the Thach weave turns toward the plane's own section first (nearest friendly as the fallback), and a fighter answers an enemy on its leader's or wingman's tail.
+- **Air boss** (`airOps.plan`, called from `ai_carrier.js` airOps): keeps `capWanted` fighters on CAP (a standing element: USN 2, IJN 3; 4 when enemy planes are detected inside 250, so USN radar scrambles earlier than IJN lookouts) and launches a relief when an on-station fighter has less than 45 s of fuel. CAP launches go first. A strike needs a known target (`WW.fleetCmd.strikeOrder`, else intel scored by value, damage, freshness, distance and AA); it is not queued or launched while the carrier is under air attack (an armed enemy bomber within 120; at most 30 s), and its planes wait while the deck recovers or 3 launches are queued (at most 25 s). Escorts are the fighters left after one CAP relief (at most 4). When the carrier is under air attack, its escorts within 320 that have the fuel recall to defend it (`plane.recall`). `air_deck.js`: a CAP launch waits at most 6 s for a recovery (20 s for a strike), and the carrier does not turn into the wind within 80 of the map edge.
+- **Fighter director** (`airOps.fighter`): CAP orbits 35 over its carrier, shifted 15 toward the nearest detected raid and higher while one is up. Target priority: a torpedo bomber on its run (or anvil) > a dive bomber in the wheel or dive > other armed bombers > fighters attacking own planes > other fighters, nearer first. Leash: CAP engages only within 52.5 (1.5 × radius) of its carrier, or an armed bomber closing on the fleet out to 157.5; beyond that it lets go, except to defend itself (`dogfight.pick`'s tail check). Relieved CAP goes home under 27 s of fuel.
+- **Bombers** (`airOps.bomber`): below 35% hp, or with a fighter on the tail for 2 s while below 70% hp and no friendly fighter within 45, the bomber jettisons and goes home (deterministic).
+- **CAG** (`air_cag.js`, hooks in `air_strikes.js`): the senior armed bomber of a wave leads it (the squadron leader, else a VB element leader); if it is lost the next takes over ('cag'). It steers the wave guide round the detected AA umbrella while more than 120 from the target (`WW.threat.danger(..., { air: true })`, else known ships' `aa`), and within 140 of the target, if the target is gone or not seen in the last 4 s, redirects the whole strike to the best visible target within 170 (cripples preferred, 'redirect'). Timing: dive bombers hold in the wheel until the torpedo bombers turn in (at most 20 s), torpedo bombers wait at the anvil for the dive bombers to reach the wheel (at most 15 s), so the attacks land within a few seconds of each other.
+- **Escorts**: the wave's first fighter element is close cover (just above and behind the bombers; engages fighters attacking them), the next is top cover (higher and ahead; engages fighters approaching the strike). Any escort breaks off for a fighter on a bomber's tail. Over the target they circle the bombers (close) or the target (top); then they ride home over the returning bombers.
+- **Scouts**: `Scout.prototype.plan` flies a sweep round `WW.fleetCmd.scoutPoint` when there is one, and pushes search legs 110 out from known enemy carriers (their CAP).
+- **Events**: `airOrder` `{ carrier, squadron, order, plane, leader, target, squadrons, raid }`, order one of `launch`, `cap`, `scramble`, `relief`, `recall`, `jettison`, `reform`, `rejoin`, `strikeAway`, `cag`, `attack`, `redirect`.
+- **Captions** (`air_captions.js`, visual only): it wraps `WW.cam.update` and, every 0.25 s of real time, looks at the director's shot (`WW.cam._shot()`: its subject, or the diving plane of an orbit). If that subject has a squadron moment it shows a small caption (`WW.ui.caption(main, sub, 4.5, true)`): "VT-6 begins its run", "VB-6 pushes over", "Lt. Cmdr. X leads VB-6 in", "Strike away: VF-6, VB-6, VT-6", "CAP vectored to raid" with a compass bearing and distance, an ace's kill. At most one air caption every 15 s of real time, none in free camera, map view, or while another caption (the victory card) shows. It adds camera candidates for the CAG leading a strike in and a CAP element in formation (`WW.camHooks`).
+- Tests: `tests/sim_behaviour.js` (cap_on_bmb, cap_gap, esc_with, elem_coh, air_sync, bomb_lost, jettisons), `tests/air_probe.js` (one carrier round's air picture), `tests/air_shots.js` (screenshots, `tests/shots/air_*.png`).
 
 ### air_aces.js
 

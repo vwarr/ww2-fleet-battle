@@ -79,14 +79,14 @@ window.WW = window.WW || {};
     airOps(ship, dt);
   }
 
-  // CAP: launch one more fighter when detected enemy planes are inside 200 and fewer than 3 are up on CAP
-  // (air ops may replace this; it returns true when a CAP fighter should be queued).
+  // CAP: how many fighters the carrier wants over itself. A standing CAP of one element (USN 2-plane section,
+  // IJN 3-plane shotai), a full 4 when enemy planes are detected inside 250 (USN carrier radar reaches that far,
+  // intel.js SEE_PLANE_NATION; IJN lookouts see ~170, so the IJN scrambles later). air_ops.js keeps it relieved on fuel.
   function capWanted(ship) {
-    const a = ship.ai, hg = ship.hangar;
-    let near = 0, cap = 0;
-    if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (WW.dist(ship.x, ship.z, c.x, c.z) < 200) near++; // detected raiders (strikes come from far off: scramble early)
-    for (const p of WW.world.planes) if (p.alive && p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
-    return !!(near && cap < 3 && hg.fighter > 0 && !a.queue.some(q => q.kind === 'fighter' && !q.target));
+    let near = 0;
+    if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && WW.dist(ship.x, ship.z, c.x, c.z) < 250) near++;
+    const elem = ship.nation === 'IJN' ? 3 : 2;
+    return near ? 4 : elem;
   }
   // The strike decision: the commander's order for this carrier (WW.fleetCmd.strikeOrder), else the local pick.
   function strikeTarget(ship) {
@@ -100,7 +100,11 @@ window.WW = window.WW || {};
     const a = ship.ai, hg = ship.hangar;
     // CAP when enemy planes come near.
     a.capT -= dt;
-    if (a.capT <= 0) { a.capT = 3; if (WW.shipAI.capWanted(ship)) a.queue.unshift({ kind: 'fighter', target: null }); }
+    if (a.capT <= 0) {
+      a.capT = 3;
+      let cap = 0; for (const p of WW.world.planes) if (p.alive && p.carrier === ship && p.kind === 'fighter' && !p.target) cap++;
+      if (cap < WW.shipAI.capWanted(ship) && hg.fighter > 0 && !a.queue.some(q => q.kind === 'fighter' && !q.target)) a.queue.unshift({ kind: 'fighter', target: null });
+    }
     // Strike waves.
     a.strikeT -= dt;
     if (a.strikeT <= 0 && a.queue.length === 0) {

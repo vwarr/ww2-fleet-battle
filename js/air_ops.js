@@ -73,9 +73,9 @@ window.WW = window.WW || {};
   }
 
   // ---------- air boss ----------
-  function capWanted(cv) {
-    const A = picture(cv), elem = cv.nation === 'IJN' ? 3 : 2;
-    return A.near ? Math.max(elem, 4) : elem;   // a raid on the scope: a full division / shotai up
+  function capWanted(cv) { // ai_carrier.js capWanted when present (standing element, 4 under a raid)
+    if (WW.shipAI && WW.shipAI.capWanted) return +WW.shipAI.capWanted(cv) || 0;
+    return picture(cv).near ? 4 : cv.nation === 'IJN' ? 3 : 2;
   }
   function capState(cv) {
     let on = 0, low = 0, coming = 0;
@@ -92,7 +92,7 @@ window.WW = window.WW || {};
     a.capT -= dt;
     if (a.capT <= 0) {
       a.capT = 1;
-      const cw = WW.shipAI && WW.shipAI.capWanted, want = Math.min(4, cw ? cw(cv) : capWanted(cv));
+      const want = Math.min(4, capWanted(cv));
       const s = capState(cv), queued = a.queue.filter(q => q.kind === 'fighter' && !q.target).length;
       let need = want - s.on - s.coming - queued;
       if (need > 0 && hg.fighter > 0) {
