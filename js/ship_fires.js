@@ -7,7 +7,7 @@
 //    secondary explosions, the planes on deck and rearming destroyed, several avgas fires ('deckHit' event, the
 //    "five fateful minutes"). With avgas fires burning, a magazine / fuel explosion may follow (CHAIN_P /
 //    damageControl^2 a second while 3 or more burn). An empty deck takes the normal damage.
-//  - Damage control (doctrine.damageControl; USN 1.3, IJN 1): above 1.15 flooding is slowly pumped out (some speed
+//  - Damage control (doctrine.damageControl; USN 1.5, IJN 1): above 1.15 flooding is slowly pumped out (some speed
 //    back) and a ship over 60% hp with no fire patches up to REPAIR_MAX of its hp; at 1.15 or below flooding creeps on.
 //  - Magazine: a heavy hit (torpedo, bomb, big shell) on a battleship or cruiser detonates a magazine with chance
 //    MAG_P (x MAG_TURRET within MAG_R of a main turret): the ship blows up and sinks ('magazine' event).
@@ -19,7 +19,7 @@ window.WW = window.WW || {};
   var OUT_P = 0.035, SPREAD_P = 0.012, CHAIN_P = 0.012, CHAIN_DMG = 380;
   var DECK_MIN = 2, DECK_P0 = 0.25, DECK_P1 = 0.08, DECK_BOOM = 25, DECK_BOOM_MAX = 400;
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
-  var MAG_P = 0.0008, MAG_TURRET = 3, MAG_R = 3;   // magazine: chance per heavy hit on a BB / CA, x3 within MAG_R of a turret
+  var MAG_P = 0.0004, MAG_TURRET = 3, MAG_R = 3;   // magazine: chance per heavy hit on a BB / CA, x3 within MAG_R of a turret
   var NATIONS = ['USN', 'IJN'], tick = 0, stats = null;
   function per() { return { USN: 0, IJN: 0 }; }
   function reset() {
