@@ -56,7 +56,7 @@ window.WW = window.WW || {};
     if (fl !== null) { want = fl; ship.throttle = 1; } // run from every known gun ship close by
     else if (o) {
       const d = WW.dist(ship.x, ship.z, o.sx, o.sz);
-      if (d > 30) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x); ship.throttle = WW.clamp(d / 80, 0.5, 1); }
+      if (d > 30) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
       else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
       want = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;

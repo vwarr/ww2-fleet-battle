@@ -195,7 +195,7 @@ window.WW = window.WW || {};
       if (abort) { L.state = 'out'; L.t0 = T; L.from = u; }
       else {
         const f = firePoint(ship, u, L.side), d = WW.dist(ship.x, ship.z, u.x, u.z);
-        const p = lead(ship, u, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
+        const p = lead(ship, u, ship.stats.torpedoes.speed || WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
         ship.desiredHeading = d > PT.FIRE_MAX + 8 && WW.dist(ship.x, ship.z, f.x, f.z) > 14 ? Math.atan2(f.z - ship.z, f.x - ship.x) : lb;
         ship.throttle = 1;
         if (a.torpReload <= 0 && d < PT.FIRE_MAX && d > 15 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, u) && fanClear(ship, lb, Math.min(ship.stats.torpedoes.range, d + 10))) {
