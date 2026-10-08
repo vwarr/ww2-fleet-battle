@@ -6,7 +6,7 @@ const S = n => 'shots/rt/' + n + '.png';
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type()==='error') errs.push(m.text()); });
   // 1) file:// load
-  await p.goto('file://' + require('path').resolve(__dirname, '../index.html'));
+  await p.goto('file://' + require('path').resolve(__dirname, '../index.html') + '?auto');
   await p.waitForTimeout(3000);
   await p.screenshot({ path: S('file_load') });
   console.log('file:// errors', errs.length, errs.slice(0,3));

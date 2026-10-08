@@ -65,7 +65,7 @@ function clicks(x, rate, from, to) {
 (async () => {
   let server = null;
   if (!process.env.BASE_URL) { server = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: path.join(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 1000)); }
-  const URL = (process.env.BASE_URL || `http://localhost:${PORT}/`) + 'index.html';
+  const URL = (process.env.BASE_URL || `http://localhost:${PORT}/`) + 'index.html?auto';
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
   const A = [], chk = (name, v) => { A.push((v ? 'PASS ' : 'FAIL ') + name); };
   const p = await b.newPage({ viewport: { width: 1000, height: 560 } });

@@ -138,7 +138,7 @@ window.WW = window.WW || {};
     hd(o) { return WW.dist(this.x, this.z, o.x, o.z); }
     validTarget() {
       const t = this.target;
-      if (t && t.alive && !t.submerged) return t;
+      if (t && t.alive && !t.submerged && (!WW.intel || WW.intel.known(this.nation, t))) return t; // still a known contact (intel.js)
       this.target = WW.shipAI ? WW.shipAI.pickStrikeTarget(this) : null;
       return this.target;
     }
@@ -231,8 +231,10 @@ window.WW = window.WW || {};
         this.scanT = 0.4;
         const cx = this.target ? this.x : c.x, cz = this.target ? this.z : c.z, R = this.target ? 90 : 140;
         let best = null, bd = R;
-        for (const p of WW.world.planes) {
-          if (!p.alive || p.nation === this.nation) continue;
+        const foes = WW.intel ? WW.intel.enemyPlanes(this.nation) : [];   // detected enemy planes (intel.js)
+        for (const c of foes) {
+          const p = c.unit;
+          if (!p.alive) continue;
           const d = WW.dist(cx, cz, p.x, p.z);
           if (d < bd) { bd = d; best = p; }
         }

@@ -5,7 +5,7 @@ const S = n => 'shots/rt/fc_' + n + '.png';
   const b = await chromium.launch({ channel: 'chrome', headless: false });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type()==='error') errs.push(m.text()); });
-  await p.goto('file://' + require('path').resolve(__dirname, '../index.html'));
+  await p.goto('file://' + require('path').resolve(__dirname, '../index.html') + '?auto');
   await p.waitForTimeout(6000);
   await p.screenshot({ path: S('0_director') });
   // orbit drag

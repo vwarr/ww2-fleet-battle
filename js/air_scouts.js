@@ -1,8 +1,9 @@
 // air_scouts.js - scout floatplanes (WW.scouts). Load after aircraft.js and models_scout.js.
 // Each cruiser and battleship carries one floatplane on its catapult (the static one from models_detail.js
 // is hidden while it flies). Early in a round the ship catapults it off. The scout flies a search arc on the
-// near side of the enemy fleet; every enemy ship within SPOT_R of it gets ship.spottedUntil = now + SPOT_HOLD
-// (and ship.spottedBy = nation). combat.js fireShell tightens the dispersion of long-range fire (> 60 units)
+// near side of where the enemy was last seen (intel.js), or over the enemy's half of the map if nothing is known.
+// intel.js does the spotting: a scout reports contacts, and every enemy ship within SPOT_R of it gets
+// ship.spottedUntil = now + SPOT_HOLD (and ship.spottedBy = nation). combat.js fireShell tightens the dispersion of long-range fire (> 60 units)
 // at a spotted target by SPOT_DISP (see combat.js). After SEARCH_T s (or when badly hit) the scout flies
 // home, alights on the water beside its ship, taxis alongside and is hoisted back aboard. It can fly again
 // after RELAUNCH s (at most MAX_SORTIES per round). A scout is a WW.Plane with kind 'scout' in
@@ -10,7 +11,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var SPOT_R = 85, SPOT_HOLD = 20, SEARCH_T = 85, ALT = 26, ARC_R = 90;
+  var SPOT_R = WW.intel ? WW.intel.R.SPOT : 85, SPOT_HOLD = WW.intel ? WW.intel.T.SPOT_HOLD : 20, SEARCH_T = 85, ALT = 26, ARC_R = 90;
   var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, CAT_SLIDE = 0.35;
   var SCALE_CAT = 0.55, SCALE_FLY = 1.5;   // small on the catapult, arcade size (like carrier planes) in flight
   var SHIPS = { cruiser: 1, battleship: 1 };
@@ -28,14 +29,19 @@ window.WW = window.WW || {};
   function release(m) { if (m.group.parent) m.group.parent.remove(m.group); (pool[m.nation] = pool[m.nation] || []).push(m); }
   function floatY() { return -(WW.models.SCOUT_FLOAT_Y || -0.86); }
   function inMap(x, z) { return { x: WW.clamp(x, 12, WW.cfg.MAP_W - 12), z: WW.clamp(z, 12, WW.cfg.MAP_H - 12) }; }
+  // Where to search: the centre of the side's enemy contacts (last-known positions, intel.js), else the middle
+  // of the enemy's half of the map (the half away from our own ships).
   function enemyCentre(nation) {
-    var x = 0, z = 0, n = 0;
-    for (var i = 0; i < WW.world.ships.length; i++) {
-      var s = WW.world.ships[i];
-      if (!s.alive || s.nation === nation || s.submerged) continue;
-      x += s.x; z += s.z; n++;
-    }
-    return n ? { x: x / n, z: z / n } : null;
+    var c = WW.intel && WW.intel.centre(nation);
+    if (c) return c;
+    var x = 0, n = 0;
+    for (var i = 0; i < WW.world.ships.length; i++) { var s = WW.world.ships[i]; if (s.alive && s.nation === nation) { x += s.x; n++; } }
+    var W = WW.cfg.MAP_W, east = !n || x / n < W / 2;
+    return { x: east ? W * 0.75 : W * 0.25, z: WW.cfg.MAP_H / 2 };
+  }
+  function enemyAlive(nation) {
+    for (var i = 0; i < WW.world.ships.length; i++) { var s = WW.world.ships[i]; if (s.alive && s.nation !== nation) return true; }
+    return false;
   }
 
   if (!WW.Plane) { console.error('air_scouts.js must load after aircraft.js'); return; }
@@ -51,7 +57,7 @@ window.WW = window.WW || {};
       // the catapult trains outboard (~57 deg off the bow, on the side the plane sits) before it fires
       this.cat.ry0 = this.cat.ry; this.cat.ryL = -(this.cat.z < -0.1 ? -1 : 1) * 1.0;
       if (fp) fp.visible = false;
-      this.legs = null; this.leg = 0; this.searchT = 0; this.spotT = 0; this.waterT = 0; this.waveOffs = 0; this.side = 1;
+      this.legs = null; this.leg = 0; this.searchT = 0; this.waterT = 0; this.waveOffs = 0; this.side = 1;
       this.speed = ship.speed; this.vy = 0;
       this.onCatapult(0);
       this.sync(0);
@@ -80,7 +86,6 @@ window.WW = window.WW || {};
         case 'afloat': this.afloat(dt); return;
       }
       if (this.scale < SCALE_FLY) this.setScale(Math.min(SCALE_FLY, this.scale + dt * (SCALE_FLY - SCALE_CAT) / 3));
-      this.spot(dt);
       this.trail(dt, false);
       this.integrate(dt, true);
       if (this.y < 1.2 && this.state !== 'alight') { this.y = 1.2; this.vy = Math.max(0, this.vy); }
@@ -124,20 +129,6 @@ window.WW = window.WW || {};
       if (WW.dist(this.x, this.z, w.x, w.z) < 12) {
         this.leg++;
         if (this.leg >= this.legs.length) { this.legs = null; }   // sweep done: re-plan around where the fleet is now
-      }
-    }
-    spot(dt) {
-      this.spotT -= dt;
-      if (this.spotT > 0 || this.state === 'catapult') return;
-      this.spotT = 0.5;
-      var now = WW.time.now;
-      for (var i = 0; i < WW.world.ships.length; i++) {
-        var o = WW.world.ships[i];
-        if (!o.alive || o.nation === this.nation || o.submerged) continue;
-        if (WW.dist2(this.x, this.z, o.x, o.z) < SPOT_R * SPOT_R) {
-          if (!(o.spottedUntil > now)) stats.spotted++;
-          o.spottedUntil = now + SPOT_HOLD; o.spottedBy = this.nation;
-        }
       }
     }
     // water side of the ship to alight on, and the approach / touchdown points beside it
@@ -211,7 +202,7 @@ window.WW = window.WW || {};
       if (!SHIPS[s.type] || !s.alive || s.sinking) continue;
       var sc = s._scout || (s._scout = { sorties: 0, nextT: WW.randRange(5, 25), plane: null });
       if (sc.plane || sc.sorties >= MAX_SORTIES || g.roundTime < sc.nextT) continue;
-      if (!enemyCentre(s.nation) || g.roundTime > WW.cfg.ROUND_TIMEOUT - SEARCH_T) { sc.sorties = MAX_SORTIES; continue; }
+      if (!enemyAlive(s.nation) || g.roundTime > WW.cfg.ROUND_TIMEOUT - SEARCH_T) { sc.sorties = MAX_SORTIES; continue; }
       sc.plane = launch(s); sc.sorties++;
     }
   }

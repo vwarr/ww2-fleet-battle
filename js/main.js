@@ -122,7 +122,7 @@ window.WW = window.WW || {};
 
   // ---------- round logic ----------
   const game = {
-    mode: 'auto', state: 'setup', composition: null, winner: null,
+    mode: 'setup', state: 'setup', composition: null, winner: null, custom: false,
     roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0,
     // opts.keepMap: start on the current map (used by "Start battle" in setup mode)
     startRound(opts) {
@@ -142,17 +142,23 @@ window.WW = window.WW || {};
       spawnComposition(comp);
       WW.emit('roundStart', { round: WW.stats.round, seed: game.seed });
     },
-    // setup mode: keep the map, clear ships, show the composition (ships do not act in 'setup')
-    enterSetup(newMap) {
+    // setup mode: fleets placed and waiting for Start (ships do not act in 'setup').
+    // newMap: a fresh map (the composition is moved onto it); fresh: new random fleets for both sides.
+    enterSetup(newMap, fresh) {
       game.mode = 'setup'; game.state = 'setup'; game.winner = null;
-      if (newMap || !WW.terrain.seed) { game.seed = (Math.random() * 1e9) >>> 0; WW.terrain.generate(game.seed); }
+      if (newMap || !WW.terrain.seed) {
+        game.seed = (Math.random() * 1e9) >>> 0; WW.terrain.generate(game.seed);
+        if (!fresh && game.composition && game.composition.length) game.composition = repositionComposition(game.composition);
+      }
       clearModules();
+      if (fresh) { game.composition = randomComposition(); game.custom = false; }
       if (game.composition) {
         game.composition = game.composition.filter(c => WW.terrain.isNavigable(c.x, c.z, WW.SHIP_TYPES[c.type].minDepth));
         spawnComposition(game.composition);
       } else game.composition = [];
       WW.emit('setupStart', {});
     },
+    // auto (screensaver): endless random battles on new maps
     enterAuto() { game.mode = 'auto'; game.composition = null; game.startRound(); },
     randomComposition, minSpacing,
     spawnComposition,
@@ -179,7 +185,10 @@ window.WW = window.WW || {};
       }
     } else if (game.state === 'victory') {
       game.victoryTime += dt;
-      if (game.victoryTime >= VICTORY_TIME) game.startRound();
+      if (game.victoryTime >= VICTORY_TIME) {
+        if (game.mode === 'auto') game.startRound();
+        else game.enterSetup(true, !game.custom); // standalone battles: back to fleets placed and waiting on a new map
+      }
     }
   }
 
@@ -187,6 +196,7 @@ window.WW = window.WW || {};
   function step(dt) {
     WW.time.dt = dt; WW.time.now += dt;
     call('terrain', 'update', dt);
+    call('intel', 'update', dt);   // fog of war: contact tables (intel.js), before the AI reads them
     call('ships', 'update', dt);
     call('air', 'update', dt);
     call('combat', 'update', dt);
@@ -231,7 +241,8 @@ window.WW = window.WW || {};
     call('post', 'init');
     resize();
     call('cam', 'init');
-    game.startRound();
+    if (/[?&]auto\b/.test(location.search)) game.enterAuto(); // screensaver / tests: start fighting at once
+    else game.enterSetup(true, true);                         // random fleets placed and waiting for Start
     requestAnimationFrame(frame);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
