@@ -1,4 +1,4 @@
-// models_planes.js (owner B) - plane models. Load after models.js.
+// models_planes.js (owner B) - chubby toon plane models. Load after models.js.
 window.WW = window.WW || {};
 (function () {
   'use strict';
@@ -15,32 +15,33 @@ window.WW = window.WW || {};
     return starGeo;
   }
   var COL = {
-    USN: { fighter: 0x5a7896, dive: 0x56728e, torpedo: 0x4f6b88, belly: 0xc8ccd0 },
-    IJN: { fighter: 0xc9c6a6, dive: 0x56623f, torpedo: 0x4e5a3a, belly: 0xb8b6a0 }
+    USN: { fighter: 0x6f8cab, dive: 0x6a87a5, torpedo: 0x62809e, belly: 0xd9dde0 },
+    IJN: { fighter: 0xc9c4a4, dive: 0x7a865c, torpedo: 0x6e7a52, belly: 0xd0ccb2 }
   };
   var SPEC = {
-    fighter: { len: 2.3, span: 2.6, fw: 0.36, canopy: 0.5, chord: 0.62 },
-    dive:    { len: 2.5, span: 2.8, fw: 0.4, canopy: 0.95, chord: 0.7 },
-    torpedo: { len: 2.6, span: 3.0, fw: 0.42, canopy: 1.15, chord: 0.72 }
+    fighter: { len: 2.3, span: 2.6, fw: 0.42, canopy: 0.55, chord: 0.66 },
+    dive:    { len: 2.5, span: 2.8, fw: 0.46, canopy: 0.95, chord: 0.72 },
+    torpedo: { len: 2.6, span: 3.0, fw: 0.48, canopy: 1.15, chord: 0.74 }
   };
 
   function buildPlane(kind, nationId) {
-    var m = WW.models, box = m._box, cyl = m._cyl, disc = m._disc, mat = m._mat, C = m._C;
-    var nat = m._nation(nationId), isJ = nat.id === 'IJN';
-    var sp = SPEC[kind] || SPEC.fighter, col = (COL[nat.id] || COL.USN)[kind] || 0x777777;
+    var m = WW.models, box = m._box, bar = m._bar, cyl = m._cyl, disc = m._disc, xc = m._xc, sph = m._sph, mat = m._mat, C = m._C;
+    var nat = m._nation(nationId), isJ = nat.id === 'IJN', cs = COL[nat.id] || COL.USN;
+    var sp = SPEC[kind] || SPEC.fighter, col = cs[kind] || 0x7a8a9a;
     var g = new THREE.Group(), L = sp.len, fw = sp.fw, half = L / 2;
-    // fuselage (y=0 is the centre line)
-    box(g, col, L * 0.9, fw, fw, -L * 0.03, -fw / 2, 0);
-    box(g, col, L * 0.3, fw * 0.6, fw * 0.6, -half + L * 0.1, -fw * 0.3, 0); // tail taper
-    var cowl = cyl(g, C.dark, fw * 0.62, 0.3, half - 0.05, 0, 0); cowl.rotation.z = -Math.PI / 2;
-    box(g, C.glass, sp.canopy, fw * 0.45, fw * 0.6, L * 0.08, fw / 2 - 0.02, 0);
-    // wings (low wing), tailplane, fin
-    box(g, col, sp.chord, 0.07, sp.span, L * 0.12, -fw * 0.4, 0);
-    box(g, (COL[nat.id] || COL.USN).belly, sp.chord * 0.98, 0.02, sp.span * 0.98, L * 0.12, -fw * 0.4 - 0.02, 0);
-    box(g, col, 0.38, 0.05, 1.0, -half + 0.2, -0.02, 0);
-    box(g, col, 0.4, 0.42, 0.06, -half + 0.2, 0.0, 0);
+    // fuselage: chubby ellipsoid + tapering tail boom (y = 0 is the centre line)
+    sph(g, col, L * 0.78, fw * 1.15, fw * 1.05, L * 0.08, 0, 0);
+    sph(g, col, L * 0.62, fw * 0.62, fw * 0.55, -L * 0.24, 0.04, 0);
+    xc(g, C.dark, fw * 0.56, 0.26, half - 0.12, 0, 0);                  // cowling
+    sph(g, C.gun, 0.16, 0.16, 0.16, half + 0.05, 0, 0);                 // spinner
+    sph(g, C.glass, sp.canopy, fw * 0.75, fw * 0.62, L * 0.06, fw * 0.4, 0);
+    // wings (low wing, rounded tips), belly, tailplane, fin
+    box(g, col, sp.chord, 0.09, sp.span, L * 0.1, -fw * 0.42, 0);
+    box(g, cs.belly, sp.chord * 0.96, 0.03, sp.span * 0.97, L * 0.1, -fw * 0.42 - 0.015, 0);
+    box(g, col, 0.42, 0.06, 1.05, -half + 0.22, -0.02, 0);
+    box(g, col, 0.46, 0.5, 0.08, -half + 0.2, 0.0, 0);
     // wing marks (top of both wings)
-    var wy = -fw * 0.4 + 0.075, wz = sp.span * 0.33, wx = L * 0.12;
+    var wy = -fw * 0.42 + 0.088, wz = sp.span * 0.3, wx = L * 0.1;
     [-1, 1].forEach(function (sgn) {
       if (isJ) {
         disc(g, C.white, 0.27, 0.01, wx, wy, sgn * wz);
@@ -50,28 +51,29 @@ window.WW = window.WW || {};
         var st = new THREE.Mesh(star(), mat(C.white));
         st.scale.set(0.46, 1, 0.46); st.position.set(wx, wy + 0.016, sgn * wz); g.add(st);
       }
+      // fuselage side roundel (reads well from the low camera)
+      var r0 = disc(g, isJ ? C.white : nat.accent, 0.17, 0.02, -L * 0.22, 0.03, sgn * fw * 0.33);
+      r0.rotation.x = Math.PI / 2;
+      var r1 = isJ ? disc(g, C.red, 0.13, 0.03, -L * 0.22, 0.03, sgn * fw * 0.33) : bar(g, C.white, 0.34, 0.06, 0.02, -L * 0.22, 0.0, sgn * fw * 0.34);
+      if (isJ) r1.rotation.x = Math.PI / 2;
     });
-    if (isJ) { // fuselage hinomaru (side)
-      box(g, C.red, 0.2, 0.2, fw + 0.02, -half + 0.6, -0.1, 0);
-    } else {
-      box(g, C.white, 0.2, 0.08, fw + 0.02, -half + 0.6, -0.04, 0);
-    }
+    if (isJ) bar(g, C.red, 0.06, 0.12, fw * 0.62, -L * 0.36, -0.02, 0); // tail band
     // payload
     var payload = null;
     if (kind === 'torpedo') {
-      payload = cyl(g, C.gun, 0.08, 1.2, 0.5, -fw / 2 - 0.12, 0); payload.rotation.z = -Math.PI / 2; payload.position.x = -0.6;
+      payload = xc(g, C.gun, 0.09, 1.2, -0.1, -fw * 0.62, 0);
     } else if (kind === 'dive') {
-      payload = box(g, C.gun, 0.6, 0.16, 0.16, 0.1, -fw / 2 - 0.18, 0);
+      payload = sph(g, C.gun, 0.62, 0.2, 0.2, 0.1, -fw * 0.66, 0);
       if (isJ) { // Val fixed spatted gear
-        box(g, col, 0.3, 0.3, 0.1, L * 0.15, -fw * 0.4 - 0.3, 0.55);
-        box(g, col, 0.3, 0.3, 0.1, L * 0.15, -fw * 0.4 - 0.3, -0.55);
+        sph(g, col, 0.32, 0.3, 0.12, L * 0.14, -fw * 0.42 - 0.18, 0.55);
+        sph(g, col, 0.32, 0.3, 0.12, L * 0.14, -fw * 0.42 - 0.18, -0.55);
       }
     }
     // propeller: spins around local x
-    var prop = new THREE.Group(); prop.position.set(half + 0.27, 0, 0); g.add(prop);
-    box(prop, C.dark, 0.04, 0.95, 0.1, 0, -0.475, 0);
-    var b2 = box(prop, C.dark, 0.04, 0.95, 0.1, 0, 0, -0.475); b2.rotation.x = Math.PI / 2; b2.position.set(0, 0, -0.475);
-    box(prop, C.gun, 0.1, 0.12, 0.12, 0.02, -0.06, 0);
+    var prop = new THREE.Group(); prop.position.set(half + 0.12, 0, 0); g.add(prop);
+    var b1 = box(prop, C.dark, 0.05, 1.0, 0.13, 0, -0.5, 0);
+    var b2 = box(prop, C.dark, 0.05, 1.0, 0.13, 0, 0, 0); b2.rotation.x = Math.PI / 2; b2.position.set(0, 0, -0.5);
+    void b1;
     return { group: g, prop: prop, payload: payload };
   }
   if (WW.models) WW.models.buildPlane = buildPlane;

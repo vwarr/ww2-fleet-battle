@@ -1,6 +1,6 @@
 # Fleet Battle 1942
 
-A retro 3D sea battle. Two fleets of World War 2 ships fight: the USN (blue) and the IJN (red).
+A calm, toy-like 3D sea battle that plays like a short film. Two fleets of World War 2 ships fight: the USN (blue) and the IJN (red).
 Carriers launch planes. The planes attack with bombs and torpedoes. Destroyers hunt submarines.
 Sunk ships stay on the seabed as wrecks. In shallow water, part of a wreck stays above the water.
 
@@ -18,52 +18,58 @@ You can watch it as a screensaver. A new round starts automatically after each b
 3. In your web browser, go to `http://localhost:8000/`.
 
 You can also open `index.html` directly from the disk. The game does not need a build step.
-The game uses one web font from Google Fonts. If you are offline, the game uses a monospace font.
+The game uses two web fonts from Google Fonts. If you are offline, the game uses system fonts.
 
 ## Auto mode
 
 Auto mode is the default mode.
 
 - The game makes a new map and two random fleets for each round.
-- The camera moves slowly to the area with the most action.
-- A round ends when one side has no ships. The banner shows the winner.
+- The camera works like a film director. It selects an interesting subject and films it with a slow, smooth shot.
+  Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
+  After 6 to 12 seconds, the camera cuts to a new shot.
+- During the battle, black bars show at the top and bottom of the screen. The panel and other controls are not shown.
+- A round ends when one side has no ships. A caption shows the winner.
 - A round has a time limit of 5.5 minutes. At the time limit, the side with more tonnage wins.
-- After the banner, the next round starts automatically.
+- After the caption, the next round starts automatically.
 
-A typical round lasts 3 to 4 minutes at 1X speed.
+A typical round lasts 3 to 4 minutes at 1× speed.
 
 ## Setup mode
 
 Use setup mode to put your own ships on the map.
 
-1. Click **MODE: AUTO > SETUP** in the panel at the top left.
-2. In the **FLEET SETUP** panel, click a ship type (for example, **DESTROYER**).
-3. Click **SIDE** to select the nation (USN or IJN).
+1. Push `H` to show the panel. Then click **Set up fleets** in the panel at the top left.
+2. In the **Fleet setup** panel, click a ship type (for example, **Destroyer**).
+3. Click **Side** to select the nation (USN or IJN).
 4. Click the water to put a ship there.
    - The water must be deep enough for that ship type. If it is too shallow, a message shows.
    - Do not put ships too near to other ships.
 5. Right-click near a ship to remove it.
-6. Click **START** to start the battle. Each side must have at least one ship.
+6. Click **Start** to start the battle. Each side must have at least one ship.
+   The panels go away when the battle starts.
 
 Other buttons:
 
-- **RANDOMIZE** makes two random fleets.
-- **CLEAR** removes all ships.
+- **Randomize** makes two random fleets.
+- **Clear** removes all ships.
 
 After a battle in setup mode, the game uses your fleets again on a new map.
-To go back to auto mode, click **MODE: SETUP > AUTO**.
+To change the fleets again, push `H` and click **Edit fleet**.
+To go back to auto mode, click **Back to auto** in setup mode.
 
 ## Controls
 
 | Key or button | Action |
 |---|---|
-| `H` | Show or hide the HUD panel. |
-| `B` | Show or hide the health bars above the ships. |
-| `C` | Change the camera: TRACK (follows the action) or MAP (shows all of the map). |
-| `1`, `2`, `4` | Set the game speed to 1X, 2X or 4X. |
-| **1X / 2X / 4X** buttons | Set the game speed. |
+| `H` | Show or hide the panel during the battle. The panel always shows in setup mode. |
+| `C` | Change the camera: CINEMATIC (the director camera) or MAP (shows all of the map from above). |
+| `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
+| `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
+| **1× / 2× / 4×** buttons | Set the game speed. These buttons are in the panel. |
 
-In setup mode, the camera always shows all of the map.
+In setup mode, the camera always shows all of the map from above.
+The game does not show health bars.
 
 ## Ships
 
@@ -82,12 +88,14 @@ In setup mode, the camera always shows all of the map.
 |---|---|
 | `index.html` | The page. It loads the scripts in the correct order. |
 | `js/core.js` | Settings, ship data and helpers. |
-| `js/terrain.js` | The sea floor, islands and water. |
+| `js/terrain.js` | The sea floor and the islands. |
 | `js/models.js`, `js/models_planes.js` | Ship and plane models. |
 | `js/effects.js` | Splashes, explosions, smoke, wakes and oil. |
 | `js/combat.js`, `js/combat_weapons.js` | Shells, anti-aircraft fire, torpedoes, bombs and depth charges. |
 | `js/ships.js`, `js/ships_ai.js` | Ship movement, damage, sinking, wrecks and ship AI. |
 | `js/aircraft.js` | Planes. |
-| `js/camera.js` | The camera. |
-| `js/ui.js` | The HUD, the setup panel and the health bars. |
+| `js/sky.js` | The sky, the lights and the haze. |
+| `js/water.js` | The water surface, the foam and the depth colours. |
+| `js/camera.js` | The director camera and the map camera. |
+| `js/ui.js` | The panels, the setup clicks, the black bars and the captions. |
 | `js/main.js` | The main loop and the rounds. |

@@ -205,7 +205,8 @@ window.WW = window.WW || {};
     // Movement: stay out of enemy gun range, keep near the fleet.
     // Late in a round a carrier stops running, so a lone carrier cannot stall the round.
     const late = WW.game && WW.game.roundTime > WW.cfg.ROUND_TIMEOUT * 0.6;
-    if (a.threat && a.threatD < 160 && !late) {
+    if (late && a.threat) { ship.desiredHeading = bearing(ship, a.threat); ship.throttle = 0.8; } // close in to finish the round
+    else if (a.threat && a.threatD < 160) {
       let h = bearing(ship, a.threat) + PI;
       if (a.cn) h = blend(h, ship, a.cx, a.cz, 0.3);
       ship.desiredHeading = h; ship.throttle = 1;

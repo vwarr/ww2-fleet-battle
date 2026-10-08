@@ -15,6 +15,8 @@ All agents use this contract. Do not change a name or a signature here without t
 ```
 vendor/three.min.js   (Three.js r149 UMD, global THREE)
 js/core.js            owner: A
+js/sky.js             integrator (WW.sky: sky dome, lights, fog)
+js/water.js           integrator (WW.water: depth-texture water shader; terrain calls setDepth)
 js/terrain.js         owner: A
 js/models.js          owner: B
 js/models_planes.js   owner: B   (buildPlane; result also has optional `payload` mesh: hide it on bomb/torpedo drop)
@@ -24,7 +26,7 @@ js/combat_weapons.js  owner: D   (torpedoes, bombs, depth charges)
 js/ships.js           owner: C
 js/ships_ai.js        owner: C   (WW.shipAI)
 js/aircraft.js        owner: C
-js/camera.js          integrator (WW.cam: track / map camera; main calls init, resize, update)
+js/camera.js          integrator (WW.cam: director / map camera; main calls init, resize, update)
 js/ui.js              owner: A
 js/main.js            owner: A
 ```

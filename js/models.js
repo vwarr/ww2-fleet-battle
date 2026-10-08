@@ -5,8 +5,8 @@ window.WW = window.WW || {};
   'use strict';
   // Art palette (soft, desaturated pastels). Nation ids still come from WW.NATIONS.
   var PAL = {
-    USN: { id: 'USN', hull: 0x8a9fb4, deck: 0xc9a67a, super: 0xb4c2cf, accent: 0x3d5a86, band: 0x2f4262, gun: 0x5b6672, mark: 'star' },
-    IJN: { id: 'IJN', hull: 0x928c78, deck: 0xc19a6a, super: 0xb8b29a, accent: 0xc8574c, band: 0x8c3b33, gun: 0x5f5d52, mark: 'disc' }
+    USN: { id: 'USN', hull: 0x7f94aa, deck: 0xa98f70, super: 0x91a5ba, accent: 0x34507e, band: 0x2b3b58, gun: 0x525c68, mark: 'star' },
+    IJN: { id: 'IJN', hull: 0x8a8670, deck: 0xa88d6a, super: 0xa49f84, accent: 0xc4524a, band: 0x8a3a32, gun: 0x57564c, mark: 'disc' }
   };
   var FB_GUNS = {
     carrier: ['small', 'small'], battleship: ['big', 'big', 'big', 'small', 'small'],
@@ -29,7 +29,7 @@ window.WW = window.WW || {};
   var GRAD = null;
   function grad() {
     if (GRAD) return GRAD;
-    var d = new Uint8Array([150, 150, 150, 255, 205, 205, 205, 255, 255, 255, 255, 255]);
+    var d = new Uint8Array([128, 128, 128, 255, 182, 182, 182, 255, 230, 230, 230, 255]);
     GRAD = new THREE.DataTexture(d, 3, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
     GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter; GRAD.generateMipmaps = false; GRAD.needsUpdate = true;
     return GRAD;
@@ -91,21 +91,22 @@ window.WW = window.WW || {};
 
   // Hull: lofted, bow on +x. Rounded bilge, flared sides, sheer rising to the bow, raked forefoot.
   // Material groups: 0 = deck, 1 = sides + transom.
+  // hull station at u (0 = stern, 1 = bow): x, half-width w, deck height yt, keel yb
+  function hullAt(L, B, top, bowLen, sternW, sheer, u) {
+    var h = B / 2, xb = L / 2 - bowLen, x = -L / 2 + u * L, w = h, t;
+    if (x > xb) { t = (x - xb) / bowLen; w = h * Math.pow(Math.max(0, 1 - Math.pow(Math.min(t, 1), 1.7)), 0.75); }
+    else if (u < 0.12) { t = 1 - u / 0.12; w = h * (1 - (1 - sternW) * t * t); }
+    w = Math.max(w, 0.04);
+    var yt = top + sheer * Math.pow(Math.max(0, (u - 0.68) / 0.32), 2) + sheer * 0.3 * Math.pow(Math.max(0, (0.1 - u) / 0.1), 2);
+    var yb = -0.5 + (x > xb ? Math.pow((x - xb) / bowLen, 2) * (yt + 0.5) * 0.55 : 0);
+    return { x: x, w: w, yt: yt, yb: yb };
+  }
   var hullCache = {};
   function hullGeo(L, B, top, bowLen, sternW, sheer) {
     var key = [L, B, top, bowLen, sternW, sheer].join('_');
     if (hullCache[key]) return hullCache[key];
-    var NS = 30, NJ = 7, h = B / 2, yb0 = -0.5, xb = L / 2 - bowLen;
-    var pos = [], deckI = [], sideI = [], st = [];
-    for (var i = 0; i <= NS; i++) {
-      var u = i / NS, x = -L / 2 + u * L, w = h, t;
-      if (x > xb) { t = (x - xb) / bowLen; w = h * Math.pow(1 - Math.pow(t, 1.7), 0.75); }
-      else if (u < 0.12) { t = 1 - u / 0.12; w = h * (1 - (1 - sternW) * t * t); }
-      w = Math.max(w, 0.04);
-      var yt = top + sheer * Math.pow(Math.max(0, (u - 0.68) / 0.32), 2) + sheer * 0.3 * Math.pow(Math.max(0, (0.1 - u) / 0.1), 2);
-      var yb = yb0 + (x > xb ? Math.pow((x - xb) / bowLen, 2) * (yt - yb0) * 0.55 : 0);
-      st.push({ x: x, w: w, yt: yt, yb: yb });
-    }
+    var NS = 30, NJ = 7, pos = [], deckI = [], sideI = [], st = [];
+    for (var i = 0; i <= NS; i++) st.push(hullAt(L, B, top, bowLen, sternW, sheer, i / NS));
     function V(x, y, z) { pos.push(x, y, z); return pos.length / 3 - 1; }
     var base = [1, -1].map(function (sd) {
       var b = pos.length / 3;
@@ -161,7 +162,6 @@ window.WW = window.WW || {};
     for (var i = 0; i < n; i++) {
       var bz = (i - (n - 1) / 2) * t.sp;
       xc(obj, P.gun, t.t / 2, t.len, front + t.len / 2, by, bz);
-      if (cal !== 'mg') xc(obj, P.gun, t.t * 0.68, 0.14, front + t.len - 0.07, by, bz); // muzzle ring
     }
     var barrel = new THREE.Object3D();
     barrel.position.set(front + t.len, by, 0);
@@ -360,6 +360,7 @@ window.WW = window.WW || {};
       if (!fn) throw new Error('models.buildShip: unknown type ' + type);
       var s = fn(P, P.id === 'IJN');
       if (type !== 'submarine') outline(s);
+      if (WW.models._finish) WW.models._finish(type, P, s);   // models_detail.js: fine detail + static-mesh merge
       // Make turret count/cal match WW.SHIP_TYPES guns (in order).
       var cals = gunCals(type);
       if (cals.length === s.turrets.length) s.turrets.forEach(function (t, i) { t.cal = cals[i]; });
@@ -369,6 +370,6 @@ window.WW = window.WW || {};
     },
     // shared helpers for models_planes.js
     _mat: mat, _box: box, _bar: bar, _cyl: cyl, _disc: disc, _xc: xc, _sph: sph, _nation: nation, _C: C,
-    _grad: grad, _lineMat: lineMat
+    _grad: grad, _lineMat: lineMat, _hullAt: hullAt, _geo: geo, _mesh: mesh
   };
 })();

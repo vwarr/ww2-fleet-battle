@@ -112,7 +112,18 @@ window.WW = window.WW || {};
       if (this.navT <= 0) { this.navT = 0.2 + WW.rand() * 0.1; this.planNav(want); }
 
       // Turn (slower at low speed, but never zero so a stopped ship can come about).
-      const pivot = this.clearAhead < 3; // nose against shallows: stop and come about
+      let pivot = this.clearAhead < 3; // nose against shallows: stop and come about
+      // Stuck pivoting (every heading looks shallow with the planning margin): head for deeper water.
+      this.pivotT = pivot ? (this.pivotT || 0) + dt : 0;
+      if (this.pivotT > 2 && !(this.escapeT > 0)) {
+        let bd = -1e9;
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * TAU, d = WW.terrain.depthAt(this.x + Math.cos(a) * 7, this.z + Math.sin(a) * 7);
+          if (d > bd) { bd = d; this.escapeH = a; }
+        }
+        this.escapeT = 3;
+      }
+      if (this.escapeT > 0) { this.escapeT -= dt; this.navHeading = this.escapeH; this.navT = 0.3; pivot = false; this.pivotT = 0; }
       const sf = pivot ? 1.5 : WW.clamp(this.speed / st.speed, 0.4, 1);
       const diff = WW.angleDiff(this.heading, this.navHeading);
       const maxT = st.turn * sf * dt;

@@ -2,8 +2,7 @@
 window.WW = window.WW || {};
 (function (WW) {
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
-  const INTERNAL_H = 450;     // internal render height (pixels), upscaled with CSS (exact 2x at 900p)
-  const STEP = 0.05;          // max sim step
+    const STEP = 0.05;          // max sim step
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
   const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: 365, x1: 465, cx: 415, heading: Math.PI } };
@@ -16,31 +15,28 @@ window.WW = window.WW || {};
 
   // ---------- renderer / scene / camera ----------
   let renderer, scene, camera;
-  const VFOV = 32;
+  const VFOV = 38;
 
+  let pixelMode = false;     // optional retro mode (P key): low internal resolution, upscaled
   function setupRenderer() {
     const canvas = document.getElementById('game');
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
-    renderer.setPixelRatio(1);
-    renderer.setClearColor(0x1a4a82);
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setClearColor(0xd6ecf4);
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a4a82);
-    camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 10, 3000);
-    scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x3a4a3a, 0.75));
-    const sun = new THREE.DirectionalLight(0xfff2d8, 0.85);
-    sun.position.set(-200, 400, 120);
-    scene.add(sun);
+    camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 4000);
     WW.renderer = renderer; WW.scene = scene; WW.camera = camera;
     window.addEventListener('resize', resize);
   }
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    const ih = Math.min(INTERNAL_H, h), iw = Math.max(1, Math.round(w * ih / h));
-    renderer.setSize(iw, ih, false);
+    if (pixelMode) { renderer.setPixelRatio(1); renderer.setSize(Math.round(w * 360 / h), 360, false); }
+    else { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.setSize(w, h, false); }
+    renderer.domElement.classList.toggle('pixel', pixelMode);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     call('cam', 'resize');
   }
+  WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; } };
 
   // ---------- fleets ----------
   function randomComposition() {
@@ -202,6 +198,7 @@ window.WW = window.WW || {};
     last = t;
     advance(rdt * WW.time.scale);
     call('cam', 'update', rdt);
+    call('sky', 'update', rdt);
     call('ui', 'update', rdt);
     renderer.render(scene, camera);
   }
@@ -217,7 +214,7 @@ window.WW = window.WW || {};
 
   function boot() {
     setupRenderer();
-    ['terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui'].forEach(m => {
+    ['sky', 'terrain', 'models', 'fx', 'combat', 'ships', 'air', 'ui'].forEach(m => {
       try { call(m, 'init'); } catch (e) { console.error('init ' + m, e); }
     });
     resize();
