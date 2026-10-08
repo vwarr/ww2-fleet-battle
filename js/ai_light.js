@@ -175,6 +175,7 @@ window.WW = window.WW || {};
   function ptAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now();
     const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, pair: { p: null, lead: true } });
+    a.ownWithdraw = true; // a crippled PT lurks at home and makes no runs (below) rather than the core's withdrawal
     mgTarget(ship);
     const jink = Math.sin(T * 1.7 + ship.id) * 0.45;
     L.decT -= dt;
@@ -200,7 +201,7 @@ window.WW = window.WW || {};
         ship.desiredHeading = d > PT.FIRE_MAX + 8 && WW.dist(ship.x, ship.z, f.x, f.z) > 14 ? Math.atan2(f.z - ship.z, f.x - ship.x) : lb;
         ship.throttle = 1;
         if (a.torpReload <= 0 && d < PT.FIRE_MAX && d > 15 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, u) && fanClear(ship, lb, Math.min(ship.stats.torpedoes.range, d + 10))) {
-          H.fireSpread(ship, u); L.state = 'out'; L.t0 = T; L.from = u;
+          if (H.fireSpread(ship, u) !== false) { L.state = 'out'; L.t0 = T; L.from = u; }
         } else if (d < 15) { L.state = 'out'; L.t0 = T; L.from = u; }
       }
       if (L.state === 'run') return;
@@ -250,7 +251,7 @@ window.WW = window.WW || {};
   }
 
   // ---------------- submarines ----------------
-  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 26, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14 };
+  const SUB = { FIRE: 82, FIRE_MIN: 22, AOB: 2.0, OFF: 55, DIVE_DD: 130, DD_SAFE: 90, DD_KEEP: 85, REFRESH: 26, DIVE_SHIP: 80, DIVE_AIR: 125, DIVE_TGT: 105, EVADE: 14, CORNER: 90, SILENT: 65, SILENT_THR: 0.3 };
   // The best ambush: { c, ax, az, score } — a point beside the target's predicted track (from its last-known
   // heading and speed) that the sub can reach before the target passes. Never a destroyer (that is cornered fire).
   function ambush(ship) {
@@ -326,13 +327,19 @@ window.WW = window.WW || {};
     a.evadeT -= dt;
     const away = (o) => Math.atan2(ship.z - o.z, ship.x - o.x);
     // ---- cornered: a destroyer bearing down, or one sitting on the boat while its air runs out, gets a shot ----
-    if (L.dd && L.ddD < 70 && L.ddD > 10 && a.torpReload <= 0 && seen(ship, L.dd.unit)) {
+    if (L.dd && L.ddD < SUB.CORNER && L.ddD > 10 && a.torpReload <= 0 && seen(ship, L.dd.unit)) {
       const u = L.dd.unit, p = lead(ship, u, WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
-      if (Math.abs(WW.angleDiff(u.heading, away(u))) < 0.6 || a.diveT > 15 || a.forcedT > 0) {
+      const bowOn = Math.abs(WW.angleDiff(u.heading, away(u))) < 0.6;
+      if ((bowOn && L.ddD < SUB.CORNER) || (L.ddD < 70 && (a.diveT > 15 || a.forcedT > 0))) {
         ship.desiredHeading = lb; ship.throttle = 0.6;
-        if (Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && fanClear(ship, lb, L.ddD + 10)) { H.fireSpread(ship, u); a.evadeT = SUB.EVADE; }
+        if (Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && fanClear(ship, lb, L.ddD + 10)) { if (H.fireSpread(ship, u) !== false) a.evadeT = SUB.EVADE; }
         return;
       }
+    }
+    // Hunted (a destroyer inside sonar range): deep, slow and quiet, turning away from its track.
+    if (ship.submerged && !(a.forcedT > 0) && L.dd && L.ddD < SUB.SILENT) {
+      ship.desiredHeading = ddSteer(ship, away(L.dd), L); ship.throttle = SUB.SILENT_THR;
+      return;
     }
     // Air running low with a destroyer about: open the distance before the boat has to come up.
     if (!(a.forcedT > 0) && ship.submerged && a.diveT > SUB.REFRESH && L.dd && L.ddD < SUB.DIVE_DD) {
@@ -369,7 +376,7 @@ window.WW = window.WW || {};
     const aob = Math.abs(WW.angleDiff(tgt.heading, Math.atan2(ship.z - tgt.z, ship.x - tgt.x))); // 0: we are dead ahead of it
     if (a.torpReload <= 0 && d < SUB.FIRE && d > SUB.FIRE_MIN && aob < SUB.AOB && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.25 &&
         seen(ship, tgt) && fanClear(ship, lb, Math.min(st.torpedoes.range, d + 15))) {
-      H.fireSpread(ship, tgt); a.evadeT = SUB.EVADE;
+      if (H.fireSpread(ship, tgt) !== false) a.evadeT = SUB.EVADE;
     }
   }
 
