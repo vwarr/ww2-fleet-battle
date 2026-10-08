@@ -161,7 +161,7 @@ window.WW = window.WW || {};
     if (foe && foe.posture === 'pursue') stats.pursuitKills[foe.nation]++;
     addTask(s.nation, s.x, s.z, (BOATS[s.type] || 0) * PER_BOAT, 'ship', s.stats.length);
   });
-  // Aircrew in the water: a ditched plane, or one the crew abandoned (air_deaths.js picks the mode with WW.rand).
+  // Aircrew in the water: a ditched plane or one the crew abandoned (air_deaths.js picks these modes with WW.rand); at the sim position of the moment. Not a visual bail-out (bailAt: Math.random), which would feed the sim.
   function hookPlanes() {
     var P = WW.Plane && WW.Plane.prototype; if (!P) return;
     ['shotDown', 'ditch'].forEach(function (nm) {

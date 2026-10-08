@@ -56,6 +56,7 @@ js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (C
 js/ai_light.js          WW.shipAI.roles.submarine: submarine behaviour; WW.lightAI.h helpers shared with ai_pt.js
 js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_light.js)
 js/ai_endgame.js        WW.endgameAI: a broken side runs for its home edge (doctrine: rescue / escort or best speed), rescue steering, pursuit seams
+js/ai_charge.js         WW.smoke (smoke screens that block ship-to-ship sight), WW.charge (escorts charge an enemy closing on their carrier)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns, tracer rounds
 js/air_intercept.js     WW.intercept: fighter gun passes on bombers (wheel arc lead, dive line, stern passes)
@@ -66,6 +67,7 @@ js/lifeboats.js         WW.lifeboats: a sinking ship's boats row to a friendly s
 js/air_deaths.js        WW.airDeaths: shoot-down / ditch / bail-out / deck slide-off deaths
 js/endgame.js           WW.endgame: escapes off the map, survivor rescue tasks, scuttling, endgame stats (sim)
 js/air_deck.js          WW.airDeck: deck parking, wing folding, takeoff runs, into-the-wind turns, landing pattern
+js/ship_fires.js        WW.shipFires: fires, flooding and damage control as sim state, the loaded flight deck, magazine explosions
 js/air_fx.js            WW.airFx: prop disc, dive brakes, wing-tip vapour, exhaust flicker, canopy glint
 js/air_strikes.js       WW.strike: strike waves (form-up, vics), sequential dive bombing, anvil torpedo attack
 js/air_squadrons.js     WW.squadrons: carrier names, VF/VB/VT squadrons per carrier slot, sections / divisions / shotai, wingman slots
@@ -104,7 +106,7 @@ Each animation frame (`main.js`, `frame`):
 
 1. Advance the simulation. For each step (`step`):
    1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
-   2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.endgame.update` (escapes, survivor pickups, scuttling)
+   2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.endgame.update` (escapes, survivor pickups, scuttling), `WW.shipFires.update` (fires, flooding, damage control, once a sim second) and `WW.charge.update` (smoke clouds, escort charges)
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
    5. `WW.fx.update`, then `WW.lifeboats.update`
@@ -470,6 +472,9 @@ Order = { ship, group, role, slot, sx, sz, t };
 | pressRatio / withdrawRatio | 1.2 / 0.45 | 1.1 / 0.4 | posture |
 | risk (cv, bb, ca, dd, ss, pt) | 0, .55, .45, .45, .35, .2 | 0, .5, .55, .6, .4, .3 | `WW.threat.bestHeading` risk tolerance |
 | rescue / scuttle (flags, not rolled) | true / false | false / true | endgame: USN destroyers pick up survivors and escort cripples home; IJN runs at best speed and may scuttle a cripple about to be caught |
+| damageControl | 1.5 | 1 | divides torpedo flooding, engine-room repair time and the permanent share (ship_speed.js); fires put out × it, spread ÷ it², fuel / magazine chain ÷ it²; above 1.15 flooding is pumped out (to 40% of its peak) and a ship over 60% hp with no fire patches up to 5% of its hp; at or below 1.15 flooding creeps on (ship_fires.js) |
+| avgas | 0.8 | 1 | chance factor that a bomb on a loaded flight deck sets off the fuel and ordnance (ship_fires.js) |
+| escortCharge | 1 | 0.6 | escort charge trigger: an enemy gun ship within (0.6 + 0.6 × it) × its gun range of an own carrier, or (≥ 0.8) closing on it inside 300 (ai_charge.js) |
 
 #### WW.threat (ai_threat.js)
 
@@ -600,6 +605,23 @@ Each side gets 1 carrier (25% chance of 2), 1 to 2 battleships, 2 cruisers, 3 de
 - `time`: the time limit (420 simulation seconds, 14 minutes at 1×), stretched for a pursuit (`game.deadline()`): while a broken side still has major ships afloat, at least `PURSUE_T` (150) s after it broke, at most `EXT_MAX` (150) s past the limit. The side with more tonnage wins.
 
 `tests/sim_rounds.js` and `tests/sim_behaviour.js` report each round's end reason (kill / retire / time / cap) from `game.endReason` (a stall counts as time).
+
+### Fires, the flight deck, magazines and the escort charge: ship_fires.js, ai_charge.js
+
+```js
+WW.shipFires = { hit(ship, amount, kind, cal, x, z), update(dt), deckLoad(cv), stats };  // ship.fireN, ship.avgas, ship.repaired
+WW.airDeck.loaded(cv) -> bool          // deckLoad >= 2: strike planes queued, planes waiting on deck to launch, or rearming
+WW.smoke = { add(x, z, nation), blocks(ax, az, bx, bz), clouds() };
+WW.charge = { update(dt), steer(ship, dt), stats, CHARGE_R };                             // ship.ai.charge
+// events: deckHit { ship, load, planes, x, z }, magazine { ship, x, z }, escortCharge { carrier, foe, ships }
+```
+
+All sim code with `WW.rand`; the flames, smoke puffs and explosions are visual (`WW.damage.syncFires`, `Math.random`).
+- **Fires** (`Ship.takeDamage` → `hit`, after `WW.shipSpeed.hit`): a bomb starts a fire with chance 0.35, a torpedo 0.1, a big shell 0.15, a medium one 0.08 (at most 8). Once a sim second each fire burns 3 hp (an avgas fire × 2.5), may be put out (0.035 × damageControl), and the ship may get another (0.012 × fires / damageControl², avgas × 3). `damage.js syncFires` keeps that many sites burning on the model.
+- **Flight deck** ("five fateful minutes"): a bomb on a carrier whose `deckLoad` is 2 or more sets off the deck with chance min(0.9, (0.25 + 0.08 × load) × doctrine.avgas): the strike planes queued (taken from the hangar), the planes waiting to take off (removed) and those rearming are lost, 2 + load / 3 avgas fires start, the secondary explosions do 25 × load hp (at most 400) and `deckHit` is emitted. While 3 or more avgas fires burn, a fuel / bomb magazine chain explosion (380 hp) follows with chance 0.012 / damageControl² a second. An empty deck takes the normal damage.
+- **Magazine** (Hood, Arizona): a torpedo, bomb or big-shell hit on a battleship or cruiser detonates a magazine with chance 0.0004, × 3 within 3 units of a main turret: the ship blows up and sinks at once (`magazine` event; about 8 in 400 rounds). The same for both nations.
+- **Smoke screen**: a cloud grows to radius 18, drifts with `WW.wind` and is gone after 40 s (at most 60). `intel.js los()` treats a ship-to-ship line through 0.8 × a cloud's radius as blocked (planes still see).
+- **Escort charge** (Samar): once a second, an own carrier (at most once in 90 s) with a known enemy gun ship (seen in the last 10 s) inside the doctrine trigger sends every destroyer at ≥ 30% hp within 320 of it (not on a rescue) at that ship: full speed at its lead point with a weave, close aboard a swing across, guns on it, torpedoes through `WW.shipAI.surface.torpedoes`, a smoke cloud every 2 s. It ends when the foe is sunk or turned back (beyond 1.3 × the trigger from the carrier), the destroyer is below 30% hp, or after 75 s. `ai_endgame.js steer` hands the helm to `WW.charge.steer` first (not for a broken side).
 
 ### Endgame: endgame.js, ai_endgame.js
 

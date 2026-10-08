@@ -118,8 +118,10 @@ window.WW = window.WW || {};
     }
     // ---- shared flight: off the map to its own edge ----
     goHome(dt) {
-      var hx = edgeX(this.nation) + (this.nation === 'USN' ? -10 : 10), low = hunted(this, 90);
-      this.fly(hx, this.z, low ? 12 : 24, dt, this.pt.speed * (low ? 1.08 : 1), 0.5);
+      var hx = edgeX(this.nation) + (this.nation === 'USN' ? -10 : 10), low = hunted(this, 90), h = null;
+      if (WW.search && WW.search.homeHeading) { var r = WW.search.homeHeading(this, hx, this.z); h = r.h; low = low || (r.low && this.mission === 'patrol'); } // routed round AA / CAP (air_search.js)
+      if (h === null) h = Math.atan2(0, hx - this.x);
+      this.fly(this.x + Math.cos(h) * 60, this.z + Math.sin(h) * 60, low ? 12 : 24, dt, this.pt.speed * (low ? 1.08 : 1), 0.5);
       if (this.nation === 'USN' ? this.x < -OFF + 2 : this.x > WW.cfg.MAP_W + OFF - 2) { stats.home[this.nation]++; emit(this, 'home'); this.remove(); }
     }
     // ---- rescue ----

@@ -4,7 +4,7 @@
 //   flooding      -FLOOD per torpedo hit, at most FLOOD_MAX (each hit also deepens the list, damage.js / syncGroup);
 //   engine room   a heavy hit (torpedo, bomb, big shell) knocks the engines down to ENGINE_K with chance CRIT:
 //                 half the time for good, otherwise until the damage-control party has it back (CRIT_T s).
-// The side's doctrine.damageControl (USN 1.3, IJN 1) divides the flooding, the repair time and the permanent share.
+// The side's doctrine.damageControl (USN 1.5, IJN 1) divides the flooding, the repair time and the permanent share.
 // Ship.takeDamage calls hit() before damage.js; Ship.move reads k() for its target speed. ship.speedK is public
 // (the behaviour suite reads it), ship.flood and ship.engineT too.
 window.WW = window.WW || {};
