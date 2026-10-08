@@ -108,7 +108,7 @@ window.WW = window.WW || {};
           rb.connect(rl); rl.connect(rg);
           fire = { c, rb, rg }; srcs.push(rb);
         }
-        if (fire) { fire.c.gain.gain.setTargetAtTime(0.5 * st.fire, now, 0.2); fire.rg.gain.setTargetAtTime(0.5 * st.fire, now, 0.25); }
+        if (fire) { fire.c.gain.gain.setTargetAtTime(0.32 * st.fire, now, 0.2); fire.rg.gain.setTargetAtTime(0.32 * st.fire, now, 0.25); }
         first = false;
       }
       apply();
@@ -239,7 +239,7 @@ window.WW = window.WW || {};
   A.register('plane.splash', {
     ref: 22, max: 4, minGap: 0.08, sos: true, reverb: 0.3, duck: 0.12, dur: 2.5, params: { size: 1.6 },
     build(ctx, out, p) {
-      const s = clamp(num(p.size, 1.6), 0.3, 3.5), r = p.rate, g = clamp(0.45 + s * 0.22, 0.4, 1);
+      const s = clamp(num(p.size, 1.6), 0.3, 3.5), r = p.rate, g = clamp(0.45 + s * 0.2, 0.4, 0.85);
       const parts = water(ctx, out, p.t, s, r, g);
       if (s > 1.2) parts.push(S.boom(ctx, out, p.t, { f0: 70, f1: 34, dur: 0.6 * Math.sqrt(s), gain: 0.25 * g, body: 0.6, crack: 0.12, bright: 0.6, rate: r }));
       return S.done(p, parts);
@@ -269,7 +269,7 @@ window.WW = window.WW || {};
     build(ctx, out, p) {
       const s = clamp(num(p.size, 1), 0.3, 1.5), r = p.rate, t = p.t;
       const parts = [
-        S.boom(ctx, out, t, { f0: 75, f1: 34, dur: 0.6 + 0.8 * s, gain: 0.3 + 0.25 * s, body: 1, crack: 0.15, bright: 0.6, rate: r }),
+        S.boom(ctx, out, t, { f0: 75, f1: 34, dur: 0.6 + 0.8 * s, gain: 0.26 + 0.2 * s, body: 1, crack: 0.15, bright: 0.6, rate: r }),
         S.burst(ctx, out, t + 0.02 / r, { noise: 'brown', type: 'lowpass', f: 650, f1: 150, q: 0.6, a: 0.05, d: 0.9 * s, gain: 0.4 * s, rate: r })
       ];
       if (s > 0.7) parts.push(S.crackle(ctx, out, t + 0.1 / r, { dur: 1.2 * s, f: 1700, q: 0.6, gain: 0.35, rate: r }));
