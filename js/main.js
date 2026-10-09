@@ -187,19 +187,19 @@ window.WW = window.WW || {};
   //    'retire'; sunk: 'kill' (the winner ran down the last of them; ships that got away earlier are counted in
   //    WW.endgame.stats.escaped). Both out at once: tonnage.
   //  - a broken side that has got clear also retires (the big map's long run home is no battle): RETIRE_MIN s after
-  //    the break, once no enemy gun ship is within CLEAR_R of any of its ships and no armed enemy bomber is within
-  //    CLEAR_AIR of them, for CLEAR_T s running (the pursuit has lost touch). Not with game.noRetire (tests).
+  //    the break, once no enemy gun ship is within CLEAR_R of any of its ships and no armed enemy bomber is in the air,
+  //    for CLEAR_T s running (the pursuit has lost touch and no strike is on its way). Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
-  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 45, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 30;
+  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 60, CLEAR_R = 300, CLEAR_T = 30;
   const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 };
-  // the broken side n is out of the enemy's reach (no gun ship within CLEAR_R, no armed bomber within CLEAR_AIR)
+  // the broken side n is out of the enemy's reach: no enemy gun ship within CLEAR_R, no armed enemy bomber in the air
   function clear(n) {
     const S = WW.world.ships, P = WW.world.planes;
+    for (const p of P) if (p.alive && p.nation !== n && p.ordnance && (p.kind === 'dive' || p.kind === 'torpedo') && p.y > 2) return false;
     for (const s of S) {
       if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
       for (const e of S) if (e.alive && !e.sinking && e.nation !== n && GUNS[e.type] && WW.dist2(s.x, s.z, e.x, e.z) < CLEAR_R * CLEAR_R) return false;
-      for (const p of P) if (p.alive && p.nation !== n && p.ordnance && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(s.x, s.z, p.x, p.z) < CLEAR_AIR * CLEAR_AIR) return false;
     }
     return true;
   }

@@ -1,13 +1,16 @@
 // ai_pt.js — PT boats: lurk at island cover in their own half, dash at a target of opportunity when the run is
 // clear (WW.threat danger from ships other than the target), fire the spread as a pair from both beams, break off
-// home at full speed with a jink. MG only at their own size. Registers WW.shipAI.roles.pt; uses WW.lightAI.h
-// (ai_light.js, loaded first). Reads the enemy only through WW.intel and WW.threat; no randomness.
+// home at full speed with a jink. MG only at their own size. During the air-war hold (fleet_cmd.js airWar) they are
+// the fleet's forward PICKETS instead: the pairs run far out toward the enemy, spread across its line of approach,
+// and shadow its nearest known ships from just outside the reach of the guns that would fire on a PT, so what they
+// see reaches the plot (intel.js) and the strikes; no torpedo runs while picketing. Registers WW.shipAI.roles.pt;
+// uses WW.lightAI.h (ai_light.js, loaded first). Reads the enemy only through WW.intel and WW.threat; no randomness.
 window.WW = window.WW || {};
 (function () {
   const PI = Math.PI;
   const H = WW.shipAI.h, seen = H.seen, lead = H.lead;
   const { VAL, now, danger, pen, homeX, age, contacts, ownDps, fanClear, landNear, coverPts, order } = WW.lightAI.h;
-  const stats = { checks: 0, far: 0, deep: 0, shoal: 0, hot: 0 }; // PT run checks and why they were refused
+  const stats = { checks: 0, far: 0, deep: 0, shoal: 0, hot: 0, picket: 0 }; // PT run checks and why they were refused; picket: picket station updates
   WW.on('roundStart', () => { for (const k in stats) stats[k] = 0; });
 
   // ---------------- PT boats ----------------
@@ -23,7 +26,27 @@ window.WW = window.WW || {};
   };
   // Midline limits: PT_DEEP (the commander's ptDeep: no enemy gun ship seen this round, and a carrier known or a long
   // search) lets the boats run deep; the danger field still steers them.
-  const deepOK = ship => { const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null; return !!(B && B.ptDeep); };
+  const deepOK = ship => { const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null; return !!(B && (B.ptDeep || picketing(ship, B))); };
+  // ---- pickets (the air-war hold) ----
+  // PICKET: R standoff from the shadowed contact, LANE between pairs across the line of approach, WING beside the
+  // leader, FAR (x W past the midline) where to look with nothing known, AGE (s) of the contacts worth shadowing,
+  // DG the danger (dps) a picket station may sit in (it is out of the reach of the guns that fire on PTs: ptReach).
+  const PICKET = { R: 100, LANE: 110, WING: 14, FAR: 0.3, AGE: 60, DG: 4, BACK: 35 };
+  function picketing(ship, B) { return !!(B && B.airWar && ship.hp >= ship.maxHp * 0.5); }
+  function picketSpot(ship, B, L) {
+    const n = ship.nation, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, M = B.groups.pt.members, i = Math.max(0, M.indexOf(ship)), P = (M.length + 1) >> 1;
+    let tx = W / 2 - homeX(ship) * W * PICKET.FAR, tz = B.axis.z, bd = 1e9; // nothing known: the enemy's likely approach
+    for (const c of contacts(ship, PICKET.AGE)) { // the nearest known enemy surface ship to our main body: its screen
+      if (c.unit.submerged || c.unit.isBase) continue;
+      const d = WW.dist(B.axis.x, B.axis.z, c.x, c.z); if (d < bd) { bd = d; tx = c.x; tz = c.z; }
+    }
+    const h = Math.atan2(B.axis.z - tz, B.axis.x - tx), lat = ((i >> 1) - (P - 1) / 2) * PICKET.LANE + (i & 1 ? PICKET.WING : 0);
+    let x = tx + Math.cos(h) * PICKET.R - Math.sin(h) * lat, z = tz + Math.sin(h) * PICKET.R + Math.cos(h) * lat;
+    for (let q = 0; q < 6 && (danger(n, x, z) > PICKET.DG || ghostNear(ship, x, z)); q++) { x += Math.cos(h) * PICKET.BACK; z += Math.sin(h) * PICKET.BACK; }
+    L.lx = WW.clamp(x, 40, W - 40); L.lz = WW.clamp(z, 40, Hh - 40);
+    for (let q = 0; q < 4 && !WW.terrain.isNavigable(L.lx, L.lz, 2.5); q++) { L.lx = WW.clamp(L.lx + Math.cos(h) * 20, 40, W - 40); L.lz = WW.clamp(L.lz + Math.sin(h) * 20, 40, Hh - 40); }
+    stats.picket++;
+  }
   const lim = (ship, k) => (deepOK(ship) ? PT.DEEP[k] : PT[k]);
   function partner(ship) {
     const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null;
@@ -57,6 +80,8 @@ window.WW = window.WW || {};
   function lurkSpot(ship, L) {
     const a = ship.ai, o = order(ship), W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, n = ship.nation;
     noteGhosts(ship);
+    const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(n) : null;
+    if (picketing(ship, B)) return picketSpot(ship, B, L);
     // the commander's spot for this boat (fleet_search.js: one per pair, spread out), unless it is hot now
     if (o && o.spot && ship.hp >= ship.maxHp * 0.35 && danger(n, o.spot.x, o.spot.z) <= 0.3 && !ghostNear(ship, o.spot.x, o.spot.z)) { L.lx = o.spot.x; L.lz = o.spot.z; return; }
     let bx, bz;
@@ -145,13 +170,20 @@ window.WW = window.WW || {};
     }
     return best;
   }
+  // the reach of the guns that would fire on a PT (ships_ai.js ROLE_W / secondaries): a battleship's main battery
+  // never does, its secondaries do
+  function ptReach(u) {
+    const G = u.stats.guns, W = WW.shipAI.ROLE_W[u.type]; let r = 0;
+    for (let k = 0; k < G.length; k++) if (k > 0 || !W || W.pt > 0) r = Math.max(r, G[k].range);
+    return r || G[0].range;
+  }
   function nearestBig(ship) { // nearest known enemy gun ship that out-guns a PT (flee from it)
     let b = null, bd = 1e9, near = null, nd = 1e9;
     for (const c of contacts(ship, 30)) {
       const u = c.unit;
       if (u.submerged || u.type === 'pt' || !u.stats.guns.length) continue;
       const dr = Math.min(age(c), 20), x = c.x + Math.cos(c.heading) * c.speed * dr, z = c.z + Math.sin(c.heading) * c.speed * dr; // where it may be now
-      const d = WW.dist(ship.x, ship.z, x, z), r = u.stats.guns[0].range, q = { x, z, unit: u };
+      const d = WW.dist(ship.x, ship.z, x, z), r = ptReach(u), q = { x, z, unit: u };
       if (d - r < bd) { bd = d - r; b = q; }
       if (d < nd && d < r + 40) { nd = d; near = q; } // the closest gun ship we are inside (or near) the reach of
     }
@@ -243,7 +275,8 @@ window.WW = window.WW || {};
     // ---- lurk ----
     L.spotT -= dt;
     if (L.spotT <= 0) { L.spotT = 4; lurkSpot(ship, L); }
-    if (decide && a.torpReload <= 0 && ship.hp >= ship.maxHp * 0.35) {
+    const pk = picketing(ship, WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(n) : null);
+    if (decide && !pk && a.torpReload <= 0 && ship.hp >= ship.maxHp * 0.35) {
       // join the partner's run from the other side, else look for our own opportunity
       const pl = L.pair.p && L.pair.p.ai && L.pair.p.ai.lt;
       let tgt = null;
@@ -259,10 +292,10 @@ window.WW = window.WW || {};
       if (g) { L.state = 'gun'; L.tgt = g; L.t0 = T; L.hp0 = ship.hp; ship.target = g; return; }
     }
     // inside known gun reach with no run worth making: break off
-    if (decide && nb && (nb.margin < (L.hot ? 60 : 25) || danger(n, ship.x, ship.z) > PT.FLEE_DG)) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
+    if (decide && nb && (nb.margin < (L.hot ? 60 : pk ? 15 : 25) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG * 1.5 : PT.FLEE_DG))) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
     // A heavy ship we lost sight of may have closed into gun reach (its ghost): no patrol legs, full speed to the
     // spot (lurkSpot keeps it out of ghost reach), so a PT never idles where an unseen battleship can range it.
-    if (decide) L.hot = ghostNear(ship, ship.x, ship.z) || danger(n, ship.x, ship.z) > 0.3;
+    if (decide) L.hot = ghostNear(ship, ship.x, ship.z) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG : 0.3); // a picket works inside the edge of it
     // At the spot: a patrol leg stern-on to the enemy (a break-off then needs no turn), and a slower leg back.
     const d = WW.dist(ship.x, ship.z, L.lx, L.lz);
     if (L.hot && d > 8) { L.leg = 'fwd'; L.legT = T; }
