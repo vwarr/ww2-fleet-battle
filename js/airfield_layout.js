@@ -77,9 +77,27 @@ window.WW = window.WW || {};
     for (var t = 0; t <= 1.001; t += 0.1) { var v = v0 + (v1 - v0) * t; if (L.facs.some(function (f) { return Math.hypot(f.u - u, f.v - v) < f.r + 4; })) return false; }
     return true;
   }
-  // Rows of spots for the demand { S: n, M: n, L: n }, inner rows first, the sides alternating, S then M then L. A row
-  // runs between its two end columns (the outermost candidates that reach its lane), one class per row.
+  // Rows of spots for the demand { S: n, M: n, L: n }. When the ground is too small for all of it, the demand is cut
+  // back in proportion (each class keeps its share, at least one spot) until every class fits; the rest wait in the
+  // hangars (land_ground reserve). Without this the inner L rows would take the whole field and leave no fighters.
   function rows(L, demand) {
+    var keys = ['S', 'M', 'L'], d = {}, k, none = {};
+    keys.forEach(function (c) { // a class with no room even for one plane is left out (all of it in the hangars)
+      if (!demand[c]) return; var one = {}; one[c] = 1; L.spots = []; L.rows = []; placeRows(L, one); if (!L.spots.length) none[c] = true;
+    });
+    for (var it = 0; it < 30; it++) {
+      var f = Math.pow(0.9, it);
+      keys.forEach(function (c) { var n = none[c] ? 0 : demand[c] || 0; d[c] = n ? Math.max(1, Math.round(n * f)) : 0; });
+      L.spots = []; L.rows = []; L.dbgRows = []; L.dbg = null;
+      placeRows(L, d);
+      var got = { S: 0, M: 0, L: 0 }; L.spots.forEach(function (p) { got[p.cls]++; });
+      for (k = 0; k < 3 && got[keys[k]] >= d[keys[k]]; k++);
+      if (k === 3) break;
+    }
+    L.fit = f;
+  }
+  // inner rows first, the sides alternating, L then M then S. A row runs from its column (mid-row), one class per row.
+  function placeRows(L, demand) {
     var order = ['L', 'M', 'S'], need = { S: demand.S || 0, M: demand.M || 0, L: demand.L || 0 };
     var edge = { 1: TAXI_V, '-1': TAXI_V }, prevHalf = { 1: CLS.L.span / 2, '-1': CLS.L.span / 2 }, sideTurn = [1, -1], guard = 0, full = {};
     while ((need.S || need.M || need.L) && guard++ < 24) {
