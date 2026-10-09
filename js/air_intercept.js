@@ -67,5 +67,13 @@ window.WW = window.WW || {};
   }
   function reset() { ST.passes = 0; ST.firing = 0; }
   WW.on('roundStart', reset);
-  WW.intercept = { attack, predict, stats: ST };
+  // How harried a bomber is at its release, 0..1: a fighter on it now (the jink's threat, air_dogfight.js) or a
+  // shot-up airframe. The CAP's real effect on the raiders that got through in 1942 was the drop: a pilot with a
+  // Zero or a Wildcat on his tail, or a holed plane, released early, wide and shallow (combat_weapons.js diveAim
+  // widens the aim error, air_attack.js torp throws the torpedo off its line). Deterministic.
+  function harried(pl) {
+    const s = pl.df, on = s && s.from && s.from.alive && WW.dist(s.from.x, s.from.z, pl.x, pl.z) < 45 ? 1 : 0;
+    return Math.min(1, Math.max(on, (1 - pl.hp / pl.maxHp) * 1.4));
+  }
+  WW.intercept = { attack, predict, harried, HARRY: { aim: 1.2, torp: 0.16 }, stats: ST };
 })();
