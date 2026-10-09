@@ -17,9 +17,10 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
-  var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20;
+  var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
   var MIX = { USN: { f4f: 0.35, sbd: 0.3, b26: 0.12, b17: 0.23 }, IJN: { a6m: 0.4, g4m: 0.35, g4mL: 0.25 } };
-  var ST = { slots: 0, capped: 0, towOut: 0, tows: 0, aborts: 0, groundLost: 0, scrambles: 0, modeSwitches: 0, launchClosed: 0 };
+  var TOWLOG = [];
+  var ST = { slots: 0, capped: 0, towOut: 0, tows: 0, aborts: 0, groundLost: 0, modeSwitches: 0, launchClosed: 0 };
   var obsT = -1, obs = [];
 
   function VAR() { return WW.landAir.VAR; }
@@ -44,7 +45,7 @@ window.WW = window.WW || {};
   function setup(b, pl) {
     var L = b.layout, byCls = { S: [], M: [], L: [] };
     L.spots.forEach(function (sp) { byCls[sp.cls].push(sp); });
-    b.slots = [];
+    b.slots = []; ST.capped = 0;
     Object.keys(pl.counts).forEach(function (v) {
       for (var i = 0; i < pl.counts[v]; i++) {
         var sp = byCls[cls(v)].shift();
@@ -79,6 +80,7 @@ window.WW = window.WW || {};
     if (obsT === WW.time.now) return obs;
     obsT = WW.time.now; obs.length = 0;
     for (var i = 0; i < b.slots.length; i++) { var s = b.slots[i]; if (s.state === 'parked' || s.state === 'rearm' || s.state === 'wreck') obs.push({ x: s.x, z: s.z, r: s.r, slot: s, p: null }); }
+    for (var k = 0; k < (b.wrecks || []).length; k++) { var w = b.wrecks[k]; obs.push({ x: w.x, z: w.z, r: w.r, slot: null, p: null, wreck: w }); }
     var P = WW.world.planes;
     for (var j = 0; j < P.length; j++) { var p = P[j]; if (p.carrier === b && onGround(p)) obs.push({ x: p.x, z: p.z, r: rad(p.variant), slot: p.slot, p: p }); }
     return obs;
@@ -94,9 +96,9 @@ window.WW = window.WW || {};
     for (var i = 0; i < O.length; i++) {
       var q = O[i]; if (q.p === p || (q.slot && q.slot === p.slot && !q.p)) continue;
       var d0 = Math.hypot(q.x - p.x, q.z - p.z), d1 = Math.hypot(q.x - nx, q.z - nz), min = rp + q.r + GAP;
-      if (d1 < min && d1 < d0) { p.gs = 0; return 'blocked'; }
+      if (d1 < min && d1 < d0) { p.gs = 0; p.blk = q; return 'blocked'; }
       if (q.p && p.rwPh !== 'lineup' && q.p.rwPh !== 'hold' && q.p.rwPh !== 'warm' && d0 < min + FOLLOW && ((q.x - p.x) * dx + (q.z - p.z) * dz) / d > d0 * 0.7) { // a plane ahead in the queue
-        if (!(aheadOf(q.p, p) && p.gid < q.p.gid)) { p.gs = 0; return 'blocked'; } // facing each other: the older plane goes
+        if (!(aheadOf(q.p, p) && p.gid < q.p.gid)) { p.gs = 0; p.blk = q; return 'blocked'; } // facing each other: the older plane goes
       }
     }
     p.x = nx; p.z = nz; p.gs = step / Math.max(dt, 1e-6);
@@ -113,7 +115,19 @@ window.WW = window.WW || {};
     p.rwPh = 'warm'; p.rwT = 0; p.warm = fast ? WARM_FAST : WARM; p.fast = !!fast; p.waitT = 0; p.pi = 0;
     p.path = WW.airfieldLayout.outPath(b.layout, slot.spot, b.ops.dir);
   }
-  function opsOpen(b) { return !b.runways[0].closed && !b.neutralized; }
+  // One plane at a time on a row lane and its column (they meet head-on at the column otherwise): the token is held from
+  // the revetment to the parallel taxiway (path point 3); a scrambling fighter waiting for the same column goes first.
+  function colFree(p, b) {
+    var key = p.path.lanes[1], P = WW.world.planes;
+    for (var i = 0; i < P.length; i++) {
+      var q = P[i]; if (q === p || q.carrier !== b || !q.alive || q.removed || q.state !== 'takeoff' || !q.path || q.path.lanes[1] !== key) continue;
+      if (q.rwPh === 'taxi' && q.pi <= 3) return false;
+      if (q.rwPh === 'warm' && q.fast && !p.fast && q.rwT >= q.warm) return false;
+    }
+    return true;
+  }
+  function fouled(b) { var W = b.wrecks; if (W) for (var i = 0; i < W.length; i++) if (W[i].runway) return true; return false; }
+  function opsOpen(b) { return !b.runways[0].closed && !b.neutralized && !fouled(b); }
   function out(p, dt) {
     var b = p.carrier, o = b.ops, ph = p.rwPh;
     p.rwT += dt; p.speed = 0;
@@ -121,7 +135,7 @@ window.WW = window.WW || {};
       pin(p, b);
       if (!opsOpen(b)) { if ((p.closedT = (p.closedT || 0) + dt) > SHUT_T) shutDown(p, b); return; }
       p.closedT = 0;
-      if (p.rwT >= p.warm && o.mode === 'launch' && !o.yield) { p.rwPh = 'taxi'; p.pi = 1; } // yield: planes waiting to land go next
+      if (p.rwT >= p.warm && o.mode === 'launch' && !o.yield && colFree(p, b)) { p.rwPh = 'taxi'; p.pi = 1; } // yield: planes waiting to land go next
       return;
     }
     if (ph === 'taxi') {
@@ -131,7 +145,7 @@ window.WW = window.WW || {};
     }
     if (ph === 'hold') {
       p.gs = 0; pin(p, b);
-      var lt = p.path[p.path.length - 1]; p.heading += WW.clamp(WW.angleDiff(p.heading, Math.atan2(lt.z - p.z, lt.x - p.x)), -PIVOT * dt, PIVOT * dt);
+      var lt = p.path[p.path.holdShort + 1]; p.heading += WW.clamp(WW.angleDiff(p.heading, Math.atan2(lt.z - p.z, lt.x - p.x)), -PIVOT * dt, PIVOT * dt);
       if (!opsOpen(b)) { ST.launchClosed++; return; }
       if (o.holdQ[0] === p && !o.occ && WW.time.now - o.lastRoll >= ROLL_GAP && !finalPlane(b)) { o.occ = p; o.holdQ.shift(); p.rwPh = 'lineup'; }
       return;
@@ -146,7 +160,8 @@ window.WW = window.WW || {};
       return;
     }
     if (ph === 'roll' || ph === 'stopped') { // speed + integrate (aircraft.js) move it down the runway
-      if (!opsOpen(b)) { p.speed = Math.max(0, (p.rollV || 0) - 9 * dt); p.rollV = p.speed; if (ph === 'roll') { ST.aborts++; p.rwPh = 'stopped'; } pin(p, b); return; }
+      var blockedAhead = aheadGap(p, b) < (p.rollV || 0) * (p.rollV || 0) / 24 + 3;   // something on the runway ahead: abort (12/s2 brakes)
+      if (!opsOpen(b) || blockedAhead) { p.speed = Math.max(0, (p.rollV || 0) - (blockedAhead ? 12 : 9) * dt); p.rollV = p.speed; if (ph === 'roll') { ST.aborts++; p.rwPh = 'stopped'; } pin(p, b); return; }
       p.rwPh = 'roll'; p.turn = 0; p.rollV = Math.min(p.pt.speed * 0.95, (p.rollV || 0) + ROLL_A * dt); p.speed = p.rollV;
       if (p.speed < p.pt.speed * 0.78) { pin(p, b); return; }
       p.rwPh = 'climb'; return;
@@ -155,7 +170,7 @@ window.WW = window.WW || {};
   function finalPlane(b) { var P = WW.world.planes; for (var i = 0; i < P.length; i++) { var q = P[i]; if (q.carrier === b && q.alive && q.state === 'landing' && q.rwPh === 'final') return q; } return null; }
   function wait(p, b, blocked, dt) { // a plane that waits too long for anything but the runway is towed
     p.waitT = blocked ? p.waitT + dt : 0;
-    if (p.waitT > TOW_T) { ST.tows++; if (p.state === 'rollout') park(p, b); else shutDown(p, b); }
+    if (p.waitT > TOW_T) { ST.tows++; if (TOWLOG.length < 40) { var q = p.blk || {}, Lq = b.layout.toL(p.x, p.z); TOWLOG.push(p.state + '/' + p.rwPh + ' pi' + p.pi + ' at ' + Lq.u.toFixed(0) + ',' + Lq.v.toFixed(0) + ' by ' + (q.p ? q.p.state + '/' + q.p.rwPh + ' gid' + q.p.gid + ' me' + p.gid : q.slot ? 'slot ' + q.slot.state : '?') + (q.x !== undefined ? ' @' + b.layout.toL(q.x, q.z).u.toFixed(0) + ',' + b.layout.toL(q.x, q.z).v.toFixed(0) : '')); } if (p.state === 'rollout') park(p, b); else shutDown(p, b); }
   }
   function shutDown(p, b) { // back into its spot (towed / engines off): the slot is parked again, the Plane goes
     var s = p.slot; if (s) { s.state = 'parked'; s.plane = null; s.x = s.spot.x; s.z = s.spot.z; s.h = s.spot.h; }
@@ -252,6 +267,10 @@ window.WW = window.WW || {};
         }
       }
     }
+    // wrecks off the spots: bulldozed after FOUL_T (one on the runway fouls it until then: no takeoff, no landing)
+    if (b.wrecks && b.wrecks.length && !b.neutralized) for (i = b.wrecks.length - 1; i >= 0; i--) if (now - b.wrecks[i].t > FOUL_T) {
+      var wk = b.wrecks.splice(i, 1)[0]; obsT = -1; WW.emit('baseEvent', { kind: 'wreckCleared', base: b, nation: b.nation, x: wk.x, z: wk.z, runway: wk.runway });
+    }
     if (b.neutralized && !o.frozen) freeze(b);
     sync(b);
   }
@@ -278,7 +297,10 @@ window.WW = window.WW || {};
     for (var j = 0; j < P.length; j++) {
       var p = P[j]; if (p.carrier !== b || !onGround(p)) continue;
       if (Math.hypot(p.x - x, p.z - z) < blast * 0.6 + rad(p.variant)) {
-        var sl = p.slot; if (sl) { sl.state = 'wreck'; sl.wreckT = WW.time.now; sl.x = p.x; sl.z = p.z; sl.h = p.heading; sl.plane = null; sl.moved = true; }
+        // a wreck where it was hit (a taxiway, the runway): its spot is free for a reserve plane; the crash crew clears it
+        var q = b.layout.toL(p.x, p.z), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + rad(p.variant) && Math.abs(q.u) < 48;
+        (b.wrecks = b.wrecks || []).push({ x: p.x, z: p.z, h: p.heading, r: rad(p.variant), v: p.variant, t: WW.time.now, runway: rw });
+        var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
         if (b.ops.occ === p) b.ops.occ = null;
         WW.stats.planesLost++; p.alive = false; p.remove(); n++; ST.groundLost++;
       }
@@ -286,10 +308,11 @@ window.WW = window.WW || {};
     if (n) { obsT = -1; WW.emit('baseEvent', { kind: 'planesHit', base: b, nation: b.nation, x: x, z: z, n: n }); }
     return n;
   }
-  function reset() { for (var k in ST) ST[k] = 0; obsT = -1; }
+  // per round; slots / capped belong to the field built in island_base's roundStart handler (it runs first), kept
+  function reset() { for (var k in ST) if (k !== 'slots' && k !== 'capped') ST[k] = 0; obsT = -1; }
   WW.on('roundStart', reset);
 
   WW.landGround = { plan: plan, setup: setup, sync: sync, ready: ready, take: take, launched: launched, out: out, touchdown: touchdown,
-    inbound: inbound, update: update, groundHit: groundHit, opsOpen: opsOpen, onGround: onGround, rad: rad, finalPlane: finalPlane,
-    carrierGroup: carrierGroup, MIX: MIX, stats: ST };
+    inbound: inbound, update: update, groundHit: groundHit, opsOpen: opsOpen, fouled: fouled, onGround: onGround, rad: rad, finalPlane: finalPlane,
+    carrierGroup: carrierGroup, MIX: MIX, stats: ST, towLog: TOWLOG };
 })();

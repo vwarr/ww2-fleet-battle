@@ -277,7 +277,7 @@ window.WW = window.WW || {};
   });
 
   WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, runwayOpen: () => runwayOpen(),
-    opsOpen: () => !!base && !base.runways[0].closed && !base.neutralized,
+    opsOpen: () => !!base && WW.landGround.opsOpen(base),   // main runway open, not fouled by a wreck, base not neutralized
     get stats() { return stats; }, TUNE, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };
   stats = newStats();
 })();

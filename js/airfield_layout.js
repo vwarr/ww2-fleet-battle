@@ -117,7 +117,7 @@ window.WW = window.WW || {};
       L.segs.push({ u0: Math.min.apply(null, us), v0: row.laneV, u1: Math.max.apply(null, us), v1: row.laneV, w: 3, lane: true });
       row.cols.forEach(function (cu) { var k = row.side + ':' + cu; far[k] = Math.max(far[k] || 0, Math.abs(row.laneV)); });
     });
-    for (var k in far) { var sd2 = +k.split(':')[0], cu2 = +k.split(':')[1]; L.segs.push({ u0: cu2, v0: sd2 * HOLD_V, u1: cu2, v1: sd2 * far[k], w: 3, col: true }); }
+    for (var k in far) { var sd2 = +k.split(':')[0], cu2 = +k.split(':')[1]; L.segs.push({ u0: cu2, v0: 0, u1: cu2, v1: sd2 * far[k], w: 3, col: true }); } // from the runway (the exit) out to its last lane
     L.usedCols = far;
   }
   function spotOK(L, u, v, C) {
@@ -141,7 +141,7 @@ window.WW = window.WW || {};
     var sd = sp.side, e = -dir * TAXI_U, pts = [P(L, sp.u, sp.v), P(L, sp.u, sp.laneV), P(L, sp.col, sp.laneV), P(L, sp.col, sd * TAXI_V)];
     pts.push(P(L, e, sd * TAXI_V), P(L, e, sd * HOLD_V));
     var hs = pts.length - 1;
-    pts.push(P(L, -dir * LINEUP_U, 0));
+    pts.push(P(L, e, 0), P(L, -dir * LINEUP_U, 0)); // straight down the connector onto the centreline, then a few metres up it
     pts.holdShort = hs;               // index of the hold-short point
     pts.lanes = [laneKey(sp), colKey(sd, sp.col)];
     return pts;
@@ -169,5 +169,5 @@ window.WW = window.WW || {};
   }
 
   WW.airfieldLayout = { make: make, columns: columns, rows: rows, free: free, addFac: addFac, outPath: outPath, inPath: inPath,
-    netDist: netDist, onNetwork: onNetwork, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U };
+    netDist: netDist, onNetwork: onNetwork, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
 })();
