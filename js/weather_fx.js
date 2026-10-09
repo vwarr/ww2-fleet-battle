@@ -18,7 +18,7 @@ window.WW = window.WW || {};
       float x = vUv.x * 260.0, i = floor(x), fx = fract(x);
       float sp = 0.5 + h(i), y = fract(vUv.y * (3.0 + 2.0 * h(i + 7.0)) + time * sp * 0.9 + h(i + 3.0));
       float streak = smoothstep(0.5, 0.0, abs(fx - 0.5)) * smoothstep(0.0, 0.35, y) * (0.35 + 0.65 * h(i + 11.0));
-      float edge = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+      float edge = max(0.0, 1.0 - abs(dot(normalize(vN), normalize(vV)))); // a hair below 0 makes pow() NaN
       float a = (0.14 + 0.32 * pow(edge, 2.0)) * (0.4 + 0.6 * streak);
       a *= smoothstep(0.0, 0.2, vUv.y) * (1.0 - smoothstep(0.6, 1.0, vUv.y)) * (0.75 + 0.25 * sin(vUv.x * 37.0 + seed));
       gl_FragColor = vec4(col, a * op);
