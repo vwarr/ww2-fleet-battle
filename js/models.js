@@ -193,8 +193,12 @@ window.WW = window.WW || {};
     return f;
   }
   // Japanese carrier funnel: out over the side and curving down toward the sea (side: +1 starboard).
-  function downFunnel(ship, P, x, y, r, len, side, tilt) {
-    var f = new THREE.Group(); f.position.set(x, y, side * 0.1); f.rotation.x = side * (tilt || 2.1); ship.group.add(f);
+  // an IJN carrier's down-curved funnel: a trunk out of the hull side at z0 (side +1 starboard), then the cone turned
+  // down and outboard (tilt rad from upright), the smoke exhaust at its mouth
+  function downFunnel(ship, P, x, y, r, len, side, tilt, z0) {
+    var zs = z0 || 0, tr = r * 1.7;
+    box(ship.group, P.super, r * 2.2, r * 1.6, tr, x, y - r * 0.8, side * (zs + tr / 2 - 0.05));   // trunk
+    var f = new THREE.Group(); f.position.set(x, y, side * (zs + tr - 0.1)); f.rotation.x = side * (tilt || 2.1); ship.group.add(f);
     mesh(f, geo().cone, P.super, r * 2, len, r * 1.6, 0, 0, 0);
     cyl(f, C.dark, r * 0.9, 0.06, 0, len - 0.02, 0, r * 0.72);
     var stk = new THREE.Object3D(); stk.position.set(0, len, 0); f.add(stk); ship.stacks.push(stk);

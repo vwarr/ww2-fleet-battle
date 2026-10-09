@@ -43,7 +43,9 @@ window.WW = window.WW || {};
       this.id = nextId++; this.type = type; this.stats = st; this.nation = nation;
       this.cls = cls; this.mk = cls ? cls.key : type; // mk: the model key (per-class geometry: crew stations, deck, parts)
       const R = type === 'carrier' && WW.CV_ROSTER ? WW.CV_ROSTER[nation] : null; // carriers: the slot's name (air_squadrons.js)
-      if (cls) this.name = WW.pickShipName(cls, nation, R ? R[slot % R.length][0] : null);
+      // a forced class (tests, lineups) whose slot name belongs to another class takes one of its own names
+      const slotName = R ? R[slot % R.length][0] : null;
+      if (cls) this.name = WW.pickShipName(cls, nation, slotName && cls.names.indexOf(slotName) >= 0 ? slotName : null);
       this.x = x; this.z = z; this.heading = wrap(heading || 0); this.speed = 0;
       this.hp = this.maxHp = st.hp;
       this.speedK = 1; this.flood = 0; this.engineK = 1; this.engineT = 0; // damage slows ships (ship_speed.js)

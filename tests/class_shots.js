@@ -36,6 +36,7 @@ async function page(b, q, w, h) {
       if (!best || m > best.m) best = { x, z, m };
     }
     window.__stage = best;
+    window.surface = s => { if (s.type === "submarine") { s.wantSurface = true; s.depthY = 0; s.updateDepth(0); } };
   });
   return p;
 }
@@ -52,7 +53,7 @@ async function row(p, keys, z, gap, x0) {
     const S = window.__stage, C = WW.SHIP_CLASSES;
     let tot = 0; keys.forEach(k => { tot += C[k].len + gap; }); tot -= gap;
     let x = (x0 === null ? S.x : x0) - tot / 2;
-    return keys.map(k => { const c = C[k], s = WW.ships.spawn(c.type, c.nation, x + c.len / 2, S.z + z, 0, k); s.x = x + c.len / 2; s.z = S.z + z; s.speed = 0; x += c.len + gap; return [k, s.name, +s.x.toFixed(1)]; });
+    return keys.map(k => { const c = C[k], s = WW.ships.spawn(c.type, c.nation, x + c.len / 2, S.z + z, 0, k); s.x = x + c.len / 2; s.z = S.z + z; s.speed = 0; surface(s); x += c.len + gap; return [k, s.name, +s.x.toFixed(1)]; });
   }, [keys, z, gap, x0 === undefined ? null : x0]);
 }
 const USN = ['lexington', 'yorktown', 'northcarolina', 'southdakota', 'northampton', 'neworleans', 'atlanta', 'fletcher', 'benson', 'gato', 'elco'];
@@ -84,13 +85,25 @@ const IJN = ['akagi', 'kaga', 'shokaku', 'soryu', 'hiryu', 'nagato', 'kongo', 't
       const info = await p.evaluate(k => {
         WW.ships.clearAll();
         const S = window.__stage, c = WW.SHIP_CLASSES[k], s = WW.ships.spawn(c.type, c.nation, S.x, S.z, 0, k);
-        s.x = S.x; s.z = S.z; s.speed = 0;
+        s.x = S.x; s.z = S.z; s.speed = 0; surface(s);
         return { name: s.name, cls: c.name, len: c.len, L: c.lenM };
       }, k);
       const S = await p.evaluate(() => window.__stage), L = Math.max(info.len, 6), d = L * 1.15 + 3;
       await cam(p, [S.x + d * 0.55, d * 0.42, S.z + d * 0.95], [S.x + L * 0.02, L * 0.06 + 0.6, S.z], 30);
       await p.screenshot({ path: `${out}/cls_${k}.png` });
       console.log(k, info.name, '-', info.cls, info.L + ' m');
+    }
+    await p.close();
+  }
+  if (want('cvside')) {   // carriers low from both beams: islands, funnels, sponsons (cls_side_<key>_<stbd|port>.png)
+    const p = await page(b, '', 1200, 600);
+    for (const k of ['yorktown', 'lexington', 'akagi', 'kaga', 'shokaku', 'soryu', 'hiryu']) {
+      await p.evaluate(k => { WW.ships.clearAll(); const S = window.__stage, c = WW.SHIP_CLASSES[k], s = WW.ships.spawn(c.type, c.nation, S.x, S.z, 0, k); s.x = S.x; s.z = S.z; s.speed = 0; }, k);
+      const S = await p.evaluate(() => window.__stage);
+      for (const [sd, sz] of [['stbd', 1], ['port', -1]]) {
+        await cam(p, [S.x + 9, 6, S.z + sz * 30], [S.x, 1.5, S.z], 40);
+        await p.screenshot({ path: `${out}/cls_side_${k}_${sd}.png` });
+      }
     }
     await p.close();
   }

@@ -79,12 +79,13 @@ window.WW = window.WW || {};
   // a small IJN island: block, bridge glass, pole mast
   function ijnIsland(len, h, fx) {
     return function (g, s, P, K, D, top, side, hw, x0, dl) {
-      var z = side * (hw - 0.4), x = x0 + fx * dl;
-      K.bridge(g, P, len, h, 0.75, x, top, z);
-      K.box(g, P.super, len * 0.6, 0.4, 0.6, x - len * 0.1, top + h, z);
-      K.pole(g, x - len * 0.35, top + h, 1.5, 0.8, z);
-      D.radar(g, x, top + h + 0.4, z, 0.5);
-      D.searchlight(g, x + len * 0.3, top + h + 0.4, z);
+      var z = side * (hw - 0.45), x = x0 + fx * dl;
+      len *= 1.25; h *= 1.35;                         // a touch oversized: the island is the class's signature at range
+      K.bridge(g, P, len, h, 0.85, x, top, z);
+      K.box(g, P.super, len * 0.6, 0.45, 0.7, x - len * 0.1, top + h, z);
+      K.pole(g, x - len * 0.35, top + h, 1.8, 0.9, z);
+      D.radar(g, x, top + h + 0.45, z, 0.55);
+      D.searchlight(g, x + len * 0.3, top + h + 0.45, z);
       return [x - len / 2, x + len / 2];
     };
   }
@@ -120,7 +121,7 @@ window.WW = window.WW || {};
   CL.akagi = function (P, c, isJ, K) {        // port island amidships; a big down-curved funnel and a small upright one to starboard
     var s = carrier(P, c, isJ, K, { hinomaru: true, x0: -0.3, elev: [0.45, 0.02, -0.385], island: function (g, s, P, K, D, top, side, hw, x0, dl, FD) {
       var r = ijnIsland(1.7, 0.9, 0.03)(g, s, P, K, D, top, side, hw, x0, dl);
-      K.downFunnel(s, P, x0 + dl * 0.02, FD - 0.35, 0.55, 1.5, 1, 2.0);
+      K.downFunnel(s, P, x0 + dl * 0.02, FD - 0.35, 0.55, 1.5, 1, 2.35, c.beam / 2);
       var f = K.funnel(s, P, x0 - dl * 0.05, FD - 0.6, 0.24, 1.25, 0, 0.2, hw + 0.25, true);
       return r;
     } });
@@ -132,7 +133,7 @@ window.WW = window.WW || {};
       var r = ijnIsland(1.5, 0.7, 0.17)(g, s, P, K, D, top, side, hw, x0, dl);
       var zt = c.beam / 2 + 0.15, x1 = x0 + dl * 0.06, x2 = x0 - dl * 0.3;
       K.box(g, P.super, x1 - x2, 0.36, 0.34, (x1 + x2) / 2, FD - 0.62, zt);
-      K.downFunnel(s, P, x2 + 0.2, FD - 0.45, 0.32, 1.0, 1, 2.3);
+      K.downFunnel(s, P, x2 + 0.2, FD - 0.45, 0.32, 1.0, 1, 2.3, c.beam / 2);
       return r;
     } });
     casemates(s.group, K, P, c, 0, c.deckLen, c.hull.top);
@@ -142,8 +143,8 @@ window.WW = window.WW || {};
     var fwd = c.island > 0;
     return carrier(P, c, isJ, K, { hinomaru: true, elev: [0.45, 0.04, -0.385], galleries: [-0.34, -0.15, 0.22], island: function (g, s, P, K, D, top, side, hw, x0, dl, FD) {
       var r = ijnIsland(1.4, 0.85, fwd ? 0.2 : 0.02)(g, s, P, K, D, top, side, hw, x0, dl);
-      K.downFunnel(s, P, x0 + dl * 0.035, FD - 0.35, 0.3, 1.15, 1, 2.05);
-      K.downFunnel(s, P, x0 - dl * 0.005, FD - 0.35, 0.3, 1.15, 1, 2.05);
+      K.downFunnel(s, P, x0 + dl * 0.035, FD - 0.35, 0.3, 1.15, 1, 2.35, c.beam / 2);
+      K.downFunnel(s, P, x0 - dl * 0.005, FD - 0.35, 0.3, 1.15, 1, 2.35, c.beam / 2);
       return r;
     } });
   }
@@ -151,8 +152,8 @@ window.WW = window.WW || {};
   CL.shokaku = function (P, c, isJ, K) {      // big fleet carrier: starboard island forward, two down-curved funnels, tall hull
     return carrier(P, c, isJ, K, { hinomaru: true, fd: 1.85, elev: [0.45, 0.04, -0.385], island: function (g, s, P, K, D, top, side, hw, x0, dl, FD) {
       var r = ijnIsland(1.8, 1.0, 0.17)(g, s, P, K, D, top, side, hw, x0, dl);
-      K.downFunnel(s, P, x0 + dl * 0.03, FD - 0.38, 0.38, 1.3, 1, 2.05);
-      K.downFunnel(s, P, x0 - dl * 0.015, FD - 0.38, 0.38, 1.3, 1, 2.05);
+      K.downFunnel(s, P, x0 + dl * 0.03, FD - 0.38, 0.38, 1.3, 1, 2.35, c.beam / 2);
+      K.downFunnel(s, P, x0 - dl * 0.015, FD - 0.38, 0.38, 1.3, 1, 2.35, c.beam / 2);
       return r;
     } });
   };
