@@ -228,9 +228,13 @@ window.WW = window.WW || {};
     if (meshes) meshes.forEach(function (m) { m.count = 0; m.visible = false; });
   }
 
+  // crew_ops.js runs inside guards: an error there logs once and the crews fall back to the plain behaviour
+  var opsErr = null;
+  function opsFail(e) { opsErr = e; console.error('crewOps', e); }
+  function opsStep(s, rec, dt, t) { try { return WW.crewOps.step(s, rec, dt, t); } catch (e) { opsFail(e); return false; } }
   // fire or fresh hit -> 2 deck hands run to it (crew_ops.js replaces this with damage-control parties and much more)
   function fireCheck(rec, now) {
-    if (WW.crewOps) return WW.crewOps.ship(rec, now);
+    if (WW.crewOps && !opsErr) { try { return WW.crewOps.ship(rec, now); } catch (e) { opsFail(e); } }
     var sh = rec.ship, best = null, S = sh.dmgSites || [];
     for (var i = 0; i < S.length; i++) if (S[i].fire > 0 && (!best || S[i].sev > best.sev)) best = S[i];
     var tgt = best || (sh._crewHit && now - sh._crewHit.t < 6 ? sh._crewHit : null);
@@ -243,7 +247,7 @@ window.WW = window.WW || {};
   }
   function startAbandon(rec) {   // far ships keep this state frozen until the camera comes close
     rec.sink = true;
-    if (WW.crewOps && !(rec.ship.type === 'submarine')) WW.crewOps.abandon(rec, sailor);   // hands pour up from below
+    if (WW.crewOps && !opsErr && rec.ship.type !== 'submarine') { try { WW.crewOps.abandon(rec, sailor); } catch (e) { opsFail(e); } }   // hands pour up from below
     var below = rec.ship.type === 'submarine' && (rec.ship.depthY < -0.08 || !rec.ship.wantSurface); // crew was below
     rec.sailors.forEach(function (s) {
       if (below) { s.mode = 'gone'; return; }
@@ -256,7 +260,7 @@ window.WW = window.WW || {};
 
   function stepSailor(s, rec, dt, t) {
     var a, ln = s.st.lane;
-    if (WW.crewOps && WW.crewOps.step(s, rec, dt, t)) { a = WW.angleDiff(s.f, s.ft); s.f += a * Math.min(1, dt * 6); return; }
+    if (WW.crewOps && !opsErr && opsStep(s, rec, dt, t)) { a = WW.angleDiff(s.f, s.ft); s.f += a * Math.min(1, dt * 6); return; }
     switch (s.mode) {
       case 'idle':
         s.wait -= dt;
@@ -283,7 +287,7 @@ window.WW = window.WW || {};
         s.ft = s.side > 0 ? -PI / 2 : PI / 2;
         a = 1.6 * dt;
         if (Math.abs(s.ez - s.z) > a && Math.abs(s.z) < Math.abs(s.ez)) s.z += s.side * a;
-        else if (!(WW.crewOps && WW.crewOps.atRail(s, rec))) { // over the side (or down a cargo net, crew_ops.js): world space
+        else if (!(WW.crewOps && !opsErr && WW.crewOps.atRail(s, rec))) { // over the side (or down a cargo net, crew_ops.js): world space
           var sh = rec.ship, G = sh.group.matrix;
           _v.set(s.x, s.y, s.z).applyMatrix4(G);
           var dx = G.elements[8] * s.side, dz = G.elements[10] * s.side, l = Math.hypot(dx, dz) || 1;
@@ -331,7 +335,7 @@ window.WW = window.WW || {};
       g.updateMatrix();
       rec.fireT -= dt;
       if (rec.fireT <= 0 && !rec.sink) { rec.fireT = 0.5; fireCheck(rec, now); }
-      if (WW.crewOps) WW.crewOps.frame(rec, dt, now);
+      if (WW.crewOps && !opsErr) { try { WW.crewOps.frame(rec, dt, now); } catch (e) { opsFail(e); } }
       for (j = 0; j < rec.sailors.length; j++) {
         var s = rec.sailors[j];
         if (s.mode === 'gone') continue;
@@ -341,7 +345,7 @@ window.WW = window.WW || {};
           var walk = s.mode === 'walk' || s.mode === 'run' || (s.mode === 'flee' && s.wait <= 0);
           var sw = walk ? Math.sin(now * (s.mode === 'walk' ? 9 : 15) + s.ph) : 0, bob = Math.abs(sw) * 0.025;
           s.aL = sw * 0.45; s.aR = -sw * 0.45; s.oL = s.oR = null; s.cr = 0; s.lean = 0; s.hop = 0; s.dx = 0;
-          if (WW.crewOps) WW.crewOps.pose(s, rec, now);   // working / cheering / saluting poses
+          if (WW.crewOps && !opsErr) { try { WW.crewOps.pose(s, rec, now); } catch (e) { opsFail(e); } } // working poses
           _l.makeRotationY(s.f + (s.mode === 'idle' && !s.still ? Math.sin(now * 0.7 + s.ph) * 0.06 : 0));
           if (s.lean) _l.multiply(_t.makeRotationZ(-s.lean));
           if (s.sc !== 1 || s.cr) _l.scale(_v.set(s.sc, s.sc * (1 - 0.28 * s.cr), s.sc));
