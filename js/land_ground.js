@@ -126,6 +126,7 @@ window.WW = window.WW || {};
     }
     return true;
   }
+  function wreckAt(b, sp) { var W = b.wrecks; if (W) for (var i = 0; i < W.length; i++) if (Math.hypot(W[i].x - sp.x, W[i].z - sp.z) < W[i].r + sp.r + GAP) return true; return false; }
   function fouled(b) { var W = b.wrecks; if (W) for (var i = 0; i < W.length; i++) if (W[i].runway) return true; return false; }
   function opsOpen(b) { return !b.runways[0].closed && !b.neutralized && !fouled(b); }
   function out(p, dt) {
@@ -260,7 +261,7 @@ window.WW = window.WW || {};
       if (s.state === 'rearm' && s.readyAt <= now) s.state = 'parked';
       else if (s.state === 'out' && s.plane && (!s.plane.alive || s.plane.removed) && s.plane.slot === s) { s.state = 'empty'; s.plane = null; }
       // a spot freed by a loss (or a cleared wreck): a plane from the hangars (the reserve) is towed out into it
-      if (s.spot && (s.state === 'empty' || s.state === 'away' || (s.state === 'wreck' && now - s.wreckT > WRECK_T && !s.moved))) {
+      if (s.spot && (s.state === 'empty' || s.state === 'away' || (s.state === 'wreck' && now - s.wreckT > WRECK_T && !s.moved)) && !wreckAt(b, s.spot)) {
         var rs = null;
         for (var j = 0; j < b.slots.length && !rs; j++) { var q = b.slots[j]; if (q.state === 'reserve' && cls(q.v) === s.spot.cls) rs = q; }
         if (s.state === 'wreck') { s.state = 'gone'; }

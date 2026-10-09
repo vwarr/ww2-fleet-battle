@@ -1,6 +1,7 @@
 // Island base ground operations check (sim): taxiways only, no overlaps, no takeoff while the runway is closed, no land
 // bomber on a carrier deck, repaired runways reopen and launches resume.
-// Usage: node tests/base_ground.js [rounds=12] [seed0=1] [--workers K] [--browser]
+// Usage: node tests/base_ground.js [rounds=12] [seed0=1] [group=1] [--workers K] [--browser]
+//   group: WW.islandBase.TUNE.group (the base air group in carrier groups; beyond the spots, planes wait in reserve)
 //   Each round: random fleets, the base owner alternating USN / IJN, sampled every SAMPLE sim s. At FORCE_T s two
 //   bombs crater the main runway (so every round sees a closure and a reopening).
 // Checks (FAIL if not met):
@@ -15,7 +16,7 @@
 'use strict';
 const HL = require('./headless');
 const args = HL.argv.filter(a => !a.startsWith('--'));
-const ROUNDS = +(args[0] || 12), SEED0 = +(args[1] || 1), SAMPLE = 0.25, TOL = 1.2, FORCE_T = 80, CAP = 360;
+const ROUNDS = +(args[0] || 12), SEED0 = +(args[1] || 1), GROUP = +(args[2] || 1), SAMPLE = 0.25, TOL = 1.2, FORCE_T = 80, CAP = 360;
 
 function install(P) {
   window.__bg = function (seed, owner) {
@@ -24,7 +25,7 @@ function install(P) {
     const comp = G.randomComposition();
     if (WW.aces) WW.aces.reset();
     WW.seedRandom(seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
-    G.baseChoice = owner; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
+    I.TUNE.group = P.GROUP; G.baseChoice = owner; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     const b = I.base, L = b.layout, LG = WW.landGround, LA = WW.landAir, AL = WW.airfieldLayout, R = { seed, owner,
       offNet: 0, offMax: 0, overlap: 0, liftClosed: 0, bomberDeck: 0, reopenedT: null, closedT: null, launchAfter: 0, queuedAtReopen: 0, samples: 0,
       slots: b.slots.length, spots: L.spots.length, cls: L.spots.reduce((o, s) => (o[s.cls] = (o[s.cls] || 0) + 1, o), {}) };
@@ -64,9 +65,9 @@ function install(P) {
       if (R.reopenedT !== null && LA.stats.launches > lastLaunches) R.launchAfter = 1;
     }
     R.towLog = LG.towLog.splice(0);
-    R.slots = b.slots.filter(s => s.spot).length; R.reserve = b.slots.filter(s => s.state === 'reserve').length;
+    const nSpot = b.slots.filter(s => s.spot).length;
     Object.assign(R, JSON.parse(JSON.stringify(LG.stats)), { launches: LA.stats.launches, landings: LA.stats.landings, diverted: LA.stats.diverted, ditched: LA.stats.ditched,
-      emergency: LA.stats.emergency, closedLaunches: LA.stats.closedLaunches, scrambles: LA.stats.scrambles });
+      emergency: LA.stats.emergency, closedLaunches: LA.stats.closedLaunches, scrambles: LA.stats.scrambles }, { slots: nSpot, group: b.slots.length });
     return R;
   };
 }
@@ -79,14 +80,14 @@ function install(P) {
     p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
     await p.goto(HL.url()); await p.waitForFunction(() => window.__sim && window.WW && WW.game); await p.waitForTimeout(HL.settle());
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
-    await p.evaluate(install, { SAMPLE, TOL, FORCE_T, CAP });
+    await p.evaluate(install, { SAMPLE, TOL, FORCE_T, CAP, GROUP });
     p.errs = errs; pages.push(p);
   }
   const specs = []; for (let i = 0; i < ROUNDS; i++) specs.push({ seed: SEED0 + i, owner: (SEED0 + i) % 2 ? 'USN' : 'IJN' });
   const out = new Array(specs.length); let next = 0;
   await Promise.all(pages.map(async pg => { while (next < specs.length) { const i = next++; out[i] = await pg.evaluate(s => window.__bg(s.seed, s.owner), specs[i]); } }));
   const sum = k => out.reduce((s, r) => s + (r[k] || 0), 0);
-  for (const r of out) { console.log(`seed ${r.seed} ${r.owner}: slots ${r.slots}/${r.spots} ${JSON.stringify(r.cls)}  launches ${r.launches} landings ${r.landings}  offNet ${r.offNet} (max ${r.offMax.toFixed(2)})  overlap ${r.overlap}  liftClosed ${r.liftClosed}  closed ${r.closedT === null ? '-' : r.closedT.toFixed(0)} reopened ${r.reopenedT === null ? '-' : r.reopenedT.toFixed(0)} resumed ${r.launchAfter}  tows ${r.tows} aborts ${r.aborts} groundLost ${r.groundLost} diverted ${r.diverted} ditched ${r.ditched} emergency ${r.emergency}`); if (r.offEx) console.log('   off: ' + r.offEx.join(' | ')); if (r.ovEx) console.log('   ov: ' + r.ovEx.join(' | ')); if (r.towLog.length) console.log('   tow: ' + r.towLog.join(' | ')); }
+  for (const r of out) { console.log(`seed ${r.seed} ${r.owner}: slots ${r.slots}/${r.spots} of ${r.group} ${JSON.stringify(r.cls)}  launches ${r.launches} landings ${r.landings}  offNet ${r.offNet} (max ${r.offMax.toFixed(2)})  overlap ${r.overlap}  liftClosed ${r.liftClosed}  closed ${r.closedT === null ? '-' : r.closedT.toFixed(0)} reopened ${r.reopenedT === null ? '-' : r.reopenedT.toFixed(0)} resumed ${r.launchAfter}  tows ${r.tows} aborts ${r.aborts} groundLost ${r.groundLost} diverted ${r.diverted} ditched ${r.ditched} emergency ${r.emergency}`); if (r.offEx) console.log('   off: ' + r.offEx.join(' | ')); if (r.ovEx) console.log('   ov: ' + r.ovEx.join(' | ')); if (r.towLog.length) console.log('   tow: ' + r.towLog.join(' | ')); }
   const reopened = out.filter(r => r.reopenedT !== null), resumed = reopened.filter(r => r.launchAfter);
   const checks = [
     ['off_net', sum('offNet'), v => v === 0], ['overlap', sum('overlap'), v => v === 0], ['lift_closed', sum('liftClosed'), v => v === 0],
@@ -95,7 +96,7 @@ function install(P) {
   let fails = 0;
   console.log('\n=== base ground ops (' + HL.label() + ') ===');
   for (const [k, v, ok] of checks) { const pass = ok(v); if (!pass) fails++; console.log(`  ${k.padEnd(12)} ${typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v}  ${pass ? 'PASS' : 'FAIL'}`); }
-  console.log(`  info: launches ${sum('launches')} landings ${sum('landings')} tows ${sum('tows')} aborts ${sum('aborts')} groundLost ${sum('groundLost')} diverted ${sum('diverted')} ditched ${sum('ditched')} emergency ${sum('emergency')} scrambles ${sum('scrambles')} modeSwitches ${sum('modeSwitches')} capped ${sum('capped')}`);
+  console.log(`  info: launches ${sum('launches')} landings ${sum('landings')} tows ${sum('tows')} aborts ${sum('aborts')} groundLost ${sum('groundLost')} diverted ${sum('diverted')} ditched ${sum('ditched')} emergency ${sum('emergency')} scrambles ${sum('scrambles')} modeSwitches ${sum('modeSwitches')} capped ${sum('capped')} towOut ${sum('towOut')} (group ${GROUP})`);
   const errs = pages.flatMap(p => p.errs);
   if (errs.length) { console.log('page errors:', errs.slice(0, 5)); fails++; }
   await b.close();
