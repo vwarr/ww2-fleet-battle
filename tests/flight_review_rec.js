@@ -69,7 +69,7 @@ function install(opts) {
   function fresh() {
     S = { H: {}, sorties: [], recs: new Map(), eng: [], drops: [], deaths: [], waves: [], wrec: new Map(), min: [], first: {}, pilots: new Map(),
       deckCycle: [], next: 0, nextSlow: 0, alone: {}, lead: [], fdir: {}, foeFirst: new Map(), proj: new Map(), hang: [], cvL: {}, cvT: {},
-      escPos: [], trace: opts.trace ? [] : null, push: [] };
+      escPos: [], trace: opts.trace ? [] : null, push: [], deck: {}, trapT: {}, trapGap: [], contact: {} };
   }
   fresh();
   WW.on('roundStart', fresh);
@@ -78,7 +78,7 @@ function install(opts) {
     let r = S.recs.get(p);
     if (r) return r;
     r = { id: nextId++, nation: p.nation, kind: p.kind, v: p.variant || null, o: origin(p), cv: p.carrier ? p.carrier.id : null, t0: +now().toFixed(2), t1: null, end: null,
-      role: role(p), b: {}, circ: {}, ph: null, lx: p.x, ly: p.y, lz: p.z, lh: null, ring: [], cum: 0, eng: null, pilot: null, kills: 0, air: 0, first: null };
+      role: role(p), b: {}, circ: {}, ph: null, lx: p.x, ly: p.y, lz: p.z, lh: null, ring: [], cum: 0, eng: null, pilot: null, kills: 0, air: 0, first: null, armed0: !!p.ordnance, dropped: false, jett: false };
     S.recs.set(p, r); S.sorties.push(r);
     return r;
   }
@@ -144,6 +144,7 @@ function install(opts) {
       off: t ? Math.round(Math.abs(WW.angleDiff(t.heading, Math.atan2(p.z - t.z, p.x - t.x))) * 180 / PI) : null,
       side: t ? Math.sign(WW.angleDiff(t.heading, Math.atan2(p.z - t.z, p.x - t.x))) : 0, wave: w ? w.id : null, tid: t ? t.id : null,
       push: r.pushY !== undefined ? r.pushY : null, rollT: r.rollT !== undefined ? +(now() - r.rollT).toFixed(2) : null, hit: null, sep: sepNow() };
+    r.dropped = true;
     S.drops.push(d); if (e.proj) S.proj.set(e.proj, d);
     if (w) w.drops.push(d.t);
     const m = minute(); m.drops++; if (e.kind === 'bomb') m.bombs++; else m.torps++;
@@ -159,7 +160,7 @@ function install(opts) {
     if (!S || !e || !e.ship || e.cal === 'mg') return;
     minute().shells++;
     const tg = e.proj && e.proj.target, who = { gunWho: e.ship.type + (e.ship.isBase ? '(base)' : '') + '>' + (tg ? tg.type || tg.kind || '?' : '-') + ' d' + (tg ? Math.round(WW.dist(e.ship.x, e.ship.z, tg.x, tg.z)) : '-') };
-    if (!e.ship.isBase && tg && !tg.isBase && tg.type) { first('gun', who); if (e.cal === 'med' || e.cal === 'big') first('bigGun'); }
+    if (!e.ship.isBase && e.ship.type !== 'battery' && tg && !tg.isBase && tg.type && tg.type !== 'battery') { first('gun', who); if (e.cal === 'med' || e.cal === 'big') first('bigGun'); }
     else first('anyGun', { anyGunWho: who.gunWho });
   });
   WW.on('shipHit', e => {
@@ -197,7 +198,8 @@ function install(opts) {
     for (const p of live) {
       const r = rec(p), ph = phase(p);
       if (r.pilot === null && p.pilot) { r.pilot = p.pilot; const lt = S.pilots.get(p.pilot); if (lt !== undefined && r.o === 'cv') S.deckCycle.push(+(r.t0 - lt).toFixed(1)); }
-      if (ph === 'trap' && r.ph !== 'trap') { minute().trap++; if (r.cv !== null) (S.cvT[r.cv] = S.cvT[r.cv] || {})[Math.floor(t / 60)] = ((S.cvT[r.cv] || {})[Math.floor(t / 60)] || 0) + 1; if (p.pilot) S.pilots.set(p.pilot, t); }
+      if (ph === 'trap' && r.ph !== 'trap') { minute().trap++; if (r.cv !== null) (S.cvT[r.cv] = S.cvT[r.cv] || {})[Math.floor(t / 60)] = ((S.cvT[r.cv] || {})[Math.floor(t / 60)] || 0) + 1; if (p.pilot) S.pilots.set(p.pilot, t);
+        const c = p.carrier, D = c && c._deck; if (c && !c.isBase) { const lt = S.trapT[c.id]; if (lt !== undefined && D && D.lq.length > 0) S.trapGap.push(+(t - lt).toFixed(2)); S.trapT[c.id] = t; } }
       if (ph === 'dive' && r.ph !== 'dive' && p.phase === 'roll') { r.pushY = +p.y.toFixed(1); r.rollT = t; S.push.push({ n: p.nation, y: +p.y.toFixed(1) }); }
       // kinematics by finite difference
       const dx = p.x - r.lx, dz = p.z - r.lz, dy = p.y - r.ly, gd = Math.hypot(dx, dz), gs = gd / DT, vy = dy / DT, spd = Math.hypot(gs, vy);
@@ -216,6 +218,8 @@ function install(opts) {
         if (r.o === 'cv') M.circ++;
       }
       if (AIR[ph]) { r.air += DT; if (r.o === 'cv' || r.o === 'base') { M.air++; if (p.kind === 'fighter' && !p.target && !p.search) M.cap++; else M.strikeAir++; } }
+      if (r.armed0 && !p.ordnance && !r.dropped && !r.jett) r.jett = true;
+      if (r.wv === undefined && AIR[ph] && p.kind !== 'fighter' && !p.search && !p.level) r.wv = p.wave ? (p.wave.go ? 'late' : 'formed') : 'none'; // joined its wave while it formed / after it left / never
       r.ph = ph;
       const key = r.o + '|' + p.nation + '|' + (r.v || p.kind) + '|' + ph, H = S.H[key] || (S.H[key] = { n: 0, mx: {} });
       H.n++;
@@ -261,7 +265,8 @@ function install(opts) {
     // waves in the air: first up, departure, formation quality in transit
     for (const [w, wr] of S.wrec) {
       if (wr.tUp === null && w.t1 >= 0) wr.tUp = +t.toFixed(1);
-      if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; wr.members = w.members.length; }
+      if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; }
+      wr.members = Math.max(wr.members, w.members.filter(q => q.alive).length);
       if (!w.go || w.done) continue;
       if (wr.tArr === null && w.dT < 140) wr.tArr = +t.toFixed(1);
       const F = w.members.filter(q => q.alive && q.sk === 'form' && (q.state === 'transit' || q.state === 'attack') && !q.phase);
@@ -280,6 +285,7 @@ function install(opts) {
     // carriers: air group state every 5 s
     if (S.nextSlow <= t) {
       S.nextSlow = t + 5;
+      if (S.trace) for (const s of WW.world.ships) if (s.alive && !s.isBase && s.type !== 'battery') S.trace.push([+t.toFixed(1), -(s.id + 1), s.nation[0], s.type, s.sinking ? 'sinking' : 'ship', +s.x.toFixed(0), 0, +s.z.toFixed(0), +(s.speed || 0).toFixed(1), 0, 0]);
       for (const s of WW.world.ships) {
         if (!s.alive || !s.hangar) continue;
         const h = s.hangar, hg = (h.fighter || 0) + (h.dive || 0) + (h.torpedo || 0), rearm = s.rearm ? s.rearm.length : 0;
@@ -287,18 +293,30 @@ function install(opts) {
         S.hang.push({ t: Math.round(t), n: s.nation, base: !!s.isBase, cv: s.id, hg, rearm, air, deck, q: s.ai && s.ai.queue ? s.ai.queue.length : 0 });
       }
     }
+    for (const s of WW.world.ships) {
+      const D = s._deck; if (!s.alive || !D || s.isBase) continue;
+      const K = S.deck[s.nation] || (S.deck[s.nation] = { t: 0, launch: 0, recover: 0, idle: 0, lq: 0, queued: 0, blocked: 0, both: 0 });
+      K.t += DT; K[D.mode] = (K[D.mode] || 0) + DT; K.lq += D.lq.length * DT;
+      const q = D.launchers.filter(p => p.deckPh === 'queued').length; K.queued += q * DT;
+      if (q && D.mode !== 'launch') K.blocked += DT;
+      if (q && D.lq.length) K.both += DT;
+    }
+    if (WW.intel && WW.intel.contacts) for (const n of ['USN', 'IJN']) {
+      if (S.contact[n]) continue;
+      for (const c of WW.intel.contacts(n)) if (c.unit && c.unit.stats && c.unit.nation !== n && !c.unit.isBase && c.unit.type !== 'battery') { const by = c.by; S.contact[n] = { t: +c.firstSeenAt.toFixed(1), by: by ? by.kind || by.type || '?' : '?', what: c.unit.type, sep: sepNow() }; break; }
+    }
     M.samp++;
   }
 
   R.flush = function () {
     if (!S) return null;
     for (const [p, r] of S.recs) if (r.t1 === null) endSortie(p, r, p.alive ? 'roundEnd' : 'other');
-    const sorties = S.sorties.map(r => ({ n: r.nation, k: r.kind, v: r.v, o: r.o, role: r.role, t0: r.t0, t1: r.t1, end: r.end, b: r.b, circ: r.circ, air: +r.air.toFixed(1), kills: r.kills }));
+    const sorties = S.sorties.map(r => ({ n: r.nation, k: r.kind, v: r.v, o: r.o, role: r.role, t0: r.t0, t1: r.t1, end: r.end, b: r.b, circ: r.circ, air: +r.air.toFixed(1), kills: r.kills, wv: r.wv || null, out: r.armed0 ? (r.dropped ? 'dropped' : r.jett ? 'jettison' : r.end === 'roundEnd' ? 'armedAtEnd' : r.end === 'landed' ? 'landedArmed' : 'lostArmed') : null }));
     const ff = []; for (const v of S.foeFirst.values()) ff.push(v);
     const W = S.waves.map(w => Object.assign({}, w, { sepMin: w.sepMin === 1e9 ? null : +w.sepMin.toFixed(1) }));
     const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
       fdir: S.fdir, foeFirst: ff, hang: S.hang, cvL: S.cvL, cvT: S.cvT, escPos: S.escPos, push: S.push, trace: S.trace, err: R.err, lastErr: R.lastErr || null,
-      cvSep0: S.cvSep0 || null, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
+      cvSep0: S.cvSep0 || null, deck: S.deck, trapGap: S.trapGap, contact: S.contact, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
     return out;
   };
   WW.on('roundStart', () => { if (S) S.cvSep0 = cvSep(); });

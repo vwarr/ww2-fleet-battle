@@ -95,8 +95,8 @@ async function runAll(list, withRec) {
 function report(rounds) {
   const L = [], out = { rounds: rounds.length, kin: {}, budgets: {}, waves: {}, form: {}, fighters: {}, attack: {}, losses: {}, pacing: {}, ops: {}, first: [] };
   const say = s => L.push(s);
-  const cvRounds = rounds.filter(r => r.comp && Object.keys(r.comp).some(k => k.endsWith(':carrier')));
-  say(`FLIGHT REVIEW: ${rounds.length} rounds (${[...new Set(rounds.map(r => r.scen))].map(s => s + ' ' + rounds.filter(r => r.scen === s).length).join(', ')}); ${cvRounds.length} with carriers. ` +
+  const cvRounds = rounds.filter(r => r.comp && Object.keys(r.comp).some(k => k.endsWith(':carrier')) && r.rec && r.rec.first.launch !== undefined); // carriers that flew (not night)
+  say(`FLIGHT REVIEW: ${rounds.length} rounds (${[...new Set(rounds.map(r => r.scen))].map(s => s + ' ' + rounds.filter(r => r.scen === s).length).join(', ')}); ${cvRounds.length} with carrier flight ops (pacing and per-round figures use these). ` +
     `recorder errors ${rounds.reduce((s, r) => s + (r.rec ? r.rec.err : 0), 0)}${rounds.find(r => r.rec && r.rec.lastErr) ? ' (' + rounds.find(r => r.rec && r.rec.lastErr).rec.lastErr.split('\n')[0] + ')' : ''}`);
   say(`round length median ${med(rounds.map(r => r.len))} s; winners USN ${rounds.filter(r => r.winner === 'USN').length} IJN ${rounds.filter(r => r.winner === 'IJN').length} other ${rounds.filter(r => r.winner !== 'USN' && r.winner !== 'IJN').length}`);
 
@@ -135,6 +135,9 @@ function report(rounds) {
   say('carrier planes, circling time by category:location as a share of all airborne time: ' + Object.keys(circCat).sort((a, b) => circCat[b] - circCat[a]).slice(0, 10).map(c => `${c} ${pc(circCat[c] / airAll)}`).join(', '));
   const ends = {}; for (const s of S) if (s.o === 'cv') ends[s.end] = (ends[s.end] || 0) + 1;
   say('carrier sortie ends: ' + JSON.stringify(ends));
+  for (const n of ['USN', 'IJN']) { const G = S.filter(s => s.o === 'cv' && s.n === n && s.wv), o = {}; for (const s of G) o[s.wv] = (o[s.wv] || 0) + 1; say(`${n} carrier bomber sorties: joined the wave while it formed / after it had left / never had a wave: ${pc((o.formed || 0) / G.length)} / ${pc((o.late || 0) / G.length)} / ${pc((o.none || 0) / G.length)} (n ${G.length})`); (out.budgets._wave = out.budgets._wave || {})[n] = o; }
+  out.budgets._outcomes = {};
+  for (const n of ['USN', 'IJN']) { const G = S.filter(s => s.o === 'cv' && s.n === n && s.out), o = {}; for (const s of G) o[s.out] = (o[s.out] || 0) + 1; out.budgets._outcomes[n] = o; say(`${n} armed carrier bomber sorties by outcome: ` + Object.keys(o).map(k => `${k} ${o[k]} (${pc(o[k] / G.length)})`).join(', ')); }
 
   // 3. strike timelines
   say('\n== 3. STRIKES (per wave: order -> first up -> departs -> within 140 -> first drop; first -> last drop) ==');
@@ -235,17 +238,20 @@ function report(rounds) {
   say(pad('min', 4) + lp('rnds', 5) + lp('air', 6) + lp('cap', 6) + lp('strk', 6) + lp('circ', 6) + lp('eng', 6) + lp('launch', 7) + lp('trap', 6) + lp('drops', 6) + lp('aaK', 5) + lp('ftrK', 5) + lp('shells', 7) + lp('gunDmg', 7) + lp('airDmg', 7) + lp('sunk', 5));
   for (const o of PM) say(pad(o.m, 4) + lp(o.rounds, 5) + lp(f1(o.air), 6) + lp(f1(o.cap), 6) + lp(f1(o.strikeAir), 6) + lp(f1(o.circ), 6) + lp(f1(o.eng), 6) + lp(f1(o.launch), 7) + lp(f1(o.trap), 6) + lp(f1(o.drops), 6) + lp(f1(o.aaK), 5) + lp(f1(o.ftrK), 5) + lp(f1(o.shells), 7) + lp(f1(o.gunDmg), 7) + lp(f1(o.airDmg), 7) + lp(f1(o.sunk), 5));
   say('first events per round (sim s; sep = closest enemy surface ships at that moment):');
-  say(pad('scen seed', 18) + lp('cvSep0', 7) + lp('launch', 7) + lp('order', 7) + lp('drop', 7) + lp('dropSep', 8) + lp('airDmg', 7) + lp('kill', 6) + lp('gun', 6) + lp('gunSep', 7) + lp('bigGun', 7) + lp('gunDmg', 7) + lp('len', 5) + '  air first?');
+  say(pad('scen seed', 18) + lp('cvSep0', 7) + lp('contact', 8) + lp('launch', 7) + lp('order', 7) + lp('drop', 7) + lp('dropSep', 8) + lp('airDmg', 7) + lp('kill', 6) + lp('gun', 6) + lp('gunSep', 7) + lp('bigGun', 7) + lp('gunDmg', 7) + lp('len', 5) + '  air first?');
   let airFirst = 0, both = 0;
+  const ct = r => { const C = r.rec && r.rec.contact; if (!C) return null; const v = Object.values(C).map(c => c.t); return v.length ? Math.min(...v) : null; };
   for (const r of rounds) {
     const F = (r.rec && r.rec.first) || {}, af = F.drop !== undefined && (F.gun === undefined || F.drop < F.gun);
     if (F.drop !== undefined || F.gun !== undefined) { both++; if (af) airFirst++; }
-    out.first.push(Object.assign({ scen: r.scen, seed: r.seed, len: r.len, cvSep0: r.rec && r.rec.cvSep0 }, F));
-    say(pad(r.scen + ' ' + r.seed, 18) + lp(f1(r.rec && r.rec.cvSep0), 7) + lp(f1(F.launch), 7) + lp(f1(F.order), 7) + lp(f1(F.drop), 7) + lp(f1(F.dropSep), 8) + lp(f1(F.airDmg), 7) + lp(f1(F.kill), 6) + lp(f1(F.gun), 6) + lp(f1(F.gunSep), 7) + lp(f1(F.bigGun), 7) + lp(f1(F.gunDmg), 7) + lp(r.len, 5) + '  ' + (F.drop === undefined ? '(no drop)' : af ? 'yes' : 'no') + (F.gunWho ? '  first gun ' + F.gunWho : ''));
+    out.first.push(Object.assign({ scen: r.scen, seed: r.seed, len: r.len, cvSep0: r.rec && r.rec.cvSep0, contact: r.rec && r.rec.contact }, F));
+    say(pad(r.scen + ' ' + r.seed, 18) + lp(f1(r.rec && r.rec.cvSep0), 7) + lp(f1(ct(r)), 8) + lp(f1(F.launch), 7) + lp(f1(F.order), 7) + lp(f1(F.drop), 7) + lp(f1(F.dropSep), 8) + lp(f1(F.airDmg), 7) + lp(f1(F.kill), 6) + lp(f1(F.gun), 6) + lp(f1(F.gunSep), 7) + lp(f1(F.bigGun), 7) + lp(f1(F.gunDmg), 7) + lp(r.len, 5) + '  ' + (F.drop === undefined ? '(no drop)' : af ? 'yes' : 'no') + (F.gunWho ? '  first gun ' + F.gunWho : '') + (r.rec && r.rec.contact ? '  contact ' + Object.entries(r.rec.contact).map(([n, c]) => `${n} ${c.t}s by ${c.by} (${c.what}, sep ${c.sep})`).join(' / ') : ''));
   }
   const cvF = cvRounds.map(r => r.rec.first);
   out.pacing.airFirst = { rounds: cvF.length, dropBeforeGun: cvF.filter(F => F.drop !== undefined && (F.gun === undefined || F.drop < F.gun)).length / Math.max(1, cvF.length),
     dropP50: med(cvF.map(F => F.drop).filter(x => x !== undefined)), gunP50: med(cvF.map(F => F.gun).filter(x => x !== undefined)), leadP50: med(cvF.filter(F => F.drop !== undefined && F.gun !== undefined).map(F => F.gun - F.drop)) };
+  out.pacing.contactP50 = med(cvRounds.map(ct).filter(x => x !== null));
+  say(`first enemy ship contact (either side) p50 ${f1(out.pacing.contactP50)} s`);
   say(`rounds with carriers: first air drop before the first surface gunfire in ${pc(out.pacing.airFirst.dropBeforeGun)}; first drop p50 ${f1(out.pacing.airFirst.dropP50)} s, first gunfire p50 ${f1(out.pacing.airFirst.gunP50)} s, lead p50 ${f1(out.pacing.airFirst.leadP50)} s`);
   // rising action: drops + kills + gun damage events by thirds of the round
   const thirds = cvRounds.map(r => { const m = r.rec.min, n = m.length, t = [0, 0, 0]; m.forEach((x, i) => { t[Math.min(2, Math.floor(i * 3 / n))] += x.drops + x.aaK + x.ftrK + x.sunk * 5 + x.gunDmg / 200 + x.airDmg / 200; }); return t; });
@@ -254,7 +260,7 @@ function report(rounds) {
 
   // 8. flight ops
   say('\n== 8. FLIGHT OPS (carriers) ==');
-  const HG = []; for (const r of rounds) if (r.rec) for (const h of r.rec.hang) if (!h.base) HG.push(h);
+  const HG = []; for (const r of cvRounds) for (const h of r.rec.hang) if (!h.base) HG.push(h);
   for (const n of ['USN', 'IJN']) {
     const G = HG.filter(h => h.n === n); if (!G.length) continue;
     const tot = h => h.hg + h.rearm + h.air + h.deck;
@@ -264,6 +270,17 @@ function report(rounds) {
     out.ops[n] = o;
     say(`${n}: air group ${f1(o.group)} planes per carrier (mean); share in the hangar ${pc(o.hangarShare)}, rearming ${pc(o.rearmShare)}, on deck ${pc(o.deckShare)}, airborne ${pc(o.airShare)}; airborne share by minute ${o.airByMin.map(pc).join(' ')}`);
   }
+  for (const n of ['USN', 'IJN']) {
+    const K = { t: 0, launch: 0, recover: 0, idle: 0, lq: 0, queued: 0, blocked: 0, both: 0 };
+    for (const r of cvRounds) { const k = r.rec.deck && r.rec.deck[n]; if (k) for (const f in K) K[f] += k[f] || 0; }
+    if (!K.t) continue;
+    out.ops['deck_' + n] = { launch: K.launch / K.t, recover: K.recover / K.t, idle: K.idle / K.t, lq: K.lq / K.t, queued: K.queued / K.t, blocked: K.blocked / K.t, both: K.both / K.t };
+    const o = out.ops['deck_' + n];
+    say(`${n} deck mode share: launch ${pc(o.launch)}, recover ${pc(o.recover)}, idle ${pc(o.idle)}; mean planes waiting to land ${f1(o.lq)}, waiting below to launch ${f1(o.queued)}; launches waiting on a non-launch deck ${pc(o.blocked)} of the time; both queues non-empty ${pc(o.both)}`);
+  }
+  const TG = []; for (const r of cvRounds) for (const x of r.rec.trapGap || []) TG.push(x);
+  out.ops.trapGap = { n: TG.length, p10: qs(TG, 0.1), p50: med(TG), p90: qs(TG, 0.9) };
+  say(`recovery interval with planes waiting (trap to trap, one carrier): p10 ${f1(out.ops.trapGap.p10)} p50 ${f1(out.ops.trapGap.p50)} p90 ${f1(out.ops.trapGap.p90)} s (n ${TG.length})`);
   const DC = []; for (const r of rounds) if (r.rec) for (const x of r.rec.deckCycle) DC.push(x);
   out.ops.deckCycle = { n: DC.length, p10: qs(DC, 0.1), p50: med(DC), p90: qs(DC, 0.9) };
   say(`time on deck between sorties (a pilot's trap -> next launch): p10 ${f1(out.ops.deckCycle.p10)} p50 ${f1(out.ops.deckCycle.p50)} p90 ${f1(out.ops.deckCycle.p90)} s (n ${DC.length})`);
@@ -300,6 +317,6 @@ function report(rounds) {
   const R = report(rounds);
   console.log(R.text);
   fs.mkdirSync(path.dirname(JSON_OUT), { recursive: true });
-  fs.writeFileSync(JSON_OUT, JSON.stringify({ when: new Date().toISOString(), args: argv, summary: R.out, rounds: rounds.map(r => ({ scen: r.scen, seed: r.seed, winner: r.winner, len: r.len, end: r.end, comp: r.comp, stats: r.stats, first: r.rec && r.rec.first, waves: r.rec && r.rec.waves, drops: r.rec && r.rec.drops, deaths: r.rec && r.rec.deaths, min: r.rec && r.rec.min })) }));
+  fs.writeFileSync(JSON_OUT, JSON.stringify({ when: new Date().toISOString(), args: argv, summary: R.out, rounds: rounds.map(r => ({ scen: r.scen, seed: r.seed, winner: r.winner, len: r.len, end: r.end, comp: r.comp, stats: r.stats, first: r.rec && r.rec.first, waves: r.rec && r.rec.waves, drops: r.rec && r.rec.drops, deaths: r.rec && r.rec.deaths, min: r.rec && r.rec.min, hang: r.rec && r.rec.hang, deck: r.rec && r.rec.deck, contact: r.rec && r.rec.contact })) }));
   console.log(`\njson: ${JSON_OUT}   (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 })().catch(e => { console.error(e); process.exit(1); });
