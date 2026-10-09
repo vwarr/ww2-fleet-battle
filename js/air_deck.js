@@ -169,7 +169,10 @@ window.WW = window.WW || {};
       }
     }
     D.riseT -= dt;
-    if (D.mode === 'idle' && D.riseT <= 0) { // bring one up from the hangar deck
+    // bring one up from the hangar deck: while idle, and while launching (the next load is spotted as the first goes;
+    // not while a plane taxis up the deck or rides the forward elevator)
+    const spotting = D.mode === 'idle' || (D.mode === 'launch' && !D.launchers.some(q => q.deckPh === 'taxi' || q.deckPh === 'rise'));
+    if (spotting && D.riseT <= 0) {
       D.riseT = 1.6;
       for (const k of ['fighter', 'dive', 'torpedo']) {
         if (vis[k] >= t[k]) continue;

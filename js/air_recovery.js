@@ -15,6 +15,7 @@ window.WW = window.WW || {};
   const K = WW.airDeck._k, PI = Math.PI;
   const { deckOf, toLocal, lenOf, colFor, newEntry, pack, clearAft, P, TD_X } = K;
   const MARSHAL_L = 4.0, LEG = 40, RT = 15, STACK0 = 15, STACK_DY = 5; // stack centre (hull lengths astern), leg length, turn radius, lowest level, spacing
+  const LEVELS = 8, RING = 14;  // levels per racetrack; a returning deck-load strike stacks on wider rings, RING u apart
   const HOME_R = 110;           // distance at which a returning plane joins the stack (landing state)
   const GATE_X = -70, GROOVE = 60;           // the groove starts this far astern (carrier local); the whole stack lies behind it
   const RS = { diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, why: {} };
@@ -56,10 +57,10 @@ window.WW = window.WW || {};
   function inbound(q, c) { return toLocal(c, q.x, q.z)[0] < GATE_X - 10 && Math.abs(WW.angleDiff(q.heading, c.heading)) < 1.0; }
   // Pure pursuit on the racetrack (stack-centred local coords u along the ship, v across): the far leg heads aft
   // (-u), the near leg forward (+u), the turns at each end.
-  function trackPoint(u, v, la) {
+  function trackPoint(u, v, la, rt) {
     const H = LEG / 2;
-    if (u > H || u < -H) { const cx = u > H ? H : -H, a = Math.atan2(v, u - cx) + la / RT; return [cx + Math.cos(a) * RT, Math.sin(a) * RT]; }
-    return v >= 0 ? [u - la, RT] : [u + la, -RT];
+    if (u > H || u < -H) { const cx = u > H ? H : -H, a = Math.atan2(v, u - cx) + la / rt; return [cx + Math.cos(a) * rt, Math.sin(a) * rt]; }
+    return v >= 0 ? [u - la, rt] : [u + la, -rt];
   }
   function landing(p, dt) {
     const c = p.carrier, D = deckOf(c), ps = -D.s, L = toLocal(c, p.x, p.z), lx = L[0], lz = L[1];
@@ -77,8 +78,8 @@ window.WW = window.WW || {};
           else if (q.deckPh === 'final') ahead = q;
         }
         for (const q of D.lq) if (q !== p && q.deckPh === 'app') inApp = true;
-        const m = stackAt(c, D), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22);
-        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, 7), p.pt.speed * 0.7, 1.5);
+        const ring = Math.floor(lvl / LEVELS), m = stackAt(c, D), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT + RING * ring); // a full stack: the next levels on a wider ring outside it
+        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * (lvl % LEVELS), p.pt.speed * 0.7, 1.5);
         const groove = !ahead || (TD_X - toLocal(c, ahead.x, ahead.z)[0]) < GROOVE;   // the plane ahead is well into its final
         // the lowest plane placed to go in (a wave-off still up ahead lets the next one through first)
         if (lvl < 3 && first && D.mode === 'recover' && !D.closing && !inApp && groove && inbound(p, c)) { p.deckPh = 'app'; p.phT = 0; }
