@@ -148,6 +148,7 @@ window.WW = window.WW || {};
     return veh[k];
   }
   const fixed = {}; // vehicles placed directly this frame (the roller)
+  const vehNow = []; // this frame's drawn vehicles { x, z, h, kind } (base_life.js keeps its people out of them)
   function vehSet(kind, list) { fixed[kind] = list; }
   function drawVehicles(on) {
     const per = {};
@@ -160,11 +161,12 @@ window.WW = window.WW || {};
       }
       for (const k in fixed) if (fixed[k]) (per[k] = per[k] || []).push(...fixed[k]);
     }
+    vehNow.length = 0;
     for (const kind in VCAP) {
       const list = per[kind] || [], vm = list.length || veh[kind + base.nation] ? vehMesh(kind) : null; if (!vm) continue;
       const n = Math.min(list.length, VCAP[kind]);
       for (let i = 0; i < n; i++) {
-        const q = list[i]; if (trace) trace.veh.push({ kind, x: q.x, z: q.z, h: q.h, t: q.trip && { p0: q.trip.pts[0], n: q.trip.pts.length, out: (WW.time.now - q.trip.t0) * VSPD[kind], len: q.trip.len } });
+        const q = list[i]; vehNow.push({ x: q.x, z: q.z, h: q.h, kind }); if (trace) trace.veh.push({ kind, x: q.x, z: q.z, h: q.h, t: q.trip && { p0: q.trip.pts[0], n: q.trip.pts.length, out: (WW.time.now - q.trip.t0) * VSPD[kind], len: q.trip.len } });
         _q.setFromEuler(_e.set(0, -q.h, 0)); _p.set(q.x, gy(q.x, q.z) + 0.02, q.z); _s.setScalar(WW.baseModels.VEH_K || 1);
         vm.mesh.setMatrixAt(i, _m.compose(_p, _q, _s));
       }
@@ -357,5 +359,6 @@ window.WW = window.WW || {};
   }
   WW.on('baseEvent', onEvent);
   WW.baseGroundFx = { update, clear, _parked: () => [...planes.values()], _trips: () => trips, _stats: () => ({ planes: planes.size, wrecks: wrecks.size, trips: trips.length, figures: fig }),
-    _trace: on => { trace = on ? { figs: [], veh: [] } : null; return trace; } };
+    _trace: on => { trace = on ? { figs: [], veh: [] } : null; return trace; }, _traceRef: () => trace,
+    _ground: () => (base ? groundPlanes() : []), _vehNow: () => vehNow, FIG_K };
 })();

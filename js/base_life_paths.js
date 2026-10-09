@@ -1,0 +1,113 @@
+// base_life_paths.js - WW.baseLifePaths: the ways round the island base for its people and its trucks (visual only:
+// no randomness, nothing feeds the sim). A 1 u grid in site-local u / v (airfield_layout.js) over the whole island:
+//  - walls: the solid buildings of the camp (base.decor) and the facilities (their models' footprints), the revetment
+//    berms and the parked planes' hardstands, the sea. Pits, trenches, the laundry line and the drill ground are open.
+//  - cost: people keep off the taxi network (x3) and the runways (x6) unless it is the only way; trucks use the network
+//    (x1.5) and keep a wider berth from the walls.
+//  - path(x0, z0, x1, z1, veh): the cheapest way (Dijkstra, 8 neighbours), pulled straight where the line is clear;
+//    world points, cached. The ends are snapped to the nearest open cell (a caller adds its own last steps).
+window.WW = window.WW || {};
+(function () {
+  'use strict';
+  const U0 = -130, V0 = -115, NU = 261, NV = 231, N = NU * NV, MAXEXP = 60000;
+  let G = null;
+  const id = (i, j) => j * NU + i;
+
+  // a rotated rectangle (site-local centre u, v; yaw from the u axis; half extents) stamped into a grid
+  function stamp(arr, val, u, v, yaw, hx, hz, pad) {
+    const c = Math.cos(yaw), s = Math.sin(yaw), R = Math.hypot(hx, hz) + pad;
+    for (let dj = Math.floor(v - R); dj <= Math.ceil(v + R); dj++) for (let di = Math.floor(u - R); di <= Math.ceil(u + R); di++) {
+      const du = di - u, dv = dj - v, a = du * c + dv * s, b = -du * s + dv * c;
+      if (Math.abs(a) > hx + pad || Math.abs(b) > hz + pad) continue;
+      const i = di - U0, j = dj - V0; if (i < 0 || j < 0 || i >= NU || j >= NV) continue;
+      if (arr[id(i, j)] < val) arr[id(i, j)] = val;
+    }
+  }
+  function build(b, built) {
+    const L = b.layout, AL = WW.airfieldLayout, S = b.site;
+    const wall = new Uint8Array(N), vwall = new Uint8Array(N), cost = new Uint8Array(N), vcost = new Uint8Array(N);
+    for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+      const u = U0 + i, v = V0 + j, w = L.toW(u, v), d = WW.terrain.depthAt(w.x, w.z), k = id(i, j);
+      if (!(d < -0.35)) { wall[k] = vwall[k] = 1; continue; }
+      if (d < -2.6) { vwall[k] = 1; cost[k] = 3; continue; }        // the hillside: people only
+      const run = (Math.abs(u) < 47 && Math.abs(v) < AL.RUN_HALF_W + 1.5) || L.crossD(u, v) < AL.RUN_HALF_W + 1.5;
+      const net = run || AL.onNetwork(L, u, v, 0);
+      cost[k] = run ? 6 : net ? 3 : 1; vcost[k] = run ? 4 : net ? 1 : 2;
+    }
+    const site = (x, z) => L.toL(x, z);
+    for (const d of b.decor || []) if (d.solid) { stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.45); stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.0); }
+    if (built) for (const part of built.parts) {
+      if (part.decor || !part.mesh) continue;
+      const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 3.5, 3.5, 0.5); continue; }
+      const m = part.mesh, g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
+      const bb = g.boundingBox, h = -m.rotation.y, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+      const q = site(m.position.x + Math.cos(h) * cx - Math.sin(h) * cz, m.position.z + Math.sin(h) * cx + Math.cos(h) * cz);
+      stamp(wall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 0.45);
+      stamp(vwall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 1.0);
+    }
+    for (const sp of L.spots) { // the hardstand (a plane parks there) and its berms
+      const yaw = sp.h - S.h;
+      stamp(wall, 1, sp.u, sp.v, yaw, sp.len / 2 + 0.3, sp.span / 2 + 0.3, 0.2); stamp(vwall, 1, sp.u, sp.v, yaw, sp.len / 2 + 0.3, sp.span / 2 + 0.3, 0.8);
+      for (const w of WW.baseModels.revetWalls(sp)) {
+        const c = Math.cos(yaw), s = Math.sin(yaw);
+        stamp(wall, 1, sp.u + c * w[0] - s * w[1], sp.v + s * w[0] + c * w[1], yaw - w[4], w[2] / 2, w[3] / 2, 0.35);
+        stamp(vwall, 1, sp.u + c * w[0] - s * w[1], sp.v + s * w[0] + c * w[1], yaw - w[4], w[2] / 2, w[3] / 2, 0.9);
+      }
+    }
+    G = { base: b, L, wall, vwall, cost, vcost, cache: new Map(), made: 0 };
+    return G;
+  }
+  function cell(u, v) { const i = Math.round(u - U0), j = Math.round(v - V0); return i < 0 || j < 0 || i >= NU || j >= NV ? -1 : id(i, j); }
+  function open(x, z, veh) { if (!G) return false; const q = G.L.toL(x, z), c = cell(q.u, q.v); return c >= 0 && !(veh ? G.vwall : G.wall)[c]; }
+  // the nearest open cell to a site-local point (rings out to r), or -1
+  function snap(u, v, W, r) {
+    const c0 = cell(u, v); if (c0 >= 0 && !W[c0]) return c0;
+    for (let d = 1; d <= (r || 4); d++) for (let dj = -d; dj <= d; dj++) for (let di = -d; di <= d; di++) {
+      if (Math.max(Math.abs(di), Math.abs(dj)) !== d) continue;
+      const c = cell(u + di, v + dj); if (c >= 0 && !W[c]) return c;
+    }
+    return -1;
+  }
+  // a straight leg clear of walls (sampled every 0.3 u), and not cheaper to go round (no shortcut across a runway)
+  function clear(a, b, W, C) {
+    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.3), c0 = C[cell(a[0], a[1])] || 1;
+    for (let k = 1; k <= n; k++) { const c = cell(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n); if (c < 0 || W[c] || C[c] > Math.max(c0, C[cell(b[0], b[1])] || 1)) return false; }
+    return true;
+  }
+  // binary heap of [cost, cell]
+  function path(x0, z0, x1, z1, veh) {
+    if (!G) return null;
+    const L = G.L, W = veh ? G.vwall : G.wall, C = veh ? G.vcost : G.cost, a = L.toL(x0, z0), b = L.toL(x1, z1);
+    const s = snap(a.u, a.v, W, 5), t = snap(b.u, b.v, W, 6); if (s < 0 || t < 0) return null;
+    const key = (veh ? 'v' : 'w') + s + ':' + t;
+    if (G.cache.has(key)) return G.cache.get(key);
+    const dist = new Float32Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), hc = [], hk = [];
+    const push = (c, k) => { hc.push(c); hk.push(k); let i = hc.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (hc[p] <= hc[i]) break; [hc[p], hc[i]] = [hc[i], hc[p]]; [hk[p], hk[i]] = [hk[i], hk[p]]; i = p; } };
+    const pop = () => { const c = hc[0], k = hk[0], lc = hc.pop(), lk = hk.pop(); if (hc.length) { hc[0] = lc; hk[0] = lk; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < hc.length && hc[l] < hc[m]) m = l; if (r < hc.length && hc[r] < hc[m]) m = r; if (m === i) break; [hc[m], hc[i]] = [hc[i], hc[m]]; [hk[m], hk[i]] = [hk[i], hk[m]]; i = m; } } return [c, k]; };
+    dist[s] = 0; push(0, s); let exp = 0, found = false;
+    while (hc.length && exp++ < MAXEXP) {
+      const [d, k] = pop(); if (d > dist[k]) continue;
+      if (k === t) { found = true; break; }
+      const i = k % NU, j = (k - i) / NU;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const a2 = i + di, b2 = j + dj; if (a2 < 0 || b2 < 0 || a2 >= NU || b2 >= NV) continue;
+        const n = id(a2, b2); if (W[n]) continue;
+        if (di && dj && (W[id(i + di, j)] || W[id(i, j + dj)])) continue;   // no squeezing past a corner
+        const nd = d + (di && dj ? 1.414 : 1) * (C[n] || 1);
+        if (nd < dist[n]) { dist[n] = nd; prev[n] = k; push(nd, n); }
+      }
+    }
+    let out = null;
+    if (found) {
+      const P = []; for (let k = t; k >= 0; k = prev[k]) { const i = k % NU; P.push([i + U0, (k - i) / NU + V0]); }
+      P.reverse();
+      const S = [P[0]];
+      for (let i = 0; i < P.length - 1;) { let j = P.length - 1; while (j > i + 1 && !clear(P[i], P[j], W, C)) j--; S.push(P[j]); i = j; }
+      out = S.map(q => L.toW(q[0], q[1]));
+    }
+    G.cache.set(key, out); G.made++;
+    return out;
+  }
+  WW.baseLifePaths = { build, path, open, get grid() { return G; }, clear: () => { G = null; } };
+})();

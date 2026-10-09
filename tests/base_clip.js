@@ -85,7 +85,7 @@ function round(P) {
   }
   const palms = [], pg = WW.terrain._props && WW.terrain._props();
   if (pg) for (const g of pg.children) if (WW.dist(g.position.x, g.position.z, b.x, b.z) < 160) { const bx = new THREE.Box3().setFromObject(g); palms.push({ x: g.position.x, z: g.position.z, top: bx.max.y, r: Math.max(bx.max.x - bx.min.x, bx.max.z - bx.min.z) / 2 }); }
-  const VD = { fuel: [2.4, 1.05], bombs: [2.4, 0.95], crash: [2.3, 1.05], roller: [2.0, 0.95] }, VK = WW.baseModels.VEH_K || 1;
+  const VD = { fuel: [2.4, 1.05], bombs: [2.4, 0.95], crash: [2.3, 1.05], roller: [2.0, 0.95], truck: [2.4, 1.05], jeep: [1.8, 0.95] }, VK = WW.baseModels.VEH_K || 1;
   let forced = false;
   while (G.state === 'battle' && G.roundTime < P.SECS) {
     __sim.fastForward(P.SAMPLE - 1 / 30); __step(1);

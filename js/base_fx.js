@@ -88,6 +88,8 @@ window.WW = window.WW || {};
     }
     if (sdt > 0) burn(sdt, now);
     if (WW.baseGroundFx) WW.baseGroundFx.update(rdt, b);
+    if (WW.baseLife) WW.baseLife.update(rdt, b, built);   // the camp's people and trucks (after the ground crews: one trace)
+    if (WW.baseLifeFx) WW.baseLifeFx.update(rdt, b, built); // the gooney birds, the blackout and the searchlights
   }
   function burn(dt, now) {
     const ld = WW.damage ? WW.damage.load() : 0;

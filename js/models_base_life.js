@@ -122,6 +122,7 @@ window.WW = window.WW || {};
         break;
       case 'table': M._box(g, C.crate, 0.6, 0.42, 0.6, 0, 0, 0); M._bar(g, C.white, 0.1, 0.01, 0.14, 0.1, 0.42, 0.05); M._bar(g, C.red, 0.1, 0.01, 0.14, -0.1, 0.42, -0.08); break;
       case 'truck': case 'jeep': return (TPL[k] = vehicle(kind, nat));
+      case 'fire': return (TPL[k] = B.vehicle('crash', nat));
       default: TPL[k] = null; return null;
     }
     TPL[k] = B._bake(g); return TPL[k];
@@ -158,7 +159,7 @@ window.WW = window.WW || {};
       var geo = tpl(d.kind, nat), y = gy(d.x, d.z), part = { f: d, mesh: null, gun: null, head: null, flag: null, decor: true, y: y };
       if (geo) {
         var m = new THREE.Mesh(geo, mat); m.position.set(d.x, y, d.z); m.rotation.y = -d.a;
-        if (d.kind === 'truck' || d.kind === 'jeep') m.scale.setScalar(B.VEH_K || 1);
+        if (d.kind === 'truck' || d.kind === 'jeep' || d.kind === 'fire') m.scale.setScalar(B.VEH_K || 1);
         m.castShadow = d.kind !== 'trench'; m.receiveShadow = true; part.mesh = m;
       }
       if (d.kind === 'mg') { var gn = new THREE.Mesh(tpl('mggun', nat), mat); gn.position.set(d.x, y + 0.02, d.z); gn.rotation.y = -d.a; gn.castShadow = true; part.gun = gn; }
