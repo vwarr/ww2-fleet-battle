@@ -15,7 +15,7 @@ window.WW = window.WW || {};
   var OUT_SHARE = 0.35, OUT_K = 0.4; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
   var PURSUE_AGE = 120;  // pursuit: strikes on contacts this old, anywhere on the map (PURSUE_STRIKE_R below)
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
-  var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
+  var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship (not the PT pickets far out ahead): engage, else approach
   var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
   // strikes: on contacts this fresh and within STRIKE_R of the carrier (0.6 W, ~6x a big ship's visual range), else
   // anything known out to STRIKE_FAR (the whole width: the 1942 strikes flew 8-12x visual range); DIST_K: the
@@ -72,7 +72,7 @@ window.WW = window.WW || {};
       var age = now - c.seenAt, w = Math.max(0.3, 1 - age / 90);
       known += (u.isBase ? u.power : POWER[u.type]) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power
       ex += c.x * w; ez += c.z * w; ew += w;
-      for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); }
+      for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine' && s.type !== 'pt') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); }
     }
     B.strength.own = own; B.strength.known = known; B.strength.ratio = own / Math.max(known, 0.3 * own, 0.1);
     B.enemyCentre = ew ? { x: ex / ew, z: ez / ew } : null;

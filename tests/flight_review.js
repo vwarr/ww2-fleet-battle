@@ -263,10 +263,22 @@ function report(rounds) {
   out.pacing.contactP50 = med(cvRounds.map(ct).filter(x => x !== null));
   say(`first enemy ship contact (either side) p50 ${f1(out.pacing.contactP50)} s`);
   say(`rounds with carriers: first air drop before the first surface gunfire in ${pc(out.pacing.airFirst.dropBeforeGun)}; first drop p50 ${f1(out.pacing.airFirst.dropP50)} s, first gunfire p50 ${f1(out.pacing.airFirst.gunP50)} s, lead p50 ${f1(out.pacing.airFirst.leadP50)} s`);
-  // rising action: drops + kills + gun damage events by thirds of the round
-  const thirds = cvRounds.map(r => { const m = r.rec.min, n = m.length, t = [0, 0, 0]; m.forEach((x, i) => { t[Math.min(2, Math.floor(i * 3 / n))] += x.drops + x.aaK + x.ftrK + x.sunk * 5 + x.gunDmg / 200 + x.airDmg / 200; }); return t; });
+  // rising action: drops + kills + gun damage events by thirds of the round. Thirds of the round's TIME: minute i
+  // covers [60 i, min(60 i + 60, len)] and its events are spread evenly over that span (the minute-slot split, kept as
+  // 'slots' for comparison with older reports, counts the last, partial minute as a whole third's slot and so
+  // under-weights the end of every round)
+  const act = x => x.drops + x.aaK + x.ftrK + x.sunk * 5 + x.gunDmg / 200 + x.airDmg / 200;
+  const slots = cvRounds.map(r => { const m = r.rec.min, n = m.length, t = [0, 0, 0]; m.forEach((x, i) => { t[Math.min(2, Math.floor(i * 3 / n))] += act(x); }); return t; });
+  const thirds = cvRounds.map(r => { const m = r.rec.min, L = r.len, T3 = L / 3, t = [0, 0, 0];
+    m.forEach((x, i) => { const t0 = 60 * i, t1 = Math.min(t0 + 60, L); if (t1 > t0) for (let k = 0; k < 3; k++) t[k] += act(x) * Math.max(0, Math.min(t1, (k + 1) * T3) - Math.max(t0, k * T3)) / (t1 - t0); });
+    return t; });
   out.pacing.thirds = [0, 1, 2].map(i => mean(thirds.map(t => t[i])));
-  say(`action index by thirds of the round (drops + kills + 5 x sinkings + damage / 200): ${out.pacing.thirds.map(f1).join(' / ')}`);
+  out.pacing.thirdsSlots = [0, 1, 2].map(i => mean(slots.map(t => t[i])));
+  say(`action index by thirds of the round (drops + kills + 5 x sinkings + damage / 200): ${out.pacing.thirds.map(f1).join(' / ')}  (by minute slots: ${out.pacing.thirdsSlots.map(f1).join(' / ')})`);
+  // dead minutes: whole minutes after the first contact with no drop, kill, launch or gunfire
+  const dead = cvRounds.map(r => { const c = ct(r); if (c === null) return 0; return r.rec.min.filter((x, i) => 60 * i >= c && 60 * i + 60 <= r.len && !(x.drops || x.aaK || x.ftrK || x.otherL || x.launch || x.shells || x.sunk)).length; });
+  out.pacing.dead = { mean: mean(dead), rounds: dead.filter(d => d > 0).length };
+  say(`dead minutes after first contact (no drop, kill, launch or gunfire): mean ${f1(out.pacing.dead.mean)} per round, in ${out.pacing.dead.rounds} of ${dead.length} rounds`);
 
   // 8. flight ops
   say('\n== 8. FLIGHT OPS (carriers) ==');

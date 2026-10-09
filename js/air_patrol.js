@@ -9,18 +9,23 @@
 // Frequency: the DAWN PATROL - one boat per side already out on its search leg when the round opens (launched before
 // dawn hours earlier: the Catalina at Midway found the Kido Butai), placed DAWN_R from the enemy fleet on its own
 // side of it and headed across the enemy's track (it usually finds the enemy in 10-25 s, the first contact of the
-// battle, at ~8x a ship's visual range) - then occasional ones from the edge.
+// battle, at ~8x a ship's visual range); the other side's boat is further out on its leg (DAWN_FAR, see lucky) -
+// then occasional ones from the edge.
 window.WW = window.WW || {};
 (function () {
   'use strict';
   if (!WW.flyingBoats) { console.error('air_patrol.js must load after air_flyingboats.js'); return; }
   var FB = WW.flyingBoats;
   // per nation: the doctrine (fleet_groups.js patrolStandoff / patrolShadowT / patrolEvery / patrolBombs, rolled per round)
-  var DAWN_R = [360, 560], DAWN_A = 0.9, DAWN_ERR = 110, RELIEF = [20, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 4, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
+  var DAWN_R = [360, 560], DAWN_FAR = [1000, 1500], DAWN_A = 0.9, DAWN_ERR = 110, RELIEF = [20, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 4, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
   var VAL = { carrier: 6, battleship: 5, cruiser: 3, destroyer: 1.5, pt: 0.3, submarine: 0.5 };
   var sched = {}, tick = 0, bombsOut = new Set();
 
-  function reset() { sched = {}; tick = 0; bombsOut.clear(); }
+  // lucky: the side whose dawn boat is near the enemy at the start (DAWN_R); the other's is still DAWN_FAR off on its
+  // leg, so the two sides find each other a minute or so apart and their first strikes do not all land at once
+  // (Midway: the Catalina found Nagumo hours before the Japanese found Spruance). Rolled at the first launch.
+  var lucky = null;
+  function reset() { sched = {}; tick = 0; bombsOut.clear(); lucky = null; }
   function battle() { return WW.game && WW.game.state === 'battle'; }
   function doc(p) {
     var d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(p.nation) : null;
@@ -182,7 +187,8 @@ window.WW = window.WW || {};
     for (var i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && s.nation !== n && !s.isBase && s.type !== 'submarine') { x += s.x; z += s.z; k++; } }
     if (!k) return;
     x /= k; z /= k;
-    var a = (n === 'USN' ? Math.PI : 0) + WW.randRange(-DAWN_A, DAWN_A), R = WW.randRange(DAWN_R[0], DAWN_R[1]), e = WW.randRange(-DAWN_ERR, DAWN_ERR);
+    if (!lucky) lucky = WW.rand() < 0.5 ? 'USN' : 'IJN';
+    var a = (n === 'USN' ? Math.PI : 0) + WW.randRange(-DAWN_A, DAWN_A), RR = n === lucky ? DAWN_R : DAWN_FAR, R = WW.randRange(RR[0], RR[1]), e = WW.randRange(-DAWN_ERR, DAWN_ERR);
     var q = inMap(x + Math.cos(a) * R, z + Math.sin(a) * R), dx = x - q.x, dz = z - q.z, d = Math.hypot(dx, dz) || 1;
     var t = inMap(x - dz / d * e, z + dx / d * e);                               // the search line, a little off the fleet
     p.x = q.x; p.z = q.z; p.heading = Math.atan2(t.z - q.z, t.x - q.x); p.state = 'search'; p.stT = 0; p.dawn = true;

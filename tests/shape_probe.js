@@ -20,7 +20,8 @@ const SCEN = {
   await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; if (__sim.setScale) __sim.setScale(0.1); });
   await p.evaluate(SB.install, SB.P);
   await p.evaluate(LOG => {
-    let nextT = 0; window.__shapeLog = []; const u0 = WW.fleetCmd.update;
+    let nextT = 0; window.__shapeLog = []; const by = window.__shapeBy = {};
+    WW.on('contact', e => { const o = e.by, k = !o ? '?' : o.type || o.kind || 'other'; const t = WW.game.roundTime; (by[k] = by[k] || { n: 0, first: null }).n++; if (by[k].first === null) by[k].first = +t.toFixed(0); }); const u0 = WW.fleetCmd.update;
     WW.fleetCmd.update = function (dt) {
       u0.call(this, dt);
       const t = WW.game.roundTime; if (t < nextT) return; nextT = t + LOG;
@@ -34,12 +35,13 @@ const SCEN = {
           const tg = q.target || (q.wave && q.wave.target); if (tg && tg.nation === n) { inb++; if (B.brokenAt) line.push(`  ${q.kind} ${q.state || q.phase || q.mission} y${q.y.toFixed(0)} d${WW.dist(q.x, q.z, tg.x, tg.z).toFixed(0)} tgt ${tg.type}${tg.alive ? '' : ' DEAD'} wave ${q.wave ? q.wave.id + ':' + (q.wave.state || q.wave.phase) : '-'}`); } else near++;
         }
         const ns = S.filter(s => s.alive && s.nation === n).map(s => { const o = B.orders.get(s.id); return s.type[0] + (s.hp / s.maxHp).toFixed(1) + (process.env.POS ? '@' + s.x.toFixed(0) + ',' + s.z.toFixed(0) + (o ? ':' + o.role + (s.target ? '>' + s.target.type[0] : '') + (isFinite(o.sx) ? '→' + o.sx.toFixed(0) + ',' + o.sz.toFixed(0) : '') : '') : ''); }).join(' ');
-        line.push(`${n} ${B.posture}${B.airWar ? ' HOLD' : ''}${B.brokenAt ? ' brk' + B.brokenAt.toFixed(0) : ''} gun ${gd.toFixed(0)} inb ${inb}/${near} [${ns}]`);
+        const ptSeen = WW.intel.enemyShips(n).filter(c => c.by && c.by.type === 'pt' && WW.time.now - c.seenAt < 3).length;
+        line.push(`${n} ${B.posture}${ptSeen ? ' ptSees ' + ptSeen : ''}${B.airWar ? ' HOLD' : ''}${B.brokenAt ? ' brk' + B.brokenAt.toFixed(0) : ''} gun ${gd.toFixed(0)} inb ${inb}/${near} [${ns}]`);
       }
       window.__shapeLog.push(line.join(' | '));
     };
   }, +LOG);
-  const o = await p.evaluate(spec => { const o = window.__beh.run(spec); return { winner: o.winner, len: o.len, end: o.end, log: window.__shapeLog }; }, spec);
-  console.log(o.log.join('\n')); delete o.log; console.log(JSON.stringify(o));
+  const o = await p.evaluate(spec => { const o = window.__beh.run(spec); return { winner: o.winner, len: o.len, end: o.end, log: window.__shapeLog, by: window.__shapeBy }; }, spec);
+  console.log(o.log.join('\n')); delete o.log; console.log('contacts (re)gained by observer: ' + JSON.stringify(o.by)); delete o.by; console.log(JSON.stringify(o));
   await b.close();
 })();

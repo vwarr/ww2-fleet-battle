@@ -1,7 +1,7 @@
 // ai_pt.js — PT boats: lurk at island cover in their own half, dash at a target of opportunity when the run is
 // clear (WW.threat danger from ships other than the target), fire the spread as a pair from both beams, break off
-// home at full speed with a jink. MG only at their own size. During the air-war hold (fleet_cmd.js airWar) they are
-// the fleet's forward PICKETS instead: the pairs run far out toward the enemy, spread across its line of approach,
+// home at full speed with a jink. MG only at their own size. During the air-war hold (fleet_cmd.js airWar) and the
+// approach (posture search / approach: until the fleets engage) they are the fleet's forward PICKETS instead: the pairs run far out toward the enemy, spread across its line of approach,
 // and shadow its nearest known ships from just outside the reach of the guns that would fire on a PT, so what they
 // see reaches the plot (intel.js) and the strikes; no torpedo runs while picketing. Registers WW.shipAI.roles.pt;
 // uses WW.lightAI.h (ai_light.js, loaded first). Reads the enemy only through WW.intel and WW.threat; no randomness.
@@ -31,16 +31,16 @@ window.WW = window.WW || {};
   // PICKET: R standoff from the shadowed contact, LANE between pairs across the line of approach, WING beside the
   // leader, FAR (x W past the midline) where to look with nothing known, AGE (s) of the contacts worth shadowing,
   // DG the danger (dps) a picket station may sit in (it is out of the reach of the guns that fire on PTs: ptReach).
-  const PICKET = { R: 100, LANE: 110, WING: 14, FAR: 0.3, AGE: 60, DG: 4, BACK: 35 };
-  function picketing(ship, B) { return !!(B && B.airWar && ship.hp >= ship.maxHp * 0.5); }
+  const PICKET = { R: 100, LANE: 160, WING: 14, FAR: 0.3, AGE: 60, DG: 4, BACK: 35 };
+  function picketing(ship, B) { return !!(B && (B.airWar || B.posture === 'search' || B.posture === 'approach') && ship.hp >= ship.maxHp * 0.5); }
   function picketSpot(ship, B, L) {
     const n = ship.nation, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, M = B.groups.pt.members, i = Math.max(0, M.indexOf(ship)), P = (M.length + 1) >> 1;
     let tx = W / 2 - homeX(ship) * W * PICKET.FAR, tz = B.axis.z, bd = 1e9; // nothing known: the enemy's likely approach
     for (const c of contacts(ship, PICKET.AGE)) { // the nearest known enemy surface ship to our main body: its screen
-      if (c.unit.submerged || c.unit.isBase) continue;
+      if (c.unit.submerged || c.unit.isBase || c.unit.type === 'pt' || c.unit.type === 'submarine') continue; // not the enemy's own pickets
       const d = WW.dist(B.axis.x, B.axis.z, c.x, c.z); if (d < bd) { bd = d; tx = c.x; tz = c.z; }
     }
-    const h = Math.atan2(B.axis.z - tz, B.axis.x - tx), lat = ((i >> 1) - (P - 1) / 2) * PICKET.LANE + (i & 1 ? PICKET.WING : 0);
+    const h = Math.atan2(B.axis.z - tz, B.axis.x - tx), lat = ((i >> 1) - (P - 1) / 2 + 0.5) * PICKET.LANE + (i & 1 ? PICKET.WING : 0); // +0.5 lane: the two sides' pickets run on opposite flanks, not into each other
     let x = tx + Math.cos(h) * PICKET.R - Math.sin(h) * lat, z = tz + Math.sin(h) * PICKET.R + Math.cos(h) * lat;
     for (let q = 0; q < 6 && (danger(n, x, z) > PICKET.DG || ghostNear(ship, x, z)); q++) { x += Math.cos(h) * PICKET.BACK; z += Math.sin(h) * PICKET.BACK; }
     L.lx = WW.clamp(x, 40, W - 40); L.lz = WW.clamp(z, 40, Hh - 40);
