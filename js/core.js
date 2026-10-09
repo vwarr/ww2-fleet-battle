@@ -97,12 +97,15 @@ window.WW = window.WW || {};
   // dud (share of hits that do not go off, rolled with WW.rand at launch), sight (x intel R.TORP: how close a ship
   // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;
   // Type 95 (sub) likewise; Type 91 (aerial) an ordinary air-driven wake. USN 1942 Mk 15 / Mk 14 / Mk 13: slower,
-  // shorter, steam wakes easy to see, and the notorious duds (the Mk 14 the worst). Balance levers (AI_DESIGN §4).
+  // shorter, steam wakes easy to see, and the notorious exploder duds, worst in the Mk 14 (subs, 20%); the aerial
+  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds). Balance levers (AI_DESIGN §4, §8): on
+  // the 200-round gate (Oct 2026) the USN entries were worth ~10 points together at 18-28% duds (duds ~6, the wake
+  // ~4), so they sit lower; the Long Lance entries move it ~0-2.
   WW.TORPEDO_NATION = {
-    IJN: { ship: { rangeK: 1.6, speed: 17, dud: 0, sight: 0.6 }, submarine: { rangeK: 1.25, speed: 16, dud: 0, sight: 0.6 },
+    IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7 },
            pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1 } },
-    USN: { ship: { rangeK: 0.85, speed: 12, dud: 0.22, sight: 1.3 }, submarine: { rangeK: 0.9, speed: 12.5, dud: 0.28, sight: 1.3 },
-           pt: { rangeK: 1, speed: 12, dud: 0.22, sight: 1.3 }, air: { rangeK: 1, speed: 14, dud: 0.12, sight: 1.3 } }
+    USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.1, sight: 1.1 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.2, sight: 1.1 },
+           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1.1 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
     const N = WW.TORPEDO_NATION[nation] || {};

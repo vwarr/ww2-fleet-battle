@@ -72,7 +72,7 @@ window.WW = window.WW || {};
       patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
-  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, patrolBombs: 1 }; // doctrine fields that are not rolled
+  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
@@ -80,7 +80,7 @@ window.WW = window.WW || {};
     for (k in FIXED) d[k] = b[k];
     for (k in b.risk) d.risk[k] = WW.clamp(b.risk[k] * j(), 0, 1);
     d.rangeFrac = WW.clamp(d.rangeFrac, 0.7, 0.92); d.flotilla = b.flotilla; d.risk.carrier = 0; d.rescue = !!b.rescue; d.scuttle = !!b.scuttle;
-    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.ringDD = b.ringDD; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard; d.torpReloads = b.torpReloads;
+    d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
     d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1); d.searchlight = WW.clamp(d.searchlight, 0, 1); d.nightEye = WW.clamp(d.nightEye, 0.1, 1);
     return d;
