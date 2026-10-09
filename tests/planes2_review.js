@@ -83,7 +83,7 @@ function install() {
       if (S && this.alive) {
         let nd = 1e9, ns = 1e9;
         for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation === this.nation && !s.isBase) { const d = WW.dist(this.x, this.z, s.x, s.z); if (d < ns) ns = d; if (s.type === 'destroyer' && d < nd) nd = d; }
-        const why = !this.carrier || !this.carrier.alive ? 'noDeck' : this.fuel <= 0 ? 'fuel' : this.hp < this.maxHp * 0.5 ? 'damage' : 'other';
+        const why = this.ditchTo ? 'by:' + this.ditchTo.why : !this.carrier || !this.carrier.alive ? 'noDeck' : this.fuel <= 0 ? 'fuel' : this.hp < this.maxHp * 0.5 ? 'damage' : 'other';
         S.ditch.push({ n: this.nation, k: this.kind, why, dd: Math.round(nd), ship: Math.round(ns), base: !!(this.carrier && this.carrier.isBase) });
         ev('ditch', { id: id(this), n: this.nation, why, x: +this.x.toFixed(0), z: +this.z.toFixed(0), dd: Math.round(nd) });
       }
@@ -137,13 +137,13 @@ function install() {
         const key = id(u);
         let H = S.har.get(key);
         if (vic) {
-          if (!H) { H = { u, n: vic.nation, type: u.type, vic: vic.type, t0: t, T: 0, air: 0, drops: 0, seen: 0, tl: t }; S.har.set(key, H); ev('harass', { s: -id(u), v: -id(vic), n: vic.nation, x: +u.x.toFixed(0), z: +u.z.toFixed(0) }); }
+          if (!H) { H = { u, n: vic.nation, type: u.type, vic: vic.type, t0: t, T: 0, air: 0, drops: 0, seen: 0, tl: t, dCV: Math.round(nearCV(vic)), day: WW.dayNight ? +WW.daylight.toFixed(2) : 1 }; S.har.set(key, H); ev('harass', { s: -id(u), v: -id(vic), n: vic.nation, x: +u.x.toFixed(0), z: +u.z.toFixed(0) }); }
           H.T += 1; H.tl = t;
           if (WW.intel && WW.intel.known(vic.nation, u)) H.seen += 1;
           for (const q of planes) if (armedB(q) && q.nation === vic.nation && q.target === u) { H.air += 1; break; }
         }
       }
-      for (const [k, H] of S.har) if (t - H.tl > 15 || !H.u.alive) { S.harDone.push({ n: H.n, type: H.type, vic: H.vic, T: H.T, air: H.air, drops: H.drops, seen: H.seen, sunk: !H.u.alive }); S.har.delete(k); }
+      for (const [k, H] of S.har) if (t - H.tl > 15 || !H.u.alive) { S.harDone.push({ n: H.n, type: H.type, vic: H.vic, T: H.T, air: H.air, drops: H.drops, seen: H.seen, sunk: !H.u.alive, dCV: H.dCV, day: H.day }); S.har.delete(k); }
     }
     // ---- 3. flight ----
     for (const p of planes) {
@@ -211,7 +211,7 @@ function install() {
   }
   R.flush = function () {
     for (const [k, A] of S.atk) S.atkDone.push({ n: A.n, type: A.type, crip: A.crip, dCV: A.dCV, cov: A.cov, end: 'end', strafe: A.strafe, dur: +(A.tl - A.t0).toFixed(1) });
-    for (const H of S.har.values()) S.harDone.push({ n: H.n, type: H.type, vic: H.vic, T: H.T, air: H.air, drops: H.drops, seen: H.seen, sunk: !H.u.alive });
+    for (const H of S.har.values()) S.harDone.push({ n: H.n, type: H.type, vic: H.vic, T: H.T, air: H.air, drops: H.drops, seen: H.seen, sunk: !H.u.alive, dCV: H.dCV, day: H.day });
     const qs = (a, q) => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; };
     let alert = null;
     if (WW.airAlert && WW.airAlert.stats) alert = JSON.parse(JSON.stringify(WW.airAlert.stats));
@@ -287,7 +287,10 @@ function report(rounds) {
     const sum = k => al.reduce((s, a) => s + (a[k] || 0), 0);
     out.alert[n] = { episodes: L.length / N, T: T / N, seenShare: seen / Math.max(1, T), airShare: air / Math.max(1, T), drops: L.reduce((s, h) => s + h.drops, 0) / N, sunk: L.filter(h => h.sunk).length / N, launches: sum('launches') / N, planes: sum('planes') / N, triggers: sum('triggers') / N, hits: sum('hits') / N, kinds: L.reduce((m, h) => { m[h.type] = (m[h.type] || 0) + 1; return m; }, {}) };
     say(`   ${n} ships harassed: ${f1(out.alert[n].episodes)} episodes / round (${JSON.stringify(out.alert[n].kinds)}), ${f1(out.alert[n].T)} s / round, the harasser known ${pc(out.alert[n].seenShare)}; with an own armed bomber going for it ${pc(out.alert[n].airShare)}; drops on harassers ${f1(out.alert[n].drops)} / round; harassers sunk ${f1(out.alert[n].sunk)} / round`);
-    if (al.length) say(`      alert flights: triggers ${f1(out.alert[n].triggers)}, launches ${f1(out.alert[n].launches)}, planes ${f1(out.alert[n].planes)}, hits ${f1(out.alert[n].hits)} per round`);
+    const nearL = L.filter(h => h.dCV < 320), dayL = nearL.filter(h => h.day >= 0.5);
+    say(`      within 320 of an own carrier: ${f1(nearL.length / N)} / round (by day ${f1(dayL.length / N)}), with an own armed bomber on the harasser ${pc(nearL.reduce((s, h) => s + h.air, 0) / Math.max(1, nearL.reduce((s, h) => s + h.T, 0)))}; victim-to-carrier p50 ${qs(L.map(h => h.dCV), 0.5)}`);
+    out.alert[n].near = nearL.length / N; out.alert[n].nearDay = dayL.length / N; out.alert[n].nearAir = nearL.reduce((s, h) => s + h.air, 0) / Math.max(1, nearL.reduce((s, h) => s + h.T, 0));
+    if (al.length) say(`      alert flights: triggers ${f1(out.alert[n].triggers)}, launches ${f1(out.alert[n].launches)}, planes ${f1(out.alert[n].planes)}, drops ${f1(sum('drops') / N)} per round; why ${JSON.stringify(al.reduce((m, a) => { for (const k in a.why || {}) m[k] = (m[k] || 0) + a.why[k]; return m; }, {}))}`);
   }
   // 3. flight
   const C = [].concat(...rounds.map(r => r.rec.climbs));

@@ -63,7 +63,8 @@ window.WW = window.WW || {};
     p.dvT = (p.dvT || 0) - dt;
     if (p.dvT <= 0) { p.dvT = 3; if (!p.diverted || p.diverted < 2) divert(p); }
     const c = p.carrier, D = deckOf(c), m = stackAt(c, D), w = c.toWorld(m[0], m[1]), d = WW.dist(p.x, p.z, w[0], w[1]);
-    p.fly(w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt, p.pt.speed);
+    if (WW.airFlight) WW.airFlight.home(p, w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt);   // economic cruise, fuel-aware route (air_flight.js)
+    else p.fly(w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt, p.pt.speed);
     if (d < HOME_R) { p.state = 'landing'; p.deckPh = 'marshal'; p.phT = 0; p.lqT = WW.time.now; enter(p, D); RS.marshal++; }
   }
 
