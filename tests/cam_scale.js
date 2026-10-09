@@ -68,6 +68,8 @@ const PLAN = [
       const sh = WW.cam._shot();
       out.kind = sh ? (sh.kind === 'story' ? 'story:' + sh.sk : sh.kind + (sh.subj && sh.subj.diorama ? ':diorama' : sh.subj && sh.subj.pt ? ':plane' : '')) : '-';
       out.cy = c.position.y;
+      const su = sh && sh.subj; // the subject (diagnostics): its type and distance from the camera
+      if (su && su.x !== undefined) { out.st = su.stats ? su.type : su.kind || 'spot'; out.sd = Math.round(Math.hypot(su.x - c.position.x, su.z - c.position.z)); out.st += su.removed ? '-removed' : su.alive === false ? '-dead' : ''; }
       return out;
     };
   });
