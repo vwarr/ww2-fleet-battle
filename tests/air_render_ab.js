@@ -1,7 +1,7 @@
 // Instanced plane rendering A/B (air_render.js): the same frozen frame drawn with WW.planeRender on (instances) and
 // off (every plane as its own meshes), screenshot both and count the pixels that differ. Scenes: a strike close up,
 // a dogfight, a parked deck with folded wings, a plane death (sheared wing), a dive bomber with its brakes open,
-// and the director camera. Shots: tests/shots/ab_<scene>_on.png / _off.png.
+// a B-17 (land plane), and the director camera. Shots: tests/shots/ab_<scene>_on.png / _off.png.
 // Usage: CHROMIUM=... BASE_URL=http://localhost:PORT/ node tests/air_render_ab.js
 require('fs').mkdirSync(require('path').join(__dirname, 'shots'), { recursive: true }); process.chdir(__dirname);
 const { chromium } = require('playwright');
@@ -70,7 +70,14 @@ const { chromium } = require('playwright');
   const db = await p.evaluate(() => { const q = WW.world.planes.find(q => q.alive && q.kind === 'dive' && q.model.brakes && q.y > 10); if (!q) return false;
     q.model.brakes.set(1); follow(q, -4, 2.5, 6); return true; });
   if (db) await ab('brakes');
-  // 6. the director camera, whatever it shows
+  // 6. a land-based bomber (models_landplanes.js: extra propellers through the body's onBeforeRender), posed airborne
+  const lp = await p.evaluate(() => { const c = WW.world.ships.find(s => s.alive && s.type === 'carrier' && !s.isBase); if (!c) return false;
+    const q = new WW.Plane('b17', 'USN', c, null, WW.air._pool.get('b17', 'USN')); q.state = 'stress'; q.hp = q.maxHp = 1e9;
+    q.x = c.x + 30; q.z = c.z + 20; q.y = 25; q.heading = 0.6; q.speed = 20; q.update = function (dt) { this.sync(dt); };
+    WW.world.planes.push(q); __sim.fastForward(0.1); follow(q, -10, 3, 8); return true; });
+  check(lp, 'land bomber spawned');
+  if (lp) await ab('landplane');
+  // 7. the director camera, whatever it shows
   await p.evaluate(() => { window.__view = null; }); await p.waitForTimeout(1500);
   await ab('director');
   console.log('errors', errs.slice(0, 5));
