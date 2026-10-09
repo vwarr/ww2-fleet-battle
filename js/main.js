@@ -7,7 +7,7 @@ window.WW = window.WW || {};
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
   const SUB_CLOSE = 150;      // ... and starts this long after first contact (time to close: a sub makes 3.5 u/s)
-  const SUB_SEARCH = 240;     // a subs-only side that never made contact: the stall ends the round after this long
+  const SUB_SEARCH = 240 + (W - 960) / 8; // a subs-only side that never made contact: the stall ends the round after this long (240 s on the old 960 map, + the crossing of the bigger one at 8 u/s: 420 s)
   // start zones hug the west / east edges; the open sea between them is the approach
   const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: W - 115, x1: W - 15, cx: W - 65, heading: Math.PI } };
 

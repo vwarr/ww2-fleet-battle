@@ -9,7 +9,12 @@
 //   stale    time-limit ends with 0 sunk and < STALE_DMG damage dealt (WARN: should be ~0)
 //   pt_nn    10th-percentile nearest same-side PT distance, pair-mates excluded, >= PT_NN (over all rounds)
 //   stuck / nan / errors 0 (the suite's own checks)
-const SIGHT_T = 120, DMG_T = 150, SIGHT_BLIND = 240, DMG_SUB = 240, STALE_DMG = 200, PT_NN = 25;
+// SIGHT_T / DMG_T / DMG_SUB / SIGHT_BLIND (= main.js SUB_SEARCH) were sized for the 960-wide map; the fleets now start MAP_W - 230 apart, so each gets
+// the extra crossing time at a closing speed of CLOSE_V (one side often holds - PT boats lurking in their own half,
+// carriers keeping their band - while the other advances at 6-8 u/s; subs 3.5 u/s): a pure distance.
+const MAP_W = +/MAP_W:\s*(\d+)/.exec(require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'core.js'), 'utf8'))[1]; // WW.cfg.MAP_W
+const CLOSE_V = 8, XTRA = Math.max(0, (MAP_W - 960) / CLOSE_V);
+const SIGHT_T = 120 + XTRA, DMG_T = 150 + XTRA, SIGHT_BLIND = 240 + XTRA, DMG_SUB = 240 + XTRA * CLOSE_V / 3.5, STALE_DMG = 200, PT_NN = 25;
 const blind = f => f.every(t => t === 'pt' || t === 'submarine'), subs = f => f.every(t => t === 'submarine');
 const rep = (t, n) => Array(n).fill(t);
 const NAMED = [

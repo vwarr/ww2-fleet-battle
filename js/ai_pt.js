@@ -30,13 +30,19 @@ window.WW = window.WW || {};
   const deepOK = ship => { const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null; return !!(B && (B.ptDeep || picketing(ship, B))); };
   // ---- pickets (the air-war hold and the approach) ----
   // PICKET: SEE the share of its own sighting range of the shadowed ship (intel.js SEEN x EYE.pt) a picket keeps
-  // from it, ARC (rad) round from the line home where the first pair sits and LANE (rad) between pairs, all on the
+  // from it, ARC (rad) round from the line home where the first pair sits and LANE (rad) between pairs (each further
+  // pair also SPREAD further out across the line of approach), all on the
   // same hand in the side's own frame (so the two sides' pickets work opposite flanks, not into each other), WING
   // beside the leader, FAR (x W past the midline) where to look with nothing known, AGE (s) of the contacts worth
   // shadowing, DG the danger (dps) a station may sit in, BACK the step out along the radius while it is hotter
   // (never past MAXK x the sighting range: a picket that cannot see is no picket).
-  const PICKET = { SEE: 0.85, ARC: 0.55, LANE: 0.45, WING: 14, FAR: 0.3, AGE: 60, DG: 4, BACK: 12, MAXK: 1.05, CLOSE: 30 }; // CLOSE: a picket's MG takes on only an enemy this close (it scouts; it does not hunt the enemy's PTs)
-  function picketing(ship, B) { return !!(B && (B.airWar || B.posture === 'search' || B.posture === 'approach') && ship.hp >= ship.maxHp * 0.5); }
+  const PICKET = { SEE: 0.85, ARC: 0.55, LANE: 0.45, SPREAD: 150, WING: 14, FAR: 0.3, AGE: 60, DG: 4, BACK: 12, MAXK: 1.05, CLOSE: 30 }; // CLOSE: a picket's MG takes on only an enemy this close (it scouts; it does not hunt the enemy's PTs)
+  // a side whose fleet is only PT boats (and subs) has nothing to picket for: its boats fight as usual
+  function picketing(ship, B) {
+    if (!B || !(B.airWar || B.posture === 'search' || B.posture === 'approach') || ship.hp < ship.maxHp * 0.5) return false;
+    for (const k of ['main', 'carrier', 'screen', 'flotilla']) if (B.groups[k] && B.groups[k].members.length) return true;
+    return false;
+  }
   function picketSpot(ship, B, L) {
     const n = ship.nation, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, M = B.groups.pt.members, i = Math.max(0, M.indexOf(ship));
     let tx = W / 2 - homeX(ship) * W * PICKET.FAR, tz = B.axis.z, bd = 1e9, tu = null; // nothing known: the enemy's likely approach
@@ -45,8 +51,9 @@ window.WW = window.WW || {};
       const d = WW.dist(B.axis.x, B.axis.z, c.x, c.z); if (d < bd) { bd = d; tx = c.x; tz = c.z; tu = c.unit; }
     }
     const IR = WW.intel && WW.intel.R, sight = (IR ? (IR.SEEN[tu ? tu.type : 'destroyer'] || 170) * (IR.EYE.pt || 0.55) : 95);
-    const a = Math.atan2(B.axis.z - tz, B.axis.x - tx) + PICKET.ARC + (i >> 1) * PICKET.LANE, ca = Math.cos(a), sa = Math.sin(a);
-    let r = sight * PICKET.SEE, x = tx + ca * r - sa * (i & 1 ? PICKET.WING : 0), z = tz + sa * r + ca * (i & 1 ? PICKET.WING : 0);
+    const h0 = Math.atan2(B.axis.z - tz, B.axis.x - tx), k = i >> 1, a = h0 + PICKET.ARC + k * PICKET.LANE, ca = Math.cos(a), sa = Math.sin(a);
+    const sp = k * PICKET.SPREAD, px = -Math.sin(h0) * sp, pz = Math.cos(h0) * sp; // the further pairs further out on the flank: a picket line, and apart on the way out
+    let r = sight * PICKET.SEE, x = tx + px + ca * r - sa * (i & 1 ? PICKET.WING : 0), z = tz + pz + sa * r + ca * (i & 1 ? PICKET.WING : 0);
     for (let q = 0; q < 6 && r < sight * PICKET.MAXK && (danger(n, x, z) > PICKET.DG || ghostNear(ship, x, z)); q++) { r += PICKET.BACK; x += ca * PICKET.BACK; z += sa * PICKET.BACK; }
     L.lx = WW.clamp(x, 40, W - 40); L.lz = WW.clamp(z, 40, Hh - 40);
     for (let q = 0; q < 4 && !WW.terrain.isNavigable(L.lx, L.lz, 2.5); q++) { L.lx = WW.clamp(L.lx + ca * 20, 40, W - 40); L.lz = WW.clamp(L.lz + sa * 20, 40, Hh - 40); }

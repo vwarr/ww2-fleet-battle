@@ -8,11 +8,12 @@ const [scen = 'standard', seed = '1', LOG = '30'] = HL.argv.filter(a => !a.start
 const SCEN = {
   standard: { random: true },
   carrier_duel: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'] },
-  midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' }
+  midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
+  lone_cripple: { A: ['battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer'], B: ['battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer'], cripple: 1 }
 };
 (async () => {
   const sc = SCEN[scen], sd = +seed;
-  const spec = sc.random ? { seed: sd, random: true, light: true } : { seed: sd, A: sc.A, B: sc.B, aNation: sc.aFixed || (sd % 2 ? 'USN' : 'IJN'), cripple: -1, noStall: false, base: sc.base || null, light: true };
+  const spec = sc.random ? { seed: sd, random: true, light: true } : { seed: sd, A: sc.A, B: sc.B, aNation: sc.aFixed || (sd % 2 ? 'USN' : 'IJN'), cripple: sc.cripple !== undefined ? sc.cripple : -1, noStall: false, base: sc.base || null, light: process.env.LIGHT !== "0" };
   const b = await HL.launch(), p = await b.newPage();
   p.on('console', m => console.log(m.text()));
   await p.goto(HL.url(), { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -34,7 +35,7 @@ const SCEN = {
         for (const q of P) if (q.alive && q.nation !== n && q.ordnance && (q.kind === 'dive' || q.kind === 'torpedo')) {
           const tg = q.target || (q.wave && q.wave.target); if (tg && tg.nation === n) { inb++; if (B.brokenAt) line.push(`  ${q.kind} ${q.state || q.phase || q.mission} y${q.y.toFixed(0)} d${WW.dist(q.x, q.z, tg.x, tg.z).toFixed(0)} tgt ${tg.type}${tg.alive ? '' : ' DEAD'} wave ${q.wave ? q.wave.id + ':' + (q.wave.state || q.wave.phase) : '-'}`); } else near++;
         }
-        const ns = S.filter(s => s.alive && s.nation === n).map(s => { const o = B.orders.get(s.id); return s.type[0] + (s.hp / s.maxHp).toFixed(1) + (process.env.POS ? '@' + s.x.toFixed(0) + ',' + s.z.toFixed(0) + (o ? ':' + o.role + (s.target ? '>' + s.target.type[0] : '') + (isFinite(o.sx) ? '→' + o.sx.toFixed(0) + ',' + o.sz.toFixed(0) : '') : '') : ''); }).join(' ');
+        const ns = S.filter(s => s.alive && s.nation === n).map(s => { const o = B.orders.get(s.id); return s.type[0] + (s.hp / s.maxHp).toFixed(1) + (process.env.POS && s.type === 'battleship' ? '[v' + (s.speed || 0).toFixed(1) + (s.engineDown || s.dmg && s.dmg.engine ? ' ENG' : '') + ']' : '') + (process.env.POS ? '@' + s.x.toFixed(0) + ',' + s.z.toFixed(0) + (o ? ':' + o.role + (s.target ? '>' + s.target.type[0] : '') + (isFinite(o.sx) ? '→' + o.sx.toFixed(0) + ',' + o.sz.toFixed(0) : '') : '') : ''); }).join(' ');
         const ptD = S.filter(s => s.alive && s.nation === n && s.type === 'pt').map(s => { let d = 1e9; for (const e of S) if (e.alive && e.nation !== n && e.type !== 'pt' && e.type !== 'submarine' && !e.isBase && e.stats) d = Math.min(d, WW.dist(s.x, s.z, e.x, e.z)); return d.toFixed(0) + (s.ai && s.ai.lt ? ':' + s.ai.lt.state : ''); }).join('/');
         const ptSeen = WW.intel.enemyShips(n).filter(c => c.by && c.by.type === 'pt' && c.unit.type !== 'pt' && WW.time.now - c.seenAt < 3).length; // big ships (not the enemy's PTs) a PT of ours reports now
         line.push(`${n} ${B.posture}${ptSeen ? ' ptSees ' + ptSeen : ''}${ptD ? ' ptD ' + ptD : ''}${B.airWar ? ' HOLD' : ''}${B.brokenAt ? ' brk' + B.brokenAt.toFixed(0) : ''} gun ${gd.toFixed(0)} inb ${inb}/${near} [${ns}]`);
