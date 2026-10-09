@@ -10,6 +10,7 @@ window.WW = window.WW || {};
   const STERN = -13.55, BOW = 12.85, AFT_FRONT = 0.6, BARRIER = -1.5; // deck ends / spot limit / barrier
   const LAUNCH_X = 3.2, TD_X = -9.5, ELEV_X = -5.5;   // start of the deck run, touchdown point, aft elevator
   const GAP = 0.2, TAXI = 4, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
+  const WIND_FOE = 600;   // a known enemy gun ship this close on the wind bearing: launch and recover on the course held
   const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
@@ -266,6 +267,7 @@ window.WW = window.WW || {};
       const E = 80, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H; // near the map edge: no wind turn (the standing CAP keeps the deck busy)
       if (ship.x < E || ship.x > W - E || ship.z < E || ship.z > Hh - E) return;
       const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : 2.5, dh = ship.desiredHeading;
+      if (a && a.thrT === WW.time.now && a.thrD < WIND_FOE && Math.abs(WW.angleDiff(h, a.thrB)) < 1.2) return; // the wind blows from the enemy: no turn toward a known gun ship (ai_carrier.js thrB)
       if (D.lq.some(p => p.deckPh === 'app' || p.deckPh === 'final') || D.launchers.some(p => p.deckPh === 'run')) { ship.desiredHeading = ship.heading; ship.throttle = Math.max(ship.throttle, 0.75); return; } // a steady deck under a plane in the groove or on its run
       ship.desiredHeading = Math.atan2(Math.sin(dh) + Math.sin(h) * w, Math.cos(dh) + Math.cos(h) * w);
       ship.throttle = Math.max(ship.throttle, 0.75);

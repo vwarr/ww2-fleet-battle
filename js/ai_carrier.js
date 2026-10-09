@@ -75,7 +75,6 @@ window.WW = window.WW || {};
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
       want = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
-    if (calm && ship._deck && ship._deck.mode !== 'idle') want = ship.heading; // launching or recovering: a steady course, not the station orbit
     ship.desiredHeading = want;
     // Hunted (a known gun ship close), the carrier makes for the nearest rain squall: cover from eyes and planes (weather.js)
     if (WW.weather && fl !== null) {
