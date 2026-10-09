@@ -33,7 +33,7 @@ window.WW = window.WW || {};
   }
   // how much an imminent finder item is worth as a story: attacks on ships beat fighters closing in
   const ATTACK = { strike: 1.5, push: 1.6, anvil: 1.6, bandits: 0.8 };
-  function imm(it) { return 10 + it.drama * (ATTACK[it.kind] || 1) + 2 * it.score / Math.max(0.1, it.drama); }
+  function imm(it) { return 10 + 3 * it.score * (ATTACK[it.kind] || 1); } // score = drama x the 10-30 s window: a strike 60 s out loses to one 20 s out
   function bestImminent(not) {
     let b = null;
     if (WW.camFinder) for (const it of WW.camFinder.list()) {

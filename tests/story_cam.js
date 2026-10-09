@@ -254,6 +254,11 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
     for (const d of first) console.log(`   ${d.sq} ${d.kind} at sim ${d.sim.toFixed(0)}: ` + (d.lead === null ? 'NOT on camera' : `camera on the strike ${d.lead.toFixed(1)} real s before (${(d.lead * r.rate).toFixed(1)} sim s)`));
     const ok10 = first.filter(d => d.lead !== null && d.lead >= 10).length;
     console.log(`[lead] ${ok10}/${first.length} first releases had the camera on them >= 10 s before`);
+    // strikes arrive in bursts (releases within 20 sim s of each other): one camera can be on one of them
+    const bursts = []; for (const d of first) { const b = bursts[bursts.length - 1]; if (b && d.sim - b[b.length - 1].sim < 20) b.push(d); else bursts.push([d]); }
+    const caught = bursts.filter(b => b.some(d => d.lead !== null && d.lead >= 10)).length;
+    const leads = first.filter(d => d.lead !== null).map(d => d.lead.toFixed(0));
+    console.log(`[lead] bursts ${bursts.length}, with a strike on camera >= 10 s before its release: ${caught}/${bursts.length}; leads of the filmed releases (real s): ${leads.join(', ') || '-'}`);
   }
 
   // 6. the director starts stories by itself (every few minutes, not back-to-back)
