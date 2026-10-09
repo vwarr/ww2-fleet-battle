@@ -128,31 +128,76 @@ function report(G) {
 }
 
 // ---------------- track plot of one example (re-run the round, record, draw) ----------------
+// The units named in the example (and in its detail line) are drawn bold with their labels; everything else within
+// the frame thin and faint. Window: 20 s before the episode to 5 s after (at most 35 s of it).
+const LBL_RE = /[UI]:[a-z]+#p?\d+/g;
+const SHIP_T = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1, submarine: 1, pt: 1 };
 async function plot(G, b, errs) {
   const [rule, kk] = PLOT.split(':'), k = +(kk || 1), a = G.A[rule];
   if (!a || !a.ex[k - 1]) { console.log(`plot: no example ${k} of ${rule}`); return; }
   const e = a.ex[k - 1], spec = specsFor(e.seed).find(s => s.scen === e.scen && !!s.swap === e.swap);
-  const p = await openPage(b, errs), t0 = Math.max(0, e.t - 40), t1 = e.t + e.dur + 15;
+  const p = await openPage(b, errs), t0 = Math.max(0, e.t - 20), t1 = e.t + Math.min(e.dur, 35) + 5;
   const rows = await p.evaluate(([spec, t0, t1]) => {
-    const rows = [], G = WW.game, ids = new WeakMap(); let n = 0;
-    const id = u => { let k = ids.get(u); if (k === undefined) { k = ++n; ids.set(u, k); } return k; };
+    const rows = [], G = WW.game, w = window.__san, s0 = w.sample;
     const rec = () => {
       const t = G.roundTime; if (t < t0 || t > t1) return;
-      for (const s of WW.world.ships) if (s.alive && !s.isBase) rows.push([+t.toFixed(1), -1 - s.id, s.nation[0], s.type, s.sinking ? 'sinking' : 'ok', +s.x.toFixed(1), 0, +s.z.toFixed(1)]);
-      for (const q of WW.world.planes) if (q.alive && !q.removed && q.state !== 'parked' && q.state !== 'rearm') rows.push([+t.toFixed(1), id(q), q.nation[0], q.kind, q.deckPh ? 'deck' : q.state === 'attack' ? (q.foe ? 'dogfight' : 'attack') : q.state === 'return' ? 'return' : q.kind === 'fighter' && !q.target ? (q.vec ? 'intercept' : 'cap') : 'transit', +q.x.toFixed(1), +q.y.toFixed(1), +q.z.toFixed(1)]);
+      for (const s of WW.world.ships) if (s.alive && !s.isBase && s.stats) rows.push([+t.toFixed(1), w.label(s), s.nation[0], s.type, s.sinking ? 'sinking' : 'ok', +s.x.toFixed(1), 0, +s.z.toFixed(1)]);
+      for (const q of WW.world.planes) if (q.alive && !q.removed && q.state !== 'parked' && q.state !== 'rearm' && q.pt) rows.push([+t.toFixed(1), w.label(q), q.nation[0], q.kind, q.deckPh ? 'deck' : q.state === 'attack' ? (q.foe ? 'dogfight' : 'attack') : q.state === 'return' ? 'return' : q.kind === 'fighter' && !q.target ? (q.vec ? 'intercept' : 'cap') : 'transit', +q.x.toFixed(1), +q.y.toFixed(1), +q.z.toFixed(1)]);
     };
-    const w = window.__san, s0 = w.sample;
     w.sample = () => { s0(); rec(); };
-    try { window.__beh.run(spec); } finally { w.sample = s0; }
+    try { window.__beh.run(Object.assign({}, spec, { until: t1 + 1 })); } finally { w.sample = s0; }
     return rows;
   }, [spec, t0, t1]);
   await p.close();
   const out = path.join(__dirname, 'shots', 'sanity'); fs.mkdirSync(out, { recursive: true });
   const f = path.join(out, `${rule}_${k}`);
   fs.writeFileSync(f + '.json', JSON.stringify({ ex: e, rows }));
-  await draw(rows, e, f + '.png', `${rule} #${k}: seed ${e.seed}${e.swap ? 's' : ''} ${e.scen} t=${e.t}+${e.dur}s  ${e.d}`);
+  await draw(rows, e, f + '.png', `${rule} #${k}: seed ${e.seed}${e.swap ? 's' : ''} ${e.scen} t=${e.t}+${e.dur}s`, e.d);
   console.log('plot: ' + f + '.png');
 }
+async function draw(rows, e, png, title, detail) {
+  const { chromium } = require('playwright');
+  const hl = new Set([...e.u.filter(Boolean).map(u => u[0]), ...(String(detail).match(LBL_RE) || [])]);
+  const pts = rows.filter(r => hl.has(r[1]) && Math.abs(r[0] - e.t) < 0.3);
+  const use = pts.length ? pts.map(r => [r[5], r[7]]) : e.u.filter(Boolean).map(u => [u[1], u[2]]);
+  const xs = use.map(q => q[0]), zs = use.map(q => q[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
+  const half = Math.max(160, (Math.max(...xs) - Math.min(...xs)) * 0.8, (Math.max(...zs) - Math.min(...zs)) * 1.2);
+  const VW = 900, VH = 600, S = VW / (2 * half), X = x => ((x - cx) * S + VW / 2).toFixed(1), Z = z => ((z - cz) * S + VH / 2).toFixed(1);
+  const inF = r => Math.abs(r[5] - cx) < half * 1.1 && Math.abs(r[7] - cz) < half * 0.75;
+  const COL = { cap: '#9aa0a6', intercept: '#fbbc04', dogfight: '#f29900', attack: '#d93025', transit: '#1a73e8', return: '#34a853', deck: '#555' };
+  const by = new Map(); for (const r of rows) { if (!by.has(r[1])) by.set(r[1], []); by.get(r[1]).push(r); }
+  let g = '', top = '';
+  for (const [id, L0] of by) {
+    const L = L0.filter(inF); if (!L.length) continue;
+    const on = hl.has(id), nc = L[0][2] === 'U' ? '#1f4e9c' : '#b3261e', ship = !!SHIP_T[L[0][3]];
+    const w0 = on ? 3 : 1, op = on ? 1 : 0.25, l = L[L.length - 1];
+    let s = '';
+    if (ship) {
+      s += `<path d="${L.map((r, i) => (i ? 'L' : 'M') + X(r[5]) + ' ' + Z(r[7])).join(' ')}" stroke="${nc}" stroke-width="${w0 + 0.5}" fill="none" opacity="${on ? 1 : 0.6}"/>`;
+      const sz = l[3] === 'carrier' ? 7 : l[3] === 'battleship' || l[3] === 'cruiser' ? 5 : 3.5;
+      s += l[3] === 'carrier' ? `<rect x="${X(l[5]) - sz}" y="${Z(l[7]) - sz}" width="${2 * sz}" height="${2 * sz}" fill="${nc}"/>` : `<circle cx="${X(l[5])}" cy="${Z(l[7])}" r="${sz}" fill="${nc}"/>`;
+      s += `<text x="${+X(l[5]) + 8}" y="${+Z(l[7]) + 4}" font-size="11" fill="${nc}">${id}</text>`;
+    } else {
+      let seg = '', ph = null, prev = null;
+      const flush = () => { if (seg) s += `<path d="${seg}" stroke="${COL[ph] || '#555'}" stroke-width="${w0}" stroke-dasharray="${L[0][2] === 'I' ? '5 3' : ''}" fill="none" opacity="${op}"/>`; };
+      for (const r of L) { if (r[4] !== ph || (prev && r[0] - prev[0] > 1)) { flush(); seg = 'M' + X(r[5]) + ' ' + Z(r[7]); ph = r[4]; } else seg += 'L' + X(r[5]) + ' ' + Z(r[7]); prev = r; }
+      flush();
+      s += `<circle cx="${X(l[5])}" cy="${Z(l[7])}" r="${on ? 3.5 : 1.5}" fill="${nc}" opacity="${op}"/>`;
+      if (on) { const f0 = L[0]; s += `<rect x="${X(f0[5]) - 3}" y="${Z(f0[7]) - 3}" width="6" height="6" fill="none" stroke="${nc}"/><text x="${+X(l[5]) + 6}" y="${+Z(l[7]) - 6}" font-size="12" font-weight="bold" fill="${nc}">${id}</text>`; }
+    }
+    if (on) top += s; else g += s;
+  }
+  for (const r of pts) top += `<circle cx="${X(r[5])}" cy="${Z(r[7])}" r="9" fill="none" stroke="#000" stroke-width="1.5"/>`;
+  const leg = Object.entries(COL).map(([k, c], i) => `<rect x="${10 + i * 95}" y="${VH + 8}" width="14" height="4" fill="${c}"/><text x="${28 + i * 95}" y="${VH + 14}" font-size="11">${k}</text>`).join('');
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${VW}" height="${VH + 26}" font-family="sans-serif"><rect width="100%" height="100%" fill="#eef3f8"/>${g}${top}${leg}<text x="8" y="16" font-size="13">${esc(title)}</text><text x="8" y="32" font-size="11">${esc(detail)}</text><text x="8" y="47" font-size="10" fill="#555">bold: the units in the example (square = track start, black ring = at the episode start); USN solid, IJN dashed; frame ${Math.round(half * 2)} u wide</text></svg>`;
+  const br = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
+  const pg = await br.newPage({ viewport: { width: VW, height: VH + 26 } });
+  await pg.setContent(`<html><body style="margin:0">${svg}</body></html>`);
+  await pg.screenshot({ path: png });
+  await br.close();
+}
+
 // ---------------- render screenshots of one example ----------------
 async function shot(G) {
   const [rule, kk] = SHOT.split(':'), k = +(kk || 1), a = G.A[rule];
@@ -181,38 +226,6 @@ async function shot(G) {
   if (f) for (let i = 0; i < 3; i++) { await p.waitForTimeout(1500); await p.screenshot({ path: path.join(out, `${rule}_${k}_render${i}.png`) }); }
   await b.close();
 }
-async function draw(rows, e, png, title) {
-  const { chromium } = require('playwright');
-  const pts = e.u.filter(Boolean).map(u => [u[1], u[2]]), cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[1], 0) / pts.length;
-  const VW = 900, half = 450, S = VW / (2 * half), X = x => ((x - cx + half) * S).toFixed(1), Z = z => ((z - cz + half * 0.66) * S).toFixed(1);
-  const COL = { cap: '#9aa0a6', intercept: '#fbbc04', dogfight: '#f29900', attack: '#d93025', transit: '#1a73e8', return: '#34a853', deck: '#555' };
-  const by = new Map(); for (const r of rows) { if (!by.has(r[1])) by.set(r[1], []); by.get(r[1]).push(r); }
-  let g = '';
-  for (const [id, L] of by) {
-    const ship = id < 0, c = L[0][2] === 'U' ? '#1f4e9c' : '#b3261e';
-    if (ship) {
-      g += `<path d="${L.map((r, i) => (i ? 'L' : 'M') + X(r[5]) + ' ' + Z(r[7])).join(' ')}" stroke="${c}" stroke-width="1.6" fill="none" opacity="0.7"/>`;
-      const l = L[L.length - 1], sz = l[3] === 'carrier' ? 6 : l[3] === 'battleship' || l[3] === 'cruiser' ? 4.5 : 3;
-      g += l[3] === 'carrier' ? `<rect x="${X(l[5]) - sz}" y="${Z(l[7]) - sz}" width="${2 * sz}" height="${2 * sz}" fill="${c}"/>` : `<circle cx="${X(l[5])}" cy="${Z(l[7])}" r="${sz}" fill="${c}"/>`;
-      g += `<text x="${+X(l[5]) + 7}" y="${+Z(l[7]) + 4}" font-size="10" fill="${c}">${l[3].slice(0, 2)}#${-1 - id}</text>`;
-      continue;
-    }
-    let seg = '', ph = null;
-    const flush = () => { if (seg) g += `<path d="${seg}" stroke="${COL[ph] || '#555'}" stroke-width="${L[0][2] === 'U' ? 1.3 : 1.3}" stroke-dasharray="${L[0][2] === 'I' ? '4 2' : ''}" fill="none" opacity="0.85"/>`; };
-    for (const r of L) { if (r[4] !== ph) { flush(); seg = 'M' + X(r[5]) + ' ' + Z(r[7]); ph = r[4]; } else seg += 'L' + X(r[5]) + ' ' + Z(r[7]); }
-    flush();
-    const l = L[L.length - 1]; g += `<circle cx="${X(l[5])}" cy="${Z(l[7])}" r="2" fill="${L[0][2] === 'U' ? '#1f4e9c' : '#b3261e'}"/>`;
-  }
-  for (const u of e.u.filter(Boolean)) g += `<circle cx="${X(u[1])}" cy="${Z(u[2])}" r="14" fill="none" stroke="#000" stroke-width="2"/><text x="${+X(u[1]) + 16}" y="${+Z(u[2]) - 10}" font-size="12" font-weight="bold">${u[0]}</text>`;
-  const leg = Object.entries(COL).map(([k, c], i) => `<rect x="${10 + i * 95}" y="${VW * 0.66 + 8}" width="14" height="4" fill="${c}"/><text x="${28 + i * 95}" y="${VW * 0.66 + 14}" font-size="11">${k}</text>`).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${VW}" height="${VW * 0.66 + 40}"><rect width="100%" height="100%" fill="#eef3f8"/>${g}${leg}<text x="8" y="16" font-size="12" font-family="sans-serif">${title.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text><text x="8" y="32" font-size="11" fill="#555">USN solid / IJN dashed planes; ships blue USN, red IJN; circles: units at the episode start (scale ${half * 2} u wide)</text></svg>`;
-  const br = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
-  const pg = await br.newPage({ viewport: { width: VW, height: Math.round(VW * 0.66 + 40) } });
-  await pg.setContent(`<html><body style="margin:0">${svg}</body></html>`);
-  await pg.screenshot({ path: png });
-  await br.close();
-}
-
 if (require.main === module) (async () => {
   const T0 = Date.now(), errs = [];
   const b = await HL.launch();

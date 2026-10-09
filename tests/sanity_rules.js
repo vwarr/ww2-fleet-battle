@@ -23,7 +23,7 @@ function install(P) {
   const VALUE = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };   // air_ops.js VALUE
   const HEAVY = { battleship: 1, cruiser: 1, carrier: 1 };
   let R = null, M = null, seq = 0;
-  const pid = new WeakMap();                 // plane -> stable number (first seen, in WW.world.planes order)
+  let pid = new WeakMap();                 // plane -> stable number (first seen, in WW.world.planes order)
   const idOf = p => { let k = pid.get(p); if (k === undefined) { k = ++seq; pid.set(p, k); } return k; };
   const lbl = u => (u.stats ? u.nation[0] + ':' + u.type + '#' + u.id : u.nation[0] + ':' + u.kind + '#p' + idOf(u));
   const vis = (n, u, age) => !WW.intel || WW.intel.visible(n, u, age === undefined ? 3 : age);
@@ -348,12 +348,14 @@ function install(P) {
 
   // ---------------- API ----------------
   // the unit behind an example label ('U:carrier#1', 'I:dive#p56'): ships by id, planes by the auditor's number
+  S.label = lbl;
   S.unit = l => {
     const m = /#(p?)(\d+)$/.exec(l); if (!m) return null;
     if (!m[1]) return WW.world.ships.find(s => s.id === +m[2]) || null;
     return WW.world.planes.find(p => pid.get(p) === +m[2]) || null;
   };
   S.begin = meta => {
+    seq = 0; pid = new WeakMap(); // plane numbers restart each round, so an example replays with the same labels
     R = { meta, ep: new Map(), res: {}, fired: new Map(), inb: 0, inbS: new WeakSet(), wand: new WeakMap(), track: new WeakMap(), hist: new WeakMap(), aaN: 0, aaAtt: 0, aaBad: 0, only: meta && meta.only ? Object.fromEntries(meta.only.map(k => [k, 1])) : null };
   };
   S.sample = () => {
