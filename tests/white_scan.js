@@ -21,7 +21,8 @@ const TODS = (process.argv[4] || 'day').split(',');
     let buf = null;
     const fin = a => { for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false; return true; };
     const name = o => { const n = []; for (let q = o; q && n.length < 4; q = q.parent) n.push(q.name || q.type); const g = o.geometry, pa = g && g.attributes.position;
-      return n.join('<') + ' [' + (o.material && o.material.type) + ' v' + (pa ? pa.count : 0) + ' ro' + o.renderOrder + ']'; };
+      const mc = o.material && o.material.color;
+      return n.join('<') + ' [' + (o.material && o.material.type) + ' ' + (g && g.type) + ' v' + (pa ? pa.count : 0) + ' ro' + o.renderOrder + (mc ? ' #' + mc.getHexString() : '') + (o.material && o.material.blending === THREE.AdditiveBlending ? ' add' : '') + ']'; };
     const sc = e => [Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10])];
     const seen = new WeakMap(); // attribute -> version checked
     S.badN = {};
@@ -37,7 +38,7 @@ const TODS = (process.argv[4] || 'day').split(',');
           const a = o.instanceMatrix.array;
           for (let i = 0; i < o.count; i++) {
             const k = i * 16, m = a.subarray(k, k + 16);
-            if (!fin(m)) { bad('instNaN', o, i); break; }
+            if (!fin(m)) { let nb = 0; for (let j = i; j < o.count; j++) if (!fin(a.subarray(j * 16, j * 16 + 16))) nb++; bad('instNaN', o, { i, nb, count: o.count, m: Array.from(m).map(v => +v.toFixed(2)) }); break; }
             const q = sc(m), mx = Math.max(...q), mn = Math.min(...q), y = m[13];
             if (mx > 400 || (mx > 25 && mx > 12 * mn) || Math.abs(y) > 2000) { bad('instOdd', o, { i, s: q.map(v => +v.toFixed(2)), p: [m[12], m[13], m[14]].map(v => +v.toFixed(1)) }); break; }
           }
@@ -138,7 +139,6 @@ const TODS = (process.argv[4] || 'day').split(',');
         geo: o.geometry && o.geometry.type, cam: WW.camera.position.toArray().map(v => +v.toFixed(1)), dist: +WW.camera.position.distanceTo(new THREE.Vector3(e[12], e[13], e[14])).toFixed(1) };
     }
     function identify(hs) {
-      S.nan = S.nan || []; S.nan.push(Object.assign({ t: S.tag, f: S.frames, rt: +WW.game.roundTime.toFixed(1) }, nanFind()));
       const objs = []; WW.scene.traverseVisible(o => { if (o.isMesh || o.isLine || o.isPoints || o.isSprite) objs.push(o); });
       const base = score(hs); if (base < 20) { S.who.push({ t: S.tag, f: S.frames, note: 'not in a re-render', base }); return; }
       // where does it come from: everything hidden / no post / no shadows
@@ -167,6 +167,11 @@ const TODS = (process.argv[4] || 'day').split(',');
       if (SK && S.frames % SK === 0) thumb();
       if (S.frames % 2) return;
       try { walk(); } catch (e) { bad('walkErr', WW.scene, String(e)); }
+      if (S.frames % 10 === 0) { // NaN / Inf pixels in the HDR scene render (the bloom smears one into a bar)
+        S.nanChecks = (S.nanChecks || 0) + 1; S.nan = S.nan || [];
+        const c = nanCount();
+        if (c.n) { S.nanFrames = (S.nanFrames || 0) + 1; if (S.nan.length < 12) S.nan.push(Object.assign({ t: S.tag, f: S.frames, rt: +WW.game.roundTime.toFixed(1) }, nanFind())); }
+      }
       const hits = pixels();
       if (hits.length) {
         S.cols.push({ t: S.tag, f: S.frames, rt: +WW.game.roundTime.toFixed(1), hits, cam: WW.camera.position.toArray().map(v => +v.toFixed(0)) });
@@ -190,9 +195,9 @@ const TODS = (process.argv[4] || 'day').split(',');
       await p.evaluate(ff => { if (ff) __sim.fastForward(ff); __sim.setScale(8); }, ff);
       await p.waitForTimeout(SECS * 1000 / 5);
     }
-    const r = await p.evaluate(() => { const S = __scan, o = { frames: S.frames, cols: S.cols.length, bad: S.bad.length, shots: S.shots.concat(S.sheets) }; S.shots = []; S.sheets = []; return o; });
+    const r = await p.evaluate(() => { const S = __scan, o = { frames: S.frames, nanChecks: S.nanChecks, nanFrames: S.nanFrames || 0, cols: S.cols.length, bad: S.bad.length, shots: S.shots.concat(S.sheets) }; S.shots = []; S.sheets = []; return o; });
     for (const s of r.shots) fs.writeFileSync(path.join(OUT, s.name + (s.url.startsWith('data:image/jpeg') ? '.jpg' : '.png')), Buffer.from(s.url.split(',')[1], 'base64'));
-    console.log(tod, seed, 'frames', r.frames, 'columnFrames', r.cols, 'badObjects', r.bad, 'saved', r.shots.length);
+    console.log(tod, seed, 'frames', r.frames, 'NaN-pixel frames', r.nanFrames + '/' + r.nanChecks, 'columnFrames', r.cols, 'badObjects', r.bad, 'saved', r.shots.length);
   }
   const S = await p.evaluate(() => ({ cols: __scan.cols, bad: __scan.bad, badN: __scan.badN, who: __scan.who, nan: __scan.nan, idErr: __scan.idErr }));
   fs.writeFileSync(path.join(OUT, 'scan.json'), JSON.stringify(S, null, 1));
