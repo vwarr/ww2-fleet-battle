@@ -40,15 +40,16 @@ window.WW = window.WW || {};
       if (!want) { if (m) { WW.air._pool.release(m); planes.delete(s); } continue; }
       if (!m) { m = model(s.v); planes.set(s, m); }
       place(m, s.v, s.x, s.z, s.h, s.state === 'wreck');
-      if (s.state === 'wreck') burnAt(s.x, s.z, now - (s.wreckT || now), 40);
+      if (s.state === 'wreck') burnAt(s.x, s.z, now - (s.wreckT || now), 90);   // a plane caught on the ground burns a long while
       seen.add(s);
     }
-    for (const w of base.wrecks || []) {
+    const all = (base.wrecks || []).concat(base.hulks || []);   // wrecks where they fell; crash hulks bulldozed onto the grass
+    for (const w of all) {
       let m = wrecks.get(w);
       if (!m) { m = model(w.v); wrecks.set(w, m); }
-      place(m, w.v, w.x, w.z, w.h, true); burnAt(w.x, w.z, now - w.t, 25);
+      place(m, w.v, w.x, w.z, w.h, true); burnAt(w.x, w.z, now - w.t, w.crash ? 45 : 25);
     }
-    for (const [w, m] of wrecks) if (!(base.wrecks || []).includes(w)) { WW.air._pool.release(m); wrecks.delete(w); }
+    for (const [w, m] of wrecks) if (!all.includes(w)) { WW.air._pool.release(m); wrecks.delete(w); }
   }
   let burnDt = 0;
   function burnAt(x, z, age, life) {
@@ -119,6 +120,18 @@ window.WW = window.WW || {};
         const x = sp.x + ox + ox / d * away, z = sp.z + oz + oz / d * away;
         const face = away > 0 ? Math.atan2(oz, ox) : Math.atan2(-oz, -ox) + Math.sin(now * 0.4 + m.ph) * 0.4; // toward the plane / away from it
         figure(x, z, face, nat, m.role, run);
+      }
+    }
+  }
+  // the crew of a crash-landed plane: out of the cockpit and running clear of the fire (the first 4 s pulled out
+  // by the crash crew once they arrive), then standing off watching it burn
+  function crashCrew(cam, now) {
+    for (const w of base.wrecks || []) {
+      const age = now - w.t; if (!w.crash || age > 40 || (w.x - cam.x) ** 2 + (w.z - cam.z) ** 2 > NEAR_FIG * NEAR_FIG) continue;
+      const n = V()[w.v] && V()[w.v].kind === 'fighter' ? 1 : 3;
+      for (let i = 0; i < n; i++) {
+        const a = w.h + Math.PI * 0.5 + (i - (n - 1) / 2) * 0.5, r = w.r + 0.6 + Math.min(age, 4) * 2.4;
+        figure(w.x + Math.cos(a) * r, w.z + Math.sin(a) * r, age < 4 ? a : a + Math.PI, base.nation, 'o', age < 4);
       }
     }
   }
@@ -236,7 +249,12 @@ window.WW = window.WW || {};
   }
   function tripPos(t, ahead) {
     const now = WW.time.now + (ahead || 0), sp = VSPD[t.kind];
-    if (t.follow) { const p = t.follow; if (p.alive && !p.removed && WW.landGround.onGround(p)) { const e = t.pts[t.pts.length - 1], o = CLS(p.variant).span / 2 + 1.6; e.x = p.x - Math.sin(p.heading) * o; e.z = p.z + Math.cos(p.heading) * o; } }
+    if (t.follow) { // the plane as it skids, then its wreck: the end of the trip is always where it is now
+      const p = t.follow, w = p.wreck, o = (CLS(p.variant).span / 2 + 1.6) * (t.off || 1), e = t.pts[t.pts.length - 1];
+      const at = p.alive && !p.removed && WW.landGround.onGround(p) ? p : w;
+      if (at) { const ox = at.x - Math.sin(at.h !== undefined ? at.h : at.heading) * o, oz = at.z + Math.cos(at.h !== undefined ? at.h : at.heading) * o, d = Math.hypot(ox - e.x, oz - e.z);
+        if (d > 0.01) { const pv = t.pts[t.pts.length - 2]; t.len += pv ? Math.hypot(ox - pv.x, oz - pv.z) - Math.hypot(e.x - pv.x, e.z - pv.z) : 0; e.x = ox; e.z = oz; } }
+    }
     const out = (now - t.t0) * sp; if (out < 0) return null;   // not out of the garage yet
     if (out < t.len) return along(t.pts, out);
     if (now < t.until) { const q = along(t.pts, t.len); if (t.kind === 'crash' && R() < 0.15) WW.fx.smoke(q.x, gy(q.x, q.z) + 1, q.z, false, 0.8); return q; }
@@ -354,13 +372,25 @@ window.WW = window.WW || {};
   function onEvent(e) {
     if (WW.simOnly || !e || !e.base || e.base !== base) return;
     if (e.kind === 'scramble') scrT = performance.now() / 1000;
-    if (e.kind === 'crashLanding' && e.plane) { // the crash truck from the tower (or a hangar) to the plane on the runway
-      const f = nearestFac('tower', e.x, e.z) || nearestFac('hangar', e.x, e.z); if (!f) return;
-      const L = base.layout, q = L.toL(e.plane.x, e.plane.z), TU = L.TAXI_U, TV = L.TAXI_V, ee = f.u >= 0 ? 1 : -1, fs = f.v >= 0 ? 1 : -1;
-      // along the verge (not the taxiway or its hold-short connector), then straight across to the runway beside the plane
-      const x = exitTo(f, ee), k = KL(), cu = WW.clamp(q.u + 20 * Math.sign(-ee), -TU + 4, TU - 4);
-      trip('crash', [...x.pts, [cu, x.fs * (TV + k)], [cu, x.fs * 6], [q.u, x.fs * 4]], WW.time.now + 40, e.plane);
-    }
+    if (e.kind === 'crashLanding' && e.plane) crashRun(e.plane);
+    if (e.kind === 'crashWreck' && e.wreck) for (const t of trips) if (t.kind === 'crash' && t.follow && t.follow.wreck === e.wreck) t.until = Math.max(t.until, WW.time.now + 32); // stay while it burns
+  }
+
+  // The crash trucks (on alert at the tower and a hangar) set off the moment a plane comes in crashing and drive STRAIGHT
+  // across the grass and hardstand to it (a short grid path round the buildings, berms and parked planes, base_life_paths
+  // people's grid: the taxiways cost more but may be crossed); the last leg follows the plane as it skids, then its
+  // wreck (tripPos), so they never drive to a stale spot. They stay while it burns and drive back the same way.
+  function crashRun(p) {
+    const L = base.layout, q = L.toL(p.x, p.z), fs = [nearestFac('tower', p.x, p.z), nearestFac('hangar', p.x, p.z)].filter(f => f);
+    // where it will stop: about rollV^2 / 22 further along (the skid's braking), the trucks' aim until it does
+    const sx = p.x + Math.cos(p.heading) * p.speed * p.speed / 22, sz = p.z + Math.sin(p.heading) * p.speed * p.speed / 22;
+    fs.slice(0, 2).forEach((f, i) => {
+      const d = door(f, q.u, q.v), dw = L.toW(d[0], d[1]), P = WW.baseLifePaths && WW.baseLifePaths.grid ? WW.baseLifePaths.path(dw.x, dw.z, sx, sz, false, true) : null;
+      const pts = [d].concat((P || []).map(w => { const r = L.toL(w.x, w.z); return [r.u, r.v]; }));
+      const e = L.toL(sx, sz); pts.push([e.u, e.v]);
+      trip('crash', pts, WW.time.now + 30, p, WW.time.now + i * 1.5);
+      trips[trips.length - 1].off = i ? -1 : 1;   // one each side of the wreck
+    });
   }
 
   // ---------- per frame (base_fx.js) ----------
@@ -376,7 +406,7 @@ window.WW = window.WW || {};
     for (const k in fixed) fixed[k] = null;
     const per = planTrips(near);
     vehPre = [].concat(...Object.values(per), WW.baseLifeCars ? WW.baseLifeCars.now() : []);
-    if (near) { engines(rdt, sdt); repairGang(cam, now); crewsAt(cam, now); }   // the repair gang first: the figure cap never drops it
+    if (near) { engines(rdt, sdt); repairGang(cam, now); crashCrew(cam, now); crewsAt(cam, now); }   // the repair gang first: the figure cap never drops it
     drawVehicles(near, per);
   }
   function clear() {

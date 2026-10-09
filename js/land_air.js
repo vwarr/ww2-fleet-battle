@@ -239,8 +239,8 @@ window.WW = window.WW || {};
     if (togo < 1) { // touchdown
       p.state = 'rollout'; p.y = groundY(b) + gearOf(p); p.vy = 0; p.heading = h; p.t = 0; p._cr = undefined;
       a.lq.splice(a.lq.indexOf(p), 1); WW.stats.planesLanded++; ST.landings++;
-      G().touchdown(p, b);
-      if (p.hp < p.maxHp * 0.5) WW.emit('baseEvent', { kind: 'crashLanding', base: b, nation: b.nation, x: p.x, z: p.z, plane: p });
+      if (p.hp < p.maxHp * 0.5) { G().crash(p, b); WW.emit('baseEvent', { kind: 'crashLanding', base: b, nation: b.nation, x: p.x, z: p.z, plane: p }); } // a wreck (land_ground.js crash)
+      else G().touchdown(p, b);
     }
   }
   function rollout(p, dt) { return G().inbound(p, dt); }

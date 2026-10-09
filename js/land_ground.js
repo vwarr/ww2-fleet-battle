@@ -20,7 +20,7 @@ window.WW = window.WW || {};
   var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
   var MIX = { USN: { f4f: 0.35, sbd: 0.3, b26: 0.12, b17: 0.23 }, IJN: { a6m: 0.4, g4m: 0.35, g4mL: 0.25 } };
   var TOWLOG = [];
-  var ST = { slots: 0, capped: 0, towOut: 0, tows: 0, aborts: 0, groundLost: 0, modeSwitches: 0, launchClosed: 0 };
+  var ST = { slots: 0, capped: 0, towOut: 0, tows: 0, aborts: 0, groundLost: 0, modeSwitches: 0, launchClosed: 0, crashes: 0 };
   var obsT = -1, obs = [];
 
   function VAR() { return WW.landAir.VAR; }
@@ -186,6 +186,24 @@ window.WW = window.WW || {};
 
   // ---- inbound (aircraft.js rollout -> land_air.js -> here) ----
   function touchdown(p, b) { p.rwPh = 'land'; p.rollV = p.speed; p.waitT = 0; p.tdX = p.x; p.tdZ = p.z; }
+  // A crash landing (a badly shot-up plane, land_air.js): it skids and ground-loops to a stop, never taxis again. It is
+  // a WRECK where it stops (b.wrecks, crash: true: it burns; one on the runway fouls it, so the field stays shut until
+  // the crash crew have bulldozed it off, FOUL_T), the plane is lost to the group (its spot freed for a reserve one).
+  function crash(p, b) {
+    p.rwPh = 'crash'; p.rollV = p.speed; p.waitT = 0; p.tdX = p.x; p.tdZ = p.z; p.crashed = true; ST.crashes++;
+    p.loop = ((p.id || 0) % 2 ? 1 : -1) * (0.5 + ((p.id || 0) % 5) * 0.2);   // which way it ground-loops (deterministic)
+  }
+  function wreckAtStop(p, b) {
+    var q = b.layout.toL(p.x, p.z), r = rad(p.variant), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + r && Math.abs(q.u) < 48;
+    rw = rw || b.layout.crossD(q.u, q.v) < WW.airfieldLayout.RUN_HALF_W + r;
+    var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, t: WW.time.now, runway: rw, crash: true };
+    (b.wrecks = b.wrecks || []).push(w); p.wreck = w;
+    var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
+    if (b.ops.occ === p) b.ops.occ = null;
+    if (b.ops.crossOcc === p) b.ops.crossOcc = null;
+    WW.stats.planesLost++; ST.groundLost++; p.alive = false; p.remove(); obsT = -1;
+    WW.emit('baseEvent', { kind: 'crashWreck', base: b, nation: b.nation, x: w.x, z: w.z, wreck: w, runway: rw });
+  }
   function aheadGap(p, b) { // distance to the nearest plane on the ground straight ahead (within a hull width), else 1e9
     var O = obstacles(b), hx = Math.cos(p.heading), hz = Math.sin(p.heading), best = 1e9, rp = rad(p.variant);
     for (var i = 0; i < O.length; i++) { var q = O[i]; if (q.p === p) continue; var dx = q.x - p.x, dz = q.z - p.z, al = dx * hx + dz * hz, cr = Math.abs(-dx * hz + dz * hx);
@@ -194,7 +212,12 @@ window.WW = window.WW || {};
   }
   function inbound(p, dt) {
     var b = p.carrier, o = b.ops;
-    if (p.rwPh === 'land') { // decelerate along the heading, then taxi to the spot
+    if (p.rwPh === 'crash') { // skidding on its belly / a collapsed leg: hard braking, slewing round, then a wreck
+      p.rollV = Math.max(0, p.rollV - 11 * dt);
+      p.heading += p.loop * dt * Math.min(1, p.rollV / 8);
+      p.x += Math.cos(p.heading) * p.rollV * dt; p.z += Math.sin(p.heading) * p.rollV * dt;
+      if (p.rollV <= 0.2) { pin(p, b); wreckAtStop(p, b); return; }
+    } else if (p.rwPh === 'land') { // decelerate along the heading, then taxi to the spot
       p.rollV = Math.max(TAXI, p.rollV - 9 * dt);
       var ah = aheadGap(p, b);
       if (ah < 1e9) p.rollV = Math.min(p.rollV, Math.max(0, (ah - 4) * 1.5));          // a plane ahead on the runway
@@ -277,9 +300,17 @@ window.WW = window.WW || {};
     // wrecks off the spots: bulldozed after FOUL_T (one on the runway fouls it until then: no takeoff, no landing)
     if (b.wrecks && b.wrecks.length && !b.neutralized) for (i = b.wrecks.length - 1; i >= 0; i--) if (now - b.wrecks[i].t > FOUL_T) {
       var wk = b.wrecks.splice(i, 1)[0]; obsT = -1; WW.emit('baseEvent', { kind: 'wreckCleared', base: b, nation: b.nation, x: wk.x, z: wk.z, runway: wk.runway });
+      if (wk.crash) hulk(b, wk);
     }
     if (b.neutralized && !o.frozen) freeze(b);
     sync(b);
+  }
+  // a crash wreck bulldozed off the runway: a burned-out hulk on the grass beside it (b.hulks: visual, it blocks
+  // nothing), unless that ground is the taxi network (then it is hauled away)
+  function hulk(b, w) {
+    var L = b.layout, q = L.toL(w.x, w.z), AL = WW.airfieldLayout, sv = q.v >= 0 ? 1 : -1, v = w.runway ? sv * (AL.RUN_HALF_W + w.r + 3) : q.v;
+    if (AL.onNetwork(L, q.u, v, w.r) || L.crossD(q.u, v) < AL.RUN_HALF_W + w.r) return;
+    var p = L.toW(q.u, v); (b.hulks = b.hulks || []).push({ x: p.x, z: p.z, h: w.h + 0.4, r: w.r, v: w.v, t: WW.time.now });
   }
   // A neutralized base: the planes on the ground stay where they stand (parked in place); nothing moves again.
   function freeze(b) {
@@ -320,6 +351,6 @@ window.WW = window.WW || {};
   WW.on('roundStart', reset);
 
   WW.landGround = { plan: plan, setup: setup, sync: sync, ready: ready, take: take, launched: launched, out: out, touchdown: touchdown,
-    inbound: inbound, update: update, groundHit: groundHit, opsOpen: opsOpen, fouled: fouled, onGround: onGround, rad: rad, finalPlane: finalPlane,
+    inbound: inbound, crash: crash, update: update, groundHit: groundHit, opsOpen: opsOpen, fouled: fouled, onGround: onGround, rad: rad, finalPlane: finalPlane,
     carrierGroup: carrierGroup, MIX: MIX, stats: ST, towLog: TOWLOG };
 })();
