@@ -66,7 +66,7 @@ window.WW = window.WW || {};
       var sh = rec.ship; if (sh.removed || cam.distanceToSquared(sh.group.position) > FAR * FAR) continue;
       sh.group.updateMatrix();
       for (var j = 0; j < nets.length && m < NNET; j++) {
-        var nt = nets[j], zb = WW.crewOps.hullZ(sh.type, nt.x, 0) + 0.06, h = nt.y0 + 0.5, a = Math.atan2(nt.z0 - zb, h);
+        var nt = nets[j], zb = WW.crewOps.hullZ(sh.mk || sh.type, nt.x, 0) + 0.06, h = nt.y0 + 0.5, a = Math.atan2(nt.z0 - zb, h);
         _l.compose(_v.set(nt.x, nt.y0 + 0.05, nt.side * (nt.z0 + 0.02)), _q.setFromEuler(_e.set(nt.side * a, 0, 0)), _s.set(0.75, h / Math.cos(a), 1));
         _m.multiplyMatrices(sh.group.matrix, _l); _m.toArray(nMesh.instanceMatrix.array, m * 16); m++;
       }

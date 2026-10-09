@@ -8,7 +8,7 @@ window.WW = window.WW || {};
   const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
   // the largest personal-space radius (SPACE or the default 20): with the hull term, an upper bound of the separation
   // radius in Ship.move, for an early skip of far pairs (the other hull is taken as up to 100 units long: the longest
-  // ship is 26, an island airfield 40)
+  // ship is Lexington at 28, an island airfield 40)
   const SEP_SPACE = Math.max(20, ...Object.values(SPACE)), SEP_OTHER_L = 100;
   const HEEL = { carrier: 0.045, battleship: 0.04, cruiser: 0.08, destroyer: 0.12, pt: 0.14, submarine: 0.07 }; // rad at full speed + full turn
   const EDGE_BAND = 30; // soft edge-avoidance band (units from the map boundary)
@@ -33,16 +33,24 @@ window.WW = window.WW || {};
   const vr = (a, b) => a + (b - a) * Math.random(); // visual-only randomness (sinking booms, fires, wreck smoke): keeps WW.rand for the sim
 
   class Ship {
-    constructor(type, nation, x, z, heading) {
-      const st = WW.shipType ? WW.shipType(type, nation) : WW.SHIP_TYPES[type]; // per-nation torpedoes (core.js)
+    constructor(type, nation, x, z, heading, clsKey) {
+      // The 1942 class (ship_classes.js): forced by clsKey, a carrier's from its slot name, else WW.rand. It sets the
+      // ship's true size, its model, its name and small stat differences from the type (per-nation torpedoes: core.js).
+      let slot = 0;
+      if (type === 'carrier') for (const o of WW.world.ships) if (o.nation === nation && o.hangar) slot++;
+      const cls = WW.pickClass ? WW.pickClass(type, nation, clsKey, slot) : null;
+      const st0 = WW.shipType ? WW.shipType(type, nation) : WW.SHIP_TYPES[type], st = cls ? WW.classStats(st0, cls) : st0;
       this.id = nextId++; this.type = type; this.stats = st; this.nation = nation;
+      this.cls = cls; this.mk = cls ? cls.key : type; // mk: the model key (per-class geometry: crew stations, deck, parts)
+      const R = type === 'carrier' && WW.CV_ROSTER ? WW.CV_ROSTER[nation] : null; // carriers: the slot's name (air_squadrons.js)
+      if (cls) this.name = WW.pickShipName(cls, nation, R ? R[slot % R.length][0] : null);
       this.x = x; this.z = z; this.heading = wrap(heading || 0); this.speed = 0;
       this.hp = this.maxHp = st.hp;
       this.speedK = 1; this.flood = 0; this.engineK = 1; this.engineT = 0; // damage slows ships (ship_speed.js)
       this.escapeEdge = 0; // -1 / +1: leaving the map over the west / east edge (endgame.js), no edge avoidance there
       this.alive = true; this.sinking = false; this.removed = false;
       this.submerged = type === 'submarine';
-      this.model = WW.models.buildShip(type, nation);
+      this.model = WW.models.buildShip(type, nation, this.mk);
       this.group = this.model.group;
       this.group.rotation.order = 'YXZ'; // yaw, then roll (x = long axis), then pitch (z)
       // Steering inputs (written by AI).
@@ -61,9 +69,10 @@ window.WW = window.WW || {};
       if (typeof THREE !== 'undefined') {
         const b = new THREE.Box3().setFromObject(this.group);
         if (isFinite(b.min.y) && isFinite(b.max.y)) { this.hullBot = Math.min(-0.3, b.min.y); this.hullTop = Math.max(1, b.max.y); }
-        if (isFinite(b.min.z)) this.beam = WW.clamp(b.max.z - b.min.z, st.length / 10, st.length / 3); // bow is +x: z extent = beam
       }
-      if (!this.beam) this.beam = st.length / 7;
+      // the footprint beam (nav samples, collision capsule, lifeboats) is the class's, never the mesh's: art changes
+      // must not change the sim. A carrier's is its flight deck width.
+      this.beam = cls ? cls.navBeam : st.length / 7;
       this.hullPts = WW.shipNav.hullPoints(st.length, this.beam); // footprint samples (ships_nav.js)
       this.bowDepth = Math.max(WW.shipNav.HARD + 0.4, st.minDepth * 0.6); // planner: hull ends/sides keep this much water
       this.depthY = this.submerged ? SUB_DEPTH : 0;
@@ -436,7 +445,7 @@ window.WW = window.WW || {};
   WW.Ship = Ship;
   WW.ships = {
     init() {},
-    spawn(type, nation, x, z, heading) {
+    spawn(type, nation, x, z, heading, cls) { // cls: optional class key (ship_classes.js), else picked
       const md = WW.SHIP_TYPES[type].minDepth;
       if (!nav(x, z, md)) { // nudge to the nearest navigable point (spiral search)
         outer: for (let r = 2; r <= 80; r += 2) {
@@ -447,7 +456,7 @@ window.WW = window.WW || {};
         }
       }
       if (heading === undefined) heading = nation === 'USN' ? 0 : Math.PI;
-      const s = new Ship(type, nation, x, z, heading);
+      const s = new Ship(type, nation, x, z, heading, cls);
       WW.shipNav.placeHull(s, nav);  // whole hull clear of land too, not just the centre
       if (WW.scene) WW.scene.add(s.group);
       WW.world.ships.push(s);
@@ -483,6 +492,7 @@ window.WW = window.WW || {};
       for (const s of WW.world.ships) s.remove();
       for (const s of wreckShips) s.remove();
       WW.world.ships.length = 0; wreckShips.length = 0;
+      if (WW.resetShipNames) WW.resetShipNames();
       nextId = 1; // ids feed sim maths (ships_ai jink phase): same ids every round for a seeded replay
       if (WW.world.wrecks) WW.world.wrecks.length = 0; else WW.world.wrecks = [];
       if (WW.damage) WW.damage.clearAll();

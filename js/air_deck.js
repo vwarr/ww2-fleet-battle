@@ -5,8 +5,10 @@
 window.WW = window.WW || {};
 (function () {
   const PI = Math.PI;
-  const STERN = -13.55, BOW = 12.85, AFT_FRONT = 0.6, BARRIER = -1.5; // deck ends / spot limit / barrier
-  const LAUNCH_X = 3.2, TD_X = -9.5, ELEV_X = -5.5;   // start of the deck run, touchdown point, aft elevator
+  // Deck stations per carrier class (models_cv.js model.deckDims, the DECK API): deck ends / spot limit / barrier,
+  // start of the deck run, touchdown point, aft elevator; lane scales the parking columns and the run across the deck.
+  // REF: the reference deck these were tuned on (a model without deckDims).
+  const REF = { stern: -13.55, bow: 12.85, aftFront: 0.6, barrier: -1.5, launchX: 3.2, tdX: -9.5, elevX: -5.5, lane: 1 };
   const GAP = 0.2, TAXI = 3, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
@@ -34,8 +36,8 @@ window.WW = window.WW || {};
   }
   function deckOf(c) {
     if (c._deck) return c._deck;
-    const s = c.nation === 'IJN' ? -1 : 1; // island side (USN starboard, IJN port)
-    const D = { c, s, run: -s * 1.05, cols: [{ z: s * 0.68, e: [] }, { z: -s * 1.2, e: [] }], loose: [],
+    const k = (c.model && c.model.deckDims) || REF, s = k.islandSide || (c.nation === 'IJN' ? -1 : 1); // island side (+1 starboard)
+    const D = { c, s, k, run: -s * 1.05 * k.lane, cols: [{ z: s * 0.68 * k.lane, e: [] }, { z: -s * 1.2 * k.lane, e: [] }], loose: [],
       mode: 'idle', launchers: [], lq: [], riseT: 1, waitT: 0, recT: 0, filled: false, dy: 2, fold: true };
     c._deck = D; decks.push(D);
     return D;
@@ -44,7 +46,7 @@ window.WW = window.WW || {};
     let L = extra || 0;
     for (const e of col.e) L += e.len;
     L += GAP * Math.max(0, col.e.length - (extra ? 0 : 1));
-    return L <= (D.mode === 'recover' ? BOW - BARRIER : AFT_FRONT - STERN);
+    return L <= (D.mode === 'recover' ? D.k.bow - D.k.barrier : D.k.aftFront - D.k.stern);
   }
   function newEntry(D, m, kind, lx, lz, fold, readyAt, ph) {
     const e = { m, kind, len: lenOf(kind), lx, lz, tx: lx, fold, readyAt, ph, yoff: ph === 'up' ? -2.2 : 0 };
@@ -69,8 +71,8 @@ window.WW = window.WW || {};
     for (const col of D.cols) {
       while (col.e.length && !fits(D, col, 0)) { const e = col.e.pop(); e.ph = 'down'; D.loose.push(e); }
       const n = col.e.length;
-      if (fwd) { let x = BOW; for (let i = 0; i < n; i++) { const e = col.e[i]; e.tx = x - e.len / 2; x -= e.len + GAP; } }
-      else { let x = STERN; for (let i = n - 1; i >= 0; i--) { const e = col.e[i]; e.tx = x + e.len / 2; x += e.len + GAP; } }
+      if (fwd) { let x = D.k.bow; for (let i = 0; i < n; i++) { const e = col.e[i]; e.tx = x - e.len / 2; x -= e.len + GAP; } }
+      else { let x = D.k.stern; for (let i = n - 1; i >= 0; i--) { const e = col.e[i]; e.tx = x + e.len / 2; x += e.len + GAP; } }
     }
   }
   function moveEntries(D, dt) {
@@ -97,8 +99,8 @@ window.WW = window.WW || {};
       const e = D.loose[i];
       if (e.ph === 'elev') {
         e.lz += WW.clamp(0 - e.lz, -2 * dt, 2 * dt);
-        e.lx += WW.clamp(ELEV_X - e.lx, -TAXI * dt, TAXI * dt);
-        if (Math.abs(e.lz) < 0.02 && Math.abs(e.lx - ELEV_X) < 0.05) e.ph = 'down';
+        e.lx += WW.clamp(D.k.elevX - e.lx, -TAXI * dt, TAXI * dt);
+        if (Math.abs(e.lz) < 0.02 && Math.abs(e.lx - D.k.elevX) < 0.05) e.ph = 'down';
       } else if ((e.yoff -= 1.4 * dt) < -2.4) { giveBack(e.m); D.loose.splice(i, 1); }
     }
   }
@@ -137,7 +139,7 @@ window.WW = window.WW || {};
       if (p.state === 'rollout' || (p.state === 'landing' && (p.deckPh === 'final' || p.deckPh === 'base'))) landAct = true;
       if (p.state === 'return' && WW.dist(p.x, p.z, c.x, c.z) < 140) recPend = true;
     }
-    for (const col of D.cols) for (const e of col.e) if (e.ph === 'in' && e.lx - e.len / 2 < BARRIER) landAct = true;
+    for (const col of D.cols) for (const e of col.e) if (e.ph === 'in' && e.lx - e.len / 2 < D.k.barrier) landAct = true;
     if (D.loose.some(e => e.ph === 'elev')) landAct = true;
     const launchAct = D.launchers.some(p => p.deckPh !== 'queued');
     const launchPend = D.launchers.length > 0;
@@ -175,15 +177,15 @@ window.WW = window.WW || {};
   // Is the landing area (aft of the barrier) and the runway clear?
   function clearAft(D) {
     if (D.mode !== 'recover' || D.loose.some(e => e.ph === 'elev')) return false;
-    for (const col of D.cols) for (const e of col.e) if (e.lx - e.len / 2 < BARRIER) return false;
+    for (const col of D.cols) for (const e of col.e) if (e.lx - e.len / 2 < D.k.barrier) return false;
     for (const p of WW.world.planes) if (p.carrier === D.c && p.alive && p.state === 'rollout') return false;
     return !D.launchers.some(p => p.deckPh !== 'queued');
   }
 
   // Is everything parked behind the spot line (the runway ahead of the launch point clear)?
   function spotClear(D) {
-    for (const col of D.cols) for (const e of col.e) if (e.lx + e.len / 2 > AFT_FRONT + 0.05) return false;
-    for (const e of D.loose) if (e.yoff > -2 && e.lx + e.len / 2 > AFT_FRONT + 0.05) return false;
+    for (const col of D.cols) for (const e of col.e) if (e.lx + e.len / 2 > D.k.aftFront + 0.05) return false;
+    for (const e of D.loose) if (e.yoff > -2 && e.lx + e.len / 2 > D.k.aftFront + 0.05) return false;
     return true;
   }
   // A plane on the deck in world space: position from deck coords (integrate() adds speed * dt after us).
@@ -234,7 +236,7 @@ window.WW = window.WW || {};
 
     launched(p) {
       const D = deckOf(p.carrier);
-      p.deckPh = 'queued'; p.deckT = 0; p.lx = LAUNCH_X; p.lz = D.run; p.rel = 0; p.yoff = -2.6; p.fold = 1;
+      p.deckPh = 'queued'; p.deckT = 0; p.lx = D.k.launchX; p.lz = D.run; p.rel = 0; p.yoff = -2.6; p.fold = 1;
       D.launchers.push(p);
       setFold(p.model, 1); // folded, in the hangar below the launch point
       onDeck(p, D, p.lx, p.lz, p.yoff, 0, 0, 0); p.sync(0);
@@ -245,7 +247,7 @@ window.WW = window.WW || {};
       switch (p.deckPh) {
         case 'queued': { // in the hangar until the deck is in launch mode and it is this plane's turn
           if (D.mode !== 'launch' || D.launchers.some(q => q !== p && (q.deckPh === 'taxi' || q.deckPh === 'rise' || q.deckPh === 'hold'))) break;
-          if (D.launchers.some(q => q.deckPh === 'run' && q.lx < LAUNCH_X + 5.2)) break;
+          if (D.launchers.some(q => q.deckPh === 'run' && q.lx < D.k.launchX + 5.2)) break;
           if (!spotClear(D)) break;
           let pick = null, pc = null;
           for (const col of D.cols) { const e = col.e[0]; if (e && e.kind === p.kind && e.ph === 'park' && WW.time.now >= e.readyAt && Math.abs(e.lx - e.tx) < 0.1) { pick = e; pc = col; break; } }
@@ -255,7 +257,7 @@ window.WW = window.WW || {};
         }
         case 'rise': p.yoff = Math.min(0, p.yoff + 3 * dt); if (p.yoff > -0.4) p.fold = Math.max(0, p.fold - 1.5 * dt); if (p.yoff >= 0) p.deckPh = 'hold'; break;
         case 'taxi': // forward along its column (folded, clear of the island), then across onto the runway
-          if (p.lx < LAUNCH_X) p.lx = Math.min(LAUNCH_X, p.lx + TAXI * 1.5 * dt);
+          if (p.lx < D.k.launchX) p.lx = Math.min(D.k.launchX, p.lx + TAXI * 1.5 * dt);
           else if (Math.abs(p.lz - D.run) > 1e-3) p.lz += WW.clamp(D.run - p.lz, -2 * dt, 2 * dt);
           else p.deckPh = 'hold';
           break;
@@ -267,7 +269,7 @@ window.WW = window.WW || {};
         }
         case 'run':
           p.rel += 18 * dt; p.lx += p.rel * dt;
-          if (p.lx >= BOW) { p.deckPh = 'climb'; p.deckT = 0; p.vy = -1.8; p.speed = c.speed + p.rel; }
+          if (p.lx >= D.k.bow) { p.deckPh = 'climb'; p.deckT = 0; p.vy = -1.8; p.speed = c.speed + p.rel; }
           break;
         case 'climb': // off the bow: settle a little, then climb away
           p.turn = 0; p.speedTo(p.pt.speed * 0.9, dt);
@@ -322,10 +324,10 @@ window.WW = window.WW || {};
         case 'final': {
           const vlz = dt > 0 && p._lz !== undefined ? (lz - p._lz) / dt : 0; p._lz = lz; // fly the runway centreline (PD on the drift)
           p.turnTo(c.heading - WW.clamp((lz - D.run) * 0.15 + vlz * 0.12, -0.8, 0.8), dt, 2.2);
-          const togo = TD_X - lx, ty = D.dy + P().deckY + WW.clamp(togo * 0.13, 0, 8);
+          const togo = D.k.tdX - lx, ty = D.dy + P().deckY + WW.clamp(togo * 0.13, 0, 8);
           p.speed += WW.clamp(c.speed + WW.clamp(togo * 0.25, 9, 15) - p.speed, -8 * dt, 8 * dt);
           p.vy = WW.clamp((ty - p.y) * 2.5 - 0.13 * (p.speed - c.speed), -6, 4);
-          const tw = c.toWorld(TD_X, D.run), dh = WW.dist(p.x, p.z, tw[0], tw[1]), b = Math.atan2(tw[1] - p.z, tw[0] - p.x);
+          const tw = c.toWorld(D.k.tdX, D.run), dh = WW.dist(p.x, p.z, tw[0], tw[1]), b = Math.atan2(tw[1] - p.z, tw[0] - p.x);
           let wave = false;
           if (togo < 28 && togo > 2) {
             if (!clearAft(D)) wave = true;                                                       // deck foul
@@ -346,7 +348,7 @@ window.WW = window.WW || {};
     },
     trap(p, D, lx, lz) {
       const c = p.carrier;
-      p.state = 'rollout'; p.deckPh = 'trap'; p.t = 0; p.lx = Math.min(lx, TD_X + 1); p.lz = lz;
+      p.state = 'rollout'; p.deckPh = 'trap'; p.t = 0; p.lx = Math.min(lx, D.k.tdX + 1); p.lz = lz;
       p.rel = WW.clamp(p.speed - c.speed, 6, 16); p.vy = 0; p.turn = 0;
       D.lq.splice(D.lq.indexOf(p), 1);
       const w = c.toWorld(p.lx, p.lz); p.x = w[0]; p.z = w[1]; p.y = D.dy + P().deckY;

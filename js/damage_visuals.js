@@ -15,17 +15,7 @@ window.WW = window.WW || {};
   'use strict';
   var R = Math.random, PI = Math.PI;
   var NSC = 360, NHO = 220, NWR = 18, FAR = 260, CAP = { up: 12, side: 10 };
-  // masts / funnels: [kind, x0, x1, yb (foot), z centre, z half range, height, pivot x] in ship-local units (models.js)
-  var PARTS = {
-    'battleship|USN': [['m', 1.0, 3.0, 3.85, 0, 0.9, 2.6, 2.0], ['m', -5.5, -3.7, 1.95, 0, 0.9, 1.8, -4.6], ['f', -1.85, 0.05, 1.85, 0, 0.75, 2.0, -0.9]],
-    'battleship|IJN': [['f', -2.0, 0.3, 1.85, 0, 0.75, 2.3, -0.6], ['m', -6.25, -4.75, 1.15, 0, 0.9, 2.4, -5.5]],
-    'cruiser|USN': [['m', 0.75, 2.3, 2.55, 0, 0.9, 2.0, 1.5], ['f', -0.6, 0.6, 1.55, 0, 0.5, 1.6, 0], ['f', -2.4, -1.2, 1.55, 0, 0.5, 1.6, -1.8], ['m', -4.15, -2.65, 1.55, 0, 0.9, 1.5, -3.4]],
-    'cruiser|IJN': [['f', -2.2, 0.3, 1.55, 0, 0.6, 1.7, -0.9], ['m', -4.3, -2.9, 1.55, 0, 0.9, 1.8, -3.6]],
-    'destroyer|USN': [['m', 1.3, 1.9, 1.55, 0, 0.35, 1.7, 1.6], ['f', 0.05, 0.95, 1.1, 0, 0.45, 1.2, 0.5], ['f', -1.35, -0.45, 1.1, 0, 0.45, 1.2, -0.9]],
-    'destroyer|IJN': [['m', 1.3, 1.9, 1.55, 0, 0.35, 1.7, 1.6], ['f', -0.15, 1.05, 1.1, 0, 0.5, 1.3, 0.6], ['f', -1.75, -0.6, 1.1, 0, 0.45, 1.1, -1.1]],
-    'carrier|USN': [['m', 1.2, 2.8, 4.1, 2.1, 0.8, 1.7, 2.0], ['f', -0.5, 0.75, 3.35, 2.1, 0.7, 1.0, 0.2]],
-    'carrier|IJN': [['m', 3.5, 4.1, 3.05, -2.0, 0.4, 1.5, 3.8]]
-  };
+  // masts / funnels: WW.models.parts(class, nation): [kind, x0, x1, yb (foot), z centre, z half range, height, pivot x] (models.js)
   var sc = null, ho = null, wr = null, ready = false, list = [], wrecks = [], _m, _l, _t, _v, _q, _s, _e, _a, _n;
 
   // ---- textures (canvas, made once) ----
@@ -91,14 +81,14 @@ window.WW = window.WW || {};
   function dv(sh) {
     if (sh._dv) return sh._dv;
     var L = sh.stats.length;
-    sh._dv = { L: L, up: [], side: [], trimW: 0, set: 0, trim: 0, parts: (PARTS[sh.type + '|' + sh.nation] || []).map(function (p) { return { p: p, done: false }; }),
+    sh._dv = { L: L, up: [], side: [], trimW: 0, set: 0, trim: 0, parts: WW.models.parts(sh.mk || sh.type, sh.nation).map(function (p) { return { p: p, done: false }; }),
       anim: [], clones: [], meshes: null, tur: {}, pose: null };
     list.push(sh);
     return sh._dv;
   }
   function topY(sh, lx, lz) {
-    var y = WW.crew && WW.crew.top ? WW.crew.top(sh.type, sh.nation, lx, lz) : null;
-    if (y == null || y < 0.2) y = sh.model.deck ? sh.model.deck.position.y : WW.crew ? WW.crew.deckY(sh.type, lx) : 1;
+    var y = WW.crew && WW.crew.top ? WW.crew.top(sh.mk || sh.type, sh.nation, lx, lz) : null;
+    if (y == null || y < 0.2) y = sh.model.deck ? sh.model.deck.position.y : WW.crew ? WW.crew.deckY(sh.mk || sh.type, lx) : 1;
     return y + 0.015;
   }
   function decal(sh, kind, face, lx, ly, lz, size, tur) {
@@ -111,17 +101,17 @@ window.WW = window.WW || {};
     arr.push({ k: kind, lx: lx, ly: ly, lz: lz, s: size, r: R() * PI * 2, c: 0.8 + R() * 0.2, tur: tur || null, sd: lz >= 0 ? 1 : -1 });
   }
   function hullHole(sh, lx, y, side, size) {
-    var z = WW.crewOps ? WW.crewOps.hullZ(sh.type, lx, y) : sh.model.group ? 1 : 1;
+    var z = WW.crewOps ? WW.crewOps.hullZ(sh.mk || sh.type, lx, y) : sh.model.group ? 1 : 1;
     decal(sh, 1, 'side', lx, y, side * (z + 0.012), size);
   }
   function onSite(d) {
     var sh = d && d.ship; if (!ready || !sh || !sh.model || sh.type === 'submarine') return;
     var D = dv(sh), lx = d.lx, lz = d.lz, side = lz >= 0 ? 1 : -1, cal = d.cal, kind = d.kind, L = D.L;
-    var dk = sh.model.deck ? sh.model.deck.position.y : WW.crew.deckY(sh.type, lx);
+    var dk = sh.model.deck ? sh.model.deck.position.y : WW.crew.deckY(sh.mk || sh.type, lx);
     D.trimW += (d.amount || 0) * (lx / (L * 0.5)) * (kind === 'torpedo' ? 1.6 : 1);
     if (kind === 'torpedo') {
       hullHole(sh, lx, 0.14, side, 1.5 + R() * 0.4);
-      decal(sh, 0, 'side', lx + (R() - 0.5) * 0.4, Math.min(dk - 0.2, 0.55), side * (WW.crewOps.hullZ(sh.type, lx, 0.55) + 0.015), 1.7);
+      decal(sh, 0, 'side', lx + (R() - 0.5) * 0.4, Math.min(dk - 0.2, 0.55), side * (WW.crewOps.hullZ(sh.mk || sh.type, lx, 0.55) + 0.015), 1.7);
     } else if (kind === 'bomb' || kind === 'deck') {
       var jx = lx + (R() - 0.5) * 0.6, jz = lz * 0.6 + (R() - 0.5) * 0.6;
       if (kind === 'bomb') decal(sh, 1, 'up', jx, topY(sh, jx, jz) + 0.005, jz, sh.type === 'carrier' ? 1.05 : 0.8);
@@ -239,10 +229,11 @@ window.WW = window.WW || {};
   function onDeckHit(d) {
     var sh = d && d.ship; if (!ready || !sh || !sh.model || !sh.model.deck) return;
     var c = Math.cos(sh.heading), sn = Math.sin(sh.heading), ex = (d.x || sh.x) - sh.x, ez = (d.z || sh.z) - sh.z;
-    var lx = WW.clamp(ex * c + ez * sn, -11, 10), n = Math.min(4, 1 + Math.ceil((d.planes || 1) / 2)), y = sh.model.deck.position.y;
+    var dd = sh.model.deckDims || { stern: -13, bow: 12.5, halfW: 2.5 }, s0 = dd.stern + 2, s1 = dd.bow - 2;
+    var lx = WW.clamp(ex * c + ez * sn, s0 + 1, s1 - 1), n = Math.min(4, 1 + Math.ceil((d.planes || 1) / 2)), y = sh.model.deck.position.y;
     for (var i = 0; i < n; i++) {
       if (wrecks.length >= NWR) wrecks.shift();
-      var x = WW.clamp(lx + (R() - 0.5) * 6, -12, 11), z = (R() - 0.5) * 3;
+      var x = WW.clamp(lx + (R() - 0.5) * 6, s0, s1), z = (R() - 0.5) * dd.halfW * 1.2;
       wrecks.push({ sh: sh, lx: x, lz: z, ly: y + 0.02, yaw: R() * PI * 2, tilt: (R() - 0.5) * 0.3, burn: 25 + R() * 20, fT: R() * 0.2, sT: R() * 0.4 });
       decal(sh, 0, 'up', x, y + 0.012, z, 2.0 + R() * 0.6);
     }
