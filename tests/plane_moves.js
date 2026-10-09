@@ -12,7 +12,7 @@
 //  2. escorts peeling off at a passing raid (an escort of a wave in transit taking a foe that is not on its own strike).
 //  3. targets of opportunity: per wave, the time from losing its target (sunk, or not in sight inside 140) to its first
 //     drop on another ship; drops by armed scouts and by bombers on their way home; armed sorties home with the bomb.
-//  4. enemy snoopers (scouts, flying boats, carrier searchers) inside 200 of a fleet: stint length and how it ended.
+//  4. enemy snoopers (scouts, flying boats, carrier searchers) inside 300 of a carrier (its CAP's ground): stint length and how it ended.
 //  5. guns: per burst, the angle from the nose to the plane fired at and its range; per 0.25 s of combat the ignored
 //     snapshots (an enemy inside 12 deg and gun range while the guns are not on it), foe switches, nose on the lead
 //     point vs on the target.
@@ -47,7 +47,7 @@ function specFor(name, seed) {
 // ======================= PAGE SIDE =======================
 function install() {
   const R = window.__pm = { err: 0, trace: false };
-  const DT = 0.25, TRANSIT = 200, LOST_R = 140, SNOOP_R = 200, CONE = 0.21, GUN_R = 28, LEAD_OK = 0.17;
+  const DT = 0.25, TRANSIT = 200, LOST_R = 140, SNOOP_R = 300, CONE = 0.21, GUN_R = 28, LEAD_OK = 0.17;
   const now = () => WW.game.roundTime;
   const ids = new WeakMap(); let nid = 1;
   const id = o => { let v = ids.get(o); if (!v) { v = nid++; ids.set(o, v); } return v; };
@@ -204,7 +204,7 @@ function install() {
       if (!snoop) continue;
       let st = S.snoop.get(p); if (!st) { st = { in: false, t0: 0, k: p.kind === 'scout' ? 'scout' : p.kind === 'flyingboat' ? 'flyingboat' : 'search' }; S.snoop.set(p, st); }
       let inside = false;
-      if (p.state === 'transit' || p.state === 'attack' || p.state === 'return') for (const s of WW.world.ships) if (s.alive && !s.isBase && s.nation !== p.nation && s.type !== 'submarine' && WW.dist2(s.x, s.z, p.x, p.z) < SNOOP_R * SNOOP_R) { inside = true; break; }
+      if (p.state === 'transit' || p.state === 'attack' || p.state === 'return') for (const s of WW.world.ships) if (s.alive && !s.isBase && s.nation !== p.nation && s.type === 'carrier' && WW.dist2(s.x, s.z, p.x, p.z) < SNOOP_R * SNOOP_R) { inside = true; break; }
       if (inside && !st.in) { st.in = true; st.t0 = t; }
       else if (!inside && st.in) { st.in = false; S.stints.push({ n: p.nation, k: st.k, t: +(t - st.t0).toFixed(1), end: 'left' }); }
     }
@@ -302,7 +302,7 @@ function report(rounds) {
     const L = st.filter(s => k === 'all' || s.k === k); if (!L.length) continue;
     const T = L.map(s => s.t);
     out.snoop[k] = { n: L.length, p50: qs(T, 0.5), p90: qs(T, 0.9), mean: T.reduce((a, b) => a + b, 0) / T.length, shot: L.filter(s => s.end === 'shot').length / L.length };
-    say(`4. ${k.padEnd(10)} stints inside 200 of an enemy fleet: n ${L.length}, length p50 ${f1(out.snoop[k].p50)} p90 ${f1(out.snoop[k].p90)} mean ${f1(out.snoop[k].mean)} s, ended shot down ${pc(out.snoop[k].shot)}`);
+    say(`4. ${k.padEnd(10)} stints inside 300 of an enemy carrier: n ${L.length}, length p50 ${f1(out.snoop[k].p50)} p90 ${f1(out.snoop[k].p90)} mean ${f1(out.snoop[k].mean)} s, ended shot down ${pc(out.snoop[k].shot)}`);
   }
   // 5
   const G = { samples: 0, snapOpp: 0, snapIgn: 0, snapIgnR: 0, switches: 0, combatT: 0, noseLead: 0, noseTgt: 0, noseNone: 0 }, B = [];
