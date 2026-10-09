@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   const STERN = -13.55, BOW = 12.85, AFT_FRONT = 0.6, BARRIER = -1.5; // deck ends / spot limit / barrier
   const LAUNCH_X = 3.2, TD_X = -9.5, ELEV_X = -5.5;   // start of the deck run, touchdown point, aft elevator
   const GAP = 0.2, TAXI = 4, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
-  const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s
+  const LQ_MAX = 25, RW_N = 3, LW_MAX = 10, LW_MIN = 8; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
 
@@ -256,7 +256,8 @@ window.WW = window.WW || {};
       if (!D || late || h === null || !(D.mode !== 'idle' || D.launchers.length || D.lq.length)) return;
       const E = 80, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H; // near the map edge: no wind turn (the standing CAP keeps the deck busy)
       if (ship.x < E || ship.x > W - E || ship.z < E || ship.z > Hh - E) return;
-      const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : 2.5, dh = ship.desiredHeading;
+      const groove = D.mode === 'recover' && D.lq.some(p => p.deckPh === 'app' || p.deckPh === 'final'); // a steady deck for the planes in the groove
+      const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : groove ? 10 : 2.5, dh = ship.desiredHeading;
       ship.desiredHeading = Math.atan2(Math.sin(dh) + Math.sin(h) * w, Math.cos(dh) + Math.cos(h) * w);
       ship.throttle = Math.max(ship.throttle, 0.75);
     },

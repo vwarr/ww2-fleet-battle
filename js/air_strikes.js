@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // Every wave leaves FORMED (all its planes up, >= FORMED_K of them on their slots) or, failing that, on a timeout
   // scaled to the load (the deck launches about one plane per LAUNCH_DT s). A live wave is never deleted: a new strike
   // waits until the last one has left (air_boss.js), so no plane is orphaned. Form-up time comes out of the fuel.
-  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.4, STALE = 60;
+  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.4, STALE = 60, SQ_MIN = 3;
   const ST = { forms: [] }; // { nation, first, mode, formT, formed, n } per wave at departure
   function mk(carrier, target, mode, first) {
     return { carrier, target, nation: carrier.nation, pend: { fighter: 0, dive: 0, torpedo: 0 }, pendN: 0, n0: 0, mode, first,
@@ -44,8 +44,9 @@ window.WW = window.WW || {};
     if (mode === 'squadron') { // one wave per bomber squadron; fighters escort the torpedo squadron (else the dive bombers)
       const n = { fighter: 0, dive: 0, torpedo: 0 };
       for (const q of queue) if (mine(q) && n[q.kind] !== undefined) n[q.kind]++;
+      const split = SQ_KINDS.every(k => n[k] >= SQ_MIN);   // a squadron of fewer than SQ_MIN goes with the other: one wave
       for (const k of SQ_KINDS) {
-        if (!n[k]) continue;
+        if (!n[k] || !split) continue;
         const w = mk(carrier, target, mode, first); w.pend[k] = n[k]; w.pendN = n[k];
         if (!out.length && n.fighter) { w.pend.fighter = n.fighter; w.pendN += n.fighter; }
         out.push(w);
