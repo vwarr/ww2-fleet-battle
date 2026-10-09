@@ -171,7 +171,7 @@ window.WW = window.WW || {};
   // line: Savo, Cape Esperance; a side holding on to a hopeless gun fight until the time limit was not realistic).
   function beaten(fitT, all, foeFit, foeAll, nfit) {
     if (fitT < BREAK * all) return true;
-    if (!nfit || !(foeAll > 0) || !WW.game || WW.game.roundTime < 90) return false;
+    if (!nfit || !(foeAll > 0) || !WW.game || WW.game.roundTime < 90 || WW.game.metT === null) return false; // outfought: only once the fleets have met (main.js metT), not by the air war alone
     return fitT < OUT_SHARE * all && fitT / all < OUT_K * foeFit / foeAll;
   }
   function foeCarrier(B) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].type === 'carrier' && S[i].nation !== B.nation && WW.intel && WW.intel.known(B.nation, S[i])) return true; return false; }
@@ -293,7 +293,7 @@ window.WW = window.WW || {};
 
   reset();
   WW.on('roundStart', function () { firstDrop = 0; });
-  WW.on('weaponDropped', function (e) { if (!firstDrop && e && e.plane && WW.game) firstDrop = Math.max(1, WW.game.roundTime); }); // ships' torpedoes have no plane
+  WW.on('weaponDropped', function (e) { var p = e && e.plane; if (!firstDrop && p && (p.kind === 'dive' || p.kind === 'torpedo') && WW.game) firstDrop = Math.max(1, WW.game.roundTime); }); // a strike's drop (not a flying boat's bomb; ships' torpedoes have no plane)
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
 

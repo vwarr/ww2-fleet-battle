@@ -24,7 +24,7 @@ const SCEN = {
     WW.on('contact', e => { const o = e.by, k = !o ? '?' : o.type || o.kind || 'other'; const t = WW.game.roundTime; (by[k] = by[k] || { n: 0, first: null }).n++; if (by[k].first === null) by[k].first = +t.toFixed(0); }); const u0 = WW.fleetCmd.update;
     WW.fleetCmd.update = function (dt) {
       u0.call(this, dt);
-      const t = WW.game.roundTime; if (t < nextT) return; nextT = t + LOG;
+      const t = WW.game.roundTime; if (t < nextT) return; nextT = t + LOG; if (WW.game.metT !== null && !window.__metLogged) { window.__metLogged = 1; window.__shapeLog.push('fleets met (first ship-to-ship shell) at ' + WW.game.metT.toFixed(0)); }
       const S = WW.world.ships, P = WW.world.planes, line = [t.toFixed(0)];
       for (const n of ['USN', 'IJN']) {
         const B = WW.fleetCmd.side(n); if (!B) continue;

@@ -126,7 +126,7 @@ window.WW = window.WW || {};
   // ---------- round logic ----------
   const game = {
     mode: 'setup', state: 'setup', composition: null, winner: null, custom: false,
-    roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, contactT: null, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
+    roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, contactT: null, metT: null, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
     hadMajor: { USN: true, IJN: true },
     // opts.keepMap: start on the current map (used by "Start battle" in setup mode)
     startRound(opts) {
@@ -137,7 +137,7 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.endReason = null; game.roundTime = 0; clearT.USN = clearT.IJN = 0; harmT.USN = harmT.IJN = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.lastHit = 0;
+      game.winner = null; game.endReason = null; game.roundTime = 0; clearT.USN = clearT.IJN = 0; harmT.USN = harmT.IJN = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.metT = null; game.lastHit = 0;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
@@ -191,12 +191,18 @@ window.WW = window.WW || {};
   //    CLEAR_AIR of them or sent against one of them, for CLEAR_T s running (the pursuit has lost touch and no strike
   //    is on its way). A pursuit that is not biting counts as lost touch too: no hit on the broken side for STALE_T s
   //    (a stern chase at equal speed out of gun reach is no battle; STALE_AIR while the pursuer has a carrier that can
-  //    fly: time to spot and launch a pursuit strike) and no strike bound for it. Not with game.noRetire (tests).
+  //    fly: time to spot and launch a pursuit strike) and no strike bound for it. Only once the surface fleets have
+  //    met (game.metT: the first shell between their ships): a side broken by the air war alone must run for home
+  //    (or be caught on the way) so the fleets almost always meet. Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
   const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 15, STALE_T = 30, STALE_AIR = 75;
   const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 }, harmT = { USN: 0, IJN: 0 }, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
   WW.on('shipHit', e => { if (e && e.ship && harmT[e.ship.nation] !== undefined) harmT[e.ship.nation] = game.roundTime; });
+  WW.on('shellFired', e => { // the fleets have met: a ship's gun (not MG) fired at an enemy ship (not the island's coastal batteries)
+    const t = e && e.proj && e.proj.target;
+    if (game.metT === null && game.state === 'battle' && e.cal !== 'mg' && e.ship && !e.ship.isBase && e.ship.stats && e.ship.type !== 'battery' && t && t.stats && !t.isBase && t.type !== 'battery' && t.nation !== e.ship.nation) game.metT = game.roundTime;
+  });
   // the broken side n is out of the enemy's reach: no enemy gun ship within CLEAR_R, no armed enemy bomber within
   // CLEAR_AIR or bound for one of its ships (its own target or its wave's)
   function clear(n) {
@@ -219,7 +225,7 @@ window.WW = window.WW || {};
   }
   function gotClear(n, dt) {
     const B = WW.fleetCmd && WW.fleetCmd.side(n);
-    if (game.noRetire || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n)) { clearT[n] = 0; return false; }
+    if (game.noRetire || game.metT === null || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n)) { clearT[n] = 0; return false; }
     clearT[n] += dt;
     return clearT[n] >= CLEAR_T;
   }
