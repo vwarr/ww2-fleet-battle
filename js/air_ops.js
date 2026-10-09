@@ -11,7 +11,7 @@ window.WW = window.WW || {};
 (function () {
   const CAP_R = 35, LEASH = CAP_R * 1.5, LEASH2 = CAP_R * 4.5; // CAP orbit radius, chase leash (sim_behaviour LEASH_K), armed raid closing
   const RAID_R = 120;          // armed enemy bomber this close to the carrier: under air attack
-  const WARN_R = 260;          // raid picture radius for the fighter director (radar / lookouts decide what is in it)
+  const WARN_R = 350;          // raid picture radius for the fighter director (radar / lookouts decide what is in it; USN radar 400)
   const RELIEF = 45;           // launch a relief when an on-station CAP fighter has less fuel than this (s)
   const VALUE = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };
   const ST = { raids: 0, scrambles: 0, reliefs: 0, holds: 0, recalls: 0, jettisons: 0, leashDrops: 0 };

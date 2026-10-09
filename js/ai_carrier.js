@@ -121,11 +121,11 @@ window.WW = window.WW || {};
 
   // CAP: how many fighters the carrier wants over itself. A standing CAP of elements (USN 2-plane sections, IJN
   // 3-plane shotai), one per 9 fighters of the air group (a full 1942 group: 3 sections / 2 shotai, 6 fighters), twice
-  // that once an enemy carrier is known (its strike is coming), three times (at least 4) when enemy planes are detected inside 250 (USN carrier radar reaches that far, intel.js
+  // that once an enemy carrier is known (its strike is coming), three times (at least 4) when enemy planes are detected inside 350 (USN carrier radar reaches 400, intel.js
   // SEE_PLANE_NATION; IJN lookouts see ~170, so the IJN scrambles later). air_boss.js keeps it relieved by elements.
   function capWanted(ship) {
     let near = 0;
-    if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && c.unit.kind !== 'flyingboat' && WW.dist(ship.x, ship.z, c.x, c.z) < 250) near++;
+    if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && c.unit.kind !== 'flyingboat' && WW.dist(ship.x, ship.z, c.x, c.z) < 350) near++;
     const elem = ship.nation === 'IJN' ? 3 : 2, F = ship.wingF || (ship.hangar ? ship.hangar.fighter : 0), base = elem * Math.max(1, Math.round(F / 9));
     if (near) return F >= 14 ? base * 3 : 4;   // a raid on the plot: everything that can fly (Santa Cruz: 38 Wildcats over two carriers)
     // an enemy carrier on the plot: its counterstrike is coming, so the standing CAP doubles (Midway, Santa Cruz)

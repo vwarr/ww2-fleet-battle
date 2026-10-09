@@ -38,6 +38,7 @@ function install() {
   const tgtOf = p => (p.wave && p.wave.target) || p.target || null;
   const L = () => WW.cfg.L || 26;
   let S = null;
+  function cvD(p) { let d = 1e9; for (const s of WW.world.ships) if (s.alive && s.type === 'carrier' && !s.isBase && s.nation !== p.nation) d = Math.min(d, WW.dist(p.x, p.z, s.x, s.z)); return d < 1e9 ? Math.round(d) : null; }
   function fresh() {
     S = { raid: new Map(), ring: new Map(), next: 0, slow: 0, idle: {}, swarm: [], swarmPh: {}, clump: { under: [], calm: [] }, pile: { under: 0, underN: 0, calm: 0, calmN: 0 },
       patt: [], lqMax: [], trapGap: [], trapLast: new Map(), modeT: {}, ldOut: { landed: 0, inStack: 0 }, armedL: { USN: 0, IJN: 0 }, bombers0: { USN: 0, IJN: 0 }, overhead: [] };
@@ -46,7 +47,7 @@ function install() {
   WW.on('roundStart', fresh);
   function rr(p) {
     let r = S.raid.get(p);
-    if (!r) { r = { n: p.nation, k: p.kind, o: p.carrier && p.carrier.isBase ? 'base' : 'cv', eng: false, engD: null, fate: null, cap: null, over: null, tt: null, t0: now(), detD: null, vecD: null, hit: null, downAfter: false }; S.raid.set(p, r); }
+    if (!r) { r = { n: p.nation, k: p.kind, o: p.carrier && p.carrier.isBase ? 'base' : 'cv', eng: false, engD: null, fate: null, cap: null, over: null, tt: null, t0: now(), detD: null, vecD: null, vecC: null, engC: null, hit: null, downAfter: false }; S.raid.set(p, r); }
     return r;
   }
   const L0 = WW.air.launch;
@@ -71,14 +72,14 @@ function install() {
     const t = now(), P = WW.world.planes, live = P.filter(p => p.alive && !p.removed);
     if (!S.b0) { S.b0 = true; for (const s of WW.world.ships) if (s.hangar && !s.isBase && s.type === 'carrier') S.bombers0[s.nation] += (s.hangar.dive || 0) + (s.hangar.torpedo || 0); }
     // raiders: engaged, jettisoned, defenders when they reach their target
-    for (const p of live) if (p.kind === 'fighter' && p.foe && armed(p.foe) && S.raid.has(p.foe)) { const r = S.raid.get(p.foe); if (!r.eng) { r.eng = true; const tg = tgtOf(p.foe); r.engD = tg ? Math.round(WW.dist(p.foe.x, p.foe.z, tg.x, tg.z)) : null; } }
+    for (const p of live) if (p.kind === 'fighter' && p.foe && armed(p.foe) && S.raid.has(p.foe)) { const r = S.raid.get(p.foe); if (!r.eng) { r.eng = true; const tg = tgtOf(p.foe); r.engD = tg ? Math.round(WW.dist(p.foe.x, p.foe.z, tg.x, tg.z)) : null; r.engC = cvD(p.foe); } }
     const det = {}; for (const n of ['USN', 'IJN']) { det[n] = new Set(); if (WW.intel) for (const c of WW.intel.enemyPlanes(n)) det[n].add(c.unit); }
     const vec = new Set(); for (const q of live) if (q.vec) vec.add(q.vec);
     for (const [p, r] of S.raid) {
       if (r.fate) continue;
       const tg0 = tgtOf(p), dn = p.nation === 'USN' ? 'IJN' : 'USN';
       if (tg0 && r.detD === null && det[dn].has(p)) r.detD = Math.round(WW.dist(p.x, p.z, tg0.x, tg0.z));
-      if (tg0 && r.vecD === null && vec.has(p)) r.vecD = Math.round(WW.dist(p.x, p.z, tg0.x, tg0.z));
+      if (tg0 && r.vecD === null && vec.has(p)) { r.vecD = Math.round(WW.dist(p.x, p.z, tg0.x, tg0.z)); r.vecC = cvD(p); }
       if (!p.alive || p.removed) { r.fate = 'other'; continue; }
       if (!p.ordnance) { r.fate = 'jettison'; continue; }
       const tg = tgtOf(p);
@@ -160,7 +161,7 @@ function install() {
   }
   R.flush = function () {
     const raid = []; for (const r of S.raid.values()) raid.push(r);
-    return { raid, idle: S.idle, swarm: S.swarm, swarmPh: S.swarmPh, clump: S.clump, pile: S.pile, patt: S.patt, lqMax: S.lqMax, trapGap: S.trapGap, modeT: S.modeT, endStack: WW.world.ships.reduce((n, s) => n + (s._deck ? s._deck.lq.length : 0), 0), armedL: S.armedL, bombers0: S.bombers0, overhead: S.overhead, err: R.err, last: R.last || null };
+    return { harry: WW.intercept ? Object.assign({}, WW.intercept.stats) : null, raid, idle: S.idle, swarm: S.swarm, swarmPh: S.swarmPh, clump: S.clump, pile: S.pile, patt: S.patt, lqMax: S.lqMax, trapGap: S.trapGap, modeT: S.modeT, endStack: WW.world.ships.reduce((n, s) => n + (s._deck ? s._deck.lq.length : 0), 0), armedL: S.armedL, bombers0: S.bombers0, overhead: S.overhead, err: R.err, last: R.last || null };
   };
   return true;
 }
@@ -213,8 +214,14 @@ function report(rounds) {
     say(`${n.padEnd(7)} ${(lo + '-' + (hi > 99 ? '' : hi)).padEnd(6)} ${String(row.n).padStart(4)}  ${pc(row.eng).padStart(7)}  ${String(row.engD === null ? '-' : row.engD).padStart(9)}  ${pc(row.killed).padStart(12)}  ${pc(row.jett).padStart(8)}  ${pc(row.dropped).padStart(7)}  ${pc(row.other).padStart(5)}  ${pc(row.hitD).padStart(8)}  ${pc(row.hitS).padStart(10)}  ${pc(row.down).padStart(17)}  ${String(row.detD)} ${String(row.vecD)}`);
   }
   const all = []; for (const r of rounds) for (const x of r.rec.raid) all.push(x);
+  const vc = all.filter(x => x.vecC !== null).map(x => x.vecC), ec = all.filter(x => x.engC !== null).map(x => x.engC);
+  say(`distance from the nearest enemy carrier: first vectored p10 ${qs(vc, 0.1)} p50 ${qs(vc, 0.5)} p90 ${qs(vc, 0.9)}, first engaged p10 ${qs(ec, 0.1)} p50 ${qs(ec, 0.5)} p90 ${qs(ec, 0.9)}`);
+  out.vecC = qs(vc, 0.5); out.engC = qs(ec, 0.5);
   const fa = k => all.filter(x => x.fate === k).length;
   say(`all armed sorties (n ${all.length}): engaged before drop ${pc(all.filter(x => x.eng).length / all.length)}, killed armed ${pc(fa('killed') / all.length)}, jettisoned ${pc(fa('jettison') / all.length)}, dropped ${pc(fa('dropped') / all.length)}`);
+  const hy = { releases: 0, harried: 0, harriedSum: 0 }; for (const r of rounds) if (r.rec.harry) for (const k in hy) hy[k] += r.rec.harry[k] || 0;
+  say(`releases (dive / torpedo) harried by a fighter or damage: ${pc(hy.harried / hy.releases)} of ${hy.releases}, mean factor ${(hy.harriedSum / Math.max(1, hy.harried)).toFixed(2)}`);
+  out.harried = hy.harried / hy.releases;
   const ov = []; for (const r of rounds) for (const v of r.rec.overhead) ov.push(v);
   say(`own planes airborne within 250 of a carrier (every 1 s): p50 ${qs(ov, 0.5)} p90 ${qs(ov, 0.9)} max ${qs(ov, 1)}`);
   out.overhead = { p50: qs(ov, 0.5), p90: qs(ov, 0.9), max: qs(ov, 1) };
