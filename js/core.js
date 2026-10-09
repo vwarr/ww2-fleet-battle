@@ -108,11 +108,14 @@ window.WW = window.WW || {};
   // only 1.3x / 1.05x a carrier's 32 kn, so a ship that combed the track from the drop could outrun or dodge them;
   // at 14 u/s (2.5x a carrier's 5.6) nearly every anvil hit. 10 / 8 u/s (1.8x / 1.4x) keep the drop at 80-100 u
   // workable and the Mk 13 the slower; air torpedo hit rate 34 / 38% -> 20 / 24% (USN / IJN).
+  // dmgK: the warhead, x WW.TORPEDO.dmg (balance pass, Oct 2026): Type 93 490 kg against the Mk 15's 374 kg (1.31x),
+  // Type 95 405 kg against the Mk 14's 230 kg (1.76x; here 1.5x), Type 91 Mod 2 204 kg against the 1942 Mk 13's 182 kg
+  // (1.12x), Mk 8 (PT) 211 kg; set about the old common 220 so a torpedo hit stays as deadly on average.
   WW.TORPEDO_NATION = {
-    IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7 },
-           pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1 } },
-    USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.1, sight: 1.1 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.2, sight: 1.1 },
-           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1 } }
+    IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7, dmgK: 1.2 },
+           pt: { rangeK: 1, speed: 14, dud: 0, sight: 1, dmgK: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1, dmgK: 1.1 } },
+    USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.2, sight: 1.1, dmgK: 0.8 },
+           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1, dmgK: 1 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
     const N = WW.TORPEDO_NATION[nation] || {};
@@ -127,7 +130,7 @@ window.WW = window.WW || {};
     const b = WW.SHIP_TYPES[type], st = Object.assign({}, b);
     if (b.torpedoes) {
       const q = WW.torpSpec(nation, type);
-      st.torpedoes = Object.assign({}, b.torpedoes, { range: Math.round(b.torpedoes.range * q.rangeK), speed: q.speed, dud: q.dud, sight: q.sight });
+      st.torpedoes = Object.assign({}, b.torpedoes, { range: Math.round(b.torpedoes.range * q.rangeK), speed: q.speed, dud: q.dud, sight: q.sight, dmgK: q.dmgK || 1 });
     }
     return (_stCache[key] = st);
   };

@@ -23,7 +23,7 @@ window.WW = window.WW || {};
       p.src = owner && owner.stats ? 'Ship' : 'Air';
       if (WW.dstat) WW.dstat('torpFired' + p.src, nation);
       p.range = range || 100; p.run = 0; p.wakeT = 0;
-      p.dmg = ((WW.TORPEDO && WW.TORPEDO.dmg) || 220) * I.rr(0.9, 1.1);
+      p.dmg = ((WW.TORPEDO && WW.TORPEDO.dmg) || 220) * (q.dmgK || 1) * I.rr(0.9, 1.1);   // the nation's warhead (core.js TORPEDO_NATION dmgK)
       I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
       I.fx('splash', x, z, 0.8);
       I.stat('torpedoesFired');
