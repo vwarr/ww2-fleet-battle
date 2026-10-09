@@ -266,6 +266,7 @@ function install(opts) {
     // waves in the air: first up, departure, formation quality in transit
     for (const [w, wr] of S.wrec) {
       if (wr.tUp === null && w.t1 >= 0) wr.tUp = +t.toFixed(1);
+      if (wr.cvLost === undefined && !w.carrier.alive) wr.cvLost = +t.toFixed(1);
       if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); wr.formed = w.why ? w.why === 'formed' : null; const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; }
       wr.members = Math.max(wr.members, w.members.filter(q => q.alive).length);
       if (!w.go || w.done) continue;
