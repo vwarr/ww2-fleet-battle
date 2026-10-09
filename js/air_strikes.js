@@ -14,7 +14,7 @@ window.WW = window.WW || {};
   // apart at R 82, so their setup orbits never stack) and runs in from its own bearing, a clear gap between wingtips.
   const AV = [0, 1, -1, 2, -2], AV_DA = 0.28;
   const WHEEL_ALT = 39, WHEEL_R = 20;          // dive bombers circle over the target (inside 3D AA range) before peeling off
-  const FORM_R = 55, GUIDE_V = 20;
+  const FORM_R = 40, FORM_UP = 35, GUIDE_V = 20;   // rendezvous circle radius (+0.3 u a plane, to 50), its centre upwind of the carrier
   let waves = [], grps = new Map();
 
   // ---------- waves ----------
@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // Every wave leaves FORMED (all its planes up, >= FORMED_K of them on their slots) or, failing that, on a timeout
   // scaled to the load (the deck launches about one plane per LAUNCH_DT s). A live wave is never deleted: a new strike
   // waits until the last one has left (air_boss.js), so no plane is orphaned. Form-up time comes out of the fuel.
-  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.0, STALE = 60, SQ_MIN = 3, FORM_TOL = 1.5, RDV_V = 0.75;
+  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.0, STALE = 60, SQ_MIN = 3, FORM_TOL = 1.5, RDV_V = 0.75, RDV_N = 12;
   const ST = { forms: [] }; // { nation, first, mode, formT, formed, n } per wave at departure
   function mk(carrier, target, mode, first) {
     return { carrier, target, nation: carrier.nation, pend: { fighter: 0, dive: 0, torpedo: 0 }, pendN: 0, n0: 0, mode, first,
@@ -123,15 +123,16 @@ window.WW = window.WW || {};
     if (!n.fighter && !n.dive && !n.torpedo && w.t1 >= 0) { w.done = true; return; }
     if (!w.go) { // orbit over the carrier while the deck launches the rest of the load (wider for a bigger load)
       if (WW.airBoss) WW.airBoss.formTarget(w);                // a carrier sighted while forming: the strike goes for it
-      const R = FORM_R + Math.min(25, w.n0 * 0.8), v = w.v || GUIDE_V, t = w.target;
-      if (w.t1 >= 0 && w.pendN <= 0 && t && t.alive) { // all up: a running rendezvous, rolled out on the course out at RDV_V (the trailing slots close up on a straight leg)
+      const R = FORM_R + Math.min(10, w.n0 * 0.3), v = w.v || GUIDE_V, t = w.target;
+      if (w.n0 >= RDV_N && w.t1 >= 0 && w.pendN <= 0 && t && t.alive) { // a big load all up: a running rendezvous, rolled out on the course out at RDV_V (the trailing slots close up on a straight leg)
         const k = aimAt(w, t), want = Math.atan2(k.z - w.z, k.x - w.x);
         w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
         w.x += Math.cos(w.h) * v * RDV_V * dt; w.z += Math.sin(w.h) * v * RDV_V * dt;
         w.dT = WW.dist(w.x, w.z, k.x, k.z);
-      } else {
+      } else { // the rendezvous circle, upwind of the carrier where the planes come off the bow
+        const up = WW.wind ? WW.wind.a + PI : c.heading, ox = c.x + Math.cos(up) * FORM_UP, oz = c.z + Math.sin(up) * FORM_UP;
         w.ang += (v * 0.85 / R) * dt * w.dir;
-        w.x = c.x + Math.cos(w.ang) * R; w.z = c.z + Math.sin(w.ang) * R; w.h = w.ang + w.dir * PI / 2;
+        w.x = ox + Math.cos(w.ang) * R; w.z = oz + Math.sin(w.ang) * R; w.h = w.ang + w.dir * PI / 2;
       }
       w.ok = ready(w, now);
       if (w.mode !== 'joint') { if (w.ok) depart(w, now); return; }
