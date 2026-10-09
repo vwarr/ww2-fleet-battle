@@ -9,7 +9,8 @@ window.WW = window.WW || {};
   var R = Math.random;
   var RIB = 28, K = 18, KV = K + 1;        // ribbons, committed points per ribbon (+1 live head at the tip)
   var LIFE = 0.55, SEG = 0.7;              // vapour life (sim s), spacing between committed points (units)
-  var MAXP = 96;                           // exhaust points (2 per plane)
+  var MAXP = 192;                          // exhaust points (2 per plane, planes within EXH_D of the camera)
+  var EXH_D = 160, VAP_D = 220;            // beyond these camera distances a plane gets no exhaust glow / no vapour (sub-pixel)
   var MAXG = 48;                           // glints
   var ribbons = [], rMesh = null, rPos, rAlpha, ex = null, gl = null, inited = false, stepN = 0;
   var _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _t = new THREE.Vector3(), _cam = new THREE.Vector3();
@@ -155,9 +156,14 @@ window.WW = window.WW || {};
       var p = planes[i], m = p.model;
       if (p.removed || !m || !m.fx) continue;
       var grp = p.group, f = m.fx, live = p.state !== 'ditch';
-      grp.updateMatrixWorld(true);
+      // distance culling: far planes skip the exhaust and vapour, and the matrix update when nothing needs it
+      var cx = cam ? cam.position.x - p.x : 0, cy = cam ? cam.position.y - p.y : 0, cz = cam ? cam.position.z - p.z : 0, d2 = cx * cx + cy * cy + cz * cz;
+      var nearE = d2 < EXH_D * EXH_D, nearV = d2 < VAP_D * VAP_D;
+      var vap = nearV && p.alive && p.speed > 18 ? sstep(34, 62, p.gload || 0) : 0;
+      var wantG = cam && sun && p.alive && (Math.abs(p.roll || 0) > 0.3 || (p._glint || 0) > 0);
+      if ((live && nearE) || wantG || vap > 0.05) grp.updateMatrixWorld(true);
       // exhaust flicker: tiny warm glow, a little brighter at full power / in a dive
-      if (live) {
+      if (live && nearE) {
         var pw = p.phase === 'dive' || p.speed > p.pt.speed * 1.02 ? 1.3 : 1;
         for (var e = 0; e < 2; e++) {
           _v.copy(f.exh[e]).applyMatrix4(grp.matrixWorld);
@@ -166,7 +172,7 @@ window.WW = window.WW || {};
         }
       }
       // canopy glint: canopy normal (plane up) along the sun/camera half vector, only while banked
-      if (cam && sun && p.alive) {
+      if (wantG) {
         _a.copy(f.canopy).applyMatrix4(grp.matrixWorld);
         _n.setFromMatrixColumn(grp.matrixWorld, 1).normalize();
         _h.subVectors(cam.position, _a).normalize().add(sun).normalize();
@@ -178,8 +184,7 @@ window.WW = window.WW || {};
           addPt(gl, _b.x, _b.y, _b.z, 2.6 * gi, 1.5 * gi, 1.4 * gi, 1.2 * gi);
         }
       } else p._glint = 0;
-      // vapour: lateral + pull-up acceleration (from sync: p.gload, units/s^2)
-      var vap = p.alive && p.speed > 18 ? sstep(34, 62, p.gload || 0) : 0;
+      // vapour: lateral + pull-up acceleration (from sync: p.gload, units/s^2), computed above
       if (!p._vap) p._vap = [null, null];
       for (var s = 0; s < 2; s++) {
         var rb = p._vap[s];

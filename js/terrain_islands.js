@@ -11,7 +11,7 @@ window.WW = window.WW || {};
   'use strict';
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
   const PAD_H = 1.2;                 // airfield ground height above the sea
-  const RUN1 = 86, RUN2 = 60, RUN_W = 4.5, X_ANG = 0.95; // main / cross runway lengths, half width, crossing angle
+  const RUN1 = 86, RUN2 = 56, RUN_W = 4.5, X_ANG = 1.15; // main / cross runway lengths, half width, crossing angle
   // shelf: width (units) of the shallow ledge outside the coast; drop: width of the slope down to deep water
   const SHELF = { island: [6, 20], low: [8, 18], field: [8, 18], islet: [4, 15], spit: [3, 9], bar: [2.5, 7], reef: [3, 10] };
   let K = null;                      // terrain.js helpers: { rnd, rr, vnoise, smooth, BASE }
@@ -37,17 +37,19 @@ window.WW = window.WW || {};
   }
 
   // ---- the airfield: two crossing runways and an apron, on a flat 'field' island ----
-  function rect(cx, cz, h, hl, hw) { return { cx, cz, c: Math.cos(h), s: Math.sin(h), hl, hw }; }
+  // the field island (runways, taxiways, dispersal rows: airfield_layout.js); FIELD_U / FIELD_V: the soft pad (parking area)
+  const FIELD_RX = 80, FIELD_RZ = 70, FIELD_U = 74, FIELD_V = 64;
+  function rect(cx, cz, h, hl, hw, soft) { return { cx, cz, c: Math.cos(h), s: Math.sin(h), hl, hw, soft: !!soft }; }
   function airfield(cx, cz, h, kind, extra) {
-    const c = Math.cos(h), s = Math.sin(h), h2 = h + X_ANG, o2 = 14;   // the cross runway crosses the main one 14 ahead of its centre
+    const c = Math.cos(h), s = Math.sin(h), h2 = h + X_ANG, o2 = -36;  // the cross runway crosses the main one near its west end (the dispersal rows keep the rest)
     const r2x = cx + c * o2, r2z = cz + s * o2;
-    const ap = 17;                                                     // apron along the main runway, on its +lateral side
-    pads = [rect(cx, cz, h, RUN1 / 2 + 4, RUN_W + 3), rect(r2x, r2z, h2, RUN2 / 2 + 4, RUN_W + 3),
-      rect(cx - c * 6 - s * ap, cz - s * 6 + c * ap, h, 30, 10)];
+    const ap = 17;                                                     // (the old apron point, kept in the site for reference)
+    // forced pads: the two runways (always flat land); soft pad: the parking area, flattened where it is land already
+    pads = [rect(cx, cz, h, RUN1 / 2 + 4, RUN_W + 3), rect(r2x, r2z, h2, RUN2 / 2 + 4, RUN_W + 3), rect(cx, cz, h, FIELD_U, FIELD_V, true)];
     site = Object.assign({ kind, x: cx, z: cz, h, padH: PAD_H, apron: { x: cx - c * 6 - s * ap, z: cz - s * 6 + c * ap, h },
       runways: [{ x: cx, z: cz, h, len: RUN1, w: RUN_W * 2 }, { x: r2x, z: r2z, h: h2, len: RUN2, w: RUN_W * 2 }] }, extra || {});
-    // the flat island under it: long along the main runway, wide enough for the cross runway and the apron
-    return add('field', cx - s * 6, cz + c * 6, RUN1 / 2 + 15, 40, h, PAD_H + 0.5, true);
+    // the flat island under it: room for the runways, two parallel taxiways and dispersal rows on both sides
+    return add('field', cx, cz, FIELD_RX, FIELD_RZ, h, PAD_H + 0.5, true);
   }
 
   function makeAtoll() {
@@ -56,11 +58,11 @@ window.WW = window.WW || {};
     ring.w = 7; ring.gapA = K.rr(0, Math.PI * 2); ring.lagoon = -3.4;
     centres.push([cx, cz, R + 40]);
     // Eastern Island (the field) and Sand Island inside the ring, roughly opposite each other
-    const a1 = K.rr(0, Math.PI * 2), d1 = R * 0.38, fx = cx + Math.cos(a1) * d1, fz = cz + Math.sin(a1) * d1;
+    const a1 = K.rr(0, Math.PI * 2), d1 = R * 0.2, fx = cx + Math.cos(a1) * d1, fz = cz + Math.sin(a1) * d1;
     const h = a1 + Math.PI / 2 + K.rr(-0.5, 0.5);   // the main runway roughly along the ring
     airfield(fx, fz, h, 'atoll', { atoll: { x: cx, z: cz, R } });
-    const a2 = a1 + Math.PI + K.rr(-0.6, 0.6), d2 = R * 0.42;
-    add('low', cx + Math.cos(a2) * d2, cz + Math.sin(a2) * d2, R * K.rr(0.42, 0.5), R * K.rr(0.26, 0.32), a2 + Math.PI / 2 + K.rr(-0.4, 0.4), 2.4, true);
+    const a2 = a1 + Math.PI + K.rr(-0.5, 0.5), d2 = R * 0.62;
+    add('low', cx + Math.cos(a2) * d2, cz + Math.sin(a2) * d2, R * K.rr(0.32, 0.38), R * K.rr(0.17, 0.21), a2 + Math.PI / 2 + K.rr(-0.3, 0.3), 2.4, true);
     if (K.rnd() < 0.55) add('islet', cx + Math.cos(a1 + 1.7) * R * 0.55, cz + Math.sin(a1 + 1.7) * R * 0.55, 6, 5, K.rr(0, 3), 1.6, true); // a sandy cay
     second(220);
   }
@@ -70,7 +72,9 @@ window.WW = window.WW || {};
     add('island', cx, cz, rx, rz, rot, K.rr(9, 12), true);
     centres.push([cx, cz, rx + 30]);
     // the field on the flank: a coastal plain a little outside the island's long axis
-    const side = K.rnd() < 0.5 ? 1 : -1, a = rot + Math.PI / 2 * side + K.rr(-0.4, 0.4), d = rz * 0.85;
+    const s0 = K.rnd() < 0.5 ? 1 : -1, j = K.rr(-0.4, 0.4), d = rz + 55;   // the field: a coastal plain off the flank nearer the map's middle
+    const side = Math.abs(cz + Math.sin(rot + Math.PI / 2 * s0) * d - H / 2) <= Math.abs(cz + Math.sin(rot - Math.PI / 2 * s0) * d - H / 2) ? s0 : -s0;
+    const a = rot + Math.PI / 2 * side + j;
     let h = rot + K.rr(-0.25, 0.25);
     if (-Math.sin(h) * Math.cos(a) + Math.cos(h) * Math.sin(a) < 0) h += Math.PI; // the apron side (+lateral) faces the sea, not the mountain
     airfield(cx + Math.cos(a) * d, cz + Math.sin(a) * d, h, 'volcanic', { island: { x: cx, z: cz } });
@@ -146,21 +150,19 @@ window.WW = window.WW || {};
     return (1 + (sh[0] + sh[1]) / Math.min(rx, rz)) / 0.75 * Math.max(rx, rz) * 1.001 + 1;
   }
   // distance from (x, z) outside the nearest pad rectangle (0 inside)
-  function padDist(x, z) {
-    let best = 1e9;
-    for (const p of pads) {
-      const dx = x - p.cx, dz = z - p.cz, u = Math.abs(dx * p.c + dz * p.s) - p.hl, v = Math.abs(-dx * p.s + dz * p.c) - p.hw;
-      const e = Math.hypot(Math.max(0, u), Math.max(0, v));
-      if (e < best) best = e;
-    }
-    return best;
+  function rectDist(p, x, z) {
+    const dx = x - p.cx, dz = z - p.cz, u = Math.abs(dx * p.c + dz * p.s) - p.hl, v = Math.abs(-dx * p.s + dz * p.c) - p.hw;
+    return Math.hypot(Math.max(0, u), Math.max(0, v));
   }
+  function padDist(x, z) { let best = 1e9; for (const p of pads) { const e = rectDist(p, x, z); if (e < best) best = e; } return best; }
   // the pad: flat ground at PAD_H, blended into the island over 10 units
   function flatten(h, x, z) {
     if (!pads.length) return h;
-    const e = padDist(x, z);
-    if (e >= 10) return h;
-    return WW.lerp(h, PAD_H, K.smooth(10, 0, e));
+    let ef = 1e9, es = 1e9;
+    for (const p of pads) { const e = rectDist(p, x, z); if (p.soft) { if (e < es) es = e; } else if (e < ef) ef = e; }
+    if (es < 6 && h > 0) h = WW.lerp(h, PAD_H, K.smooth(6, 0, es) * K.smooth(0, 0.9, h)); // the parking area: land only
+    if (ef < 10) h = WW.lerp(h, PAD_H, K.smooth(10, 0, ef));                               // the runways: always flat land
+    return h;
   }
 
   WW.terrainIslands = { make, featureHeight, reach, flatten, padDist, PAD_H, get site() { return site; }, get features() { return features; } };
