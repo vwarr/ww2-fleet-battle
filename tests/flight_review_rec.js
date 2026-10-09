@@ -325,7 +325,7 @@ function install(opts) {
     const W = S.waves.map(w => Object.assign({}, w, { sepMin: w.sepMin === 1e9 ? null : +w.sepMin.toFixed(1) }));
     const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, sunk: S.sunk, boss: WW.airBoss ? JSON.parse(JSON.stringify(WW.airBoss.stats)) : null, tod: todOf(), deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
       fdir: S.fdir, foeFirst: ff, hang: S.hang, cvL: S.cvL, cvT: S.cvT, escPos: S.escPos, push: S.push, trace: S.trace, err: R.err, lastErr: R.lastErr || null,
-      cvSep0: S.cvSep0 || null, deck: S.deck, trapGap: S.trapGap, contact: S.contact, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
+      cvSep0: S.cvSep0 || null, met: WW.game && WW.game.metT !== undefined ? WW.game.metT : null, deck: S.deck, trapGap: S.trapGap, contact: S.contact, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
     return out;
   };
   WW.on('roundStart', () => { if (S) S.cvSep0 = cvSep(); });

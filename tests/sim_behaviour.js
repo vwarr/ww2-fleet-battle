@@ -543,6 +543,7 @@ function install(P) {
       cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
     if (out.cv.brkMin === 1e9) out.cv.brkMin = null;
+    out.met = G.metT === undefined ? null : G.metT; out.holdEnd = WW.fleetCmd && WW.fleetCmd.side ? { USN: (WW.fleetCmd.side("USN") || {}).holdEnd || 0, IJN: (WW.fleetCmd.side("IJN") || {}).holdEnd || 0 } : null; // fleets met (main.js metT), end of the air-war hold
     out.label = spec.label || null; out.A = spec.A || null; out.B = spec.B || null; out.endReason = G.endReason || null; out.firstDmg = R.firstDmg; out.dmgSum = Math.round(R.dmgSum);
     out.forms = R.forms; out.syncN = R.syncN; out.ptNN = R.ptNN;
     const SS = WW.search && WW.search.stats;

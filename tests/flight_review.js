@@ -238,7 +238,9 @@ function report(rounds) {
   say('\n== 6. ATTACKS ==');
   const D = []; for (const r of rounds) if (r.rec) for (const d of r.rec.drops) D.push(d);
   const hitR = G => { const g = G.filter(d => d.hit); return g.length ? g.filter(d => d.hit === 'tgt' || d.hit === 'other').length / g.length : null; };
-  const db = D.filter(d => d.kind === 'bomb' && !d.level && d.pk === 'dive');
+  // dive hit rate on ships only: a bomb on the island base has no ship to hit (weaponImpact: 'miss'), counted apart
+  const db = D.filter(d => d.kind === 'bomb' && !d.level && d.pk === 'dive' && d.tt !== 'base');
+  for (const n of ['USN', 'IJN']) { const B = D.filter(d => d.kind === 'bomb' && d.n === n && d.tt === 'base'); if (B.length) say(`${n} bombs at the island base: ${B.length} (${pc(B.length / Math.max(1, D.filter(d => d.kind === 'bomb' && d.n === n).length))} of its bombs; carrier planes ${B.filter(d => d.o === 'cv').length})`); }
   for (const n of ['USN', 'IJN']) {
     const G = db.filter(d => d.n === n); if (!G.length) continue;
     const o = { n: G.length, push: med(G.map(d => d.push).filter(x => x !== null)), relY: med(G.map(d => d.y)), relYp10: qs(G.map(d => d.y), 0.1), angle: med(G.map(d => -d.fpa)), angleP10: qs(G.map(d => -d.fpa), 0.1), spd: med(G.map(d => d.spd)), rollT: med(G.map(d => d.rollT).filter(x => x !== null)), hit: hitR(G) };
@@ -267,6 +269,11 @@ function report(rounds) {
   const lg = {}; for (const d of DE) if (d.o === 'cv' || d.o === 'base') { const k = `${d.n} ${d.k}`; const g = lg[k] || (lg[k] = { n: 0, cause: {}, ph: {}, armed: 0 }); g.n++; g.cause[d.cause] = (g.cause[d.cause] || 0) + 1; g.ph[d.ph] = (g.ph[d.ph] || 0) + 1; if (d.armed) g.armed++; }
   out.losses = lg;
   for (const k of Object.keys(lg).sort()) say(`  ${pad(k, 14)} ${lp(lg[k].n, 4)}  ${JSON.stringify(lg[k].cause)}  armed ${lg[k].armed}  ${JSON.stringify(lg[k].ph)}`);
+  for (const n of ['USN', 'IJN']) { // AA share of the strike planes shot down (PLANE_REVIEW 5: 25 to 40%); losses with the carrier, ditchings apart
+    const G = DE.filter(d => (d.o === 'cv' || d.o === 'base') && d.n === n && (d.k === 'dive' || d.k === 'torpedo') && (d.cause === 'aa' || d.cause === 'fighter'));
+    const a = G.filter(d => d.cause === 'aa').length; out.losses['aaShare_' + n] = G.length ? a / G.length : null;
+    say(`  ${n} strike planes shot down: ${G.length} (AA ${a}, ${pc(a / Math.max(1, G.length))}; fighters ${G.length - a})`);
+  }
   const sorAll = S.filter(s => s.o === 'cv' && s.role === 'strike');
   say(`per round with carriers: plane losses ${f1(DE.filter(d => d.o === 'cv').length / Math.max(1, cvRounds.length))}, strike sorties ${f1(sorAll.length / Math.max(1, cvRounds.length))}, drops ${f1(D.filter(d => d.o === 'cv').length / Math.max(1, cvRounds.length))}`);
 
@@ -299,6 +306,14 @@ function report(rounds) {
   out.pacing.byScen = {};
   for (const sc of [...new Set(cvRounds.map(r => r.scen))]) { const R = cvRounds.filter(r => r.scen === sc), F = R.map(r => r.rec.first); out.pacing.byScen[sc] = { rounds: R.length, airFirst: F.filter(F => F.drop !== undefined && (F.gun === undefined || F.drop < F.gun)).length, dropP50: med(F.map(F => F.drop).filter(x => x !== undefined)), gunP50: med(F.map(F => F.gun).filter(x => x !== undefined)), contactP50: med(R.map(ct).filter(x => x !== null)) };
     const o = out.pacing.byScen[sc]; say(`  ${pad(sc, 14)} air drop before fleet gunfire in ${o.airFirst}/${o.rounds} rounds; contact p50 ${f1(o.contactP50)} s, first drop p50 ${f1(o.dropP50)} s, first fleet gunfire p50 ${f1(o.gunP50)} s`); }
+  { // fleets met (main.js game.metT: a fleet ship's shell at an enemy fleet ship; not PT pickets or subs), per scenario
+    const by = {}; for (const r of cvRounds) { const o = by[r.scen] || (by[r.scen] = { n: 0, met: 0, t: [] }); o.n++; if (r.rec.met !== null && r.rec.met !== undefined) { o.met++; o.t.push(r.rec.met); } }
+    const all = Object.values(by).reduce((a, o) => ({ n: a.n + o.n, met: a.met + o.met }), { n: 0, met: 0 });
+    out.pacing.met = { rounds: all.n, met: all.met, byScen: by };
+    say(`fleets met (game.metT) in ${all.met}/${all.n} carrier rounds (${pc(all.met / Math.max(1, all.n))}): ` + Object.keys(by).map(k => `${k} ${by[k].met}/${by[k].n} (p50 ${f1(med(by[k].t))} s)`).join(', '));
+    const ends = {}; for (const r of cvRounds) ends[r.end] = (ends[r.end] || 0) + 1;
+    say(`end reasons (carrier rounds): ${JSON.stringify(ends)}`);
+  }
   out.pacing.contactP50 = med(cvRounds.map(ct).filter(x => x !== null));
   say(`first enemy ship contact (either side) p50 ${f1(out.pacing.contactP50)} s`);
   { // early flight ops: the first launch (CAP, search, strike) within LAUNCH_BY s of the light allowing it (night rounds: never)
