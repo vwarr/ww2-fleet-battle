@@ -95,10 +95,11 @@ window.WW = window.WW || {};
   // first sighting (or one regained after T.REGAIN), from WW.rand, with the
   // side's doctrine rates (fleet_groups.js reportErr / misId). A visual sighting by a ship, or an air observer within
   // R.CLOSE_ID, puts it right. contact.reportedType / misid / err; events 'report' and 'misidResolved'.
+  var NOREP = typeof location !== 'undefined' && location.search.includes('norep');
   var AIRQ = { scout: 1, air: 1.25, patrol: 1 };                                   // carrier aircrews: not trained observers
   var MISTAKE = { cruiser: ['carrier', 1], destroyer: ['cruiser', 1], battleship: ['carrier', 0.6], carrier: ['battleship', 0.4] };
   function report(nation, c, u, by, q, now, first) {
-    if (!AIRQ[q]) {   // a ship's own eyes / radar / sonar: exact, and the type is plain
+    if (!AIRQ[q] || NOREP) {   // a ship's own eyes / radar / sonar: exact, and the type is plain
       c.x = u.x; c.z = u.z;
       if (c.misid) resolve(nation, c, u, by);
       c.ex = c.ez = 0; c.err = 0; c.reportedType = u.type; c.repBy = null;

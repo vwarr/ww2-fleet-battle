@@ -59,15 +59,9 @@ const ONLY = arg('--only'), SEED = +(arg('--seed') || 1);
       await p.evaluate(([ox, oy, oz]) => { window.__view = c => { const q = window.__q, h = q.heading, ch = Math.cos(h), sh = Math.sin(h); c.position.set(q.x + ch * ox - sh * oz, Math.max(2, q.y + oy), q.z + sh * ox + ch * oz); c.lookAt(q.x, q.y, q.z); }; }, [ox, oy, oz]);
       await p.waitForTimeout(900); await p.screenshot({ path: SH(name) });
     };
-    let r = await until("q.mission === 'patrol' && q.state === 'shadow' && q.nation === 'IJN'", 400);
-    console.log('shadow:', r);
-    if (r) {
-      await follow('live_mavis_shadow', -30, 14, 22);
-      await p.evaluate(() => { const q = window.__q, s = q.shadowOf; window.__view = c => { c.position.set(q.x + (q.x - s.x) * 0.35, q.y + 22, q.z + (q.z - s.z) * 0.35 + 10); c.lookAt((q.x + s.x) / 2, 0, (q.z + s.z) / 2); }; });
-      await p.waitForTimeout(900); await p.screenshot({ path: SH('live_shadow_standoff') });
-    }
+    let r = null;
     r = await until("q.mission === 'patrol' && q.nation === 'IJN' && WW.world.planes.some(f => f.alive && f.foe === q && WW.dist(f.x, f.z, q.x, q.z) < 40)", 200)
-      || await until("q.mission === 'patrol' && WW.world.planes.some(f => f.alive && f.foe === q && WW.dist(f.x, f.z, q.x, q.z) < 60)", 200);
+      || (process.argv.includes('--anycap') ? await until("q.mission === 'patrol' && WW.world.planes.some(f => f.alive && f.foe === q && WW.dist(f.x, f.z, q.x, q.z) < 60)", 200) : null);
     console.log('cap on patrol:', r);
     if (r) for (let i = 0; i < 3; i++) {   // behind the fighter, looking past it at the flying boat
       const ok = await p.evaluate(() => { const v = window.__q, f = WW.world.planes.find(f => f.alive && f.foe === v); if (!f) return false;
@@ -75,6 +69,13 @@ const ONLY = arg('--only'), SEED = +(arg('--seed') || 1);
       if (!ok) break;
       await p.waitForTimeout(300); await p.screenshot({ path: SH('live_cap_attack' + i) });
       await p.evaluate(() => __sim.fastForward(0.6));
+    }
+    r = await until("q.mission === 'patrol' && q.state === 'shadow' && q.nation === 'IJN'", 400);
+    console.log('shadow:', r);
+    if (r) {
+      await follow('live_mavis_shadow', -30, 14, 22);
+      await p.evaluate(() => { const q = window.__q, s = q.shadowOf; window.__view = c => { c.position.set(q.x + (q.x - s.x) * 0.35, q.y + 22, q.z + (q.z - s.z) * 0.35 + 10); c.lookAt((q.x + s.x) / 2, 0, (q.z + s.z) / 2); }; });
+      await p.waitForTimeout(900); await p.screenshot({ path: SH('live_shadow_standoff') });
     }
     r = await until("q.mission === 'rescue' && q.state === 'afloat' && q.waterT > 7", 500);
     console.log('rescue landed:', r);

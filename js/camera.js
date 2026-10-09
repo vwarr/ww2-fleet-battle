@@ -321,8 +321,9 @@ window.WW = window.WW || {};
       else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; }
       else {
         // heavy easing for the director, crisp for the user; action shots set their own (crisper) rates
-        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 : (shot && shot.kP) || 0.9)));
-        L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 : (shot && shot.kL) || 1.3)));
+        const soft = manual && WW.freecam.soft ? WW.freecam.soft() : 1; // eased right after the user takes over
+        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 * soft : (shot && shot.kP) || 0.9)));
+        L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 * soft : (shot && shot.kL) || 1.3)));
         // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)
         if (!manual && !cam.isOverview() && P.y < 14) { _c.copy(P); clearHulls(_c, 14); P.lerp(_c, (1 - Math.exp(-rdt * 6)) * Math.min(1, (14 - P.y) / 4)); }
       }

@@ -77,7 +77,7 @@ window.WW = window.WW || {};
       '<p><u>Aircraft lost</u> ' + s.planes + '</p>' +
       (s.mvp ? '<p><u>Ship of the day</u> ' + esc(s.mvp) + '</p>' : '') + (s.ace ? '<p><u>Top pilot</u> ' + esc(s.ace) + '</p>' : '') + '</div>';
     return '<div class="stamp">Secret</div><div class="hd">Action Report</div>' +
-      '<div class="meta">Round ' + r.round + ' · ' + r.t0 + '–' + r.t1 + ' hrs</div>' +
+      '<div class="meta">' + r.t0 + '–' + r.t1 + ' hrs</div>' +
       '<div class="res">' + (r.winner ? esc(r.winner) + ' victory' : 'No decision') + '<span>' + esc(r.how) + '</span></div>' +
       '<div class="cols">' + col(r.sides[0]) + col(r.sides[1]) + '</div>' +
       (r.key.length ? '<div class="km"><u>Key moments</u>' + r.key.map(e => '<div><b>' + e.clock + '</b> ' + esc(e.text) + '</div>').join('') + '</div>' : '') +

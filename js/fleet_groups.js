@@ -86,6 +86,7 @@ window.WW = window.WW || {};
     return d;
   }
 
+  var CV_LO = 0.2, CV_HI = 0.33; // carrier station band, share of the width in from its own edge
   var CRIP = 0.35; // below this hp share a ship withdraws (ships_ai.js reads WW.fleetGroups.CRIP too)
   // Groups: main (battle line), carrier (CV + escorts), screen (ASW, ahead of main), flotilla (torpedo DDs),
   // pt (ambush), sub (patrol). Roles: line, carrier, escort, asw, torpedo, ambush, patrol, withdraw.
@@ -176,10 +177,12 @@ window.WW = window.WW || {};
         // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
         // room to run in every direction
         // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
-        var wd = B.posture === 'withdraw', lo = wd || van ? 0.08 : 0.15, hi = wd ? 0.1 : 0.35;
+        // CV_LO..CV_HI of the width in from its own edge, withdrawing or not: a broken side's carrier then has a long
+        // run home (ai_endgame.js), and a pursuer a real window to catch it (user, Oct 2026)
+        var wd = B.posture === "withdraw", lo = van && !wd ? Math.min(0.08, CV_LO) : CV_LO, hi = CV_HI; // van: the IJN vanguard holds its carriers back (doctrine) // withdrawing too: the run home starts at the break (ai_endgame.js)
         if (wd) p.z = q.z; // straight home, not across the front
         p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
-        cvSafe(B, p, ownX === 0 ? W * 0.06 : W * 0.65, ownX === 0 ? W * 0.35 : W * 0.94);
+        cvSafe(B, p, ownX === 0 ? W * 0.06 : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * 0.94); // safety may slide it home
         set(q, p); return;
       }
       if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
