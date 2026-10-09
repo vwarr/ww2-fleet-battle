@@ -199,9 +199,10 @@ window.WW = window.WW || {};
   const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 15, STALE_T = 30, STALE_AIR = 75;
   const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 }, harmT = { USN: 0, IJN: 0 }, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
   WW.on('shipHit', e => { if (e && e.ship && harmT[e.ship.nation] !== undefined) harmT[e.ship.nation] = game.roundTime; });
-  WW.on('shellFired', e => { // the fleets have met: a ship's gun (not MG) fired at an enemy ship (not the island's coastal batteries)
+  const FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 }; // the surface fleets (not PT pickets, submarines or the island's batteries)
+  WW.on('shellFired', e => { // the fleets have met: a fleet ship's gun (not MG) fired at an enemy fleet ship
     const t = e && e.proj && e.proj.target;
-    if (game.metT === null && game.state === 'battle' && e.cal !== 'mg' && e.ship && !e.ship.isBase && e.ship.stats && e.ship.type !== 'battery' && t && t.stats && !t.isBase && t.type !== 'battery' && t.nation !== e.ship.nation) game.metT = game.roundTime;
+    if (game.metT === null && game.state === 'battle' && e.cal !== 'mg' && e.ship && FLEET[e.ship.type] && !e.ship.isBase && t && FLEET[t.type] && !t.isBase && t.nation !== e.ship.nation) game.metT = game.roundTime;
   });
   // the broken side n is out of the enemy's reach: no enemy gun ship within CLEAR_R, no armed enemy bomber within
   // CLEAR_AIR or bound for one of its ships (its own target or its wave's)
