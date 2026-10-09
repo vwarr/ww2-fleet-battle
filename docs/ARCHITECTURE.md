@@ -179,6 +179,9 @@ node tests/determinism.js [seed] [seconds]           # same seed, same round: on
 node tests/determinism.js --cross 1,2,3 300          # full rendered page vs sim-only page vs node runner (--modes browser,node: skip the render)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
 node tests/sim_profile.js [rounds] [seed] [secs] --prof [--lines] [--root DIR]   # per-round time, CPU profile of the sim (--root: A/B against another checkout)
+node tests/flight_review.js [--seeds 5] [--only standard,carrier_duel,midway,night] [--check] [--trace SCEN:SEED]   # plane flight data: kinematics, circling, formations, CAP, attacks, pacing, deck ops (docs/PLANE_REVIEW.md)
+node tests/flight_tracks.js tests/shots/flight_trace_SCEN_SEED.json [window] [maxT]   # top-down plane track maps from a --trace round (CHROMIUM)
+node tests/flight_shots.js [seed] [opening,cap,circle,story,intercept,dogfight,dive,torp,escort]   # render-mode air scenes (tests/shots/flight/)
 node tests/sim_behaviour.js --only night,dusk,weather   # night and weather scenarios and metrics
 TOD=night WX=line node tests/determinism.js --cross 3,4 250   # force the time of day / the weather
 node tests/night_shots.js [seed] [seq,duel,squall]   # dusk / night / squall screenshots (render mode)
