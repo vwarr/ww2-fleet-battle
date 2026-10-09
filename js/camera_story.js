@@ -255,7 +255,8 @@ window.WW = window.WW || {};
     }
     const shot = WW.cam._shot();
     if (!S.begun) { // waiting for the director's current shot to end; an imminent attack cuts in (not into an action / test shot)
-      if (S.imminent && shot && !shot.stage && !shot.story && shot.t > 4 && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
+      if (!S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
+      if (S.imminent && shot && !shot.stage && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
       return;
     }
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
