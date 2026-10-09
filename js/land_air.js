@@ -252,10 +252,17 @@ window.WW = window.WW || {};
         WW.emit('baseEvent', { kind: 'divert', base: b, nation: b.nation, x: p.x, z: p.z, plane: p, carrier: cv });
         return;
       }
-      p.ditchTo = ship ? { ship } : b.ditch ? { x: b.ditch.x, z: b.ditch.z } : { x: p.x, z: p.z };
+      p.ditchTo = ship ? { ship, x: ship.x, z: ship.z } : b.ditch ? { x: b.ditch.x, z: b.ditch.z } : { x: p.x, z: p.z };
     }
-    const tg = p.ditchTo.ship && p.ditchTo.ship.alive ? p.ditchTo.ship : p.ditchTo, tx = tg.x, tz = tg.z;
-    const d = WW.dist(p.x, p.z, tx, tz), off = p.ditchTo.ship ? 22 : 0;
+    const D = p.ditchTo;
+    if (D.ship && D.ship.alive && !D.ship.sinking) { D.x = D.ship.x; D.z = D.ship.z; }
+    else if (D.ship) { // the ship it was making for has gone: the next nearest friendly ship, else its last position
+      let best = null, bd = 1e9;
+      for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation === p.nation && s.type !== 'submarine') { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
+      if (best) { D.ship = best; D.x = best.x; D.z = best.z; } else { D.ship = null; if (D.x === undefined) { D.x = p.x; D.z = p.z; } }
+    }
+    const tx = D.x, tz = D.z;
+    const d = WW.dist(p.x, p.z, tx, tz), off = D.ship ? 22 : 0;
     p.fly(tx, tz, d > 60 ? 18 : 6, dt, p.pt.speed * 0.75);
     if ((d < off + 8 && WW.terrain.depthAt(p.x, p.z) > 1.5) || WW.time.now - p.leaveT > 150) { ST.ditched++; p.ditch(); }
   }
