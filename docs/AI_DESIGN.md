@@ -93,6 +93,7 @@ Goal (user): World-of-Warships feel. Each type plays its role and avoids fights 
 ### Dive and torpedo bombers
 - Strike target: the commander's choice, using intel (detected or last-known). Retargets to a better or crippled target in the same area if the original is gone or hidden. Avoids flying through heavy AA umbrellas en route (route around the detected AA field).
 - Damaged or attacked by fighters with no escort: jettison and RTB. Torpedo bombers keep the anvil; dive bombers keep the wheel.
+- The air staff (air_staff.js, Oct 2026): strikes fly a plotted route to an initial point on the side of the target away from the known AA (out of a low sun, through cloud), round the enemy island base and remembered CAP; the escort follows the expected CAP, the CAP and a commitment ceiling keep a carrier from emptying itself, a costly strike shrinks the next, a mauled air group goes defensive, and a strike caught by overwhelming fighters with a thin escort breaks off (IJN presses longer). See ARCHITECTURE.md "The air staff".
 
 ### Scout floatplanes
 - Search sectors assigned by the commander, where contacts are stale or missing. Report contacts into intel. Avoid known CAP.
