@@ -68,6 +68,7 @@ window.WW = window.WW || {};
       this.bowDepth = Math.max(WW.shipNav.HARD + 0.4, st.minDepth * 0.6); // planner: hull ends/sides keep this much water
       this.depthY = this.submerged ? SUB_DEPTH : 0;
       this.hangar = st.planes ? { fighter: st.planes.fighter, dive: st.planes.dive, torpedo: st.planes.torpedo } : null;
+      if (this.hangar && WW.airBoss) this.hangar = WW.airBoss.group(this, this.hangar); // air group size (air_boss.js TUNE.wing)
       this.baseColors = this.model.hullMats.map(m => (m.color ? m.color.clone() : null));
       if (type === 'submarine') this.model.hullMats.forEach(m => { m.transparent = true; });
       this.applyLook();
