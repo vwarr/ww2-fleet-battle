@@ -35,8 +35,9 @@ const SCEN = {
           const tg = q.target || (q.wave && q.wave.target); if (tg && tg.nation === n) { inb++; if (B.brokenAt) line.push(`  ${q.kind} ${q.state || q.phase || q.mission} y${q.y.toFixed(0)} d${WW.dist(q.x, q.z, tg.x, tg.z).toFixed(0)} tgt ${tg.type}${tg.alive ? '' : ' DEAD'} wave ${q.wave ? q.wave.id + ':' + (q.wave.state || q.wave.phase) : '-'}`); } else near++;
         }
         const ns = S.filter(s => s.alive && s.nation === n).map(s => { const o = B.orders.get(s.id); return s.type[0] + (s.hp / s.maxHp).toFixed(1) + (process.env.POS ? '@' + s.x.toFixed(0) + ',' + s.z.toFixed(0) + (o ? ':' + o.role + (s.target ? '>' + s.target.type[0] : '') + (isFinite(o.sx) ? '→' + o.sx.toFixed(0) + ',' + o.sz.toFixed(0) : '') : '') : ''); }).join(' ');
-        const ptSeen = WW.intel.enemyShips(n).filter(c => c.by && c.by.type === 'pt' && WW.time.now - c.seenAt < 3).length;
-        line.push(`${n} ${B.posture}${ptSeen ? ' ptSees ' + ptSeen : ''}${B.airWar ? ' HOLD' : ''}${B.brokenAt ? ' brk' + B.brokenAt.toFixed(0) : ''} gun ${gd.toFixed(0)} inb ${inb}/${near} [${ns}]`);
+        const ptD = S.filter(s => s.alive && s.nation === n && s.type === 'pt').map(s => { let d = 1e9; for (const e of S) if (e.alive && e.nation !== n && e.type !== 'pt' && e.type !== 'submarine' && !e.isBase && e.stats) d = Math.min(d, WW.dist(s.x, s.z, e.x, e.z)); return d.toFixed(0) + (s.ai && s.ai.lt ? ':' + s.ai.lt.state : ''); }).join('/');
+        const ptSeen = WW.intel.enemyShips(n).filter(c => c.by && c.by.type === 'pt' && c.unit.type !== 'pt' && WW.time.now - c.seenAt < 3).length; // big ships (not the enemy's PTs) a PT of ours reports now
+        line.push(`${n} ${B.posture}${ptSeen ? ' ptSees ' + ptSeen : ''}${ptD ? ' ptD ' + ptD : ''}${B.airWar ? ' HOLD' : ''}${B.brokenAt ? ' brk' + B.brokenAt.toFixed(0) : ''} gun ${gd.toFixed(0)} inb ${inb}/${near} [${ns}]`);
       }
       window.__shapeLog.push(line.join(' | '));
     };
