@@ -153,15 +153,18 @@ window.WW = window.WW || {};
   };
 
   // Per-class stats: the type's per-nation stats (core.js WW.shipType) shaded by the class. Cached per class.
-  var cache = {};
+  var cache = {}, SPD_K = 0.03, TURN_K = 0.05;
   WW.classStats = function (base, c) {
     if (!c) return base;
     var key = c.key, hit = cache[key];
     if (hit && hit._base === base) return hit;
     var st = Object.assign({}, base), md = c.mod;
     st.cls = c.key; st.className = c.name; st.length = c.len; st.beam = c.beam; st.tons = c.tons;
-    st.hp = Math.round(base.hp * (md.hp || 1)); st.speed = +(base.speed * (md.speed || 1)).toFixed(3);
-    st.turn = +(base.turn * (md.turn || 1)).toFixed(4);
+    // speed and turn shading is capped (SPD_K / TURN_K): speed moves distances, and a slow Kaga run down at night by
+    // a fast Kongo broke the carrier stand-off (sim_behaviour night cv_min_dist). The table keeps the true ratios.
+    st.hp = Math.round(base.hp * (md.hp || 1));
+    st.speed = +(base.speed * WW.clamp(md.speed || 1, 1 - SPD_K, 1 + SPD_K)).toFixed(3);
+    st.turn = +(base.turn * WW.clamp(md.turn || 1, 1 - TURN_K, 1 + TURN_K)).toFixed(4);
     if (base.aa) st.aa = Object.assign({}, base.aa, { dps: base.aa.dps * (md.aa || 1) });
     if (c.guns) {
       st.guns = c.guns.map(function (g) {
