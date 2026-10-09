@@ -40,13 +40,13 @@ When the game opens, it makes a new map and places two random fleets. The fleets
 Each battle stands alone. During the battle, the panel is not shown. Only three small buttons (menu, fullscreen and sound) show at the top left. In fullscreen, these buttons are hidden too; push `H` for the panel.
 
 - The camera works like a film director. It selects an interesting subject and films it with a slow, smooth shot.
-  Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight and a battleship that fires.
+  Subjects are, for example, a ship that sinks, a torpedo attack, a dive-bomb attack, a carrier that launches planes, a dogfight, a battleship that fires and a Catalina landing among survivors.
 - A battle ends when one side has no ships. A caption shows the winner and the ships that each side lost.
 - A battle has a time limit of 14 minutes at 1× speed. At the time limit, the side with more tonnage wins.
 - After the caption, the game goes back to the start: a new map with fleets placed and waiting. If you placed your own fleets, the game keeps them.
 
 The game runs at a calm pace: at 1× speed, the ships and planes move at half of their normal speed.
-The fleets start on opposite sides of a large map, so each battle begins with an approach: the carriers launch strikes and the scouts search first. The light forces meet after about a minute, and the big guns open after about three minutes.
+The fleets start on opposite sides of a large map, so each battle begins with an approach: the carriers launch strikes and the scouts search first. Long-range flying boats come in from off the map: a PBY Catalina or an H6K Mavis searches and shadows the enemy fleet from a distance (fighters hunt them), and a Catalina "Dumbo" lands beside downed airmen and sailors to pick them up. Air sighting reports can be wrong: a cruiser reported as a carrier sends a strike to the wrong ship. The light forces meet after about a minute, and the big guns open after about three minutes.
 A typical battle lasts 9 to 13 minutes at 1× speed.
 
 ## Auto battles (screensaver)

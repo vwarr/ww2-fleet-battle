@@ -10,9 +10,9 @@ function launch(chromium, render = RENDER) {
   const args = render ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--disable-gpu'];
   return chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args });
 }
-// page URL; query: extra flags such as 'auto'
+// page URL; query: extra flags such as 'auto'; env Q: more flags for A/B runs (e.g. Q=nopatrol, air_patrol.js)
 function url(query, render = RENDER) {
-  return BASE + 'index.html?' + (render ? '' : 'sim&') + (query ? query + '&' : '') + 'v=' + Date.now();
+  return BASE + 'index.html?' + (render ? '' : 'sim&') + (query ? query + '&' : '') + (process.env.Q ? process.env.Q + '&' : '') + 'v=' + Date.now();
 }
 // how long a fresh page settles before a test takes over (the full game compiles shaders on its first frames)
 const settle = (render = RENDER) => (render ? 1500 : 100);

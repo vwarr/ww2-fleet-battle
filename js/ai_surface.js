@@ -93,8 +93,9 @@ window.WW = window.WW || {};
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
     if (aaCover(ship, t, o, B)) { /* steaming to the raided carrier */ }
     else if (!t || (o && H.unreachable(ship, t)) || homeWaters(ship, t, B)) { // nothing to shoot, a carrier that outruns us
-      const pc = B && B.posture === 'press' ? pressContact(ship) : null;
-      if (pc) closeOn(ship, pc, B);
+      const pur = B && B.posture === 'pursue' && WW.endgameAI;
+      const pc = pur ? WW.endgameAI.pursueContact(ship, B) : B && B.posture === 'press' ? pressContact(ship) : null;
+      if (pc) closeOn(ship, pc, B, pur);
       else if (o) followStation(ship, o, B); else H.idle(ship);
     } else engage(ship, t, o, B);
     if (t) torpedoes(ship, t, B);
@@ -120,9 +121,9 @@ window.WW = window.WW || {};
     const st = ship.stats, main = st.guns[0];
     let pref = main ? main.range * (B ? B.doctrine.rangeFrac : 0.8) : 60;
     if (st.torpedoes && ship.type === 'destroyer') pref = Math.min(pref, st.torpedoes.range * 0.6);
-    if (B && B.posture === 'press') pref *= 0.72 + 0.15 * (1 - B.doctrine.night);
+    if (B && (B.posture === 'press' || B.posture === 'pursue')) pref *= 0.72 + 0.15 * (1 - B.doctrine.night);
     else if (B && B.posture === 'withdraw') pref *= 1.15;
-    if (t && t.type === 'carrier') pref = Math.max(pref, CV_KEEP + 5);
+    if (t && t.type === 'carrier' && !fair(ship, t, B)) pref = Math.max(pref, CV_KEEP + 5);
     return pref;
   }
   // Gun fight: orbit the target at the preferred range, holding a pure broadside within +-BAND of it. The orbit
@@ -144,7 +145,7 @@ window.WW = window.WW || {};
     if (d > pref * 1.3) { h = b + a.orbitDir * 0.3; ship.throttle = 1; }
     else if (d < pref * 0.6) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
     else { h = b + a.orbitDir * (PI / 2 - WW.clamp(e, -0.5, 0.5) * 1.4); ship.throttle = Math.abs(e) > 0.15 ? 1 : 0.8; }
-    if (o && !(B && B.posture === 'press' && o.role !== 'escort')) {
+    if (o && !(B && (B.posture === 'press' || B.posture === 'pursue') && o.role !== 'escort')) {
       const ds = WW.dist(ship.x, ship.z, o.sx, o.sz), esc = o.role === 'escort';
       if (ds > (esc ? 60 : 110)) h = blend(h, ship, o.sx, o.sz, esc ? 0.6 : 0.3);
     } else if (!o && a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 40) h = blend(h, ship, a.cx, a.cz, 0.35);
@@ -158,7 +159,7 @@ window.WW = window.WW || {};
   function torpedoRun(ship, t, o, B, d, b) {
     const a = ship.ai, tp = ship.stats.torpedoes, now = WW.time.now;
     const L = tp.range * (B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8), sec = t.stats.guns[1] || t.stats.guns[0];
-    const minD = Math.max(L * 0.8, (sec ? sec.range : 60) + 8, t.type === 'carrier' ? CV_KEEP : 0);
+    const minD = Math.max(L * 0.8, (sec ? sec.range : 60) + 8, t.type === 'carrier' && !fair(ship, t, B) ? CV_KEEP : 0);
     if (o && o.group === 'flotilla') a.orbitDir = o.slot % 2 ? -1 : 1;
     let h;
     ship.throttle = 1;
@@ -181,7 +182,7 @@ window.WW = window.WW || {};
   // (fireSpread holds fire when an ally is in the fan). A destroyer then turns away (torpedoRun).
   function torpedoes(ship, t, B) {
     const st = ship.stats, a = ship.ai;
-    if (!st.torpedoes || a.torpReload > 0 || t.submerged) return;
+    if (!st.torpedoes || a.torpReload > 0 || t.submerged || t.type === 'submarine') return; // a sub is depth-charged or shot, not torpedoed
     const d = WW.dist(ship.x, ship.z, t.x, t.z), k = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8;
     if (d < st.torpedoes.range * k && d > 12 && seen(ship, t) && H.fireSpread(ship, t) && ship.type === 'destroyer') a.runOut = WW.time.now + RUN_OUT;
   }
@@ -211,12 +212,14 @@ window.WW = window.WW || {};
   // Pressing: a target out of gun range inside the enemy's home waters is not chased (the press holds at the edge
   // of that band; a broken enemy that gets home retires, main.js).
   function homeWaters(ship, t, B) {
-    if (!B || B.posture !== 'press' || !t) return false;
+    if (!B || B.posture !== 'press' || !t) return false; // (not while pursuing: a broken enemy is run down to its edge)
     const W = WW.cfg.MAP_W, foeHome = ship.nation === 'USN' ? W : 0, g = ship.stats.guns[0];
     return Math.abs(t.x - foeHome) < W * HOME_K && WW.dist(ship.x, ship.z, t.x, t.z) > (g ? g.range : 60);
   }
-  function closeOn(ship, c, B) {
-    const age = Math.min(20, WW.time.now - c.seenAt), px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;
+  // Pursuing: aim ahead of a running contact, where it will be when we get there (at most 60 s on).
+  function closeOn(ship, c, B, pursuit) {
+    const lead = pursuit ? WW.dist(ship.x, ship.z, c.x, c.z) / ship.stats.speed : 0;
+    const age = Math.min(pursuit ? 60 : 20, WW.time.now - c.seenAt + lead), px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;
     ship.throttle = 1;
     const want = Math.atan2(pz - ship.z, px - ship.x);
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
@@ -304,13 +307,15 @@ window.WW = window.WW || {};
     a.withdrawing = true;
     return true;
   }
-  // Never close inside CV_KEEP of a known enemy carrier (contact <= 10 s old): steer off it.
+  // Never close inside CV_KEEP of a known enemy carrier (contact <= 10 s old): steer off it. Pursuing, a carrier
+  // that is fair game (crippled, slowed or unescorted: ai_endgame.js) is run down instead.
+  function fair(ship, cv, B) { return !!(WW.endgameAI && WW.endgameAI.fairGame(ship, cv, B)); }
   function keepOffCarriers(ship) {
     if (!WW.intel) return;
-    const now = WW.time.now;
+    const now = WW.time.now, B = WW.fleetCmd && WW.fleetCmd.side(ship.nation);
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const u = c.unit;
-      if (!u || u.type !== 'carrier' || !u.alive || now - c.seenAt > 10) continue;
+      if (!u || u.type !== 'carrier' || !u.alive || now - c.seenAt > 10 || fair(ship, u, B)) continue;
       const age = WW.time.now - c.seenAt, px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;
       const d = WW.dist(ship.x, ship.z, px, pz);
       if (d < CV_KEEP * 1.15) ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - px, 2 * ship.z - pz, d < CV_KEEP ? 6 : 1.5);

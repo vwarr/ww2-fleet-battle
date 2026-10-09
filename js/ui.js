@@ -111,7 +111,7 @@ window.WW = window.WW || {};
   }
   // victory subtitle: ships each side lost in this battle
   function lossLine() {
-    const lost = n => WW.world.ships.filter(s => s.nation === n && !s.alive).length;
+    const lost = n => (WW.endgame && WW.endgame.stats ? WW.endgame.stats.sunk[n] : WW.world.ships.filter(s => s.nation === n && !s.alive && !s.escaped).length); // sunk this round (escapes are not losses)
     const sh = k => k === 1 ? ' ship' : ' ships';
     return 'USN lost ' + lost('USN') + sh(lost('USN')) + '  \u00b7  IJN lost ' + lost('IJN') + sh(lost('IJN'));
   }

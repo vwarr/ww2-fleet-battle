@@ -55,6 +55,8 @@ window.WW = window.WW || {};
         else if (p.state === 'attack' && p.foe && p.foe.kind !== 'fighter') add(p, 6, 'cap');
       }
       if (p.ace && airborne(p)) add(p, 5, 'ace');
+      if (p.kind === 'flyingboat' && p.mission === 'rescue' && (p.state === 'circle' || p.state === 'alight' || (p.state === 'inbound' && p.t > 20))) add(p, p.state === 'inbound' ? 7.5 : 9, 'dumbo');
+      if (p.kind === 'flyingboat' && p.mission === 'patrol' && (p.state === 'shadow' || p.state === 'evade' || p.state === 'bomb')) add(p, p.state === 'shadow' ? 6.5 : 8.5, 'snooper');
     }
     return best;
   }
@@ -81,6 +83,8 @@ window.WW = window.WW || {};
     if (mission === 'strike' && p.kind === 'fighter') sub = 'escort' + (p.wave && p.wave.target && KIND[p.wave.target.type] ? ' for a strike on a ' + KIND[p.wave.target.type] : '');
     else if (mission === 'strike') { const t = p.target || (p.wave && p.wave.target); sub = (p.wave && p.wave.cag === p ? 'leads the strike' : 'strike') + (t && KIND[t.type] ? ' on a ' + KIND[t.type] : ''); }
     else if (mission === 'cap') sub = 'CAP' + (p.carrier && p.carrier.name ? ' over ' + p.carrier.name : '');
+    else if (mission === 'dumbo') return ['Dumbo inbound', 'PBY Catalina · ' + (p.task ? p.task.n + (p.task.kind === 'pilot' ? ' aircrew' : ' survivors') + ' in the water' : 'air-sea rescue')];
+    else if (mission === 'snooper') return p.nation === 'IJN' ? ['Mavis shadowing the fleet', 'H6K flying boat · reporting our position'] : ['Catalina shadowing the enemy', 'PBY patrol · contact report'];
     else if (mission === 'ace') sub = 'ace · ' + ((p.pilot && p.pilot.kills) || p.kills || 0) + ' kills';
     return [main, sub];
   }
@@ -102,8 +106,16 @@ window.WW = window.WW || {};
     if (!quiet && WW.cam) WW.cam.cut();
   }
 
+  function fbPhase(p) {   // a flying boat (air_flyingboats.js): its own states
+    if (p.state === 'alight' || p.state === 'afloat' || p.state === 'liftoff') return 'rescue';
+    if (p.state === 'return') return 'home';
+    if (p.state === 'bomb') return 'attack';
+    if (p.state === 'evade' || WW.world.planes.some(q => ok(q) && q.foe === p)) return 'bandits';
+    return 'transit';
+  }
   function phaseOf(p) {
     if (!ok(p)) return 'down';
+    if (p.kind === 'flyingboat') return fbPhase(p);
     if (p.state === 'takeoff') return 'launch';
     if (p.state === 'landing' || p.state === 'rollout') return 'home';
     if (p.phase === 'pull' || p.phase === 'exit' || p.phase === 'out') return 'after';
@@ -122,7 +134,8 @@ window.WW = window.WW || {};
     bandits: [['ots', 4], ['chase', 2], ['wing', 2]],
     attack: [['chase', 3], ['ots', 3], ['water', 4], ['high', 1]],
     after: [['chase', 3], ['side', 2], ['high', 1]],
-    home: [['high', 2], ['side', 2], ['chase', 1]]
+    home: [['high', 2], ['side', 2], ['chase', 1]],
+    rescue: [['side', 3], ['chase', 2], ['high', 1]]      // a Catalina down on the water among the survivors
   };
   function choose(phase, L) {
     const opts = [];

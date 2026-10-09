@@ -75,7 +75,8 @@ window.WW = window.WW || {};
   }
   function score(ship, o, c, W, R, risk) {
     let w = W[o.type]; if (!w) return 0;
-    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship)) return 0;
+    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship) &&
+      !(WW.endgameAI && WW.endgameAI.isCripple(o) && WW.fleetCmd && (WW.fleetCmd.side(ship.nation) || {}).posture === 'pursue')) return 0; // a slowed cripple in a pursuit: alone too
     const d = WW.dist(ship.x, ship.z, c.x, c.z);
     const pHit = (d <= R ? 1 - 0.5 * (d / R) * (d / R) : 0.5 * Math.max(0.1, 1 - (d - R) / (2 * R)))
       * (0.85 + 0.15 * Math.abs(Math.sin(o.heading - Math.atan2(o.z - ship.z, o.x - ship.x))))   // aspect: broadside is easier
@@ -90,11 +91,15 @@ window.WW = window.WW || {};
   }
   // A carrier out of gun range that is (nearly) as fast as we are cannot be caught: chasing it only drags the ship
   // out of formation (a battleship or cruiser never runs down a carrier; it fights it only if it comes in range).
+  // Pursuing (fleet_cmd posture 'pursue'): a carrier that is fair game (crippled, slowed or unescorted,
+  // ai_endgame.js) is chased.
   function unreachable(ship, t) {
     const R = reach(ship.stats), d = WW.dist(ship.x, ship.z, t.x, t.z);
     if (d <= R) return false;
     const u = t.unit || t;
-    return u.stats.speed >= 0.9 * ship.stats.speed && u.type === 'carrier'; // a carrier can always turn away and outrun us
+    if (u.type !== 'carrier') return false;
+    if (WW.endgameAI && WW.endgameAI.fairGame(ship, u, WW.fleetCmd && WW.fleetCmd.side(ship.nation))) return false;
+    return u.stats.speed >= 0.9 * ship.stats.speed; // a carrier can always turn away and outrun us
   }
   function riskOf(ship) { const d = WW.fleetCmd && WW.fleetCmd.doctrine(ship.nation); return d ? d.risk[ship.type] || 0 : 0.5; }
 
@@ -290,7 +295,8 @@ window.WW = window.WW || {};
       const role = roles[ship.type] || roles.surface;
       a.withdrawing = false;
       if (role) role(ship, dt);
-      if (!a.ownWithdraw) withdraw(ship); // a role that handles its own cripples sets ship.ai.ownWithdraw
+      const eg = WW.endgameAI && WW.endgameAI.steer(ship, dt); // broken side home / rescue (ai_endgame.js)
+      if (!eg && !a.ownWithdraw) withdraw(ship); // a role that handles its own cripples sets ship.ai.ownWithdraw
       if (!a.ownComb) comb(ship);
       if (a.turrets.length) guns(ship, dt);
     },

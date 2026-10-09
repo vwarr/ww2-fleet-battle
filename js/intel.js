@@ -20,6 +20,8 @@ window.WW = window.WW || {};
     FLASH: { big: 400, med: 320, small: 240, mg: 110 }, FLASH_T: 6, // a ship that fired in the last FLASH_T s
     SONAR: 65,                                         // destroyer sonar on submerged subs (ships_ai.js SONAR)
     AIR: 100, SCOUT: 120, SPOT: 85,                    // airborne planes / scouts see ships; scouts spot for the guns within SPOT
+    PATROL: 140,                                       // patrol flying boats (air_patrol.js): trained observers, high and steady
+    CLOSE_ID: 45,                                      // an air observer this close identifies the type correctly
     SEE_PLANE: { carrier: 170, battleship: 130, cruiser: 130, destroyer: 110, submarine: 40, pt: 60 }, // ships see planes (AA directors, lookouts)
     SEE_PLANE_NATION: { USN: { carrier: 250 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE)
     PLANE_PLANE: 100,                                  // planes see planes
@@ -30,7 +32,7 @@ window.WW = window.WW || {};
   var CAPITAL = { carrier: 1, battleship: 1 };
   var NATIONS = ['USN', 'IJN'];
   var side = {}, tickT = 0, losCache = new Map(), scratch = [];
-  var stats = { ticks: 0, los: 0, losHit: 0, contacts: 0 };
+  var stats = { ticks: 0, los: 0, losHit: 0, contacts: 0, reports: 0, misid: 0, resolved: 0, errSum: 0, wrongStrikes: 0, wrongRedirects: 0 };
 
   function newSide() { return { list: [], map: new Map(), ships: [], planes: [], ever: new Set(), first: new Set(), torps: [] }; }
   function clear() {
@@ -38,6 +40,7 @@ window.WW = window.WW || {};
       side[NATIONS[i]] = newSide();
     }
     tickT = 0; losCache.clear();
+    for (var k in stats) if (k !== 'ticks' && k !== 'los' && k !== 'losHit' && k !== 'contacts') stats[k] = 0;   // per-round report stats
   }
   clear();
   function sideOf(n) { return side[n] || (side[n] = newSide()); }
@@ -52,6 +55,7 @@ window.WW = window.WW || {};
       var f = i / (n + 1);
       if (WW.terrain.depthAt(a.x + (b.x - a.x) * f, a.z + (b.z - a.z) * f) < -R.LAND) ok = false;
     }
+    if (ok && WW.smoke && WW.smoke.blocks(a.x, a.z, b.x, b.z)) ok = false; // a smoke screen (ai_charge.js)
     if (!ok) stats.losHit++;
     losCache.set(key, ok);
     return ok;
@@ -60,7 +64,7 @@ window.WW = window.WW || {};
   function airborne(p) { return p.alive && !p.removed && p.y > 4 && p.state !== 'catapult' && p.state !== 'afloat' && p.state !== 'alight'; }
 
   // Record a sighting of unit u by observer `by` this tick (best quality wins: visual > sonar > scout > air).
-  var QRANK = { visual: 4, radar: 3.5, sonar: 3, scout: 2, air: 1 };
+  var QRANK = { visual: 4, radar: 3.5, sonar: 3, patrol: 2.5, scout: 2, air: 1 };
   function sight(nation, S, u, by, q, now) {
     var c = S.map.get(u);
     if (c && c.seenAt === now && QRANK[c.quality] >= QRANK[q]) return;
@@ -71,8 +75,9 @@ window.WW = window.WW || {};
       S.map.set(u, c); S.list.push(c); stats.contacts++;
     }
     var fresh = c.seenAt !== now;
-    c.x = u.x; c.z = u.z; c.heading = u.heading || 0; c.speed = u.speed || 0;
+    c.heading = u.heading || 0; c.speed = u.speed || 0;
     c.quality = q; c.by = by;
+    if (isShip) report(nation, c, u, by, q, now, c.seenAt < 0 || now - c.seenAt > T.REGAIN); else { c.x = u.x; c.z = u.z; }
     if (fresh && isShip && (c.seenAt < 0 || regained)) {
       var first = !S.ever.has(u);
       S.ever.add(u);
@@ -81,6 +86,43 @@ window.WW = window.WW || {};
       if (first && CAPITAL[u.type] && !S.first.has(u)) { S.first.add(u); WW.emit('firstSighting', { nation: nation, unit: u }); }
     }
     c.seenAt = now;
+  }
+
+  // Imperfect sighting reports (scouts, carrier planes, patrol flying boats; never a ship's own lookouts): a position
+  // error that grows with the observer's range (navigation and plotting) and shrinks while the same observer keeps
+  // reporting, and a chance to misidentify the type (a cruiser reported as a carrier, a destroyer as a cruiser: the
+  // Midway "two carriers" report). The error is rolled per report (a new observer, or after a gap), the type only on a
+  // first sighting (or one regained after T.REGAIN), from WW.rand, with the
+  // side's doctrine rates (fleet_groups.js reportErr / misId). A visual sighting by a ship, or an air observer within
+  // R.CLOSE_ID, puts it right. contact.reportedType / misid / err; events 'report' and 'misidResolved'.
+  var NOREP = typeof location !== 'undefined' && location.search.includes('norep');
+  var AIRQ = { scout: 1, air: 1.25, patrol: 1 };                                   // carrier aircrews: not trained observers
+  var MISTAKE = { cruiser: ['carrier', 1], destroyer: ['cruiser', 1], battleship: ['carrier', 0.6], carrier: ['battleship', 0.4] };
+  function report(nation, c, u, by, q, now, first) {
+    if (!AIRQ[q] || NOREP) {   // a ship's own eyes / radar / sonar: exact, and the type is plain
+      c.x = u.x; c.z = u.z;
+      if (c.misid) resolve(nation, c, u, by);
+      c.ex = c.ez = 0; c.err = 0; c.reportedType = u.type; c.repBy = null;
+      return;
+    }
+    var d = WW.dist(by.x, by.z, u.x, u.z), D = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(nation) : null;
+    var kErr = (D && D.reportErr !== undefined ? D.reportErr : 0.08) * AIRQ[q], kId = (D && D.misId !== undefined ? D.misId : 0.15) * AIRQ[q];
+    if (c.repBy !== by || now - c.repAt > 6 || c.ex === undefined) {   // a new report
+      var a = WW.rand() * Math.PI * 2, m = d * kErr * (0.4 + WW.rand() * 1.2);
+      c.ex = Math.cos(a) * m; c.ez = Math.sin(a) * m; stats.reports++;
+      var mk = MISTAKE[u.type], wrong = first && mk && d > R.CLOSE_ID && WW.rand() < kId * mk[1] * WW.clamp(d / 120, 0.3, 1.2);
+      if (wrong && !c.misid) { c.misid = true; c.reportedType = mk[0]; stats.misid++; }
+      else if (!c.reportedType) c.reportedType = u.type;
+      c.x = u.x + c.ex; c.z = u.z + c.ez; c.err = m; stats.errSum += m;
+      WW.emit('report', { nation: nation, unit: u, reportedType: c.reportedType, misid: !!c.misid, x: c.x, z: c.z, err: m, by: by });
+    } else { c.ex *= 0.88; c.ez *= 0.88; }   // the same observer keeps reporting: the plot firms up
+    if (c.misid && d < R.CLOSE_ID) resolve(nation, c, u, by);
+    c.repBy = by; c.repAt = now;
+    c.x = u.x + c.ex; c.z = u.z + c.ez; c.err = Math.hypot(c.ex, c.ez);
+  }
+  function resolve(nation, c, u, by) {
+    c.misid = false; c.reportedType = u.type; stats.resolved++;
+    WW.emit('misidResolved', { nation: nation, unit: u, type: u.type, by: by });
   }
 
   function scan(nation, now) {
@@ -105,12 +147,12 @@ window.WW = window.WW || {};
       for (j = 0; j < planes.length; j++) {
         p = planes[j];
         if (p.nation !== nation || !airborne(p)) continue;
-        var sc = p.kind === 'scout';
+        var sc = p.kind === 'scout', pb = p.kind === 'flyingboat';
         if (seen && !sc) continue;
         d2 = WW.dist2(p.x, p.z, o.x, o.z);
-        r = sc ? R.SCOUT : R.AIR;
+        r = sc ? R.SCOUT : pb ? R.PATROL : R.AIR;
         if (d2 >= r * r) continue;
-        if (!seen) sight(nation, S, o, p, sc ? 'scout' : 'air', now);
+        if (!seen) sight(nation, S, o, p, sc ? 'scout' : pb ? 'patrol' : 'air', now);
         if (sc && d2 < R.SPOT * R.SPOT) { // scouts spot for the guns: combat.js SPOT_DISP
           if (!(o.spottedUntil > now) && WW.scouts) WW.scouts.stats.spotted++;
           o.spottedUntil = now + T.SPOT_HOLD; o.spottedBy = nation;
@@ -209,6 +251,7 @@ window.WW = window.WW || {};
     torpedoes: function (nation) { return sideOf(nation).torps; }, // enemy torpedo tracks the side has seen (shared array)
     canSee: function (nation, unit) { return WW.intel.visible(nation, unit); }, // alias (tests/sim_behaviour.js)
     age: function (c) { return c ? WW.time.now - c.seenAt : 1e9; },
+    typeOf: function (c) { return c ? c.reportedType || (c.unit && c.unit.type) : null; },   // the type the side believes (misidentification)
     // enemy ship / plane contacts. opts.fresh: only those seen within that many s (true = FRESH).
     // The filtered result is a shared scratch array, valid until the next call.
     enemyShips: function (nation, opts) { return filter(sideOf(nation).ships, opts); },

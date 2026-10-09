@@ -80,6 +80,14 @@ window.WW = window.WW || {};
     return null;
   }
   function pickGoal(b) {
+    // a destroyer sent to pick up survivors here (endgame.js rescue task; read only): row to it; survivors still
+    // waiting for one (an open task near): stay by the sinking position, where the rescuer will come
+    var fb = WW.flyingBoats && WW.flyingBoats.landedNear(b.nation, b.x, b.z, 140);   // a Catalina down on the water for them
+    if (fb) { b.goal = { ship: fb }; return; }
+    var E = WW.endgame, r = E && E.rescuerNear ? E.rescuerNear(b.nation, b.x, b.z, 110) : null;
+    if (r && !r.sinking && !r.removed) { b.goal = { ship: r }; return; }
+    var t = E && E.taskNear ? E.taskNear(b.nation, b.x, b.z, 90) : null;
+    if (t) { b.goal = { x: t.x, z: t.z, wait: true }; return; }
     var best = null, bd = 1e9, ships = WW.world.ships;
     for (var i = 0; i < ships.length; i++) {
       var s = ships[i];
@@ -127,8 +135,10 @@ window.WW = window.WW || {};
         gx = gs.x; gz = gs.z;
         var dx = b.x - gs.x, dz = b.z - gs.z, ch = Math.cos(gs.heading), sh = Math.sin(gs.heading);
         var lx = dx * ch + dz * sh, lz = -dx * sh + dz * ch;
-        if (Math.abs(lx) < gs.stats.length / 2 + 2.5 && Math.abs(lz) < (gs.beam || 3) / 2 + 2.5) { // alongside: picked up
-          if (WW.crew && WW.crew.adopt) WW.crew.adopt(gs, b.fig.length);
+        var gl = gs.stats ? gs.stats.length : 7;   // a flying boat (no stats): alongside its hull, under the wing
+        if (Math.abs(lx) < gl / 2 + 2.5 && Math.abs(lz) < (gs.beam || 3) / 2 + 2.5) { // alongside: picked up
+          if (!gs.stats) { if (WW.flyingBoats) WW.flyingBoats.boarded(gs, b.fig.length); }
+          else if (WW.crew && WW.crew.adopt) WW.crew.adopt(gs, b.fig.length);
           b.state = 'fade'; b.fT = 0; picked++; return;
         }
       }
@@ -138,12 +148,12 @@ window.WW = window.WW || {};
       b.noGoal = 0;
       var ax = gx - b.x, az = gz - b.z, al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
       for (i = 0; i < ships.length; i++) {        // stay clear of other hulls (and the sinking one)
-        var o = ships[i]; if (o.removed || o.wreck || (b.goal.ship === o) || o.submerged) continue;
+        var o = ships[i]; if (o.removed || o.wreck || (b.goal && b.goal.ship === o) || o.submerged) continue;
         var r = o.stats.length * 0.5 + 5, ex = b.x - o.x, ez = b.z - o.z, d2 = ex * ex + ez * ez;
         if (d2 < r * r) { var d = Math.sqrt(d2) || 0.1, w = (r - d) / r * 2.2; ax += ex / d * w; az += ez / d * w; if (d < r - 2 && o.speed > 1) slow = 0.4; }
       }
       want = Math.atan2(az, ax);
-      if (!(b.goal && !b.goal.ship)) {            // not heading for the shore: keep off land
+      if (!(b.goal && !b.goal.ship && !b.goal.wait)) { // not heading for the shore: keep off land
         for (var j = 0; j < 7; j++) {
           var aa = want + (j % 2 ? 1 : -1) * Math.ceil(j / 2) * 0.5;
           if (wet(b.x + Math.cos(aa) * 2, b.z + Math.sin(aa) * 2) > 0.5) { want = aa; break; }
@@ -151,12 +161,12 @@ window.WW = window.WW || {};
       }
     } else b.noGoal += dt;
     b.h += WW.clamp(WW.angleDiff(b.h, want), -TURN * dt, TURN * dt);
-    var tv = gx !== undefined ? SPEED * slow : 0;
+    var tv = gx !== undefined && !(b.goal && b.goal.wait && WW.dist(b.x, b.z, gx, gz) < 9) ? SPEED * slow : 0; // waiting: lie to
     b.v += WW.clamp(tv - b.v, -dt, dt * 0.6);
     var nx = b.x + Math.cos(b.h) * b.v * dt + wind.x * 0.15 * dt, nz = b.z + Math.sin(b.h) * b.v * dt + wind.z * 0.15 * dt;
     nx = WW.clamp(nx, 1, WW.cfg.MAP_W - 1); nz = WW.clamp(nz, 1, WW.cfg.MAP_H - 1);
     var dep = wet(nx, nz);
-    if (b.goal && !b.goal.ship && dep < 0.35) { beach(b); }
+    if (b.goal && !b.goal.ship && !b.goal.wait && dep < 0.35) { beach(b); }
     else if (dep >= 0.35) { b.x = nx; b.z = nz; }
     else b.v *= 0.5;
     if (b.noGoal > NOGOAL || b.t > MAXLIFE) { b.state = 'fade'; b.fT = 0; return; }
