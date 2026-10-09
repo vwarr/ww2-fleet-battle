@@ -636,7 +636,8 @@ function aggregate(rounds) {
     stuck_who: C(r => r.stuckWho.map(w => 's' + r.seed + ':' + w)).join(' ') || null,
     stuck: S(r => r.stuck), nan: S(r => r.nan),
     // night / weather (daylight.js, night_ops.js, weather.js)
-    tod: (() => { const k = { day: 0, dusk: 0, night: 0 }; for (const r of rounds) if (r.night) k[r.night.dlEnd < 0.3 ? (r.night.tod === 'night' ? 'night' : 'dusk') : 'day']++; return `d${k.day}/k${k.dusk}/n${k.night}`; })(),
+    // rounds by kind (daylight.js: dawn / day / dusk / night), and how many ended in the dark (daylight < 0.3)
+    tod: (() => { const k = { dawn: 0, day: 0, dusk: 0, night: 0 }; let dk = 0; for (const r of rounds) if (r.night) { k[r.night.tod] = (k[r.night.tod] || 0) + 1; if (r.night.dlEnd < 0.3) dk++; } return `dawn${k.dawn}/day${k.day}/dusk${k.dusk}/night${k.night} dark${dk}`; })(),
     dark_launch: rounds.length && rounds[0].night ? S(r => r.night.d.launchesDark || 0) : null,
     night_torps: rounds.length && rounds[0].night ? S(r => (r.night.d.nightTorps.USN || 0) + (r.night.d.nightTorps.IJN || 0)) / rounds.length : null,
     night_torps_n: rounds.length && rounds[0].night ? `U${S(r => r.night.d.nightTorps.USN || 0)}/J${S(r => r.night.d.nightTorps.IJN || 0)}` : null,
@@ -757,7 +758,7 @@ if (require.main === module) (async () => {
       const own = o => rounds.filter(r => (r.base && r.base.has ? r.base.owner : 'none') === o);
       console.log('  by base owner: ' + ['USN', 'IJN', 'none'].map(o => { const L = own(o); return `${o} base: ${L.length} rounds, USN ${L.filter(r => r.winner === 'USN').length} / IJN ${L.filter(r => r.winner === 'IJN').length} / draw ${L.filter(r => !r.winner).length}`; }).join(';  '));
       const dk = rounds.filter(r => r.night && r.night.dlEnd < 0.3), wx = rounds.filter(r => r.night && r.night.wx !== 'clear');
-      console.log(`  night / weather: ${M.tod} (day/dusk/night by the end), dark rounds ${dk.length}: USN ${dk.filter(r => r.winner === 'USN').length} IJN ${dk.filter(r => r.winner === 'IJN').length};` +
+      console.log(`  night / weather: ${M.tod} (rounds by kind; dark = daylight < 0.3 at the end), dark rounds ${dk.length}: USN ${dk.filter(r => r.winner === 'USN').length} IJN ${dk.filter(r => r.winner === 'IJN').length};` +
         `  weather rounds ${wx.length}: USN ${wx.filter(r => r.winner === 'USN').length} IJN ${wx.filter(r => r.winner === 'IJN').length};  dark launches ${M.dark_launch}`);
     }
     if (rounds.some(r => r.adm)) admTable(rounds);
