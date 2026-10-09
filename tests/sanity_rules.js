@@ -159,14 +159,15 @@ function install(P) {
     // P4b: CAP on the far side of the carrier from a seen raid
     for (const cv of WW.world.ships) {
       if (!live(cv) || cv.type !== 'carrier') continue;
-      let n = 0, capN = 0, capT = 0, rx = 0, rz = 0, rn = 0;
+      let n = 0, nf = 0, capN = 0, capT = 0, rx = 0, rz = 0, rn = 0;
       for (const th of thr[cv.nation]) if (vis(cv.nation, th.u) && dist(th.u, cv) < P.RAID_R) { rx += th.u.x; rz += th.u.z; rn++; }
       for (const p of PL) {
         if (!p.alive || p.nation !== cv.nation || p.deckPh || (p.state !== 'transit' && p.state !== 'attack')) continue;
-        if (dist(p, cv) < P.BUNCH_R) n++;
+        if (dist(p, cv) < P.BUNCH_R) { if (p.wave && !p.wave.go) nf++; else n++; }   // a strike orbiting while the deck launches the rest (air_strikes.js): form-up, counted apart
         if (rn && capF(p) && p.carrier === cv && !p.foe) { capN++; if (Math.cos(WW.angleDiff(brg(cv, p), Math.atan2(rz / rn - cv.z, rx / rn - cv.x))) > 0) capT++; }
       }
-      if (n > P.BUNCH_N) H('P4', [cv], P.MIN.P4, () => `${n} planes within ${P.BUNCH_R}u of ${lbl(cv)} (not landing / taking off)`);
+      if (n > P.BUNCH_N) H('P4', [cv], P.MIN.P4, () => `${n} planes within ${P.BUNCH_R}u of ${lbl(cv)} (not landing / taking off / forming up; + ${nf} forming up)`);
+      if (nf > P.BUNCH_N * 3) H('P4f', [cv], P.MIN.P4, () => `${nf} planes of a forming strike within ${P.BUNCH_R}u of ${lbl(cv)}`);
       if (capN >= 2 && capT / capN < 0.5) H('P4b', [cv], P.MIN.P4b, () => `${capT}/${capN} free CAP of ${lbl(cv)} on the raid's side (${rn} raiders within ${P.RAID_R}u)`);
     }
     for (const p of PL) {
@@ -363,7 +364,7 @@ function install(P) {
   S.sample = () => {
     if (!R || WW.game.state !== 'battle') return;
     const t = WW.game.roundTime;
-    if (!R.only || ['P1', 'P1L', 'P1u', 'P2', 'P3', 'P4', 'P4b', 'P5', 'P5b', 'P6', 'P6c', 'P7', 'P7f', 'P8', 'P8b', 'P9', 'P10', 'P10s', 'P10b'].some(k => R.only[k])) planes(t);
+    if (!R.only || ['P1', 'P1L', 'P1u', 'P2', 'P3', 'P4', 'P4b', 'P4f', 'P5', 'P5b', 'P6', 'P6c', 'P7', 'P7f', 'P8', 'P8b', 'P9', 'P10', 'P10s', 'P10b'].some(k => R.only[k])) planes(t);
     ships(t);
   };
   S.end = () => {
