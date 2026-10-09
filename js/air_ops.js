@@ -98,6 +98,8 @@ window.WW = window.WW || {};
     for (const q of WW.world.planes) if (q.alive && q.nation === u.nation && armed(q) && WW.dist2(q.x, q.z, u.x, u.z) < 8100) return true;
     return false;
   }
+  // how many other fighters of ours are already on u (the director spreads the CAP over the raid)
+  function claimed(u, pl) { let n = 0; for (const q of WW.world.planes) if (q !== pl && q.foe === u && q.alive && q.nation === pl.nation && q !== pl.leader && q.leader !== pl) n++; return n; }
   function capPick(pl) {
     const c = pl.carrier, Lh = leashOf(pl);
     if (!WW.intel) return null;
@@ -116,7 +118,7 @@ window.WW = window.WW || {};
       else if (u.kind === 'flyingboat') pr = 200;   // a snooper shadowing the fleet: shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
-      const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4;
+      const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4 - claimed(u, pl) * 70;   // spread out: one section per raider
       if (s > bs) { bs = s; best = u; }
     }
     return best;
@@ -131,6 +133,7 @@ window.WW = window.WW || {};
     if (f.kind === 'flyingboat') return d <= Lh.leash2;              // a shadower: the long leash, as for an inbound raid
     if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= Lh.leash2 * 0.75) return true;   // finish a damaged bomber turning for home
     if (d > Lh.leash2) return false;
+    if (pl.df && pl.df.foe === f && pl.df.lock > 0) return true;   // a committed attack runs its passes (a raider that jettisoned is still shot at)
     return armed(f) || escorting(f, pl.nation);   // an armed bomber will attack something of ours: chase it to the long leash
   }
   function fighter(pl, dt) {

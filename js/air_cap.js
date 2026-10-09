@@ -13,7 +13,7 @@
 // Sim code: WW.rand never needed (deterministic geometry). State: cv._cap (per carrier), plane.capWp / vec.
 window.WW = window.WW || {};
 (function () {
-  const ENGAGE = 80;                     // a vectored fighter takes the raider as its foe inside this range
+  const ENGAGE = 110;                    // a vectored fighter takes the raider as its foe inside this range
   // Per doctrine: leash (CAP stays inside), long leash (armed raid inbound, fighters escorting it), vector range.
   const DOC = {
     picket:   { leash: 175, leash2: 300, vecR: 300, spd: 0.85 },

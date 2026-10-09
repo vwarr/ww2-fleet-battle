@@ -13,7 +13,7 @@ window.WW = window.WW || {};
   const DMG = 0.75;        // damage per hitting round (times the type's pt.gun)
   const BOMBER_K = 5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const FIGHTER_K = 2.2;   // fighter-on-fighter lethality (P5: 1-3 fighters lost per side per carrier round)
-  const LOCK = [4, 6];   // s a fighter stays committed to a new foe (through its passes)
+  const LOCK = [5, 7];   // s a fighter stays committed to a new foe (through its passes)
   const N = 240;           // tracer pool size (oldest round is reused)
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
@@ -296,6 +296,7 @@ window.WW = window.WW || {};
         if (adv > 11 || s.mt > 5 || p.speed < pt.speed * 0.62) setMode(s, adv > 6 ? 'boom' : 'pursue');
         break;
     }
+    if (can) s.lock = Math.max(s.lock, 2);     // on the gun line: stay with it
     guns(p, f, s, dt, can, keep);
   }
 
@@ -321,7 +322,7 @@ window.WW = window.WW || {};
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;
       for (const m of elementMates(p)) { const t = threat(m, 60); if (t && d3(p, t) < 90) return t; } // cover the leader / wingman
-      if (cur && cur.alive && cur !== best && (!best || d3(p, cur) < d3(p, best) * 1.5 + 10) && d3(p, cur) < (best ? 120 : 90)) return cur;
+      if (cur && cur.alive && cur !== best && (!best || d3(p, cur) < d3(p, best) * 1.5 + 10) && d3(p, cur) < (best ? 120 : 140)) return cur;
       return best;
     },
     // Plane.update() hook for bombers: weave a little and close up on the nearest friendly bomber under attack.
