@@ -58,7 +58,7 @@ window.WW = window.WW || {};
   // Torpedo performance per nation (range, speed, dud rate, wake sighting) is a stat table: core.js WW.TORPEDO_NATION.
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, nightEye: 0.3, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.3, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
+      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
       patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
