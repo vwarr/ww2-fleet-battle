@@ -346,6 +346,12 @@ function install(P) {
   }
 
   // ---------------- API ----------------
+  // the unit behind an example label ('U:carrier#1', 'I:dive#p56'): ships by id, planes by the auditor's number
+  S.unit = l => {
+    const m = /#(p?)(\d+)$/.exec(l); if (!m) return null;
+    if (!m[1]) return WW.world.ships.find(s => s.id === +m[2]) || null;
+    return WW.world.planes.find(p => pid.get(p) === +m[2]) || null;
+  };
   S.begin = meta => {
     R = { meta, ep: new Map(), res: {}, fired: new Map(), torps: [], inb: 0, inbS: new WeakSet(), wand: new WeakMap(), track: new WeakMap(), hist: new WeakMap(), aaN: 0, aaAtt: 0, aaBad: 0, only: meta && meta.only ? Object.fromEntries(meta.only.map(k => [k, 1])) : null };
   };

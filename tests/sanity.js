@@ -9,6 +9,9 @@
 //        JSON=path   raw per-round records and the aggregate
 //        --plot RULE[:k]  re-run the k-th longest example of RULE (default 1) and draw a top-down track plot of
 //                         the 60 s around it (tests/shots/sanity/<rule>_<k>.png, CHROMIUM = headless shell)
+//        --shot RULE[:k]  the same example in the rendered game (BASE_URL = a served checkout, CHROMIUM): stops the
+//                         replay a moment into the episode, frames the units and takes 3 shots 1.5 s apart
+//        FROM=path.json   --plot / --shot from a previous JSON run instead of running the rounds again
 // Rounds replay bit-identically (seeded WW.rand; the auditor never touches the sim), so every example reproduces.
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -57,7 +60,7 @@ const RULES = [
 const RULE = Object.fromEntries(RULES.map(r => [r[0], { id: r[0], sev: r[1], owner: r[2], desc: r[3] }]));
 
 const argv = HL.argv, arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const SEEDS = +arg('--seeds', 6), SEED0 = +arg('--seed0', 1), ONLY = arg('--only', null), RULES_ON = arg('--rules', null), PLOT = arg('--plot', null);
+const SEEDS = +arg('--seeds', 6), SEED0 = +arg('--seed0', 1), ONLY = arg('--only', null), RULES_ON = arg('--rules', null), PLOT = arg('--plot', null), SHOT = arg('--shot', null);
 const NOFUZZ = argv.includes('--no-fuzz');
 
 function specsFor(seed) {
@@ -149,6 +152,34 @@ async function plot(G, b, errs) {
   await draw(rows, e, f + '.png', `${rule} #${k}: seed ${e.seed}${e.swap ? 's' : ''} ${e.scen} t=${e.t}+${e.dur}s  ${e.d}`);
   console.log('plot: ' + f + '.png');
 }
+// ---------------- render screenshots of one example ----------------
+async function shot(G) {
+  const [rule, kk] = SHOT.split(':'), k = +(kk || 1), a = G.A[rule];
+  if (!a || !a.ex[k - 1]) { console.log(`shot: no example ${k} of ${rule}`); return; }
+  const e = a.ex[k - 1], spec = specsFor(e.seed).find(s => s.scen === e.scen && !!s.swap === e.swap);
+  const { chromium } = require('playwright');
+  const b = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+  p.on('pageerror', x => console.log('PAGE', x.message));
+  await p.goto((process.env.BASE_URL || 'http://localhost:8783/') + 'index.html?v=' + Date.now());
+  await p.waitForFunction(() => window.__sim && window.WW && WW.game, null, { timeout: 90000 });
+  await p.waitForTimeout(2000);
+  await p.evaluate(SB.install, SB.P); await p.evaluate(SR.install, SR.P);
+  const f = await p.evaluate(([spec, e]) => {
+    __sim.setScale(0.1);
+    window.__beh.run(Object.assign({}, spec, { until: e.t + Math.min(e.dur, 3) }));
+    const U = e.u.filter(Boolean).map(u => window.__san.unit(u[0])).filter(u => u && u.alive);
+    if (!U.length) return null;
+    let x = 0, z = 0; U.forEach(u => { x += u.x; z += u.z; }); x /= U.length; z /= U.length;
+    const w = Math.max(60, ...U.map(u => Math.hypot(u.x - x, u.z - z) * 2.4));
+    __sim.focus(x, z, w, 30);
+    return { x: Math.round(x), z: Math.round(z), w: Math.round(w), t: +WW.game.roundTime.toFixed(1), units: U.map(u => (u.stats ? u.type + '#' + u.id : u.kind + ' ' + u.state) + '@' + Math.round(u.x) + ',' + Math.round(u.z) + (u.y ? ' y' + Math.round(u.y) : '')) };
+  }, [spec, e]);
+  console.log('shot', rule, k, JSON.stringify(e), JSON.stringify(f));
+  const out = path.join(__dirname, 'shots', 'sanity'); fs.mkdirSync(out, { recursive: true });
+  if (f) for (let i = 0; i < 3; i++) { await p.waitForTimeout(1500); await p.screenshot({ path: path.join(out, `${rule}_${k}_render${i}.png`) }); }
+  await b.close();
+}
 async function draw(rows, e, png, title) {
   const { chromium } = require('playwright');
   const pts = e.u.filter(Boolean).map(u => [u[1], u[2]]), cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[1], 0) / pts.length;
@@ -185,9 +216,11 @@ if (require.main === module) (async () => {
   const T0 = Date.now(), errs = [];
   const b = await HL.launch();
   const specs = []; for (let i = 0; i < SEEDS; i++) specs.push(...specsFor(SEED0 + i));
-  if (PLOT && process.env.FROM) { // re-use a previous JSON run for the plot
+  if ((PLOT || SHOT) && process.env.FROM) { // re-use a previous JSON run for the plot / shots
     const J = JSON.parse(fs.readFileSync(process.env.FROM, 'utf8'));
-    await plot(J.agg, b, errs); await b.close(); return;
+    if (PLOT) await plot(J.agg, b, errs);
+    if (SHOT) await shot(J.agg);
+    await b.close(); return;
   }
   const pages = await Promise.all([...Array(HL.WORKERS).keys()].map(() => openPage(b, errs)));
   const rounds = new Array(specs.length); let next = 0, done = 0;
@@ -203,6 +236,7 @@ if (require.main === module) (async () => {
   console.log(`\npage errors ${errs.length}${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}   wall ${((Date.now() - T0) / 1000).toFixed(0)} s`);
   if (process.env.JSON) fs.writeFileSync(process.env.JSON, JSON.stringify({ agg: G, rounds }));
   if (PLOT) await plot(G, b, errs);
+  if (SHOT) await shot(G);
   await b.close();
 })().catch(e => { console.error(e); process.exit(2); });
 
