@@ -107,12 +107,14 @@ window.WW = window.WW || {};
   }
 
   // ---------- the pursuit reserve (the follow-up strike on a beaten fleet) ----------
-  // Once the carrier has flown its first strike and the enemy battle line has been seen, a follow-up strike leaves
+  // Once the carrier has flown its first strike and the enemy battle line has been seen (and the side has a battle
+  // line of its own to win the gun fight: a carrier force alone uses everything), a follow-up strike leaves
   // doctrine pursuitReserve of the bombers in the hangar, armed, for the end of the battle: Hiryu's second strike on
   // Yorktown, Enterprise's and Hornet's afternoon strike on Hiryu, the 6 June strikes on Mikuma and Mogami. It is
   // released (the strike timer drops to 1 s) when the enemy is beaten: the side pursues, or the enemy's seen fit gun
-  // tonnage is below WAVER of all it has seen with a carrier or a cripple of it known (it is about to break); or in
-  // the last LATE_T s of the round (no bombs go home).
+  // tonnage is below WAVER of all it has seen with a carrier or a cripple of it known (it is about to break); in the
+  // last LATE_T s of the round (no bombs go home); or when an enemy gun ship closes on this carrier (fleet_cmd defend:
+  // self-defence first, a carrier's strikes are its only weapon against a battleship).
   const WAVER = 0.3, LATE_T = 30;
   const PS = { held: 0, released: 0, why: {} };
   function beaten(B) {
@@ -122,11 +124,11 @@ window.WW = window.WW || {};
     return null;
   }
   function pursuitWhy(cv, B) {
-    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null);
+    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null);
   }
   function pursuitHold(cv, B) {     // bombers kept back from this strike: { dive, torpedo }, or null
     const a = cv.ai, frac = B.doctrine.pursuitReserve || 0;
-    if (!frac || !a.struck || !B.foeSeen || !B.foeSeen.size || a.puGo) return null;
+    if (!frac || !a.struck || !B.foeSeen || !B.foeSeen.size || a.puGo || !B.groups.main.members.length) return null; // no battle line of its own: every plane now
     if (pursuitWhy(cv, B)) return null;
     if (!a.puHeld) { a.puHeld = true; PS.held++; }
     return { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };

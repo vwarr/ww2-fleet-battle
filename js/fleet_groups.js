@@ -94,7 +94,7 @@ window.WW = window.WW || {};
   if (mq) decodeURIComponent(mq[1]).split(',').forEach(function (kv) { var p = kv.split(':'); if (p.length === 2) DSET[p[0]] = +p[1]; });
 
   var CV_LO = 0.2, CV_HI = 0.33; // carrier station band, share of the width in from its own edge
-  var CV_SAFE = 0.14;            // cvSafe slides the station home no closer than this to the own edge (was 0.06: a carrier parked
+  var CV_SAFE = 0.06;            // cvSafe slides the station home no closer than this to the own edge (was 0.06: a carrier parked
                                  // on its edge was off the map within seconds of a break, out of any pursuit's reach)
   var CRIP = 0.35; // below this hp share a ship withdraws (ships_ai.js reads WW.fleetGroups.CRIP too)
   // Groups: main (battle line), carrier (CV + escorts), screen (ASW, ahead of main), flotilla (torpedo DDs),
