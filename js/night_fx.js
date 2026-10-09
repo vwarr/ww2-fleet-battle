@@ -181,7 +181,7 @@ window.WW = window.WW || {};
     const pick = S.pick;
     S.pick = function () { if (dark()) { if (S.active && S.active()) S.stop(); return null; } return pick.apply(this, arguments); };
     S.pick.night = true;
-    if (S.toggle) { const tg = S.toggle; S.toggle = function () { if (dark() && !(S.active && S.active())) return 'Follow: no flying at night'; return tg.apply(this, arguments); }; }
+    if (S.toggle) { const tg = S.toggle; S.toggle = function () { if (dark() && !(S.active && S.active())) return 'Follow: no flight ops in the dark'; return tg.apply(this, arguments); }; }
     if (S.follow) { const fo = S.follow; S.follow = function () { if (dark()) return false; return fo.apply(this, arguments); }; }
   }
   WW.nightFx = { update, stats: () => ({ lights: lights.filter(L => L.intensity > 0).length, pools: pools.filter(m => m.visible).length, cones: cones.filter(m => m.visible).length }) };
