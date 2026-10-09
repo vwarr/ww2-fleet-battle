@@ -3,7 +3,7 @@
 A calm, toy-like 3D sea battle that plays like a short film. Two fleets of World War 2 ships fight: the USN (blue) and the IJN (red).
 Carriers launch planes. The planes attack with bombs and torpedoes. Destroyers hunt submarines.
 Sunk ships stay on the seabed as wrecks. In shallow water, part of a wreck stays above the water.
-Most battles are fought by day, in the golden afternoon light. Some start late in the afternoon, and dusk falls during the battle. A few are night actions from the start, under a low moon. At night the fight is lit by gun flashes, burning ships, star shells and searchlights. Carriers stop flying at dusk. IJN lookouts see farther in the dark, and USN ships have radar. Rain squalls drift across some maps. Ships can hide in them, and they spoil dive bombing.
+Every battle passes time: the sun moves across the sky as the fight goes on. Some battles start at dawn. Many run into a big orange sunset, the blue hour and the night. A few are night actions from the start, under a low moon. At night the fight is lit by gun flashes, burning ships, star shells and searchlights. Carriers stop flying at dusk. IJN lookouts see farther in the dark, and USN ships have radar. Rain squalls drift across some maps. Ships can hide in them, and they spoil dive bombing.
 
 You can watch it as a screensaver. A new round starts automatically after each battle.
 

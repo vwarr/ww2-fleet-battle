@@ -16,7 +16,7 @@
 //   next strike goes as soon as the deck allows. Sim code: no randomness.
 window.WW = window.WW || {};
 (function () {
-  const WANT = 3, PER_CV = 2, START_T = 30, SEARCH_AGE = 45, CV_GAP = 6;
+  const WANT = 3, PER_CV = 2, START_T = 30, SEARCH_AGE = 45, CV_GAP = 6, PU_AGE = 45;
   const SHADOW_T = { scout: 70, other: 55 }, STAND = { scout: 80, other: 90 }; // a scout shadows inside its gun-spotting range (intel SPOT 85), outside ships' AA (~70)
   const CAP_KEEP = 150, FTR_R = 85, SWEPT_R = 60, ALT = 30, LOW = 8;
   const ST = { sorties: 0, shadows: 0, breaks: 0, lost: { out: 0, station: 0, home: 0 }, flown: 0, searched: { USN: new Set(), IJN: new Set() } };
@@ -183,11 +183,14 @@ window.WW = window.WW || {};
     const so = WW.fleetCmd.strikeOrder(cv);
     if (a.srchWant && so && a.strikeT > 4) a.strikeT = 4;   // found: strike as soon as the deck allows
     a.srchWant = rt > START_T && (B.posture === 'search' || B.searchFor > SEARCH_AGE) && !so;
-    if (!a.srchWant || a.srchT > 0) return;
+    // pursuit (or the enemy about to break, air_ops.js beaten): the enemy's carrier lost (no contact in PU_AGE s): one searcher down its escape route (the sectors in
+    // front of the enemy's home edge get the pursuit priority, fleet_cmd.js), a spare fighter before a bomber
+    const pu = (B.posture === 'pursue' || (WW.airOps.beaten && WW.airOps.beaten(B))) && !WW.intel.enemyShips(cv.nation, { fresh: PU_AGE }).some(c => c.unit && c.unit.alive && c.unit.type === 'carrier');
+    if (!(a.srchWant || pu) || a.srchT > 0) return;
     a.srchT = CV_GAP;
     const mine = WW.world.planes.filter(p => p.alive && p.carrier === cv && p.search && p.state !== 'return').length + a.queue.filter(q => q.search).length;
-    if (mine >= PER_CV || searchers(cv.nation) + a.queue.filter(q => q.search).length >= WANT) return;
-    const kind = hg.dive > 0 ? 'dive' : hg.torpedo > 0 ? 'torpedo' : hg.fighter > 3 ? 'fighter' : null;
+    if (mine >= (a.srchWant ? PER_CV : 1) || searchers(cv.nation) + a.queue.filter(q => q.search).length >= WANT) return;
+    const kind = !a.srchWant && hg.fighter > 2 ? 'fighter' : hg.dive > 0 ? 'dive' : hg.torpedo > 0 ? 'torpedo' : hg.fighter > 3 ? 'fighter' : null;
     if (!kind) return;
     a.queue.push({ kind, target: null, search: true });
   }

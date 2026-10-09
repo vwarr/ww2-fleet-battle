@@ -12,6 +12,7 @@ window.WW = window.WW || {};
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
+  var OUT_SHARE = 0.35, OUT_K = 0.4; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
   var PURSUE_AGE = 120, PURSUE_STRIKE_R = 2000; // pursuit: strikes on contacts this old, anywhere on the map
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
@@ -75,7 +76,7 @@ window.WW = window.WW || {};
     }
     if (B.startTons < 0) B.startTons = allT;  // first tick: the side's starting surface combatants
     B.fit = fit; B.fitTons = fitT; if (fit) B.hadFit = true;   // a side that never had gun ships (a PT / sub raid) never "breaks"
-    if (B.hadFit && !B.brokenAt && fitT < BREAK * B.startTons) B.brokenAt = now;
+    if (B.hadFit && !B.brokenAt && beaten(fitT, B.startTons, B.foeFit, B.foeTons, fit)) B.brokenAt = now;
     // Pursue a broken enemy; when both sides are broken, the side with the larger fit share (its own true one against
     // the enemy's as seen) turns to hunt instead of running.
     var pursue = foeBroken(B, cs, now) && (!B.brokenAt || fitT / Math.max(1, B.startTons) > B.foeFit / Math.max(1, B.foeTons));
@@ -134,7 +135,15 @@ window.WW = window.WW || {};
       for (var k = 0; k < cs.length; k++) if (cs[k].unit && cs[k].unit.type === 'carrier' && cs[k].unit.alive) return true;
       return false;
     }
-    return fitT < BREAK * all;
+    return beaten(fitT, all, B.fitTons, B.startTons, 1);
+  }
+  // The break rule, one for both views: the side's fit BB / CA / DD tonnage below BREAK of what it had; or, outfought,
+  // below OUT_SHARE of it while its fit share is under OUT_K of the enemy's (one fit cruiser against an intact battle
+  // line: Savo, Cape Esperance; a side holding on to a hopeless gun fight until the time limit was not realistic).
+  function beaten(fitT, all, foeFit, foeAll, nfit) {
+    if (fitT < BREAK * all) return true;
+    if (!nfit || !(foeAll > 0) || !WW.game || WW.game.roundTime < 90) return false;
+    return fitT < OUT_SHARE * all && fitT / all < OUT_K * foeFit / foeAll;
   }
   function foeCarrier(B) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].type === 'carrier' && S[i].nation !== B.nation && WW.intel && WW.intel.known(B.nation, S[i])) return true; return false; }
   // Carrier defence: each own carrier's nearest known enemy gun ship inside DEFEND_R (seen in the last 30 s).
@@ -189,7 +198,7 @@ window.WW = window.WW || {};
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sv = u.isBase ? (WW.baseAI ? WW.baseAI.strikeValue(B, cv) : 0) : STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0; // the island base (base_ai.js)
         if (!sv) continue;
-        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / 400) / (1 + aa / 40);
+        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? 1200 : 400)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
         if (pur) sc *= runaway(B, u, c);
         if (WW.admirals) sc *= WW.admirals.targetK(u);
         if (sc > bs) { bs = sc; best = u; bc = c; }

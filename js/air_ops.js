@@ -106,6 +106,41 @@ window.WW = window.WW || {};
     if ((so && so.target && so.target.type === 'carrier') || (a.rsv.rearmT && WW.time.now >= a.rsv.rearmT)) a.strikeT = 1;
   }
 
+  // ---------- the pursuit reserve (the follow-up strike on a beaten fleet) ----------
+  // Once the carrier has flown its first strike and the enemy battle line has been seen (and the side has a battle
+  // line of its own to win the gun fight: a carrier force alone uses everything), a follow-up strike leaves
+  // doctrine pursuitReserve of the bombers in the hangar, armed, for the end of the battle: Hiryu's second strike on
+  // Yorktown, Enterprise's and Hornet's afternoon strike on Hiryu, the 6 June strikes on Mikuma and Mogami. It is
+  // released (the strike timer drops to 1 s) when the enemy is beaten: the side pursues, or the enemy's seen fit gun
+  // tonnage is below WAVER of all it has seen with a carrier or a cripple of it known (it is about to break); in the
+  // last LATE_T s of the round (no bombs go home); or when an enemy gun ship closes on this carrier (fleet_cmd defend:
+  // self-defence first, a carrier's strikes are its only weapon against a battleship).
+  const WAVER = 0.3, LATE_T = 30;
+  const PS = { held: 0, released: 0, why: {} };
+  function beaten(B) {
+    if (B.posture === 'pursue') return 'pursue';
+    if (!(B.foeTons > 0) || B.foeFit >= WAVER * B.foeTons) return null;
+    for (const c of WW.intel.enemyShips(B.nation, { fresh: 60 })) { const u = c.unit; if (u && u.alive && !u.isBase && (u.type === 'carrier' || (WW.endgameAI && u.stats.guns.length && WW.endgameAI.isCripple(u)))) return 'waver'; }
+    return null;
+  }
+  function pursuitWhy(cv, B) {
+    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null);
+  }
+  function pursuitHold(cv, B) {     // bombers kept back from this strike: { dive, torpedo }, or null
+    const a = cv.ai, frac = B.doctrine.pursuitReserve || 0;
+    if (!frac || !a.struck || !B.foeSeen || !B.foeSeen.size || a.puGo || !B.groups.main.members.length) return null; // no battle line of its own: every plane now
+    if (pursuitWhy(cv, B)) return null;
+    if (!a.puHeld) { a.puHeld = true; PS.held++; }
+    return { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
+  }
+  function pursuitTick(cv) {        // the enemy beaten while the reserve is held: strike now
+    const a = cv.ai, B = WW.fleetCmd && WW.fleetCmd.side(cv.nation);
+    if (!a.puHeld || a.puGo || !B) return;
+    const why = pursuitWhy(cv, B); if (!why) return;
+    a.puGo = true; PS.released++; PS.why[why] = (PS.why[why] || 0) + 1;
+    if (a.strikeT > 1 && !a.queue.some(q => q.target)) a.strikeT = 1;
+  }
+
   // ---------- air boss ----------
   function capWanted(cv) { // ai_carrier.js capWanted when present (standing element, 4 under a raid)
     if (WW.shipAI && WW.shipAI.capWanted) return +WW.shipAI.capWanted(cv) || 0;
@@ -139,17 +174,19 @@ window.WW = window.WW || {};
     }
     if (WW.search) WW.search.plan(cv, dt); // search flights while nothing is known (air_search.js)
     // strikes: only on a known target, and not while the carrier is under air attack (fighters first)
-    reserveTick(cv);
+    reserveTick(cv); pursuitTick(cv);
     a.strikeT -= dt;
     a.lholdT = attacked ? (a.lholdT || 0) + dt : 0;
     if (a.strikeT <= 0 && !a.queue.some(q => q.target) && attacked && (a.holdT || 0) < HOLD_MAX) {
       if (!a.holdT) ST.holds++;
       a.holdT = (a.holdT || 0) + dt;
     } else if (a.strikeT <= 0 && !a.queue.some(q => q.target) && !(WW.endgame && WW.endgame.broken(cv.nation))) { // broken: no new strikes, it is running
-      const pur = WW.fleetCmd && WW.fleetCmd.side(cv.nation) && WW.fleetCmd.side(cv.nation).posture === 'pursue';
+      const SB = WW.fleetCmd && WW.fleetCmd.side(cv.nation), pur = SB && SB.posture === 'pursue';
       a.strikeT = WW.randRange(35, 55) * (pur ? 0.55 : 1); a.holdT = 0; // pursuit: every spare plane, sooner
       const tgt = pickTarget(cv);
-      const hold = tgt && hg.dive + hg.torpedo > 0 ? reserveHold(cv, tgt) : null;
+      let hold = tgt && hg.dive + hg.torpedo > 0 ? reserveHold(cv, tgt) : null;
+      const ph = hold && SB ? pursuitHold(cv, SB) : null;    // the larger of the two reserves stays aboard
+      if (ph) hold = { dive: Math.min(hg.dive, Math.max(hold.dive, ph.dive)), torpedo: Math.min(hg.torpedo, Math.max(hold.torpedo, ph.torpedo)) };
       const nd = hold ? hg.dive - hold.dive : 0, nt = hold ? hg.torpedo - hold.torpedo : 0;
       if (tgt && nd + nt > 0) {
         const cs = capState(cv), reserve = Math.max(0, capWanted(cv) - cs.on - cs.coming) + 1; // keep a relief back
@@ -283,7 +320,7 @@ window.WW = window.WW || {};
 
   // scouts: search sectors, shadowing and the way home live in air_search.js (WW.search)
 
-  function reset() { for (const k in ST) ST[k] = 0; RS.held = RS.launches = RS.rearmed = 0; RS.targets = {}; }
+  function reset() { for (const k in ST) ST[k] = 0; RS.held = RS.launches = RS.rearmed = 0; RS.targets = {}; PS.held = PS.released = 0; PS.why = {}; }
   WW.on('roundStart', reset);
-  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, stats: ST, plan, fighter, bomber, pickTarget, capWanted, picture, underAttack, armed, reserve: RS };
+  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, stats: ST, plan, fighter, bomber, pickTarget, capWanted, picture, underAttack, armed, reserve: RS, pursuit: PS, beaten };
 })();
