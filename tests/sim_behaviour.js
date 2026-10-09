@@ -543,9 +543,12 @@ function install(P) {
       air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0, capBK: 0 } };
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
-    const step = spec.light ? 5 : P.SAMPLE, planesSeen = new Set();
+    const step = spec.step || (spec.light ? 5 : P.SAMPLE), planesSeen = new Set();
+    const SAN = spec.san && window.__san; // the common-sense auditor (tests/sanity_rules.js): read-only, sampled every step
+    if (SAN) SAN.begin({ seed: spec.seed, only: spec.san === true ? null : spec.san });
     while (G.state === 'battle' && G.roundTime < cap) {
       __sim.fastForward(step);
+      if (SAN) SAN.sample();
       for (const p of WW.world.planes) planesSeen.add(p); // planes lost per nation (balance diagnosis)
       if (spec.light) { if (spec.noStall) G.lastSink = G.roundTime; for (const s of WW.world.ships) if (!isFinite(s.x) || !isFinite(s.z)) R.nan++; continue; }
       if (spec.noStall && G.state === 'battle') G.lastSink = G.roundTime;
@@ -578,6 +581,7 @@ function install(P) {
     out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
     out.det = R.det;
     out.tons = { USN: [tons0.USN, G.tonnage('USN')], IJN: [tons0.IJN, G.tonnage('IJN')] }; // [start, afloat at the end]
+    out.san = SAN ? SAN.end() : null;
     out.dmg = R.dmg; out.tsrc = R.tsrc; out.tl = R.tl; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
@@ -832,4 +836,4 @@ if (require.main === module) (async () => {
 })().catch(e => { console.error(e); process.exit(2); });
 
 // tests/balance_ab.js reuses the page side and the aggregation
-module.exports = { install, P, aggregate, wilson };
+module.exports = { install, P, aggregate, wilson, SCEN };
