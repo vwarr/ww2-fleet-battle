@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   const STERN = -13.55, BOW = 12.85, AFT_FRONT = 0.6, BARRIER = -1.5; // deck ends / spot limit / barrier
   const LAUNCH_X = 3.2, TD_X = -9.5, ELEV_X = -5.5;   // start of the deck run, touchdown point, aft elevator
   const GAP = 0.2, TAXI = 4, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
-  const LQ_MAX = 25, RW_N = 3, LW_MAX = 10, LW_MIN = 8; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s
+  const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
 
@@ -145,6 +145,8 @@ window.WW = window.WW || {};
     if (D.loose.some(e => e.ph === 'elev')) landAct = true;
     const launchAct = D.launchers.some(p => p.deckPh !== 'queued');
     const launchPend = D.launchers.length > 0;
+    // A strike load or a scramble (raid near) may break into a recovery; a CAP relief waits for the stack to clear
+    const urgent = launchPend && (D.launchers.some(p => p.target) || (c._air && c._air.near > 0));
     let lqWait = 0; for (const p of D.lq) lqWait = Math.max(lqWait, now - (p.lqT === undefined ? now : p.lqT));
     D.waitT = launchPend && D.mode !== 'launch' ? D.waitT + dt : 0;
     // Windows: a launch window runs until the launch queue is empty (returning planes hold in the marshal stack),
@@ -152,10 +154,10 @@ window.WW = window.WW || {};
     // (the plane in the groove lands first). Nothing waiting: recover if anyone is home, else idle (spotted for launch).
     const prev = D.mode;
     if (D.mode === 'launch' && launchPend && !(recPend && lqWait > LQ_MAX && !launchAct && now - D.modeT > LW_MIN)) { /* keep the launch window */ }
-    else if (D.mode === 'recover' && (landAct || (recPend && !(launchPend && (D.recN >= RW_N || D.waitT > LW_MAX))))) { /* keep */ }
+    else if (D.mode === 'recover' && (landAct || (recPend && !yieldRec(D, urgent)))) { /* keep */ }
     else D.mode = launchPend ? 'launch' : recPend ? 'recover' : 'idle';
     if (D.mode !== prev) { D.recN = 0; D.modeT = now; }
-    D.closing = D.mode === 'recover' && launchPend && (D.recN >= RW_N || D.waitT > LW_MAX); // no new approaches: the window is closing
+    D.closing = D.mode === 'recover' && yieldRec(D, urgent); // no new approaches: the window is closing
     // reconcile what is shown with what the carrier holds (launched from below / rearm counts)
     const t = counts(c), vis = { fighter: 0, dive: 0, torpedo: 0 };
     for (const col of D.cols) for (const e of col.e) vis[e.kind]++;
@@ -181,6 +183,13 @@ window.WW = window.WW || {};
     moveEntries(D, dt);
     for (const col of D.cols) for (const e of col.e) syncEntry(D, e, now, dt);
     for (const e of D.loose) syncEntry(D, e, now, dt);
+  }
+  // Does the recovery window give the deck to the launches waiting below? A strike or a scramble after RW_N traps
+  // (or LW_MAX s); a CAP relief once the stack is down to one, or after LW_RELIEF s.
+  function yieldRec(D, urgent) {
+    if (!D.launchers.length) return false;
+    if (urgent) return D.recN >= RW_N || D.waitT > LW_MAX;
+    return D.lq.length < 2 || D.waitT > LW_RELIEF;
   }
   // Is the landing area (aft of the barrier) and the runway clear?
   function clearAft(D) {
@@ -256,8 +265,8 @@ window.WW = window.WW || {};
       if (!D || late || h === null || !(D.mode !== 'idle' || D.launchers.length || D.lq.length)) return;
       const E = 80, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H; // near the map edge: no wind turn (the standing CAP keeps the deck busy)
       if (ship.x < E || ship.x > W - E || ship.z < E || ship.z > Hh - E) return;
-      const groove = D.mode === 'recover' && D.lq.some(p => p.deckPh === 'app' || p.deckPh === 'final'); // a steady deck for the planes in the groove
-      const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : groove ? 10 : 2.5, dh = ship.desiredHeading;
+      const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : 2.5, dh = ship.desiredHeading;
+      if (D.lq.some(p => p.deckPh === 'app' || p.deckPh === 'final') || D.launchers.some(p => p.deckPh === 'run')) { ship.desiredHeading = ship.heading; ship.throttle = Math.max(ship.throttle, 0.75); return; } // a steady deck under a plane in the groove or on its run
       ship.desiredHeading = Math.atan2(Math.sin(dh) + Math.sin(h) * w, Math.cos(dh) + Math.cos(h) * w);
       ship.throttle = Math.max(ship.throttle, 0.75);
     },
