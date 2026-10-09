@@ -35,8 +35,10 @@ window.WW = window.WW || {};
   // guns: coastal battery rate of fire (0: silent); pits: x 3 AA pits; air: x the ROSTER (land_air.js); radar: x the
   // radar / lookout ranges; defend: the defence weight (base_ai.js assign); target: x the attacker's bombardment weight
   // and strike value (base_ai.js); chart: the enemy knows the base (0: never a contact); power: x its known strength.
-  // Defaults from the first base-strength pass (40-round runs per owner; see AI_DESIGN.md section 10).
-  const TUNE = { tons: 1, guns: 0.5, pits: 1, air: 0.6, radar: 0.8, defend: 1.2, target: 0.4, chart: 1, power: 1 };
+  // Defaults from the first base-strength pass (40-round runs per owner; see AI_DESIGN.md section 10), then cut back
+  // coarsely in the final pass (Oct 2026: an owned base decided battles; one air element per kind, batteries at a
+  // quarter rate, 2 AA pits, 0.4 x radar, defence weight 1, half the tonnage bonus, 0.6 x its known power).
+  const TUNE = { tons: 0.5, guns: 0.25, pits: 0.67, air: 0.4, radar: 0.4, defend: 1, target: 0.4, chart: 1, power: 0.6 };
   let base = null, stats = null;
 
   function newStats() {
