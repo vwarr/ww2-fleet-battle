@@ -119,14 +119,15 @@ window.WW = window.WW || {};
     airOps(ship, dt);
   }
 
-  // CAP: how many fighters the carrier wants over itself. A standing CAP of one element (USN 2-plane section,
-  // IJN 3-plane shotai), a full 4 when enemy planes are detected inside 250 (USN carrier radar reaches that far,
-  // intel.js SEE_PLANE_NATION; IJN lookouts see ~170, so the IJN scrambles later). air_ops.js keeps it relieved on fuel.
+  // CAP: how many fighters the carrier wants over itself. A standing CAP of elements (USN 2-plane sections, IJN
+  // 3-plane shotai), one per 9 fighters of the air group (a full 1942 group: 3 sections / 2 shotai, 6 fighters), twice
+  // that (at least 4) when enemy planes are detected inside 250 (USN carrier radar reaches that far, intel.js
+  // SEE_PLANE_NATION; IJN lookouts see ~170, so the IJN scrambles later). air_boss.js keeps it relieved by elements.
   function capWanted(ship) {
     let near = 0;
     if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && c.unit.kind !== 'flyingboat' && WW.dist(ship.x, ship.z, c.x, c.z) < 250) near++;
-    const elem = ship.nation === 'IJN' ? 3 : 2;
-    return near ? 4 : elem;
+    const elem = ship.nation === 'IJN' ? 3 : 2, F = ship.wingF || (ship.hangar ? ship.hangar.fighter : 0), base = elem * Math.max(1, Math.round(F / 9));
+    return near ? (F >= 14 ? base * 2 : 4) : base;
   }
   // The strike decision: the commander's order for this carrier (WW.fleetCmd.strikeOrder), else the local pick.
   function strikeTarget(ship) {

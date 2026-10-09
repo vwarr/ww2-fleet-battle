@@ -6,7 +6,7 @@ window.WW = window.WW || {};
   const tracers = [];         // pooled THREE.Line
   let tracerIdx = 0, v3 = null;
   const REARM = 10;
-  const PLANE_SCALE = 1.7;    // arcade scale: planes read clearly at the battle camera distance
+  const PLANE_SCALE = WW.cfg.PLANE_SCALE || 1.7; // arcade scale 1.7 (ship_classes.js; true scale ~0.41, ?planeScale=)
   const DECK_Y = 0.75;        // fuselage centre above the flight deck (scaled model)
 
   function getModel(kind, nation) {
@@ -18,9 +18,10 @@ window.WW = window.WW || {};
       m.group.scale.setScalar(PLANE_SCALE);
     }
     if (WW.scene) WW.scene.add(m.group); // real shadow maps now: no fake silhouette shadow
+    if (WW.planeRender) WW.planeRender.acquire(m); // drawn as instances (air_render.js)
     return m;
   }
-  function release(m) { if (WW.airDeaths) WW.airDeaths.restore(m); if (WW.scene) WW.scene.remove(m.group); (pool[m.key] = pool[m.key] || []).push(m); }
+  function release(m) { if (WW.airDeaths) WW.airDeaths.restore(m); if (WW.planeRender) WW.planeRender.release(m); if (WW.scene) WW.scene.remove(m.group); (pool[m.key] = pool[m.key] || []).push(m); }
 
   function deckInfo(c) {
     if (!v3) v3 = new THREE.Vector3();

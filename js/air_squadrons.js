@@ -10,7 +10,7 @@
 // Names come from the slot, never from WW.rand, so they cannot change the sim's random sequence.
 window.WW = window.WW || {};
 (function () {
-  const CV = {
+  const CV = WW.CV_ROSTER || { // the slot roster lives in ship_classes.js (a carrier's class follows its name)
     USN: [['Enterprise', 6], ['Yorktown', 5], ['Hornet', 8], ['Saratoga', 3], ['Lexington', 2], ['Wasp', 7]],
     IJN: [['Akagi'], ['Kaga'], ['Soryu'], ['Hiryu'], ['Shokaku'], ['Zuikaku']]
   };
@@ -108,15 +108,15 @@ window.WW = window.WW || {};
     if (!el) return false;
     let L = pl.leader, sl;
     if (L) sl = (SLOT[el.size] || SLOT[3])[Math.min(pl.wing, 2)];
-    else if (el.div && live(el.div.members[0])) { L = el.div.members[0]; sl = DIV2; }
+    else if (el.div && pl.target && live(el.div.members[0])) { L = el.div.members[0]; sl = DIV2; } // escorts: the division flies together; CAP sections hold their own stations (air_cap.js)
     if (!L || !live(L) || L.state === 'takeoff') return false;
     if (L.foe && L.state === 'attack') sl = [-9, sl[1] * 1.6, 2];   // loose cover behind the leader in a fight
     const c = Math.cos(L.heading), s = Math.sin(L.heading);
     const sx = L.x + c * sl[0] - s * sl[1], sz = L.z + s * sl[0] + c * sl[1];
     const ex = sx - pl.x, ez = sz - pl.z, d = Math.hypot(ex, ez), ea = ex * c + ez * s;
-    const la = d > 25 ? Math.min(50, d) : 8 + Math.max(0, -ea);
+    const la = d > 25 ? Math.min(50, d) : 16 + Math.max(0, -ea);   // a long look-ahead: shallow, smooth corrections
     const v = d > 25 ? pl.pt.speed * 1.15 : WW.clamp(L.speed + ea * 0.8, L.speed * 0.7, pl.pt.speed * 1.2);
-    pl.fly(sx + c * la, sz + s * la, L.y + sl[2], dt, v, 1.7);
+    pl.fly(sx + c * la, sz + s * la, L.y + sl[2], dt, v, L.foe ? 1.7 : d > 25 ? 1.4 : 1.0);
     return true;
   }
   // "Lt. Cmdr. Thach" style name for a plane's pilot (captions)

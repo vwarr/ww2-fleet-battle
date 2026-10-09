@@ -22,8 +22,8 @@ window.WW = window.WW || {};
     const pt = p.pt, dist = Math.hypot(f.x - p.x, f.y - p.y, f.z - p.z);
     const diving = f.kind === 'dive' && (f.phase === 'roll' || f.phase === 'dive');
     const low = f.kind === 'torpedo';                // low and slow: stern / high-side pass from behind and above
-    if (s.ipFoe !== f) { s.ipFoe = f; s.ip = dist < 70 ? 'run' : 'setup'; s.ipT = 0; s.foe = f; s.ipDir = WW.rand() < 0.5 ? -1 : 1; if (s.ip === 'run') ST.passes++; }
-    if (s.lock < 1.5) s.lock = 1.5;                  // stay on this bomber through the pass (dogfight.pick honours the lock)
+    if (s.ipFoe !== f) { s.ipFoe = f; s.ip = dist < 70 ? 'run' : 'setup'; s.ipT = 0; s.foe = f; s.ipDir = WW.rand() < 0.5 ? -1 : 1; if (s.ip === 'run') ST.passes++; s.lock = Math.max(s.lock, 4); s.ipN = 1; }
+    if (s.lock < 1.5) s.lock = 1.5;                  // stay on this bomber through the passes (dogfight.pick honours the lock)
     s.ipT += dt; s.mt += dt;
     if (diving && s.ip === 'setup') { s.ip = 'run'; s.ipT = 0; ST.passes++; }
     let can = false, keep = false;
@@ -40,7 +40,7 @@ window.WW = window.WW || {};
       p.turnTo(Math.atan2(sz - p.z, sx - p.x), dt, K.rate(p, 1));
       K.climb(p, alt, dt); K.energy(p, dt, pt.speed * 1.1);
       const fa = Math.abs(WW.angleDiff(p.heading, Math.atan2(f.z - p.z, f.x - p.x)));
-      if ((d < 16 && p.y > f.y + 5) || (dist < 50 && fa < 0.9) || s.ipT > 7) { s.ip = 'run'; s.ipT = 0; ST.passes++; }
+      if ((d < 16 && p.y > f.y + 5) || (dist < 50 && fa < 0.9) || s.ipT > 7) { s.ip = 'run'; s.ipT = 0; ST.passes++; if (++s.ipN <= 3) s.lock = Math.max(s.lock, 3.5); } // up to 3 passes on it
     } else if (s.ip === 'run') {
       // aim at the gun lead (arc-predicted at the rounds' time of flight) and dive down onto it
       predict(f, dist / (K.BV + p.speed * 0.3) + 0.04, P);

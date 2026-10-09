@@ -64,10 +64,16 @@ function install(opts) {
     return m === 1e9 ? null : Math.round(m);
   }
   function cvSep() { let m = 1e9; const L = WW.world.ships.filter(s => s.alive && s.type === 'carrier'); for (const a of L) for (const b of L) if (a.nation === 'USN' && b.nation === 'IJN') m = Math.min(m, WW.dist(a.x, a.z, b.x, b.z)); return m === 1e9 ? null : Math.round(m); }
+  // the round's time of day: kind and the first sim s at which launches are allowed (daylight.js canFly), null: never
+  function todOf() {
+    const D = WW.dayNight; if (!D || !D.level) return null;
+    let flyT = null; for (let t = 0; t <= WW.cfg.ROUND_TIMEOUT * 1.5; t += 5) if (D.level(t) >= (D.FLY_MIN || 0.45)) { flyT = t; break; }
+    return { kind: D.kind, h0: +D.startHour.toFixed(2), flyT };
+  }
   function first(k, extra) { if (S.first[k] === undefined) { S.first[k] = +now().toFixed(1); S.first[k + 'Sep'] = sepNow(); if (extra) Object.assign(S.first, extra); } }
 
   function fresh() {
-    S = { H: {}, sorties: [], recs: new Map(), eng: [], drops: [], deaths: [], waves: [], wrec: new Map(), min: [], first: {}, pilots: new Map(),
+    S = { H: {}, sorties: [], recs: new Map(), eng: [], drops: [], deaths: [], waves: [], wrec: new Map(), min: [], first: {}, pilots: new Map(), sunk: [], lastHit: {},
       deckCycle: [], next: 0, nextSlow: 0, alone: {}, lead: [], fdir: {}, foeFirst: new Map(), proj: new Map(), hang: [], cvL: {}, cvT: {},
       escPos: [], trace: opts.trace ? [] : null, push: [], deck: {}, trapT: {}, trapGap: [], contact: {} };
   }
@@ -170,8 +176,9 @@ function install(opts) {
     else if (k === 'shell' || k === 'hits' || k === undefined || k === null) { m.gunDmg += e.amount; first('gunDmg'); }
     else m.otherDmg += e.amount;
     if (k && !S.first['k_' + k]) S.first['k_' + k] = 1;
+    S.lastHit[e.ship.id] = k || 'shell';
   });
-  WW.on('shipSunk', () => { if (S) minute().sunk++; });
+  WW.on('shipSunk', sh => { if (!S) return; minute().sunk++; if (sh && sh.type) S.sunk.push({ t: +now().toFixed(1), type: sh.type, n: sh.nation, base: !!sh.isBase, by: S.lastHit[sh.id] || null }); });
 
   // ---------- the sampler ----------
   const U0 = WW.air.update;
@@ -211,6 +218,7 @@ function install(opts) {
       if (r.ring.length > CIRC_W && AIR[ph]) { const o = r.ring[0], path = r.cum - o[2], net = Math.hypot(p.x - o[0], p.z - o[1]); circ = path > 40 && net < 0.4 * path; }
       const cat = CAT[ph] || 'other';
       r.b[cat] = (r.b[cat] || 0) + DT;
+      if (ph === 'pattern' && p.deckPh === 'marshal') r.b.marshal = (r.b.marshal || 0) + DT;   // holding in the marshal stack (part of the pattern)
       if (circ) {
         const c = p.carrier, tg = tgtOf(p);
         const where = c && WW.dist(p.x, p.z, c.x, c.z) < 70 ? 'cv' : tg && WW.dist(p.x, p.z, tg.x, tg.z) < 70 ? 'tgt' : 'else';
@@ -219,7 +227,7 @@ function install(opts) {
       }
       if (AIR[ph]) { r.air += DT; if (r.o === 'cv' || r.o === 'base') { M.air++; if (p.kind === 'fighter' && !p.target && !p.search) M.cap++; else M.strikeAir++; } }
       if (r.armed0 && !p.ordnance && !r.dropped && !r.jett) r.jett = true;
-      if (r.wv === undefined && AIR[ph] && p.kind !== 'fighter' && !p.search && !p.level) r.wv = p.wave ? (p.wave.go ? 'late' : 'formed') : 'none'; // joined its wave while it formed / after it left / never
+      if (r.wv === undefined && AIR[ph] && p.kind !== 'fighter' && !p.search && !p.level && (p.wave !== undefined || !WW.strike)) r.wv = p.wave ? (p.wave.go ? 'late' : 'formed') : 'none'; // joined its wave while it formed / after it left / never
       r.ph = ph;
       const key = r.o + '|' + p.nation + '|' + (r.v || p.kind) + '|' + ph, H = S.H[key] || (S.H[key] = { n: 0, mx: {} });
       H.n++;
@@ -236,7 +244,7 @@ function install(opts) {
           if (foe) {
             const c = p.carrier;
             r.eng = { foe, t0: t, role: role(p), fk: foe.kind, armed: armed(foe), dcv: c ? Math.round(WW.dist(foe.x, foe.z, c.x, c.z)) : null, mode: p.df ? p.df.mode : null };
-            if (armed(foe) && role(p) === 'cap' && !S.foeFirst.has(foe)) S.foeFirst.set(foe, { n: p.nation, d: r.eng.dcv, t });
+            if (armed(foe) && role(p) === 'cap' && !S.foeFirst.has(foe)) S.foeFirst.set(foe, { n: p.nation, d: r.eng.dcv, t, o: r.o });
           }
         }
         if (AIR[ph] && ph !== 'return' && ph !== 'search') {
@@ -265,11 +273,12 @@ function install(opts) {
     // waves in the air: first up, departure, formation quality in transit
     for (const [w, wr] of S.wrec) {
       if (wr.tUp === null && w.t1 >= 0) wr.tUp = +t.toFixed(1);
-      if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; }
+      if (wr.cvLost === undefined && !w.carrier.alive) wr.cvLost = +t.toFixed(1);
+      if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); wr.formed = w.why ? w.why === 'formed' : null; const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; }
       wr.members = Math.max(wr.members, w.members.filter(q => q.alive).length);
       if (!w.go || w.done) continue;
       if (wr.tArr === null && w.dT < 140) wr.tArr = +t.toFixed(1);
-      const F = w.members.filter(q => q.alive && q.sk === 'form' && (q.state === 'transit' || q.state === 'attack') && !q.phase);
+      const F = w.members.filter(q => q.alive && q.sk === 'form' && (q.state === 'transit' || q.state === 'attack') && !q.phase && !q.strafe && !(q.kind === 'fighter' && q.foe && q.foe.alive)); // a strafing or fighting escort is not in the formation
       if (F.length < 2) continue;
       let cx = 0, cz = 0; for (const q of F) { cx += q.x; cz += q.z; } cx /= F.length; cz /= F.length;
       const B = F.filter(q => q.kind !== 'fighter'); let bx = 0, bz = 0, by = 0; for (const q of B) { bx += q.x; bz += q.z; by += q.y; } if (B.length) { bx /= B.length; bz /= B.length; by /= B.length; }
@@ -314,7 +323,7 @@ function install(opts) {
     const sorties = S.sorties.map(r => ({ n: r.nation, k: r.kind, v: r.v, o: r.o, role: r.role, t0: r.t0, t1: r.t1, end: r.end, b: r.b, circ: r.circ, air: +r.air.toFixed(1), kills: r.kills, wv: r.wv || null, out: r.armed0 ? (r.dropped ? 'dropped' : r.jett ? 'jettison' : r.end === 'roundEnd' ? 'armedAtEnd' : r.end === 'landed' ? 'landedArmed' : 'lostArmed') : null }));
     const ff = []; for (const v of S.foeFirst.values()) ff.push(v);
     const W = S.waves.map(w => Object.assign({}, w, { sepMin: w.sepMin === 1e9 ? null : +w.sepMin.toFixed(1) }));
-    const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
+    const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, sunk: S.sunk, boss: WW.airBoss ? JSON.parse(JSON.stringify(WW.airBoss.stats)) : null, tod: todOf(), deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
       fdir: S.fdir, foeFirst: ff, hang: S.hang, cvL: S.cvL, cvT: S.cvT, escPos: S.escPos, push: S.push, trace: S.trace, err: R.err, lastErr: R.lastErr || null,
       cvSep0: S.cvSep0 || null, deck: S.deck, trapGap: S.trapGap, contact: S.contact, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
     return out;

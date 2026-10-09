@@ -4,7 +4,8 @@
 // frame ~2 s into each story shot), CAP intercept, dogfight, dive-bombing run and torpedo run (short frame
 // sequences from a fixed or tracking camera), escorted strike in transit. Writes tests/shots/flight/*.png.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/flight_shots.js [seed=3] [scenes]
-//   scenes: comma list of opening,cap,circle,story,intercept,dogfight,dive,torp,escort (default all)
+//   scenes: comma list of opening,cap,circle,story,intercept,dogfight,dive,torp,escort (default all), and on request
+//   stack,picket,sweep,sbd,d3a,anvil (air tactics: stacked strike, picket CAP far out, sweep vs CAP, nation dives, anvil)
 const path = require('path'), fs = require('fs');
 const OUT = path.join(__dirname, 'shots', 'flight');
 fs.mkdirSync(OUT, { recursive: true });
@@ -132,6 +133,23 @@ const SEED = +(process.argv[2] || 3), WHICH = (process.argv[3] || 'opening,cap,c
   if (WHICH.includes('escort')) await pairFind('escort',
     () => { const w = WW.strike._waves().find(w => w.go && !w.done && w.dT > 150 && w.members.filter(m => m.alive && m.sk === 'form').length >= 5 && w.members.some(m => m.alive && m.kind === 'fighter' && m.sk === 'form')); return w ? { w, desc: w.nation + ' strike in transit, ' + w.members.filter(m => m.alive && m.sk === 'form').length + ' in formation (' + w.members.filter(m => m.alive).length + ' alive), dT ' + w.dT.toFixed(0) } : null; },
     (s) => { const F = s.w.members.filter(m => m.alive && m.sk === 'form'); if (!F.length) return null; const c = { x: F.reduce((a, m) => a + m.x, 0) / F.length, y: F.reduce((a, m) => a + m.y, 0) / F.length, z: F.reduce((a, m) => a + m.z, 0) / F.length }; return eye(c, 95, s.w.h + 1.9, 14); }, 3, 60, 300);
+  // air tactics scenes (docs/PLANE_REVIEW.md P3-P8): the stacked strike, a picket CAP meeting a raid far out, the
+  // sweep against the CAP, nation dive styles, the torpedo anvil
+  if (WHICH.includes('stack')) await pairFind('stack',
+    () => { const w = WW.strike._waves().find(w => w.go && !w.done && w.dT > 150 && w.members.filter(m => m.alive && m.sk === 'form').length >= 6); return w ? { w, desc: w.nation + ' strike in transit, ' + w.members.filter(m => m.alive && m.sk === 'form').length + ' in formation, dT ' + w.dT.toFixed(0) } : null; },
+    (s) => { const F = s.w.members.filter(m => m.alive && m.sk === 'form'); if (!F.length) return null; const c = { x: F.reduce((a, m) => a + m.x, 0) / F.length, y: 48, z: F.reduce((a, m) => a + m.z, 0) / F.length }; return eye(c, 95, s.w.h + 1.35, 3); }, 3, 60, 300);
+  if (WHICH.includes('picket')) await pairFind('picket',
+    () => { const q = WW.world.planes.find(f => f.alive && f.nation === 'USN' && f.kind === 'fighter' && !f.target && f.foe && f.foe.alive && f.foe.ordnance && Math.hypot(f.foe.x - f.carrier.x, f.foe.z - f.carrier.z) > 140 && Math.hypot(f.x - f.foe.x, f.z - f.foe.z) < 60); return q ? { q, desc: 'USN picket on a ' + q.foe.kind + ' ' + Math.hypot(q.foe.x - q.carrier.x, q.foe.z - q.carrier.z).toFixed(0) + ' u out' } : null; },
+    (s) => { const q = s.q, f = q.foe && q.foe.alive ? q.foe : q, m = { x: (q.x + f.x) / 2, y: (q.y + f.y) / 2, z: (q.z + f.z) / 2 }; return eye(m, 70, Math.atan2(f.z - q.z, f.x - q.x) + 2.3, 10); }, 4, 30, 300);
+  if (WHICH.includes('sweep')) await pairFind('sweep',
+    () => { const q = WW.world.planes.find(f => f.alive && f.kind === 'fighter' && f.target && f.foe && f.foe.alive && f.foe.kind === 'fighter' && Math.hypot(f.x - f.foe.x, f.z - f.foe.z) < 70); return q ? { q, desc: q.nation + ' escort (' + q.cover + ') vs ' + q.foe.nation + ' fighter' } : null; },
+    (s) => { const q = s.q, f = q.foe && q.foe.alive ? q.foe : q, m = { x: (q.x + f.x) / 2, y: (q.y + f.y) / 2, z: (q.z + f.z) / 2 }; return eye(m, 75, Math.atan2(f.z - q.z, f.x - q.x) + 1.6, 14); }, 5, 20, 300);
+  for (const n of ['USN', 'IJN']) if (WHICH.includes(n === 'USN' ? 'sbd' : 'd3a')) await pairFind(n === 'USN' ? 'sbd_dive' : 'd3a_dive',
+    new Function(`return () => { const q = WW.world.planes.find(d => d.alive && d.nation === '${n}' && d.kind === 'dive' && d.phase === 'roll' && d.push && d.diveTgt); if (!q) return null; const t = q.diveTgt; return { q, t, a: Math.atan2(t.z - q.z, t.x - q.x) + Math.PI / 2, desc: q.nation + ' push-over at y ' + q.y.toFixed(0) + ' on a ' + t.type }; }`)(),
+    (s) => { const t = s.t, q = s.q, m = { x: q.x * 0.6 + t.x * 0.4, y: 32, z: q.z * 0.6 + t.z * 0.4 }; return eye(m, 75, s.a, 6); }, 6, 18, 300);
+  if (WHICH.includes('anvil')) await pairFind('anvil',   // torpedo planes on both bows running in: across the ship's beam, the near side between camera and ship
+    () => { const t = WW.world.ships.find(s => { if (!s.alive) return false; let a = 0, b = 0; for (const p of WW.world.planes) if (p.alive && p.kind === 'torpedo' && p.target === s && (p.phase === 'run' || (p.sk === 'anvil' && p.ready))) { if (p.side > 0) a++; else b++; } return a && b; }); return t ? { t, desc: 'anvil on a ' + t.type } : null; },
+    (s) => { const t = s.t, a = t.heading + Math.PI / 2 * (WW.world.planes.some(p => p.alive && p.kind === 'torpedo' && p.target === t && p.side > 0) ? 1 : -1); return { x: t.x + Math.cos(a) * 115, y: 13, z: t.z + Math.sin(a) * 115, tx: t.x, ty: 2, tz: t.z }; }, 5, 30, 300);
   if (errs.length) console.log('errors:\n' + errs.slice(0, 8).join('\n'));
   await b.close();
 })();

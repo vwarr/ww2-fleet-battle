@@ -12,6 +12,8 @@ window.WW = window.WW || {};
   const WING = 1.25;       // wing-gun offset from the centre line (scaled model)
   const DMG = 0.75;        // damage per hitting round (times the type's pt.gun)
   const BOMBER_K = 5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
+  const FIGHTER_K = 2.2;   // fighter-on-fighter lethality (P5: 1-3 fighters lost per side per carrier round)
+  const LOCK = [5, 7];   // s a fighter stays committed to a new foe (through its passes)
   const N = 240;           // tracer pool size (oldest round is reused)
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
@@ -186,7 +188,7 @@ window.WW = window.WW || {};
   }
   function hitPlane(p, f) {
     if (!f.alive) return;
-    const dmg = DMG * (p.pt.gun || 1) * (f.kind === 'fighter' ? 1 : BOMBER_K), lethal = f.hp - dmg <= 0;
+    const dmg = DMG * (p.pt.gun || 1) * (f.kind === 'fighter' ? FIGHTER_K : BOMBER_K), lethal = f.hp - dmg <= 0;
     if (lethal && !f.killedBy) f.killedBy = p;
     f.damage(dmg);
     if (Math.random() < 0.35) WW.fx.sparks(f.x, f.y, f.z);
@@ -248,8 +250,9 @@ window.WW = window.WW || {};
   function offence(p, f, s, dt) {
     if (f.kind !== 'fighter' && WW.intercept && WW.intercept.attack(p, f, s, dt)) return; // gun passes on bombers (air_intercept.js)
     const pt = p.pt, dist = d3(p, f), dy = f.y - p.y, adv = -dy;
-    if (s.foe !== f) { // new engagement: dive on it from above if we have the height
+    if (s.foe !== f) { // new engagement: dive on it from above if we have the height; commit to it for a few passes
       s.foe = f; setMode(s, adv > 8 && dist > 22 && (slasher(p) || WW.rand() < 0.4) ? 'boom' : 'pursue');
+      s.lock = Math.max(s.lock, WW.randRange(LOCK[0], LOCK[1])); s.pursT = 0;
     }
     s.mt += dt;
     // gunsight lead: aim where the foe will be when the rounds arrive
@@ -267,6 +270,8 @@ window.WW = window.WW || {};
         climb(p, dist < 7 ? Math.max(ly, f.y + 3) : ly, dt); // never fly into the foe
         energy(p, dt, dist > 16 ? pt.speed * 1.12 : dist > 9 ? Math.max(pt.speed * 0.75, fs + 1) : Math.max(pt.speed * 0.6, fs - 4)); // throttle back in the saddle
         can = dist < RANGE && Math.abs(ang) < 0.12 && Math.abs(dy) < dist * 0.3 + 2; keep = Math.abs(ang) < 0.3 && dist < RANGE;
+        s.pursT = can ? 0 : (s.pursT || 0) + dt;
+        if (s.pursT > (slasher(p) ? 4 : 7) && !s.weave) { setMode(s, 'extend'); s.ext = WW.randRange(1.6, 2.4); s.side = ang >= 0 ? -1 : 1; s.pursT = 0; break; } // no shot: break off, extend, come back for another pass
         if ((dist < 7 && aspect > 0.8) || dist < 4.5) { setMode(s, 'extend'); s.ext = WW.randRange(1.5, 2.4); s.side = ang >= 0 ? -1 : 1; break; } // overshoot
         if (slasher(p) && !s.weave && s.mt > 2.8 && aspect > 0.7) { setMode(s, 'extend'); s.ext = WW.randRange(1.8, 2.6); break; } // refuse the turning fight
         if (adv > 12 && dist > 26 && s.mt > 2) setMode(s, 'boom');
@@ -291,6 +296,7 @@ window.WW = window.WW || {};
         if (adv > 11 || s.mt > 5 || p.speed < pt.speed * 0.62) setMode(s, adv > 6 ? 'boom' : 'pursue');
         break;
     }
+    if (can) s.lock = Math.max(s.lock, 2);     // on the gun line: stay with it
     guns(p, f, s, dt, can, keep);
   }
 
@@ -308,13 +314,15 @@ window.WW = window.WW || {};
       offence(p, f, s, dt);
     },
     // Fighter target pick (scan): stick with a foe, but answer anyone sitting on our tail.
+    // A committed fight (lock, set per engagement in offence) is kept through its passes; the defence against a
+    // fighter on the tail runs inside fight() without dropping the foe, so engagements do not flicker.
     pick(p, best) {
       const s = st(p), cur = p.foe;
-      if (s.lock > 0 && cur && cur.alive) return cur;
+      if (s.lock > 0 && cur && cur.alive && d3(p, cur) < 190) return cur;   // the CAP tally is at 130 u (air_cap.js ENGAGE), plus the height
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;
       for (const m of elementMates(p)) { const t = threat(m, 60); if (t && d3(p, t) < 90) return t; } // cover the leader / wingman
-      if (cur && cur.alive && best && cur !== best && d3(p, cur) < d3(p, best) * 1.5 + 10 && d3(p, cur) < 120) return cur;
+      if (cur && cur.alive && cur !== best && (!best || d3(p, cur) < d3(p, best) * 1.5 + 10) && d3(p, cur) < (best ? 120 : 140)) return cur;
       return best;
     },
     // Plane.update() hook for bombers: weave a little and close up on the nearest friendly bomber under attack.
@@ -347,6 +355,27 @@ window.WW = window.WW || {};
     clearAll: clearTracers,
     threat, _k: { guns, energy, rate, climb, BV, RANGE }, _tracers: T, stats: DS
   };
+  // A fighter on its way home (or in the landing circle) still fights back when an enemy fighter gets on its tail:
+  // it breaks, weaves or turns on the attacker while the threat lasts, then carries on home (state stays 'return').
+  if (WW.Plane) {
+    const home0 = WW.Plane.prototype.goHome;
+    WW.Plane.prototype.goHome = function (dt) {
+      if (this.kind === 'fighter' && this.alive && this.fuel > 6 && !(this.carrier && this.carrier.isBase) && dt > 0) {
+        const s = st(this);
+        s.homeT = (s.homeT || 0) - dt;
+        if ((s.homeChk = (s.homeChk || 0) - dt) <= 0) {
+          s.homeChk = 0.4;
+          const q = threat(this, 40);
+          if (q && q !== s.homeQ) { s.homeQ = q; s.homeT = WW.randRange(4, 6); DS.homeFights = (DS.homeFights || 0) + 1; }
+          else if (!q && s.homeT <= 0) s.homeQ = null;    // the fight lasts a few passes, then home
+        }
+        const q = s.homeQ;
+        if (q && q.alive && d3(this, q) < 70) { this.foe = q; WW.dogfight.fight(this, q, dt); return; }
+        if (this.foe) this.foe = null;
+      }
+      return home0.apply(this, arguments);
+    };
+  }
   WW.on('roundStart', clearTracers);
   WW.on('setupStart', clearTracers);
 })();

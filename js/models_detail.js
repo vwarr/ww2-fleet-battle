@@ -1,5 +1,6 @@
 // models_detail.js (owner B) - 1:700-miniature fine detail for ships + static-mesh merging.
-// Load after models.js. Hooks WW.models._finish(type, palette, ship), called by buildShip.
+// Load after models.js. Exports the detail kit WW.models.D (used by the class builders) and hooks
+// WW.models._finish(type, palette, ship, class), called by buildShip.
 // All static (non-rotating, shared-material) meshes of a ship are merged into one mesh per material,
 // cached per type+nation, so the extra detail costs almost no draw calls. Turret internals are merged
 // per turret (turret obj stays a separate, rotatable object). Per-instance hullMats meshes are untouched.
@@ -111,99 +112,11 @@ window.WW = window.WW || {};
   }
   function both(fn) { fn(1); fn(-1); }
 
-  // ---- per-type detail ----
-  var DET = {};
-  DET.battleship = function (s, P, H, isJ) {
-    var g = s.group, D = H[2];
-    common(g, P, H, 1.2);
-    planks(g, P, H, [-1.75, -1.55, 1.55, 1.75], 0.12, 0.66);
-    both(function (k) {
-      [-4.2, -1.9, 0.4, 2.7].forEach(function (x, i) { aaTub(g, P, x, D, k * 1.64, i % 2 === 0, k > 0 ? -Math.PI / 2 : Math.PI / 2); });
-      lifeboat(g, -1.75, D + 0.8, k * 1.02);
-      vent(g, P, -3.0, D + 0.8, k * 0.55);
-      searchlight(g, isJ ? -0.6 + 0.9 : -0.9 + 0.95, D + 0.8, k * 0.75);
-    });
-    catapult(g, -10.6, D, 0.7, 1.9, 0.25);
-    s.floatplane = floatplane(g, P, -10.7, D + 0.08, -0.65, 0.25);  // air_scouts.js hides it while the scout flies
-    crane(g, P, -11.3, D, 1.1, 0.8);
-    if (isJ) {
-      rangefinder(g, P, 1.7, D + 0.8 + 3.94, 0, 2.0);
-      radar(g, -5.5, D + 2.4, 0, 0.7);
-      both(function (k) { searchlight(g, 0.6, D + 2.5, k * 0.55); });
-    } else {
-      rangefinder(g, P, 2.6, D + 2.8, 0, 1.6);
-      radar(g, 2.0, D + 2.8 + 2.6 + 0.08, 0, 1.0);
-      radar(g, -4.6, D + 0.9 + 1.8 + 0.08, 0, 0.6);
-    }
-  };
-  DET.cruiser = function (s, P, H, isJ) {
-    var g = s.group, D = H[2];
-    common(g, P, H, 1.0);
-    planks(g, P, H, [-1.15, 1.15], 0.12, 0.66);
-    both(function (k) {
-      aaTub(g, P, -3.2, D + 0.6, k * 0.72, true, k > 0 ? -Math.PI / 2 : Math.PI / 2);
-      aaTub(g, P, -0.9, D + 0.6, k * 0.76, false, k > 0 ? -Math.PI / 2 : Math.PI / 2);
-      lifeboat(g, 0.1, D, k * 1.15);
-      searchlight(g, -2.4, D + 0.6, k * 0.62);
-    });
-    catapult(g, -4.7, D, 0, 1.6, 0.5);
-    s.floatplane = floatplane(g, P, -4.7, D + 0.08, 0, 0.5);
-    crane(g, P, -5.3, D, -0.9, -0.6);
-    if (isJ) { rangefinder(g, P, 1.45, D + 0.6 + 2.6, 0, 1.4); radar(g, -3.6, D + 2.4, 0, 0.5); }
-    else { rangefinder(g, P, 2.1, D + 1.6, 0, 1.2); radar(g, 1.5, D + 1.6 + 2.0 + 0.08, 0, 0.8); }
-  };
-  DET.destroyer = function (s, P, H, isJ) {
-    var g = s.group, D = H[2];
-    common(g, P, H, 0.8);
-    both(function (k) {
-      aaTub(g, P, -0.2, D, k * 0.66, false, k > 0 ? -Math.PI / 2 : Math.PI / 2);
-      for (var i = 0; i < 4; i++) x6(g, C.dark, 0.09, 0.16, -5.55 + i * 0.2, D + 0.09, k * 0.42);   // depth-charge rack
-      bx(g, C.dark, 0.8, 0.04, 0.05, -5.25, D + 0.18, k * 0.42);
-      var kg = c6(g, C.dark, 0.06, 0.22, -4.9, D, k * 0.66); kg.rotation.x = -k * 0.5;            // K-gun
-      s8(g, C.dark, 0.14, 0.14, 0.14, -4.9, D + 0.24, k * 0.76);
-    });
-    x6(g, P.gun, 0.17, 1.4, -3.15, D + 0.2, 0);                       // second torpedo mount
-    c6(g, P.super, 0.25, 0.12, -3.15, D, 0);
-    searchlight(g, 2.0, D + 0.8, 0);
-    radar(g, 1.6, D + 0.8 + 1.7, 0, 0.5);
-  };
-  DET.pt = function (s, P, H, isJ) {
-    var g = s.group, D = H[2];
-    rail(g, H, 0.4, 0.97, 8);
-    bx(g, C.glass, 0.04, 0.16, 0.7, 1.08, D + 0.45, 0);                // windshield
-    c6(g, C.dark, 0.025, 0.7, 0.3, D + 0.45, 0);                        // little mast
-    radar(g, 0.3, D + 1.12, 0, 0.25);
-    aaTub(g, P, 1.4, D, 0, false, 0);
-    flagstaff(g, P, -2.35, D, 0.6);
-  };
-  DET.carrier = function (s, P, H, isJ) {
-    var g = s.group, top = 1.99, FD = 1.75;
-    var pc = shade(P.deck, 0.88);
-    [-2.1, -1.4, -0.7, 0.7, 1.4, 2.1].forEach(function (z) { bx(g, pc, 25.8, 0.008, 0.035, -0.4, top, z); }); // planking
-    for (var i = 0; i < 6; i++) bx(g, RAIL, 0.04, 0.012, 4.4, -11.6 + i * 0.55, top, 0);             // arresting wires
-    both(function (k) {
-      [-9.5, -4.5, 5.5].forEach(function (x, j) {
-        bx(g, P.super, 1.6, 0.1, 0.5, x, FD - 0.25, k * 2.72);                                          // gallery
-        aaTub(g, P, x - 0.3 + j * 0.1, FD - 0.15, k * 2.75, j !== 1, k > 0 ? -Math.PI / 2 : Math.PI / 2);
-      });
-      lifeboat(g, -2.0, 1.2, k * 1.95);
-    });
-    rail(g, H, 0.015, 0.985, 18, H[2]);
-    anchors(g, H);
-    if (isJ) { radar(g, 3.8, top + 2.5, -2.0, 0.5); searchlight(g, 4.6, top + 1.0, -2.0); }
-    else {
-      radar(g, 2.0, top + 2.05 + 1.7 + 0.08, 2.1, 0.9);
-      rangefinder(g, P, 3.0, top + 2.05, 2.1, 0.9);
-      searchlight(g, 0.4, top + 1.3, 2.55);
-    }
-  };
-  DET.submarine = function (s, P, H, isJ) {
-    var g = s.group, D = H[2], tm = s.hullMats[0];                     // all fade with the hull when submerged
-    both(function (k) { M._mesh(g, g2().x6, tm, 5.6, 0.04, 0.04, -0.6, D + 0.24, k * 0.27); });   // casing rails
-    M._mesh(g, g2().s8, tm, 0.12, 0.12, 0.12, 0.9, D + 1.9, 0);       // periscope heads
-    M._mesh(g, g2().s8, tm, 0.1, 0.1, 0.1, 0.4, D + 1.7, 0);
-    M._mesh(g, g2().c6, tm, 0.24, 0.22, 0.04, 2.15, D + 0.2, 0);       // gun shield
-  };
+  // the detail kit for the class builders (models_usn.js, models_ijn.js); M / C are bound on first use
+  function bind() { M = WW.models; C = M._C; }
+  WW.models.D = { bind: bind, aaTub: aaTub, searchlight: searchlight, lifeboat: lifeboat, vent: vent, rangefinder: rangefinder,
+    radar: radar, floatplane: floatplane, catapult: catapult, crane: crane, flagstaff: flagstaff, rail: rail, anchors: anchors,
+    planks: planks, common: common, both: both, c6: c6, x6: x6, s8: s8, bx: bx, shade: shade, RAIL: RAIL, BOAT: BOAT };
 
   // ---- static merge ----
   var cache = {}, _nm = new THREE.Matrix3(), _inv = new THREE.Matrix4(), _mw = new THREE.Matrix4(), _v = new THREE.Vector3();
@@ -256,11 +169,10 @@ window.WW = window.WW || {};
     m.forEach(function (e) { root.add(new THREE.Mesh(e.geo, e.mat)); });
   }
 
-  function finish(type, P, s) {
-    M = WW.models; C = M._C;
-    var H = s._hg, fn = DET[type];
-    if (fn && H) fn(s, P, H, P.id === 'IJN');
-    var key = type + '|' + P.id, tobjs = s.turrets.map(function (t) { return t.obj; });
+  // after a class builder: merge the static meshes once per class + nation (turrets and the floatplane stay separate)
+  function finish(type, P, s, c) {
+    bind();
+    var H = s._hg, key = (c ? c.key : type) + '|' + P.id, tobjs = s.turrets.map(function (t) { return t.obj; });
     s.turrets.forEach(function (t, i) { merge(t.obj, key + '|t' + i, [], s.hullMats, 0); });
     if (s.floatplane) merge(s.floatplane, key + '|fp', [], [], null);  // own mesh: the scout can hide it
     merge(s.group, key, s.floatplane ? tobjs.concat([s.floatplane]) : tobjs, s.hullMats, H ? H[2] : 0);

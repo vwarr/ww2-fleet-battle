@@ -104,7 +104,7 @@ const CHECKS = [
   { id: 'sub_bowbeam',   desc: 'sub torpedo shots from bow/beam arc',    op: '>=', thr: 0.7, level: 'FAIL' },
   { id: 'sub_dived_dd',  desc: 'sub submerged share when <40u of a DD',  op: '>=', thr: 0.8, level: 'FAIL' },
   // fighters
-  { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL', levelIn: { midway: 'WARN', weather: 'WARN' } }, // midway: raids from the island come in from every side; weather: raids routed round a squall line spread the CAP fight
+  { id: 'ftr_leash',     desc: 'CAP fighter time within the doctrine leash of its carrier', op: '>=', thr: 0.8, level: 'FAIL', levelIn: { midway: 'WARN', weather: 'WARN' } }, // midway: raids from the island come in from every side; weather: raids routed round a squall line spread the CAP fight
   { id: 'ftr_bombers',   desc: 'bomber share of fighter kills in a raid', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'cap_on_bmb',    desc: 'CAP fighters in a fight during a raid that fight bombers', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'cap_gap',       desc: 'carrier time with <2 CAP up while it could (after 60 s)', op: '<=', thr: 0.25, level: 'WARN' },
@@ -439,7 +439,12 @@ function install(P) {
       if (!p.alive || p.kind !== 'fighter' || p.target || p.search || !p.carrier || (!p.carrier.isBase && !live(p.carrier)) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
       if (WW.dayNight && !WW.dayNight.canFly()) continue; // after dusk the CAP is recalled (daylight.js): no leash to keep
       if (p.carrier.isBase) { R.ftr.bt = (R.ftr.bt || 0) + dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.bin = (R.ftr.bin || 0) + dt; continue; } // island base CAP: info only
-      R.ftr.t += dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.inLeash += dt;
+      R.ftr.t += dt;
+      // doctrine CAP (air_cap.js): stations / loops 3-6 L out inside the leash; raids met out to the long leash, and a
+      // fighter coming back in from such a chase is still on its leash
+      const dC = WW.dist(p.x, p.z, p.carrier.x, p.carrier.z), Dl = WW.cap ? WW.cap.doc(p.nation) : null;
+      const back = Dl && Math.abs(WW.angleDiff(p.heading, Math.atan2(p.carrier.z - p.z, p.carrier.x - p.x))) < 0.9;
+      if (dC <= (Dl ? (p.foe || p.vec || back ? Dl.leash2 : Dl.leash) : P.CAP_R * P.LEASH_K)) R.ftr.inLeash += dt;
     }
     // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
     const PL = WW.world.planes, up = p => p.alive && (p.state === 'transit' || p.state === 'attack') && !p.deckPh;

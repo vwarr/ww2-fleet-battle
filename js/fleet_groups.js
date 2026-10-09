@@ -58,7 +58,12 @@ window.WW = window.WW || {};
   //   aaAmmo       AA ammunition factor (ship_supply.js; USN 1.25: deeper ready-use allowances); ddFuel: destroyer fuel
   //                factor (USN 1.1: longer legs); torpReloads: reload sets for destroyer / cruiser tubes (IJN 1, USN 0)
   // Torpedo performance per nation (range, speed, dud rate, wake sighting) is a stat table: core.js WW.TORPEDO_NATION.
-  //   (jointStrike, followUp, reserveFrac, pursuitReserve and patrolBombs are not rolled: they are doctrine, not tuning)
+  //   air          air style (an object, not rolled; air_cap.js, air_attack.js): cap 'picket' (USN: radar-vectored pickets
+  //                out on the threat bearing, high and low bands) | 'overhead' (IJN: Zeros over the fleet, reacting to
+  //                lookouts); press0 / pressT: how hard the strike presses its attack (1 = veterans: low release, close
+  //                drop), rising from press0 to 1 over pressT s and with the first strike flown; x the admiral's aggression;
+  //                sweep: the second escort element flies ahead of the strike to take on the CAP
+  //   (jointStrike, followUp, reserveFrac, pursuitReserve, patrolBombs and air are not rolled: they are doctrine, not tuning)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, nightEye: 0.3, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
@@ -66,6 +71,7 @@ window.WW = window.WW || {};
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
       patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
+      air: { cap: 'picket', press0: 0.35, pressT: 160, sweep: true },
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, nightEye: 0.5, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
@@ -73,9 +79,10 @@ window.WW = window.WW || {};
       ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
       patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
+      air: { cap: 'overhead', press0: 1, pressT: 0, sweep: true },
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
-  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1 }; // doctrine fields that are not rolled
+  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1, air: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
@@ -249,7 +256,7 @@ window.WW = window.WW || {};
   // vanguard (doctrine vanguard x the old map width, ~12 L) further out as pickets and bait.
   var HOLD_AHEAD = 5; // x the carrier's hull length
   function holdAnchor(B, cv, c, s) {
-    var x = 0, z = 0, L = WW.SHIP_TYPES.carrier.length;
+    var x = 0, z = 0, L = WW.cfg.L || 26; // the carrier hull length (ship_classes.js)
     for (var i = 0; i < cv.length; i++) { x += cv[i].x; z += cv[i].z; }
     var f = Math.max(HOLD_AHEAD * L, (B.doctrine.vanguard || 0) * WW.cfg.REF_W);
     return { x: x / cv.length + c * f, z: z / cv.length + s * f };

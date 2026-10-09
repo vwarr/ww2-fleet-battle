@@ -135,7 +135,10 @@ function report(rounds) {
   say('carrier planes, circling time by category:location as a share of all airborne time: ' + Object.keys(circCat).sort((a, b) => circCat[b] - circCat[a]).slice(0, 10).map(c => `${c} ${pc(circCat[c] / airAll)}`).join(', '));
   const LW = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => s.b.landing || 0), LS = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => (s.b.landing || 0) / Math.max(1, s.air + (s.b.landing || 0)));
   out.budgets._landing = { n: LW.length, p50: med(LW), p90: qs(LW, 0.9), shareP50: med(LS) };
+  const LM = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => s.b.marshal || 0), LG = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => (s.b.landing || 0) - (s.b.marshal || 0));
+  out.budgets._landing.marshalP50 = med(LM); out.budgets._landing.marshalP90 = qs(LM, 0.9); out.budgets._landing.grooveP50 = med(LG); out.budgets._landing.grooveP90 = qs(LG, 0.9);
   say(`landing pattern time per recovered carrier sortie: p50 ${f1(med(LW))} s, p90 ${f1(qs(LW, 0.9))} s (n ${LW.length}); share of that sortie's flying time p50 ${pc(med(LS))}`);
+  say(`  of which holding in the marshal stack p50 ${f1(med(LM))} s, p90 ${f1(qs(LM, 0.9))} s; the rest (approach, groove, wave-offs) p50 ${f1(med(LG))} s, p90 ${f1(qs(LG, 0.9))} s`);
   const ends = {}; for (const s of S) if (s.o === 'cv') ends[s.end] = (ends[s.end] || 0) + 1;
   say('carrier sortie ends: ' + JSON.stringify(ends));
   for (const n of ['USN', 'IJN']) { const G = S.filter(s => s.o === 'cv' && s.n === n && s.wv), o = {}; for (const s of G) o[s.wv] = (o[s.wv] || 0) + 1; say(`${n} carrier bomber sorties: joined the wave while it formed / after it had left / never had a wave: ${pc((o.formed || 0) / G.length)} / ${pc((o.late || 0) / G.length)} / ${pc((o.none || 0) / G.length)} (n ${G.length})`); (out.budgets._wave = out.budgets._wave || {})[n] = o; }
@@ -161,8 +164,39 @@ function report(rounds) {
   const effN = Object.values(eff).map(a => a.length), second = Object.values(eff).filter(a => a.length > 1).map(a => { a.sort((x, y) => x - y); return a[1] - a[0]; });
   out.waves._effective = { perCarrierWithDrops: mean(effN), secondGapP50: med(second), carriersWithSecond: effN.filter(n => n > 1).length / Math.max(1, effN.length) };
   say(`waves that dropped, per carrier that struck at all: ${f1(mean(effN))}; carriers with a second effective strike ${pc(out.waves._effective.carriersWithSecond)}, first -> second strike's first drop p50 ${f1(med(second))} s`);
+  // real strikes: first drops of a carrier's waves at least 60 s apart count as separate strikes; waves that left formed
+  const real = Object.values(eff).map(a => { a.sort((x, y) => x - y); let n = 0, last = -1e9; for (const t of a) if (t - last >= 60) { n++; last = t; } return n; });
+  const cvRoundsN = cvRounds.reduce((s, r) => s + Object.entries(r.comp || {}).filter(([k]) => k.endsWith(':carrier')).reduce((a, [, v]) => a + v, 0), 0);
+  // no-drop waves cut short: the carrier was lost before the strike arrived, or the round ended before it could (left < 60 s before the end, or never left)
+  const lenOf = {}; for (const r of rounds) lenOf[r.scen + r.seed] = r.len;
+  const cut = w => !w.drops.length && ((w.cvLost !== undefined && (w.tArr === null || w.cvLost < w.tArr)) || (w.tArr === null && (w.tGo === null || lenOf[w.scen + w.seed] - w.tGo < 60)));
+  const fair = cvW.filter(w => !cut(w));
+  const gone = cvW.filter(w => w.tGo !== null && w.formed !== undefined && w.formed !== null), cvNo = cvW.filter(w => !w.drops.length).length / Math.max(1, cvW.length);
+  out.waves._real = { perStrikingCv: mean(real), perCv: real.reduce((s, x) => s + x, 0) / Math.max(1, cvRoundsN), threePlus: real.filter(x => x >= 3).length / Math.max(1, real.length), noDrop: cvNo, departedFormed: gone.filter(w => w.formed).length / Math.max(1, gone.length), departedN: gone.length };
+  say(`real strikes (first drops >= 60 s apart) per carrier that struck: ${f1(mean(real))} (per carrier in the round ${f1(out.waves._real.perCv)}; 3 or more ${pc(out.waves._real.threePlus)}); carrier waves with no drop ${pc(cvNo)} (n ${cvW.length}); waves that departed formed (not on the timer) ${pc(out.waves._real.departedFormed)} (n ${gone.length})`);
+  out.waves._real.noDropFair = fair.filter(w => !w.drops.length).length / Math.max(1, fair.length);
+  say(`  carrier waves with no drop, leaving out the ${cvW.length - fair.length} cut short (carrier lost before arrival, or the round ended first): ${pc(out.waves._real.noDropFair)} (n ${fair.length})`);
   say(`carrier waves per carrier-round: ${f1(cvW.length / Math.max(1, rounds.reduce((s, r) => s + Object.entries(r.comp || {}).filter(([k]) => k.endsWith(':carrier')).reduce((a, [, v]) => a + v, 0), 0)))}; ` +
     `waves per round with carriers: ${f1(cvW.length / Math.max(1, cvRounds.length))}; first order at median ${f1(med(rounds.map(r => r.rec && r.rec.first.order).filter(x => x !== undefined && x !== null)))} s`);
+  // carrier hunting (item 5): per side, in rounds where the enemy has a carrier (not the island base)
+  {
+    const cvOf = (r, n) => (r.comp && r.comp[n + ':carrier']) || 0, sides = [];
+    for (const r of rounds) if (r.rec) for (const n of ['USN', 'IJN']) { const e = n === 'USN' ? 'IJN' : 'USN'; if (cvOf(r, e)) sides.push({ r, n, e }); }
+    const air = d => d.o === 'cv' || d.o === 'base';
+    const dr = sides.map(x => x.r.rec.drops.filter(d => d.n === x.n && air(d) && d.tt === 'carrier'));
+    const all = sides.map(x => x.r.rec.drops.filter(d => d.n === x.n && air(d)).length);
+    const sunkCv = sides.map(x => (x.r.rec.sunk || []).filter(s => s.n === x.e && s.type === 'carrier' && !s.base));
+    const byAir = sunkCv.map(a => a.filter(s => s.by === 'bomb' || s.by === 'torpedo' || s.by === 'crash').length);
+    const eCv = sides.reduce((s, x) => s + cvOf(x.r, x.e), 0);
+    const hits = dr.map(a => a.filter(d => d.hit === 'tgt').length);
+    out.waves._cv = { sides: sides.length, dropsAtCv: mean(dr.map(a => a.length)), shareAtCv: dr.reduce((s, a) => s + a.length, 0) / Math.max(1, all.reduce((s, x) => s + x, 0)),
+      hitsOnCv: mean(hits), cvSunk: sunkCv.reduce((s, a) => s + a.length, 0) / Math.max(1, eCv), cvSunkAir: byAir.reduce((s, x) => s + x, 0) / Math.max(1, eCv),
+      wipe: rounds.filter(r => r.rec && ['USN', 'IJN'].some(n => cvOf(r, n) && (r.rec.sunk || []).filter(s => s.n === n && s.type === 'carrier' && !s.base).length >= cvOf(r, n))).length / Math.max(1, rounds.filter(r => r.rec && (cvOf(r, 'USN') || cvOf(r, 'IJN'))).length) };
+    const bs = rounds.reduce((o, r) => { const b = r.rec && r.rec.boss; if (b) for (const k in b) o[k] = (o[k] || 0) + b[k]; return o; }, {});
+    const C = out.waves._cv;
+    say(`carrier hunting, per side per round facing enemy carriers (n ${C.sides}): air drops at a carrier ${f1(C.dropsAtCv)} (${pc(C.shareAtCv)} of its air drops), hits on a carrier ${f1(C.hitsOnCv)}; ` +
+      `enemy carriers sunk ${pc(C.cvSunk)} (by air ${pc(C.cvSunkAir)}); rounds where a side lost all its carriers ${pc(C.wipe)}; air boss: strikes turned to a carrier ${bs.cvFirst || 0} at the order, ${bs.cvRetarget || 0} while forming, of ${bs.strikes || 0}`);
+  }
 
   // 4. formation quality
   say('\n== 4. FORMATION QUALITY ==');
@@ -193,7 +227,12 @@ function report(rounds) {
   out.fighters.eng = {};
   for (const k of Object.keys(eg).sort()) { const G = eg[k], o = { n: G.length, durP50: med(G.map(e => e.d)), durP90: qs(G.map(e => e.d), 0.9), killRate: G.filter(e => e.kill).length / G.length, short: G.filter(e => e.d < 2).length / G.length }; out.fighters.eng[k] = o; say(`engagements ${pad(k, 34)} n ${lp(o.n, 4)} dur p50 ${f1(o.durP50)} p90 ${f1(o.durP90)} s, <2 s ${pc(o.short)}, kill / engagement ${f1(o.killRate)}`); }
   const FF = []; for (const r of rounds) if (r.rec) for (const x of r.rec.foeFirst) FF.push(x);
-  for (const n of ['USN', 'IJN']) { const d = FF.filter(x => x.n === n && x.d !== null).map(x => x.d); if (d.length) { out.fighters['icept_' + n] = { n: d.length, p10: qs(d, 0.1), p50: med(d), p90: qs(d, 0.9) }; say(`${n} CAP first contact with each armed raider: distance of the raider from the CAP's carrier p10 ${f1(qs(d, 0.1))} p50 ${f1(med(d))} p90 ${f1(qs(d, 0.9))} u (n ${d.length})`); } }
+  // carrier CAP (the PLANE_REVIEW 5 target) and the island base's CAP (raids on the island are met over it) apart
+  for (const n of ['USN', 'IJN']) for (const o of ['cv', 'base']) {
+    const d = FF.filter(x => x.n === n && x.d !== null && (x.o || 'cv') === o).map(x => x.d); if (!d.length) continue;
+    out.fighters['icept_' + n + (o === 'cv' ? '' : '_base')] = { n: d.length, p10: qs(d, 0.1), p50: med(d), p90: qs(d, 0.9) };
+    say(`${n} ${o === 'cv' ? 'carrier' : 'island base'} CAP first contact with each armed raider: distance of the raider from the CAP's ${o === 'cv' ? 'carrier' : 'base'} p10 ${f1(qs(d, 0.1))} p50 ${f1(med(d))} p90 ${f1(qs(d, 0.9))} u (n ${d.length})`);
+  }
 
   // 6. attacks and losses
   say('\n== 6. ATTACKS ==');
@@ -262,6 +301,13 @@ function report(rounds) {
     const o = out.pacing.byScen[sc]; say(`  ${pad(sc, 14)} air drop before fleet gunfire in ${o.airFirst}/${o.rounds} rounds; contact p50 ${f1(o.contactP50)} s, first drop p50 ${f1(o.dropP50)} s, first fleet gunfire p50 ${f1(o.gunP50)} s`); }
   out.pacing.contactP50 = med(cvRounds.map(ct).filter(x => x !== null));
   say(`first enemy ship contact (either side) p50 ${f1(out.pacing.contactP50)} s`);
+  { // early flight ops: the first launch (CAP, search, strike) within LAUNCH_BY s of the light allowing it (night rounds: never)
+    const LAUNCH_BY = 30, R = rounds.filter(r => r.rec && r.comp && (r.comp['USN:carrier'] || r.comp['IJN:carrier']));
+    const fly = R.filter(r => !r.rec.tod || (r.rec.tod.flyT !== null && r.rec.tod.flyT < r.len)), late = fly.filter(r => !(r.rec.first.launch <= (r.rec.tod ? r.rec.tod.flyT : 0) + LAUNCH_BY));
+    out.pacing.firstLaunch = { rounds: fly.length, late: late.length, p50: med(fly.map(r => r.rec.first.launch).filter(x => x !== undefined)), dark: R.length - fly.length };
+    say(`first launch (rounds with carriers that had flying light): p50 ${f1(out.pacing.firstLaunch.p50)} s; later than ${LAUNCH_BY} s after first light in ${late.length}/${fly.length}` +
+      `${late.length ? ' ' + late.map(r => r.scen + ':' + r.seed + '@' + r.rec.first.launch).join(' ') + '  <-- CHECK' : ' (ok)'}; ${out.pacing.firstLaunch.dark} night rounds with no flying light (by design)`);
+  }
   say(`rounds with carriers: first air drop before the first surface gunfire in ${pc(out.pacing.airFirst.dropBeforeGun)}; first drop p50 ${f1(out.pacing.airFirst.dropP50)} s, first gunfire p50 ${f1(out.pacing.airFirst.gunP50)} s, lead p50 ${f1(out.pacing.airFirst.leadP50)} s`);
   // rising action: drops + kills + gun damage events by thirds of the round. Thirds of the round's TIME: minute i
   // covers [60 i, min(60 i + 60, len)] and its events are spread evenly over that span (the minute-slot split, kept as

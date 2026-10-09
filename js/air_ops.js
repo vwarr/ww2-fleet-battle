@@ -1,7 +1,6 @@
-// air_ops.js — WW.airOps: the carrier's air boss and fighter director, and the air side's decisions.
-// Air boss (plan, per carrier, from ai_carrier.js airOps): a standing CAP of 2-4 fighters relieved on fuel, CAP
-// scrambles first, no strike while the carrier is under air attack (with a timeout), no strike launch while the deck
-// is recovering or foul, strikes only on a detected / last-known target (WW.fleetCmd.strikeOrder, else intel).
+// air_ops.js — WW.airOps: the fighter director and the air side's decisions. The air boss (plan: CAP, strikes,
+// launches, reserves, recalls) lives in air_boss.js and is attached here as WW.airOps.plan. Strike targets
+// (pickTarget) are only detected / last-known ones (WW.fleetCmd.strikeOrder, else intel).
 // Fighter director (fighter, from aircraft.js Plane.fighter): CAP orbits over its carrier, shifted toward the raid
 // bearing (USN radar sees raids at 250, IJN lookouts ~170: intel.js SEE_PLANE_NATION); it engages torpedo bombers on
 // a run > dive bombers in the wheel > other armed bombers > fighters, only within LEASH of the carrier (2x for an
@@ -14,7 +13,6 @@ window.WW = window.WW || {};
   const RAID_R = 120;          // armed enemy bomber this close to the carrier: under air attack
   const WARN_R = 260;          // raid picture radius for the fighter director (radar / lookouts decide what is in it)
   const RELIEF = 45;           // launch a relief when an on-station CAP fighter has less fuel than this (s)
-  const HOLD_MAX = 30;         // a strike waits at most this long for a raid to clear
   const VALUE = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };
   const ST = { raids: 0, scrambles: 0, reliefs: 0, holds: 0, recalls: 0, jettisons: 0, leashDrops: 0 };
 
@@ -74,73 +72,6 @@ window.WW = window.WW || {};
     return best;
   }
 
-  // ---------- the reserve strike (Nagumo's dilemma) ----------
-  // While no enemy carrier is known, a strike on anything else leaves doctrine reserveFrac of the bombers in the
-  // hangar, armed for ships, for when the enemy carriers turn up: a carrier sighting launches the reserve at once.
-  // Held RSV_MAX s with no carrier found, the reserve is rearmed for the targets at hand (REARM s, the deck loaded
-  // with them: they sit in cv.rearm, the deck load ship_fires.js reads; cv.deckRearmUntil) and goes with the next strike.
-  const RSV_MAX = 110, REARM = 20;
-  const RS = { held: 0, launches: 0, rearmed: 0, targets: {} };
-  const cvKnown = n => WW.intel && WW.intel.enemyShips(n, { fresh: 90 }).some(c => c.unit && c.unit.alive && c.unit.type === 'carrier');
-  function reserveHold(cv, tgt) {   // bombers to hold back from this strike: { dive, torpedo }
-    const a = cv.ai, d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(cv.nation) : null, now = WW.time.now;
-    const frac = d ? d.reserveFrac || 0 : 0, none = { dive: 0, torpedo: 0 };
-    if (a.rsv && (tgt.type === 'carrier' || cvKnown(cv.nation))) { RS.launches++; RS.targets[tgt.type] = (RS.targets[tgt.type] || 0) + 1; a.rsv = null; a.rsvGo = true; return none; }
-    if (!frac || tgt.type === 'carrier' || cvKnown(cv.nation)) return none;
-    const r = a.rsv || (a.rsv = { t0: now, rearmT: 0 });
-    if (!a.rsvHeld) { a.rsvHeld = true; RS.held++; }
-    if (now - r.t0 > RSV_MAX) {
-      if (!r.rearmT) { // the swap is done on deck: the planes join the rearm cycle (ship_fires.js deck load: a bomb now is costly)
-        r.rearmT = now + REARM; cv.deckRearmUntil = r.rearmT;
-        const k = { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
-        for (const kind in k) for (let i = 0; i < k[kind]; i++) { cv.hangar[kind]--; (cv.rearm = cv.rearm || []).push({ kind, at: r.rearmT }); }
-      }
-      if (now < r.rearmT) return none;  // the reserve is on deck being rearmed (out of the hangar)
-      if (now >= r.rearmT) { RS.rearmed++; RS.targets[tgt.type] = (RS.targets[tgt.type] || 0) + 1; a.rsv = null; a.rsvGo = true; return none; }
-    }
-    return { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
-  }
-  function reserveTick(cv) {        // a carrier sighted while the reserve is held: strike now
-    const a = cv.ai; if (!a.rsv || a.strikeT <= 1 || a.queue.some(q => q.target)) return;
-    const so = WW.fleetCmd && WW.fleetCmd.strikeOrder ? WW.fleetCmd.strikeOrder(cv) : null;
-    if ((so && so.target && so.target.type === 'carrier') || (a.rsv.rearmT && WW.time.now >= a.rsv.rearmT)) a.strikeT = 1;
-  }
-
-  // ---------- the pursuit reserve (the follow-up strike on a beaten fleet) ----------
-  // Once the carrier has flown its first strike and the enemy battle line has been seen (and the side has a battle
-  // line of its own to win the gun fight: a carrier force alone uses everything), a follow-up strike leaves
-  // doctrine pursuitReserve of the bombers in the hangar, armed, for the end of the battle: Hiryu's second strike on
-  // Yorktown, Enterprise's and Hornet's afternoon strike on Hiryu, the 6 June strikes on Mikuma and Mogami. It is
-  // released (the strike timer drops to 1 s) when the enemy is beaten: the side pursues, or the enemy's seen fit gun
-  // tonnage is below WAVER of all it has seen with a carrier or a cripple of it known (it is about to break); in the
-  // last LATE_T s of the round (no bombs go home); or when an enemy gun ship closes on this carrier (fleet_cmd defend:
-  // self-defence first, a carrier's strikes are its only weapon against a battleship).
-  const WAVER = 0.3, LATE_T = 30;
-  const PS = { held: 0, released: 0, why: {} };
-  function beaten(B) {
-    if (B.posture === 'pursue') return 'pursue';
-    if (!(B.foeTons > 0) || B.foeFit >= WAVER * B.foeTons) return null;
-    for (const c of WW.intel.enemyShips(B.nation, { fresh: 60 })) { const u = c.unit; if (u && u.alive && !u.isBase && (u.type === 'carrier' || (WW.endgameAI && u.stats.guns.length && WW.endgameAI.isCripple(u)))) return 'waver'; }
-    return null;
-  }
-  function pursuitWhy(cv, B) {
-    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null);
-  }
-  function pursuitHold(cv, B) {     // bombers kept back from this strike: { dive, torpedo }, or null
-    const a = cv.ai, frac = B.doctrine.pursuitReserve || 0;
-    if (!frac || !a.struck || !B.foeSeen || !B.foeSeen.size || a.puGo || !B.groups.main.members.length) return null; // no battle line of its own: every plane now
-    if (pursuitWhy(cv, B)) return null;
-    if (!a.puHeld) { a.puHeld = true; PS.held++; }
-    return { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
-  }
-  function pursuitTick(cv) {        // the enemy beaten while the reserve is held: strike now
-    const a = cv.ai, B = WW.fleetCmd && WW.fleetCmd.side(cv.nation);
-    if (!a.puHeld || a.puGo || !B) return;
-    const why = pursuitWhy(cv, B); if (!why) return;
-    a.puGo = true; PS.released++; PS.why[why] = (PS.why[why] || 0) + 1;
-    if (a.strikeT > 1 && !a.queue.some(q => q.target)) a.strikeT = 1;
-  }
-
   // ---------- air boss ----------
   function capWanted(cv) { // ai_carrier.js capWanted when present (standing element, 4 under a raid)
     if (WW.shipAI && WW.shipAI.capWanted) return +WW.shipAI.capWanted(cv) || 0;
@@ -155,89 +86,30 @@ window.WW = window.WW || {};
     }
     return { on, low, coming };
   }
-  function plan(cv, dt) {
-    const a = cv.ai, hg = cv.hangar, now = WW.time.now, A = picture(cv), D = cv._deck;
-    const attacked = underAttack(cv);
-    a.capT -= dt;
-    if (a.capT <= 0) {
-      a.capT = 1;
-      const want = Math.min(4, capWanted(cv));
-      const s = capState(cv), queued = a.queue.filter(q => q.kind === 'fighter' && !q.target && !q.search).length;
-      let need = want - s.on - s.coming - queued;
-      if (need > 0 && hg.fighter > 0) {
-        need = Math.min(need, hg.fighter);
-        for (let i = 0; i < need; i++) a.queue.unshift({ kind: 'fighter', target: null, cap: true });
-        if (s.low) ST.reliefs++; else if (A.near) ST.scrambles++;
-        if (WW.emit) WW.emit('airOrder', { carrier: cv, order: s.low && !A.near ? 'relief' : A.near ? 'scramble' : 'cap', n: need, raid: A.near ? { x: A.raidX, z: A.raidZ, d: A.raidD } : null });
-      }
-      if (attacked) recall(cv);
-    }
-    if (WW.search) WW.search.plan(cv, dt); // search flights while nothing is known (air_search.js)
-    // strikes: only on a known target, and not while the carrier is under air attack (fighters first)
-    reserveTick(cv); pursuitTick(cv);
-    a.strikeT -= dt;
-    a.lholdT = attacked ? (a.lholdT || 0) + dt : 0;
-    if (a.strikeT <= 0 && !a.queue.some(q => q.target) && attacked && (a.holdT || 0) < HOLD_MAX) {
-      if (!a.holdT) ST.holds++;
-      a.holdT = (a.holdT || 0) + dt;
-    } else if (a.strikeT <= 0 && !a.queue.some(q => q.target) && !(WW.endgame && WW.endgame.broken(cv.nation))) { // broken: no new strikes, it is running
-      const SB = WW.fleetCmd && WW.fleetCmd.side(cv.nation), pur = SB && SB.posture === 'pursue';
-      a.strikeT = WW.randRange(35, 55) * (pur ? 0.55 : 1); a.holdT = 0; // pursuit: every spare plane, sooner
-      const tgt = pickTarget(cv);
-      let hold = tgt && hg.dive + hg.torpedo > 0 ? reserveHold(cv, tgt) : null;
-      const ph = hold && SB ? pursuitHold(cv, SB) : null;    // the larger of the two reserves stays aboard
-      if (ph) hold = { dive: Math.min(hg.dive, Math.max(hold.dive, ph.dive)), torpedo: Math.min(hg.torpedo, Math.max(hold.torpedo, ph.torpedo)) };
-      const nd = hold ? hg.dive - hold.dive : 0, nt = hold ? hg.torpedo - hold.torpedo : 0;
-      if (tgt && nd + nt > 0) {
-        const cs = capState(cv), reserve = Math.max(0, capWanted(cv) - cs.on - cs.coming) + 1; // keep a relief back
-        const esc = Math.min(Math.max(0, hg.fighter - reserve), 4);
-        for (let i = 0; i < esc; i++) a.queue.push({ kind: 'fighter', target: tgt });
-        const n = Math.max(nd, nt);
-        for (let i = 0; i < n; i++) {
-          if (i < nd) a.queue.push({ kind: 'dive', target: tgt });
-          if (i < nt) a.queue.push({ kind: 'torpedo', target: tgt });
-        }
-        if (WW.strike) WW.strike.newWave(cv, tgt, a.queue, { reserve: !!a.rsvGo });
-        a.rsvGo = false;
-      }
-    }
-    // launches: CAP any time; strike planes not while recovering, the deck is foul, or the carrier is under attack
-    a.launchT -= dt;
-    if (!a.queue.length || a.launchT > 0) return;
-    const q = a.queue[0];
-    if (q.target) {
-      const busy = D && ((D.mode === 'recover' && D.lq.length > 0) || D.launchers.filter(p => p.deckPh === 'queued').length >= 3);
-      if ((attacked && a.lholdT < HOLD_MAX) || (busy && now - (a.busyT0 === undefined ? (a.busyT0 = now) : a.busyT0) < 25)) return;
-    }
-    a.queue.shift();
-    if (!a.queue.some(e => e.target)) a.busyT0 = undefined;
-    let tgt = q.target;
-    if (tgt && (!tgt.alive || tgt.submerged)) tgt = pickTarget(cv);
-    if (q.target && !tgt) return;
-    const p = WW.air.launch(cv, q.kind, tgt);
-    if (p) { a.launchT = 1.5; if (q.search && WW.search) WW.search.begin(p); }
-  }
-  // Own carrier under air attack: escorts in range with the fuel to get back recall to defend it.
-  function recall(cv) {
-    for (const p of WW.world.planes) {
-      if (!p.alive || p.carrier !== cv || p.kind !== 'fighter' || !p.target || p.recall || !up(p)) continue;
-      const d = WW.dist(p.x, p.z, cv.x, cv.z);
-      if (d < 320 && p.fuel > d / p.pt.speed + 25) { p.recall = true; ST.recalls++; if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'recall', plane: p, squadron: p.squadron || null }); }
-    }
-  }
-
-  // ---------- fighter director: CAP pick, leash, orbit ----------
+  // ---------- fighter director: CAP pick, leash, stations (air_cap.js) ----------
   // CAP priority: a torpedo bomber on its run (or heading at a ship of ours) > a dive bomber in the wheel / dive >
-  // other armed bombers > fighters > the rest; nearer is better. Only targets inside the leash of the carrier.
+  // other armed bombers > fighters > the rest; nearer is better. Only targets inside the leash of the carrier, and
+  // (with air_cap.js) only at visual range of this fighter: the vector out to a raid is flown without a foe.
+  const leashOf = pl => (WW.cap ? WW.cap.doc(pl.nation) : { leash: LEASH, leash2: LEASH2 });
+  // an enemy fighter riding with an armed raid (escort or sweep), or already on one of ours
+  function escorting(u, nation) {
+    if (u.kind !== 'fighter') return false;
+    if (u.foe && u.foe.nation === nation) return true;
+    for (const q of WW.world.planes) if (q.alive && q.nation === u.nation && armed(q) && WW.dist2(q.x, q.z, u.x, u.z) < 8100) return true;
+    return false;
+  }
+  // how many other fighters of ours are already on u (the director spreads the CAP over the raid)
+  function claimed(u, pl) { let n = 0; for (const q of WW.world.planes) if (q !== pl && q.foe === u && q.alive && q.nation === pl.nation && q !== pl.leader && q.leader !== pl) n++; return n; }
   function capPick(pl) {
-    const c = pl.carrier;
+    const c = pl.carrier, Lh = leashOf(pl), bd = WW.cap ? WW.cap.band(pl) : null;
     if (!WW.intel) return null;
     let best = null, bs = -1e9;
     for (const ct of WW.intel.enemyPlanes(pl.nation)) {
       const u = ct.unit;
       if (!u || !u.alive) continue;
+      if (WW.cap && !WW.cap.inReach(pl, u)) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
+      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
       if (u.kind === 'flyingboat' && picture(c).armed) continue;   // bombers first: the snooper waits
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
@@ -246,20 +118,24 @@ window.WW = window.WW || {};
       else if (u.kind === 'flyingboat') pr = 200;   // a snooper shadowing the fleet: shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
-      const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4;
+      if (arm && bd) pr += u.kind === (bd === 'high' ? 'dive' : 'torpedo') ? 140 : -150;   // USN height bands: each band its own raiders
+      const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4 - claimed(u, pl) * 70;   // spread out: one section per raider
       if (s > bs) { bs = s; best = u; }
     }
     return best;
   }
-  // Keep the foe? A CAP fighter beyond the leash lets go, unless the foe is an armed bomber still closing on the
-  // fleet (to 2x), or an enemy fighter on its own tail (air_dogfight's defence).
+  // Keep the foe? A CAP fighter beyond its doctrine leash lets go, unless the foe is an armed bomber still closing on
+  // the fleet, a fighter riding with the raid, an enemy fighter on its own tail (air_dogfight's defence), a snooper,
+  // or a damaged bomber to finish.
   function leashed(pl, f) {
-    const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z);
-    if (d <= LEASH) return true;
+    const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z), Lh = leashOf(pl);
+    if (d <= Lh.leash) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
-    if (f.kind === 'flyingboat') return d <= LEASH2;              // a shadower: the long leash, as for an inbound raid
-    if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= LEASH2 * 0.75) return true;   // finish a damaged bomber turning for home
-    return d <= LEASH2 && armed(f) && inbound(f, c);
+    if (f.kind === 'flyingboat') return d <= Lh.leash2;              // a shadower: the long leash, as for an inbound raid
+    if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= Lh.leash2 * 0.75) return true;   // finish a damaged bomber turning for home
+    if (d > Lh.leash2) return false;
+    if (pl.df && pl.df.foe === f && pl.df.lock > 0) return true;   // a committed attack runs its passes (a raider that jettisoned is still shot at)
+    return armed(f) || escorting(f, pl.nation);   // an armed bomber will attack something of ours: chase it to the long leash
   }
   function fighter(pl, dt) {
     const c = pl.carrier;
@@ -275,7 +151,7 @@ window.WW = window.WW || {};
     if (pl.foe && !esc && !leashed(pl, pl.foe)) { pl.foe = null; ST.leashDrops++; }
     if (pl.foe && esc && pl.recall) pl.foe = pl.foe.foe === pl ? pl.foe : null;   // recalled: only self-defence on the way
     const f = pl.foe;
-    if (f) { pl.state = 'attack'; WW.dogfight.fight(pl, f, dt); return; }
+    if (f) { pl.state = 'attack'; pl.vec = null; WW.dogfight.fight(pl, f, dt); return; }
     pl.state = 'transit';
     if (pl.recall) { pl.fly(c.x, c.z, 34, dt, pl.pt.speed * 1.05); return; }
     if (esc) {
@@ -286,7 +162,8 @@ window.WW = window.WW || {};
     }
     // relieved: low on fuel and a fresh fighter is on station
     if (pl.fuel < 20 || (pl.fuel < RELIEF * 0.6 && capState(c).on >= 2)) { pl.state = 'return'; return; }
-    if (WW.squadrons && WW.squadrons.follow(pl, dt)) return;      // wingman: hold the slot on the element leader
+    if (WW.squadrons && WW.squadrons.follow(pl, dt)) return;      // wingman: hold the slot on the section leader
+    if (WW.cap && WW.cap.patrol(pl, dt)) return;                 // doctrine CAP: stations, vectors (air_cap.js)
     const A = picture(c);
     let cx = c.x, cz = c.z;
     if (A.near) { const b = Math.atan2(A.raidZ - c.z, A.raidX - c.x); cx += Math.cos(b) * 15; cz += Math.sin(b) * 15; } // vectored toward the raid
@@ -320,7 +197,7 @@ window.WW = window.WW || {};
 
   // scouts: search sectors, shadowing and the way home live in air_search.js (WW.search)
 
-  function reset() { for (const k in ST) ST[k] = 0; RS.held = RS.launches = RS.rearmed = 0; RS.targets = {}; PS.held = PS.released = 0; PS.why = {}; }
+  function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, stats: ST, plan, fighter, bomber, pickTarget, capWanted, picture, underAttack, armed, reserve: RS, pursuit: PS, beaten };
+  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, RELIEF, stats: ST, fighter, bomber, pickTarget, capWanted, capState, picture, underAttack, armed }; // + plan, reserve, pursuit, beaten (air_boss.js)
 })();

@@ -1,16 +1,21 @@
-// land_air.js - WW.landAir: the island base's air group and its runway (sim code: WW.rand only). Loads after
-// air_cag.js and island_base.js. The base is an unsinkable "carrier" (plane.carrier = base, base.isBase): its planes
-// are WW.Planes launched through WW.air.launch (squadrons, pilots, dogfights, AA all as usual); aircraft.js hands
-// takeoff / goHome / landing / rollout to this file instead of air_deck.js.
-//  - Roster (ROSTER): USN Midway-style - Wildcat-type fighters (CAP), SBD dive bombers, B-26 torpedo bombers and
-//    B-17 high-level bombers; IJN - Zeros, G4M "Betty" torpedo bombers and Bettys as level bombers. A variant is a
-//    plane kind (fighter / dive / torpedo, so every kind test elsewhere still works) with its own model and stats.
-//  - Runway: taxi from the apron to the runway end most into the wind, wait for the runway, roll, lift off, climb.
-//    Home: join the circuit, one plane at a time on final down the centreline, touch down, roll out, taxi to the
-//    apron, rearm (REARM s; slower with the fuel farm burning). Closed runways (craters): planes hold over the island
-//    and, after HOLD_MAX s, ditch off the reef. A neutralized base launches nothing more.
-//  - Air boss (plan): a standing CAP (WW.airOps.capWanted: 2, 4 with raiders near), and every 55-75 s a strike on the
-//    best known enemy ship within STRIKE_R: dive and torpedo bombers as a WW.strike wave, level bombers on their own.
+// land_air.js - WW.landAir: the island base's air group in the air (sim code: WW.rand only). Loads after air_cag.js,
+// island_base.js and land_ground.js. The base is an unsinkable "carrier" (plane.carrier = base, base.isBase): its
+// planes are WW.Planes launched through WW.air.launch (squadrons, pilots, dogfights, AA all as usual); aircraft.js
+// hands takeoff / goHome / landing / rollout to this file instead of air_deck.js, and the ground part (slots, warm-up,
+// taxiways, hold-short, line-up, rollout and taxi-in) to land_ground.js.
+//  - Variants (VAR): a plane kind (fighter / dive / torpedo, so every kind test elsewhere still works) with its own
+//    model, stats, parking class (S / M / L) and whether it can land on a carrier (carrier: true). USN Midway-style:
+//    Wildcat-type fighters, SBDs, B-26 torpedo bombers, B-17 level bombers; IJN: Zeros, Bettys (torpedo / level).
+//    The group's size and mix: land_ground.js plan (one carrier air group's worth by default, WW.islandBase.TUNE).
+//  - Air boss (update): a standing CAP (WW.airOps.capWanted; a SCRAMBLE when raiders are near: fighters first, a short
+//    warm-up, a fast taxi), and every 55-75 s a strike on the best known enemy ship within STRIKE_R: dive and torpedo
+//    bombers as a WW.strike wave, level bombers on their own. Nothing is launched while the main runway is closed,
+//    the base is neutralized or it is dusk; queued launches wait for the runway to be repaired.
+//  - Home: the circuit (stacked orbits), cleared to land one at a time when the field is recovering and the runway is
+//    free, final down the centreline into the wind, touchdown. Main runway closed: an emergency landing on the cross
+//    runway if it is open (the plane is towed off), else the plane holds over the island for HOLD_MAX s (a neutralized
+//    base: LEAVE_T s) and then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room nearby;
+//    every other type (B-17, B-26, Betty, ...) ditches beside the nearest friendly ship, where it can be rescued.
 //  - Level bombing (pl.level): B-17 / Betty level variants, and carrier torpedo planes sent against the island (Kates
 //    carried bombs at Midway): straight and level at altitude, a stick released on the throw point; dropBomb's
 //    scatter grows with height, so a B-17 rarely hits a ship (historically they hit nothing at Midway).
@@ -18,47 +23,40 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  const REARM = 22, HOLD_MAX = 70, STRIKE_R = 560, TAXI_V = 4, ROLL_A = 7;
-  // variant: kind, model key, flight stats over the nation's kind, level bombing { alt, bombs }, gear height
+  const HOLD_MAX = 70, LEAVE_T = 12, STRIKE_R = 560, DIVERT_R = 420;
+  // variant: kind, model key, flight stats over the nation's kind, level bombing { alt, bombs }, gear height, parking class, carrier-capable
   const VAR = {
-    f4f:  { kind: 'fighter', model: null, sq: 'VMF-221' },
-    sbd:  { kind: 'dive', model: null, sq: 'VMSB-241' },
-    b26:  { kind: 'torpedo', model: 'b26', sq: '69th BS', st: { hp: 46, speed: 30, turn: 0.85, climb: 4, range: 1300 }, gear: 1.0 },
-    b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: 62, bombs: 3 } },
-    a6m:  { kind: 'fighter', model: null, sq: 'Tainan Kokutai' },
-    g4m:  { kind: 'torpedo', model: 'g4m', sq: 'Misawa Kokutai', st: { hp: 34, speed: 30, turn: 0.85, climb: 4, range: 1500 }, gear: 1.0 },
-    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: 48, bombs: 2 } }
+    f4f:  { kind: 'fighter', model: null, sq: 'VMF-221', cls: 'S', carrier: true },
+    sbd:  { kind: 'dive', model: null, sq: 'VMSB-241', cls: 'S', carrier: true },
+    b26:  { kind: 'torpedo', model: 'b26', sq: '69th BS', st: { hp: 46, speed: 30, turn: 0.85, climb: 4, range: 1300 }, gear: 1.0, cls: 'M' },
+    b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: 62, bombs: 3 }, cls: 'L' },
+    a6m:  { kind: 'fighter', model: null, sq: 'Tainan Kokutai', cls: 'S', carrier: true },
+    g4m:  { kind: 'torpedo', model: 'g4m', sq: 'Misawa Kokutai', st: { hp: 34, speed: 30, turn: 0.85, climb: 4, range: 1500 }, gear: 1.0, cls: 'L' },
+    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: 48, bombs: 2 }, cls: 'L' }
   };
-  const ROSTER = { USN: { f4f: 3, sbd: 2, b26: 2, b17: 2 }, IJN: { a6m: 3, g4m: 3, g4mL: 2 } };
   const KATE = { alt: 40, bombs: 1 };
-  const ST = { launches: 0, landings: 0, ditched: 0, strikes: 0, levelDrops: 0, holds: 0 };
+  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0 };
 
   const groundY = b => b.site.padH;
   const gearOf = p => (p.variant && VAR[p.variant].gear) || WW.air._pool.deckY;
-  function stockSync(b) { const h = b.hangar; h.fighter = h.dive = h.torpedo = 0; for (const k in b.stock) h[VAR[k].kind] += b.stock[k]; }
+  const G = () => WW.landGround;
 
-  function setup(b) {
-    b.stock = {}; for (const k in ROSTER[b.nation]) b.stock[k] = Math.round(ROSTER[b.nation][k] * WW.islandBase.TUNE.air);
-    b.ai = { queue: [], capT: 1, strikeT: 25, launchT: 0, lq: [], rollT: -1e9, finalT: -1e9, aimN: 0 };
-    stockSync(b);
+  function setup(b, counts) {
+    b.ai = { queue: [], capT: 1, strikeT: 25, launchT: 0, lq: [], aimN: 0, scrT: -1e9 };
     const sq = {};
-    for (const k in b.stock) sq[k] = { kind: VAR[k].kind, nation: b.nation, name: VAR[k].sq, short: VAR[k].sq, cvName: b.name, leader: null, sorties: 0, lost: 0 };
+    for (const k in counts) sq[k] = { kind: VAR[k].kind, nation: b.nation, name: VAR[k].sq, short: VAR[k].sq, cvName: b.name, leader: null, sorties: 0, lost: 0 };
     const byKind = { fighter: null, dive: null, torpedo: null };
     for (const k in sq) if (!byKind[sq[k].kind]) byKind[sq[k].kind] = sq[k];
     b._sq = { name: b.name, sq: byKind, byVariant: sq };   // air_squadrons.js group(): preset, never a carrier slot
     b._roster = { idle: [] };                              // air_aces.js roster(): the base's own pilots
-    // parking spots on the apron (site-local u along the main runway, v = 11 toward the hangars)
-    const S = b.site, c = Math.cos(S.h), s = Math.sin(S.h);
-    b.spots = [];
-    for (let i = 0; i < 12; i++) { const u = -34 + i * 6.5, v = 11; b.spots.push({ x: S.x + c * u - s * v, z: S.z + s * u + c * v, h: S.h - Math.PI / 2 }); }
-    // a ditching point: open water just off the field island, toward the open sea
+    const S = b.site;                                      // a ditching point: open water just off the field island
     b.ditch = null;
-    for (let r = 40; r < 160 && !b.ditch; r += 6) for (let i = 0; i < 12; i++) {
+    for (let r = 60; r < 200 && !b.ditch; r += 6) for (let i = 0; i < 12; i++) {
       const a = i / 12 * Math.PI * 2, x = S.x + Math.cos(a) * r, z = S.z + Math.sin(a) * r;
       if (WW.terrain.depthAt(x, z) > 2) { b.ditch = { x, z }; break; }
     }
   }
-  function hangarLost(b) { for (const k in b.stock) b.stock[k] = Math.floor(b.stock[k] * 0.7); stockSync(b); }
+  function hangarLost() { /* a burnt hangar slows the rearming (land_ground.js park) */ }
 
   // ---------- the air boss ----------
   function capState(b) {
@@ -69,31 +67,39 @@ window.WW = window.WW || {};
     }
     return { on, coming };
   }
-  function pick(b, kind) { for (const k in b.stock) if (VAR[k].kind === kind && !VAR[k].level && b.stock[k] > 0) return k; return null; }
+  function variants(b, kind) { const L = []; for (const s of b.slots) if (VAR[s.v].kind === kind && !VAR[s.v].level && L.indexOf(s.v) < 0) L.push(s.v); return L; }
+  function pick(b, kind) { for (const v of variants(b, kind)) if (G().ready(b, v) > 0) return v; return null; }
+  function canLaunch(b) { return G().opsOpen(b) && !(WW.dayNight && WW.daylight < 0.53); }
   function update(b, dt) {
     const a = b.ai, now = WW.time.now;
-    for (let i = b.rearm.length - 1; i >= 0; i--) if (b.rearm[i].at <= now) { b.stock[b.rearm[i].v]++; b.rearm.splice(i, 1); }
-    stockSync(b);
+    G().update(b, dt);
     if (b.neutralized) { a.queue.length = 0; return; }
     a.capT -= dt;
     if (a.capT <= 0) {
       a.capT = 1;
       const want = Math.min(4, WW.airOps ? WW.airOps.capWanted(b) : 2), cs = capState(b);
-      const fv = pick(b, 'fighter'), queued = a.queue.filter(q => VAR[q.v].kind === 'fighter' && !q.target).length;
+      const raid = !!(WW.airOps && WW.airOps.picture(b).near > 0);
+      const queued = a.queue.filter(q => VAR[q.v].kind === 'fighter' && !q.target).length;
       let need = want - cs.on - cs.coming - queued;
-      for (; need > 0 && fv && b.stock[fv] - a.queue.filter(q => q.v === fv).length > 0; need--) a.queue.unshift({ v: fv, target: null });
+      for (; need > 0; need--) {
+        const fv = pick(b, 'fighter');
+        if (!fv || G().ready(b, fv) - a.queue.filter(q => q.v === fv).length <= 0) break;
+        a.queue.unshift({ v: fv, target: null, fast: raid });
+      }
+      if (raid && now - a.scrT > 60 && canLaunch(b) && a.queue.some(q => q.fast)) { a.scrT = now; ST.scrambles++; WW.emit('baseEvent', { kind: 'scramble', base: b, nation: b.nation, x: b.x, z: b.z }); }
     }
     a.strikeT -= dt;
     if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
       a.strikeT = WW.randRange(55, 75);
       const t = WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null;
-      if (t && WW.dist(b.x, b.z, t.x, t.z) < STRIKE_R) {
-        const wave = [];
-        for (const k in b.stock) {
+      if (t && WW.dist(b.x, b.z, t.x, t.z) < STRIKE_R && canLaunch(b)) {
+        const wave = [], avail = {};
+        for (const s of b.slots) if (s.state === 'parked' && s.readyAt <= now && !s.moved) avail[s.v] = (avail[s.v] || 0) + 1;
+        for (const k in avail) {
           if (VAR[k].kind === 'fighter') continue;
-          for (let i = 0; i < b.stock[k]; i++) { const q = { v: k, kind: VAR[k].kind, target: t, level: !!VAR[k].level }; a.queue.push(q); if (!q.level) wave.push(q); }
+          for (let i = 0; i < avail[k]; i++) { const q = { v: k, kind: VAR[k].kind, target: t, level: !!VAR[k].level }; a.queue.push(q); if (!q.level) wave.push(q); }
         }
-        const f = pick(b, 'fighter'), esc = b.nation === 'IJN' && f ? Math.min(2, b.stock[f] - 3) : 0; // Zeros escort the Bettys
+        const f = pick(b, 'fighter'), esc = b.nation === 'IJN' && f ? Math.min(2, G().ready(b, f) - 3) : 0; // Zeros escort the Bettys
         for (let i = 0; i < esc; i++) { const q = { v: f, kind: 'fighter', target: t }; a.queue.push(q); wave.push(q); }
         if (wave.length || a.queue.some(q => q.level)) {
           ST.strikes++; WW.islandBase.stats.landStrikes++;
@@ -103,23 +109,25 @@ window.WW = window.WW || {};
       }
     }
     a.launchT -= dt;
-    if (!a.queue.length || a.launchT > 0 || !WW.islandBase.runwayOpen()) return;
-    if (WW.dayNight && WW.daylight < 0.53) return; // dusk: nothing more goes up (daylight.js recalls below 0.5)
-    const q = a.queue.shift();
+    if (!a.queue.length || a.launchT > 0) return;
+    if (!canLaunch(b)) { if (!G().opsOpen(b)) ST.closedLaunches++; return; } // runway closed / dusk: the queue waits
+    const q = a.queue[0];
     let t = q.target;
     if (t && (!t.alive || t.sinking)) t = WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null;
-    if (q.target && !t) return;
-    if (!(b.stock[q.v] > 0)) return;
-    b.nextVariant = q.v;
+    const slot = G().take(b, q.v);
+    a.queue.shift();
+    if ((q.target && !t) || !slot) return;
+    b.nextSlot = slot; b.nextFast = !!q.fast;
     const p = WW.air.launch(b, VAR[q.v].kind, t);
-    b.nextVariant = null;
-    if (p) { a.launchT = 2.4; ST.launches++; WW.islandBase.stats.landSorties++; }
+    b.nextSlot = null;
+    if (p) { a.launchT = q.fast ? 0.4 : 1.2; ST.launches++; WW.islandBase.stats.landSorties++; }
   }
 
-  // ---------- launch: variant model and stats, onto the apron ----------
+  // ---------- launch: variant model and stats, into its spot to warm up ----------
   function launched(p) {
-    const b = p.carrier, v = b.nextVariant || pick(b, p.kind) || Object.keys(b.stock)[0], V = VAR[v];
-    b.stock[v] = Math.max(0, b.stock[v] - 1); stockSync(b);
+    const b = p.carrier, slot = b.nextSlot;
+    if (!slot) { p.alive = false; p.remove(); return; }
+    const v = slot.v, V = VAR[v];
     p.variant = v;
     if (V.model) { // swap the model for the land plane's
       const P = WW.air._pool, m = P.get(V.model, p.nation);
@@ -130,129 +138,133 @@ window.WW = window.WW || {};
     if (V.st) { p.pt = Object.assign({}, p.pt, V.st); p.hp = p.maxHp = p.pt.hp; p.fuel = p.pt.range / p.pt.speed * 6; }
     if (V.level) { p.level = V.level; p.lvLand = true; }
     const sq = b._sq.byVariant[v]; if (sq) { p.squadron = sq; }
-    const sp = b.spots[(b.ai.spotN = ((b.ai.spotN || 0) + 1)) % b.spots.length];
-    p.x = sp.x; p.z = sp.z; p.y = groundY(b) + gearOf(p); p.heading = sp.h; p.speed = 0; p.vy = 0;
-    p.rwPh = 'taxi'; p.rwT = 0; p.sync(0);
+    G().launched(p, b, slot, b.nextFast);
+    G().sync(b);
+    p.sync(0);
   }
 
-  // ---------- runway geometry ----------
-  // the open runway and direction most into the wind: { r, dir (heading), sx, sz (start end), ex, ez }
-  function choose(b) {
-    const wh = WW.wind ? WW.wind.a + Math.PI : b.heading;
-    let best = null, bs = -9;
-    for (const r of b.runways) {
-      if (r.closed) continue;
-      for (const sg of [1, -1]) {
-        const h = sg > 0 ? r.h : r.h + Math.PI, sc = Math.cos(WW.angleDiff(h, wh)) + (r.i === 0 ? 0.3 : 0);
-        if (sc > bs) { bs = sc; best = { r, h, sx: r.x - Math.cos(h) * r.len * 0.46, sz: r.z - Math.sin(h) * r.len * 0.46 }; }
-      }
-    }
-    return best;
-  }
-  function busy(b, p) { // a plane rolling, or one on short final, or rolling out
-    const a = b.ai, now = WW.time.now;
-    if (now - a.rollT < 2.2) return true;
-    for (const q of WW.world.planes) if (q !== p && q.carrier === b && q.alive && (q.rwPh === 'roll' || q.rwPh === 'final' || q.rwPh === 'land')) return true;
-    return false;
-  }
-  function onGround(p, b, dt) { p.vy = 0; p.y = groundY(b) + gearOf(p); p.turn = 0; }
-  function steerTo(p, x, z, dt, rate) { const h = Math.atan2(z - p.z, x - p.x); p.turnTo(h, dt, rate || 1.6); return WW.dist(p.x, p.z, x, z); }
-
+  // ---------- takeoff: the ground part in land_ground.js; here the climb-out ----------
   function takeoff(p, dt) {
     const b = p.carrier;
-    p.rwT += dt;
-    if (p.rwPh === 'taxi' || p.rwPh === 'hold') {
-      const R = p.rw || (p.rw = choose(b));
-      if (!R) { p.speed = 0; onGround(p, b, dt); return; }  // runways closed: wait on the apron
-      if (p.rwPh === 'taxi') { const d = steerTo(p, R.sx, R.sz, dt, 2); p.speed = d > 3 ? TAXI_V : d; if (d < 1.2) p.rwPh = 'hold'; }
-      else {
-        p.speed = 0; p.turnTo(R.h, dt, 1.2);
-        if (R.r.closed) { p.rw = null; p.rwPh = 'taxi'; }
-        else if (Math.abs(WW.angleDiff(p.heading, R.h)) < 0.08 && !busy(b, p)) { p.rwPh = 'roll'; b.ai.rollT = WW.time.now; p.heading = R.h; }
-      }
-      onGround(p, b, dt); return;
-    }
-    if (p.rwPh === 'roll') {
-      p.turn = 0; p.speed = Math.min(p.pt.speed * 0.95, p.speed + ROLL_A * dt);
-      if (p.speed < p.pt.speed * 0.78) { onGround(p, b, dt); return; }
-      p.rwPh = 'climb';
-    }
-    // climb out straight ahead, then into the mission
+    if (p.rwPh !== 'climb') return G().out(p, dt);
     p.speedTo(p.pt.speed * 0.9, dt); p.turn = 0;
     p.vy += WW.clamp(Math.min(4, p.pt.climb || 4) - p.vy, -6 * dt, 6 * dt);
-    if (p.y > groundY(b) + 12) { p.state = 'transit'; p.rwPh = null; p.rw = null; }
+    if (p.y > groundY(b) + 12) { p.state = 'transit'; p.rwPh = null; }
   }
 
-  // ---------- home: circuit, final, touchdown, rollout, taxi in ----------
+  // ---------- home: circuit, final, touchdown; else hold, divert or ditch ----------
   function goHome(p, dt) {
     const b = p.carrier, d = WW.dist(p.x, p.z, b.x, b.z);
     p.foe = null;
     p.fly(b.x, b.z, d > 120 ? 25 : 20, dt, p.pt.speed);
     if (d < 150) { p.state = 'landing'; p.rwPh = 'circuit'; p.rwT = 0; if (b.ai.lq.indexOf(p) < 0) b.ai.lq.push(p); }
   }
+  // the runway to land on, into the wind: the main one, else (emergency) the cross runway; null: none open
+  function landRunway(b) {
+    if (b.neutralized) return null;
+    const o = b.ops, wh = WW.wind ? WW.wind.a + Math.PI : b.heading;
+    if (G().opsOpen(b)) { const h = o.dir > 0 ? b.heading : b.heading + Math.PI, td = b.layout.toW(-o.dir * 34, 0); return { h, x: td.x, z: td.z, main: true }; }
+    const r = b.runways[1]; if (!r || r.closed) return null;
+    const h = Math.cos(WW.angleDiff(r.h, wh)) >= 0 ? r.h : r.h + Math.PI;
+    return { h, x: r.x - Math.cos(h) * r.len * 0.36, z: r.z - Math.sin(h) * r.len * 0.36, main: false };
+  }
+  function stack(p, b, i, dt) {
+    const ang = Math.atan2(p.z - b.z, p.x - b.x) + 0.45, r = 62 + 7 * Math.min(i, 6);
+    p.fly(b.x + Math.cos(ang) * r, b.z + Math.sin(ang) * r, 20 + 3 * Math.min(i, 6), dt, p.pt.speed * 0.72);
+  }
   function landing(p, dt) {
-    const b = p.carrier, a = b.ai;
+    const b = p.carrier, a = b.ai, o = b.ops;
     a.lq = a.lq.filter(q => q.alive && !q.removed && q.state === 'landing' && q.carrier === b);
-    if (a.lq.indexOf(p) < 0) a.lq.push(p);
-    const i = a.lq.indexOf(p);
+    if (a.lq.indexOf(p) < 0 && !p.leaving) a.lq.push(p);
+    const i = Math.max(0, a.lq.indexOf(p));
     p.rwT += dt;
-    const R = choose(b);
-    if (!R || b.neutralized) { // nowhere to land: hold over the island, then ditch off the reef
-      p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
-      if (p.holdT > HOLD_MAX && b.ditch) {
-        if (steerTo(p, b.ditch.x, b.ditch.z, dt) < 10 || WW.terrain.depthAt(p.x, p.z) > 2 && p.holdT > HOLD_MAX + 20) { ST.ditched++; p.ditch(); return; }
-        p.climbTo(8, dt); p.speedTo(p.pt.speed * 0.6, dt); return;
-      }
-      const ang = Math.atan2(p.z - b.z, p.x - b.x) + 0.45, r = 55 + 7 * Math.min(i, 5);
-      p.fly(b.x + Math.cos(ang) * r, b.z + Math.sin(ang) * r, 22 + 3 * Math.min(i, 5), dt, p.pt.speed * 0.7);
-      p.rwPh = 'circuit'; return;
+    if (p.leaving) return leave(p, b, dt);
+    const R = landRunway(b);
+    if (!R) { // nowhere to land: hold over the island, then divert (carrier types) or ditch by a friendly ship
+      if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
+      p.rwPh = 'circuit'; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
+      if (p.holdT > (b.neutralized ? LEAVE_T : HOLD_MAX)) { p.leaving = true; return; }
+      stack(p, b, i, dt); return;
     }
     p.holdT = 0;
-    const tdx = R.sx + Math.cos(R.h) * 6, tdz = R.sz + Math.sin(R.h) * 6;   // touchdown just past the runway end
-    const fx = tdx - Math.cos(R.h) * 75, fz = tdz - Math.sin(R.h) * 75;
+    const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
-      if (i > 0 || busy(b, p)) { // stacked: orbit the island, higher for each plane ahead
-        const ang = Math.atan2(p.z - b.z, p.x - b.x) + 0.45, r = 55 + 7 * Math.min(i, 5);
-        p.fly(b.x + Math.cos(ang) * r, b.z + Math.sin(ang) * r, 20 + 3 * Math.min(i, 5), dt, p.pt.speed * 0.72);
-        return;
-      }
+      const clear = R.main ? o.mode === 'recover' && !o.occ && !o.hold : !o.crossOcc;
+      if (i > 0 || !clear) { stack(p, b, i, dt); p.apOut = false; return; }
+      // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
+      const ox = R.x - c * 150, oz = R.z - s * 150;
+      if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
       const d = WW.dist(p.x, p.z, fx, fz);
       p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
-      if (d < 14) { p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = tdx; p.rwZ = tdz; }
+      if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7) {
+        p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = R.x; p.rwZ = R.z; p.emergency = !R.main;
+        if (R.main) o.occ = p; else { o.crossOcc = p; ST.emergency++; }
+      }
       return;
     }
     // final: down the centreline (PD on the cross-track drift), descending to the touchdown point
-    const h = p.rwH, c = Math.cos(h), s = Math.sin(h), dx = p.x - p.rwX, dz = p.z - p.rwZ;
-    const along = dx * c + dz * s, cross = -dx * s + dz * c, vc = dt > 0 && p._cr !== undefined ? (cross - p._cr) / dt : 0; p._cr = cross;
-    const togo = -along;
-    if (R.h !== h || p.rwT > 25) { p.rwPh = 'circuit'; p._cr = undefined; return; }   // the runway closed under it: go round
-    p.turnTo(h - WW.clamp(cross * 0.12 + vc * 0.1, -0.7, 0.7), dt, 1.8);
+    const h = p.rwH, ch = Math.cos(h), sh = Math.sin(h), dx = p.x - p.rwX, dz = p.z - p.rwZ;
+    const along = dx * ch + dz * sh, cross = -dx * sh + dz * ch, vc = dt > 0 && p._cr !== undefined ? (cross - p._cr) / dt : 0; p._cr = cross;
+    const togo = -along; p.togo = togo; p.hd = WW.angleDiff(p.heading, h);
+    if (R.h !== h || R.main === !!p.emergency || p.rwT > 25) { // the runway closed under it: go round
+      p.rwPh = 'circuit'; p._cr = undefined; p.apOut = false; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
+    }
+    const want = h - WW.clamp(cross * 0.12 + vc * 0.1, -0.7, 0.7), dd = WW.angleDiff(p.heading, want);
+    if (Math.abs(dd) > 2.4) { p.finSign = p.finSign || Math.sign(dd) || 1; p.heading += p.finSign * 1.8 * dt; } // far off: one committed turn
+    else { p.finSign = 0; p.turnTo(want, dt, 1.8); }
     const ty = groundY(b) + gearOf(p) + WW.clamp(togo * 0.12, 0, 10);
     p.speed += WW.clamp(Math.max(p.pt.speed * 0.55, 13) - p.speed, -6 * dt, 6 * dt);
     p.vy = WW.clamp((ty - p.y) * 2.5, -6, 4);
     if (togo < 1) { // touchdown
-      p.state = 'rollout'; p.rwPh = 'land'; p.y = groundY(b) + gearOf(p); p.vy = 0; p.heading = h; p.t = 0; p._cr = undefined;
+      p.state = 'rollout'; p.y = groundY(b) + gearOf(p); p.vy = 0; p.heading = h; p.t = 0; p._cr = undefined;
       a.lq.splice(a.lq.indexOf(p), 1); WW.stats.planesLanded++; ST.landings++;
+      G().touchdown(p, b);
+      if (p.hp < p.maxHp * 0.5) WW.emit('baseEvent', { kind: 'crashLanding', base: b, nation: b.nation, x: p.x, z: p.z, plane: p });
     }
   }
-  function rollout(p, dt) {
-    const b = p.carrier;
-    if (p.rwPh === 'land') {
-      p.speed = Math.max(TAXI_V, p.speed - 9 * dt);
-      if (p.speed <= TAXI_V) { p.rwPh = 'taxiIn'; p.spot = b.spots[(b.ai.spotIn = ((b.ai.spotIn || 0) + 5)) % b.spots.length]; }
-    } else {
-      const d = steerTo(p, p.spot.x, p.spot.z, dt, 2);
-      p.speed = Math.min(TAXI_V, d);
-      if (d < 1) { receive(p, b); return; }
-    }
-    p.x += Math.cos(p.heading) * p.speed * dt; p.z += Math.sin(p.heading) * p.speed * dt;
-    onGround(p, b, dt); p.turn = 0;
-    p.sync(dt);
+  function rollout(p, dt) { return G().inbound(p, dt); }
+
+  // Leaving a closed field: a carrier-capable plane diverts to the nearest friendly carrier with deck room within
+  // DIVERT_R; any other type (land bombers can never land on a deck) flies to the nearest friendly ship and ditches
+  // beside it (endgame.js / air_flyingboats.js send a rescue); with no friendly ship, it ditches off the reef.
+  function deckRoom(cv) {
+    let cap = cv.wingN || 0, n = 0; const P = cv.stats.planes || {};   // the carrier's own air group (air_boss.js), else the ship stats
+    if (!cap) for (const k in P) cap += P[k];
+    for (const k in cv.hangar) n += cv.hangar[k] || 0;
+    n += (cv.rearm || []).length;
+    for (const q of WW.world.planes) if (q.alive && q.carrier === cv) n++;
+    return cap + 2 - n;
   }
-  function receive(p, b) { // the ground crew takes it: refuel and rearm (slower with the fuel farm burning)
-    const slow = b.facilities.some(f => f.kind === 'fuel' && f.out) ? 1.6 : 1;
-    b.rearm.push({ v: p.variant, at: WW.time.now + REARM * slow });
-    p.alive = false; p.remove();
+  function leave(p, b, dt) {
+    if (!p.leaveT) {
+      p.leaveT = WW.time.now;
+      let cv = null, cd = DIVERT_R, ship = null, sd = 1e9;
+      for (const s of WW.world.ships) {
+        if (!s.alive || s.sinking || s.nation !== p.nation) continue;
+        const d = WW.dist(p.x, p.z, s.x, s.z);
+        if (VAR[p.variant] && VAR[p.variant].carrier && s.type === 'carrier' && s.hangar && d < cd && deckRoom(s) > 0) { cd = d; cv = s; }
+        if (s.type !== 'submarine' && d < sd) { sd = d; ship = s; }
+      }
+      const i = b.ai.lq.indexOf(p); if (i >= 0) b.ai.lq.splice(i, 1);
+      if (cv) { // the carrier's air boss takes it (air_deck.js): it lands, rearms and joins the carrier's group
+        if (p.slot) { p.slot.state = 'away'; p.slot.plane = null; }
+        p.slot = null; p.carrier = cv; p.state = 'return'; p.rwPh = null; p.leaving = false; ST.diverted++;
+        WW.emit('baseEvent', { kind: 'divert', base: b, nation: b.nation, x: p.x, z: p.z, plane: p, carrier: cv });
+        return;
+      }
+      p.ditchTo = ship ? { ship, x: ship.x, z: ship.z } : b.ditch ? { x: b.ditch.x, z: b.ditch.z } : { x: p.x, z: p.z };
+    }
+    const D = p.ditchTo;
+    if (D.ship && D.ship.alive && !D.ship.sinking) { D.x = D.ship.x; D.z = D.ship.z; }
+    else if (D.ship) { // the ship it was making for has gone: the next nearest friendly ship, else its last position
+      let best = null, bd = 1e9;
+      for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation === p.nation && s.type !== 'submarine') { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
+      if (best) { D.ship = best; D.x = best.x; D.z = best.z; } else { D.ship = null; if (D.x === undefined) { D.x = p.x; D.z = p.z; } }
+    }
+    const tx = D.x, tz = D.z;
+    const d = WW.dist(p.x, p.z, tx, tz), off = D.ship ? 22 : 0;
+    p.fly(tx, tz, d > 60 ? 18 : 6, dt, p.pt.speed * 0.75);
+    if ((d < off + 8 && WW.terrain.depthAt(p.x, p.z) > 1.5) || WW.time.now - p.leaveT > 150) { ST.ditched++; p.ditch(); }
   }
 
   // ---------- level bombing, and strikes on the base aimed at its facilities ----------
@@ -315,5 +327,5 @@ window.WW = window.WW || {};
   });
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; });
 
-  WW.landAir = { setup, update, launched, takeoff, goHome, landing, rollout, hangarLost, aimFor, VAR, ROSTER, stats: ST };
+  WW.landAir = { setup, update, launched, takeoff, goHome, landing, rollout, hangarLost, aimFor, VAR, stats: ST };
 })();
