@@ -87,12 +87,12 @@ window.WW = window.WW || {};
   // ---- per frame per near ship: bearings, polls, hoses ----
   function frame(rec, dt, now) {
     var sh = rec.ship, o = ops(rec), P = WW.crewProps;
+    o.pollT -= dt;   // poll first: it can start a look, whose bearing is needed by pose() this frame
+    if (o.pollT <= 0) { o.pollT = 0.5; poll(rec, o, now); }
     if (o.aaTgt && now < o.aaT) { o.aaB = bearing(sh, o.aaTgt.x, o.aaTgt.z); o.aaE = Math.atan2((o.aaTgt.y || 0) - 2, Math.hypot(o.aaTgt.x - sh.x, o.aaTgt.z - sh.z)); }
     if (o.look && now < o.look.t) { var lu = o.look.u, lx = lu ? lu.x : o.look.x, lz = lu ? lu.z : o.look.z; o.lookB = bearing(sh, lx, lz); o.lookE = lu && lu.y ? Math.atan2(lu.y - 2, Math.hypot(lx - sh.x, lz - sh.z)) : 0.1; }
     else o.look = null;
     if (o.sal && now < o.sal.t && !o.sal.src.removed) o.salB = bearing(sh, o.sal.src.x, o.sal.src.z); else o.sal = null;
-    o.pollT -= dt;
-    if (o.pollT <= 0) { o.pollT = 0.5; poll(rec, o, now); }
     if (!P || rec.sink) return;
     for (var i = 0; i < rec.sailors.length; i++) {
       var s = rec.sailors[i];
@@ -192,7 +192,7 @@ window.WW = window.WW || {};
     }
     // AA crews at work
     if (now < o.aaT && (role === 'g' || s.tur)) {
-      if (!s.tur && s.mode === 'idle') s.ft = o.aaB;
+      if (!s.tur && s.mode === 'idle' && o.aaB != null) s.ft = o.aaB; // no bearing yet when the first report named no target
       var kick = now - (o.kickH || 0) < 0.25;
       s.cr = kick ? 1 : 0.85; s.lean = 0.3 - Math.min(0.25, (o.aaE || 0) * 0.4); s.aL = s.aR = 1.35 + Math.min(0.6, (o.aaE || 0)); s.oL = s.oR = -0.02;
       s.dx = -(kick ? 0.06 : 0.03) * Math.abs(Math.sin(now * 31 + s.ph)); return;
