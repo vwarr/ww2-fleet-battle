@@ -62,7 +62,12 @@ You can also open `index.html?auto` to start in this mode.
    - The water must be deep enough for that ship type. If it is too shallow, a message shows.
    - Do not put ships too near to other ships.
 4. Right-click near a ship to remove it.
-5. Click **Start** to start the battle. Each side must have at least one ship.
+5. Click **Base** to choose who holds the island airfield: USN, IJN or none. The airfield shows on the map.
+6. Click **Start** to start the battle. Each side must have at least one ship.
+
+### The island base
+
+Each map has one or two large islands. One has an airfield, like Midway: runways, hangars, a control tower, fuel tanks, AA guns and coastal guns. The side that holds it has an air group on the island (fighters, dive bombers, B-17s and B-26s for the USN; Zeros and Betty bombers for the IJN). The other side tries to knock the base out with carrier strikes and battleship gunfire: bombs crater the runways (work crews fill them again), hangars and fuel tanks burn, and guns are silenced. When the runways are closed and the guns are out, the base is "neutralized". A base that survives counts for its owner when the time runs out.
 
 During a battle, push `H` and click **Edit fleet** to go back to your fleets.
 
@@ -131,7 +136,8 @@ The game does not show health bars.
 | `js/audio_naval.js`, `js/audio_naval_wire.js` | Naval sounds: guns by calibre, shell whistles, splashes, hits, fires, sinking, torpedoes, depth charges, submarines, ship engines. |
 | `js/sky.js` | The sky, the clouds, the lights and the haze. |
 | `js/water.js` | The water surface, the foam, the depth colours and the contact shadows under hulls. |
-| `js/terrain.js` | The sea floor, the islands and the depth grid. |
+| `js/terrain.js`, `js/terrain_islands.js` | The sea floor, the islands (a Midway-style atoll or a big volcanic island, with an airfield) and the depth grid. |
+| `js/island_base.js`, `js/base_ai.js`, `js/land_air.js`, `js/base_fx.js`, `js/models_base.js`, `js/models_landplanes.js` | The island air base: runways, hangars, guns, its planes (B-17s, B-26s, Bettys), the fight for the island, and how it looks. |
 | `js/models.js`, `js/models_detail.js`, `js/models_planes.js` | Ship models, fine ship detail and plane models. |
 | `js/effects.js` | Splashes, explosions, smoke, fire, wakes, trails and oil. |
 | `js/damage.js` | Fires and smoke at the points where ships are hit. The wind. |

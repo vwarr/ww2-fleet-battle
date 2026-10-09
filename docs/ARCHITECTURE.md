@@ -31,10 +31,13 @@ js/audio_naval_wire.js  plays the naval patches from sim events; polls engines, 
 js/audio_air.js         aircraft sounds: engines, wing guns, hits, ordnance release, deaths, carrier deck
 js/sky.js               WW.sky: sky dome, clouds, lights, fog
 js/water.js             WW.water: water shader, foam, contact shadows
+js/terrain_islands.js   WW.terrainIslands: the island layout (atoll or volcanic island), the airfield pad and site
 js/terrain.js           WW.terrain: sea floor, islands, depth grid
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
 js/models_planes.js     WW.models.buildPlane
+js/models_landplanes.js WW.models.buildPlane for the land planes: B-17, B-26, G4M Betty (models_planes.js lofting kit)
+js/models_base.js       WW.baseModels: the airfield (runways, hangars, tower, fuel tanks, barracks, revetments, AA pits, batteries)
 js/models_scout.js      WW.models.buildScout: scout floatplanes
 js/models_flyingboats.js WW.models.buildFlyingBoat: PBY Catalina / H6K Mavis (lofted with models_planes.js WW.models._planeKit)
 js/models_crew.js       WW.crew: tiny sailors on every ship (instanced, posable arms), deck stations, idle / fire / abandon-ship motion
@@ -81,6 +84,9 @@ js/air_ops.js           WW.airOps: air boss (CAP relief, scrambles, strike hold,
 js/air_search.js        WW.search: search sector claims, carrier search flights, shadowing, break-away and routed return (scouts too)
 js/air_strafe.js        WW.strafe: fighters strafe PT boats, surfaced subs and damaged destroyers
 js/air_cag.js           WW.cag: strike leader (handover, redirect, AA detour), VT/VB timing, close and top cover escorts
+js/island_base.js       WW.islandBase: the island air base (owner, facilities, craters, coastal guns, AA pits, neutralized, events)
+js/base_ai.js           WW.baseAI: the fight for the island in the AI (objective, bombardment aim, strike value, defence)
+js/land_air.js          WW.landAir: the base air group (roster, CAP, strikes), the runway (takeoff, circuit, landing), level bombing
 js/air_flyingboats.js   WW.flyingBoats, WW.FlyingBoat: flying boats from off the map; the Catalina "Dumbo" rescue (endgame.js tasks)
 js/air_patrol.js        WW.patrol: long-range patrol flying boats (search, shadow from standoff, evade fighters, Mavis bombing); bad-report strike metrics
 js/camera.js            WW.cam: director camera and map camera
@@ -89,6 +95,7 @@ js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulde
 js/camera_story_shots.js WW.storyShots: story-mode shot goals (chase, wingman, over-the-shoulder, side, water, high, deck, fall)
 js/camera_story.js      WW.camStory: story mode: follow one squadron / division through its mission (key F)
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
+js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, parked planes, captions, diary, camera hooks)
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)
 js/post.js              WW.post: HDR render target, bloom, tone curve
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
@@ -121,12 +128,12 @@ Each animation frame (`main.js`, `frame`):
 
 1. `WW.dmgVis.unpose` (the sim must not see the visual settling), then advance the simulation. For each step (`step`):
    1. `WW.terrain.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
-   2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.endgame.update` (escapes, survivor pickups, scuttling), `WW.shipFires.update` (fires, flooding, damage control, once a sim second) and `WW.charge.update` (smoke clouds, escort charges)
+   2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.islandBase.update` (the island base: repairs, coastal guns, raid warning, the base air group), `WW.endgame.update` (escapes, survivor pickups, scuttling), `WW.shipFires.update` (fires, flooding, damage control, once a sim second) and `WW.charge.update` (smoke clouds, escort charges)
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
    5. `WW.fx.update`, then `WW.lifeboats.update`
    6. Round logic: victory, time limit and the next round
-2. `WW.dmgVis.pose` (visual settling and trim), `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.dmgVis.draw` (decals on the posed hulls), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
+2. `WW.dmgVis.pose` (visual settling and trim), `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.dmgVis.draw` (decals on the posed hulls), `WW.baseFx.update` (the island base's craters, fires and parked planes), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
 3. Render through `WW.post.render` (HDR, bloom, tone curve). If `WW.post` is not available, render directly.
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
@@ -136,7 +143,7 @@ Each animation frame (`main.js`, `frame`):
 `index.html?sim` sets `WW.simOnly` (and `WW.cfg.SIM_ONLY`) in `core.js`, before any module initializes. The page runs the full simulation and renders nothing. The headless sim tests use it; players never see it.
 
 - `main.js bootSim()` makes a plain `THREE.Scene` and camera, but no `WebGLRenderer`. It initializes only `terrain`, `models`, `combat`, `ships` and `air`, starts the game as usual (`?auto` or setup), and never calls `requestAnimationFrame`. The test drives `__sim.fastForward`.
-- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats` and `dmgVis` (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
+- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
 - Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
 - The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page and a sim-only page; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
 - Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
@@ -195,11 +202,18 @@ WW.terrain = {
   depthAt(x, z) -> number,            // water depth in units; 0 or less is land; off the map is 0
   isNavigable(x, z, minDepth) -> bool,
   randomSeaPoint(minDepth, xMin, xMax) -> {x, z},
-  update(dt), seed, landFraction
+  update(dt), seed, landFraction,
+  site,                               // the airfield site: { kind: 'atoll' | 'volcanic', x, z, h, padH, apron, runways: [{ x, z, h, len, w }], atoll | island }
+  padDist(x, z), PAD_H                // distance outside the airfield pad (0 on it); the pad's ground height (1.2)
 };
 ```
 
-Each map has 3 to 6 islands, 4 to 8 islets, 2 to 4 sandbars and 3 to 6 reefs, spread over the sea between the start zones (x 135 to `MAP_W` − 135). Land is approximately 2 to 6% of the map. The two start zones (x < 120 and x > `MAP_W` − 120) stay open. `generate` takes approximately 200 ms (headless, 960 × 600). The terrain bakes soft ambient occlusion into its vertex colours. `generate` sends the depth grid to `WW.water.setDepth`.
+Fewer, larger islands (`terrain_islands.js`, `WW.terrainIslands.make`, from terrain.js's own seeded generator):
+- **Atoll maps (60%)**: a Midway-style reef ring (radius 115 to 128, the crest about 0.9 under water with surf, one shallow channel, a shallow lagoon inside) in the middle third of the map, holding a flat coral 'field' island with the airfield (Eastern Island) and a low sandy island (Sand Island), sometimes a cay; plus one volcanic island elsewhere.
+- **Volcanic maps (40%)**: one big volcanic island (radius 58 to 70, peak 9 to 12) with the airfield on a coastal plain on its flank (the apron side to the sea), fringing reefs off the far side, and a second, smaller volcanic island.
+- Plus 3 to 5 islets, 1 to 3 sandbars and 2 to 4 reefs. The free islands (not the atoll or the field) are scaled so land is 4.5 to 7% of the map. The start zones (x < 120 and x > `MAP_W` − 120) stay open. The reef crest is too shallow for any ship, so the atoll is one convex obstacle: ships go round it, nobody gets into the lagoon.
+- **The airfield pad**: two crossing runways (86 and 60 long) and an apron, flattened to `PAD_H` = 1.2 with a 10-unit blend (`flatten`, after the surface roughness), so the base sits on flat land. Palms and huts keep off it.
+- All of it is part of `heightRaw`, so the depth grid (both modes) and the floor mesh agree. `generate` takes approximately 80 ms (headless, 960 × 600). The terrain bakes soft ambient occlusion into its vertex colours. `generate` sends the depth grid to `WW.water.setDepth`.
 
 ### sky.js, water.js, post.js
 
@@ -750,6 +764,47 @@ Visual / UI only: they read the sim and never write it, use `Math.random` only, 
 - **War diary** (`WW.diary`): entries `{ t, clock, text, pri 0..3, nation, kind }`, kept in time order, at most 160. Clock: `WW.dayNight.hourAt(roundTime)` when the night branch is present, else 0600 + roundTime / 120 h (one sim second is half a minute). Sources: `contact` (first) and `report` (flying boats) batched per side over 1.5 s into one sighting report with a bearing from the side's fleet centre and the observer ("Kingfisher from Northampton"); `misidResolved`, `airOrder` strikeAway, `shipHit` (first bomb or torpedo, below half hp), `deckHit`, `magazine`, `engineHit`, `shipSunk`, `shipScuttled`, `shipEscaped`, `escortCharge`, `rescue`, `ace`, `flyingBoat` lost, `admiralOrder` (its `text`), `victory`. Ship names: `ship.name`, else a period name by nation, type and order (carriers follow the air-group slots). The card (`#diary`) slides in at the right in map view; `L` toggles it per view (off in the director view by default). An entry of priority 2 or more flashes as a small caption through `WW.airCaptions.say` (its 15 s throttle; never over the victory card), only when the card is hidden. It emits `diaryEntry`.
 - **After-action report** (`WW.aar`): a snapshot at `victory` (winner and reason; per side: the admiral from `WW.admirals.of`, ships lost by name and type from the `shipSunk` / `shipScuttled` events, escaped ships, planes lost (every plane flown that is no longer alive), the ship of the day (sinkings credited to gun ships aiming at the victim within 1.3 × their longest weapon range, half a sinking to the carrier of a plane attacking it), the top pilot (`planeKill` this round); the 5 key moments from the diary). It shows 4.5 s after the victory caption, stays through the victory pause and on the ready screen until the next battle (auto mode: about 34 s of real time); a click hides it. `VICTORY_TIME` is unchanged.
 - Test: `node tests/plot_shots.js [seed] [seconds]` (render mode) shoots the three plots of one moment, the danger layer, the diary card and the report into tests/shots/plot/ and prints the diary.
+
+### The island air base: island_base.js, base_ai.js, land_air.js, base_fx.js, models_base.js, models_landplanes.js
+
+"Toys fighting for Midway." One base per map, on the terrain's airfield site, owned by one side or by nobody.
+
+```js
+WW.islandBase = { base, stats, build(owner), update(dt), impact(nation, x, z, dmg, kind, cal) -> bool, scan(nation, sight),
+                  shooters(ships) -> ships + AA pits, tons(nation), runwayOpen(), ID: 9001, BASE_TONS, BATTERY, PIT_AA, CLOSE };
+// base: { isBase: true, id, type: 'base', nation, alive (always), x, z, heading (main runway), speed: 0, name ('Midway', 'Henderson Field',
+//         'Wake', 'Rabaul'), site, stats: { guns: [battery x live batteries] | [], aa: { range, dps of the live pits }, length 40, tons },
+//         hp / maxHp (facility hp), power, hangar, stock (planes on the ground by variant), rearm, runways: [{ craters, closed }],
+//         craters, facilities: [{ kind: hangar | fuel | tower | barracks | aa | battery, x, z, r, hp, out, unit }], neutralized,
+//         takeDamage(), toWorld() }
+WW.baseAI = { objective(B), strikeValue(B, carrier), assign(ship, target), neutralized() };
+WW.landAir = { setup(base), update(base, dt), launched(p), takeoff / goHome / landing / rollout(p, dt), hangarLost(base), aimFor(plane, base),
+               VAR, ROSTER, stats };
+```
+
+- **Owner**: `WW.game.baseChoice` ('USN' | 'IJN' | 'none'; the ready screen's Base button, kept by Start; the tests set it), else a `WW.rand` roll in the `roundStart` listener (USN 40%, IJN 40%, none 20%). `enterAuto` clears the choice. The setup screen shows a preview owner (`game.basePreview`, Math.random) until the user picks one.
+- **Not a ship**: the base is never in `WW.world.ships`. It is a duck-typed object with what the planes, the AI and combat read. Its ids (base 9001, pits 9011+, batteries 9031+) never collide with ship ids (intel's line-of-sight cache, orders).
+- **Intel** (`intel.js` scan hook): the enemy side always has the base as a fresh contact (an island is on the chart); for its owner the base is a radar and lookout station (ships within 230, planes within 260 USN / 190 IJN; x 0.7 with the tower out). The contact has `stats.guns` and `stats.aa`, so `WW.threat.build` stamps the coastal guns and the AA into the enemy's danger field: ships and plane routes respect them with no extra code.
+- **Hits** (`combat.js landShell` and `combat_weapons.js updateBomb` hooks; `findHit` never takes the base as a hull): every shell or bomb that lands on the island goes to `impact()`:
+  - a bomb, big or medium shell on a runway adds a crater (weight 1 / 0.8 / 0.35, at most 3.5 per runway); a runway with crater weight >= `CLOSE` 1.5 is closed. Repair crews fill 0.5 every 13 s (x 1.3 with the fuel farm out), the most damaged runway first;
+  - the blast (bomb 7, big 5, medium 3, small 1.5) damages every facility in reach; at 0 hp it is out: a hangar burns and the base loses 30% of the planes on the ground, a fuel tank burns (rearm x 1.6), the tower costs the radar range, a pit or battery is silenced.
+  - **Neutralized** (sticky): every runway closed, every battery silenced and at least half the AA pits out. The base stops launching and repairing, its planes in the air hold and then ditch off the reef, ships stop taking it as a target and strikes stop going to it.
+- **Coastal batteries** (3, on the seaward shore): 2 medium guns each, range 140, reload 7 s, at the visible enemy ship in range with the most tons per distance (`combat.fireShell` from the battery unit). **AA pits** (5): `shooters()` hands them to `combat_aa.js` as shooters (`PIT_AA` range 42, dps 4.5, heavy share 0.45).
+- **Tonnage** (main.js `tonnage`): an intact base adds `BASE_TONS` (26000) to its owner's tonnage, so it counts heavily in the time-limit tiebreak. The kill / retire endings are unchanged (a side with only its base left is out).
+- **AI** (`base_ai.js`; hooks in `fleet_cmd.js`: `POWER` -> `base.power`, `STRIKE_V` -> `strikeValue`, `B.objective`, `assignment`):
+  - `B.objective = { kind: 'neutralize' | 'defend', base, x, z, state: 'intact' | 'runway closed' | 'neutralized', at }`, or null with no base.
+  - Bombardment: `ROLE_W.battleship.base` 1, `cruiser` 0.8 (0 for the rest), `VALUE.base` 7. The ships' own target score takes the base when nothing better is in reach, and `engage` holds them at their preferred range: a battleship at 0.84 x 170 = 143, outside the batteries; a cruiser inside them, at its doctrine's risk. Each ship aims at one facility at a time (`fireShell` wrapper): the nearest live battery in range first (counter-battery), then a runway, the pits and the rest. No torpedoes at an island (`fireSpread` wrapper). A bombardment run is a ship's shells at the base with less than 30 s between them.
+  - Carrier strikes: the base is worth 8 as a strike target (a runway open), 4.5 (runways closed, guns up) or 2, against `STRIKE_V` carrier 12, battleship 9: a known enemy carrier wins (the Midway dilemma; the reserve doctrine of `air_ops.js` still applies). Carriers do not flee from the base (`ai_carrier.js fleeFrom`): the danger field keeps them off its guns.
+  - Defence: an enemy ship within 230 of the own base is worth x 2 to own ships within 420 of the base.
+- **The base air group** (`land_air.js`; the base is the planes' `carrier`; `aircraft.js` hands takeoff / goHome / landing / rollout to it, and `WW.air.launch` hands the new plane to `launched` instead of `air_deck.js`): a variant is a plane kind with its own model and stats (`VAR`): USN `f4f` (fighter), `sbd` (dive), `b26` (torpedo, B-26 Marauder), `b17` (level bomber, B-17); IJN `a6m` (fighter), `g4m` (torpedo, G4M Betty), `g4mL` (level, Betty with bombs). `ROSTER`: USN 5 / 4 / 2 / 3, IJN 5 / 4 / 3. The squadrons and pilots are the base's own (`base._sq`, `base._roster`: VMF-221, VMSB-241, 69th BS, 431st BS; Tainan, Misawa and Chitose Kokutai).
+  - Air boss: a standing CAP (`WW.airOps.capWanted`), and every 55 to 75 s a strike on the best known enemy ship within 560 (`WW.airOps.pickTarget`): dive and torpedo bombers as one `WW.strike` wave, level bombers on their own; IJN Zeros escort (up to 2). No launch with every runway closed, and none after dusk (`daylight.js` blocks `WW.air.launch`).
+  - Runway: taxi from an apron spot to the open runway end most into the wind, wait for the runway (one roll at a time, 2.2 s apart, nobody on final), roll at 7 u/s^2, lift off at 0.78 x speed, climb out. Home: within 150 the plane joins the circuit (stacked orbits, one at a time on final), flies the centreline down to touchdown, rolls out, taxis to a spot and is rearmed after 22 s. No open runway: hold over the island, ditch off the reef after 70 s.
+  - Level bombing (`pl.level`: a B-17 at 62 with 3 bombs, a Betty at 48 with 2; carrier torpedo planes sent against the island at 40 with 1, like the Kates' bombs at Midway): straight and level, released on the throw point. `dropBomb`'s scatter grows with height, so a B-17 rarely hits a ship.
+  - A strike on the base aims each bomber at one facility (`aimFor`: the runways, then the batteries, pits, hangars and fuel; the dive wrapper moves the base's x / z to the aim point for that call).
+- **Visuals** (`base_fx.js`, `models_base.js`, `models_landplanes.js`; never in sim-only mode): the airfield is built on `baseBuilt` (round start and the setup screen). Craters are pooled discs that shrink as they are filled; knocked-out facilities are scorched and slumped; hangars and fuel tanks burn with dark smoke columns for 3 min; the guns turn; the owner's flag flies on the tower; one parked model stands on the apron for each plane on the ground. The B-17, B-26 and Betty are lofted with the carrier planes' kit (`WW.models._planeKit`), the engines baked into the wing halves; the extra propellers copy the first one's spin and blur.
+- **Events** `'baseEvent'` `{ kind, base, nation (owner), x, z, by?, target?, runway? }`, kind: `airRaid` (armed enemy bombers within 160 heading for it, at most once a minute: "Midway under air attack"), `cratered`, `runwayClosed` ("Runway cratered"), `runwayOpen` ("Runway repaired"), `battery` ("Coastal battery silenced"), `aa`, `hangar` ("Hangar ablaze"), `fuel` ("Fuel farm burning"), `tower`, `barracks`, `strikeOut` (with `target`: "Strike from the island inbound"), `bombard` (`by`: the ship starting a bombardment run), `neutralized` ("Midway neutralized"); and `'baseBuilt'` `{ base }`. `base_fx.js` turns them into captions (at most one every 12 s) and war diary entries (`WW.diary.add`).
+- **Tests**: `tests/sim_behaviour.js` scenario `midway` (a USN base and carrier group against an IJN carrier striking force), `--base USN|IJN|none` for any scenario, and the info metrics `base_neut` (share of base rounds neutralized), `base_t_neut` (median s), `base_cap_leash`, `base_raids`, `rw_closures`, `batteries_out`, `land_strikes`, `land_sorties`, `land_hits` (ship hits by base planes), `bombard_runs`, `bombard_shells`. The balance gate prints the wins by base owner. The carrier CAP leash check leaves the base fighters out.
+- **Tuning knobs** (the base's strength, for the balance pass): `BASE_TONS`, `BATTERY`, `PIT_AA`, `CLOSE`, `REPAIR_T` / `REPAIR_W`, `HP` (island_base.js); `ROSTER`, the `VAR` stats, `REARM`, `STRIKE_R` (land_air.js); `W_BASE`, `VALUE`, `STRIKE_OPEN` / `STRIKE_SHUT` (base_ai.js); the owner roll (island_base.js `roundStart`).
 
 ### Admirals: admirals.js, admirals_flags.js
 
