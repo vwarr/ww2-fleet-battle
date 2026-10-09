@@ -16,11 +16,12 @@ window.WW = window.WW || {};
   const ENGAGE = 130;                    // a vectored fighter takes the raider as its foe inside this range (the tally: ~5 L)
   // Per doctrine: leash (CAP stays inside), long leash (armed raid inbound, fighters escorting it), vector range.
   const DOC = {
-    // vecR: a raid this far from the carrier is vectored on (USN: the CXAM plot, 15-25 nm out in 1942; IJN: a raid its
-    // lookouts, screen or patrols have reported); the meeting point is then 2-3 x the drop range out, so the CAP has
-    // the whole approach to work the bombers over, not the last two seconds of it
+    // vecR: a raid this far from the carrier is vectored on. USN: the CXAM plot and a fighter director, 15-25 nm out
+    // in 1942, so the meeting point is 2-3 x the drop range out and the CAP works the bombers over all the way in.
+    // IJN: no radar and few fighter radios: the Zeros go for what their own loops and the lookouts see (200; 270 put
+    // them onto raids reported by scouts, and moved the 100-round gate from USN 52 to 44)
     picket:   { leash: 190, leash2: 420, vecR: 420, spd: 0.85 },   // the racetrack ends reach ~185 (140 out, 90 across, the turns)
-    overhead: { leash: 160, leash2: 280, vecR: 270, spd: 0.8 }   // the loops reach ~155 (115 + 12% + 25 toward the threat)
+    overhead: { leash: 160, leash2: 205, vecR: 200, spd: 0.8 }   // the loops reach ~155 (115 + 12% + 25 toward the threat)
   };
   // USN stations by section index: distance out, angle off the threat bearing, altitude band, inner (kept back)
   const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 66 }, { d: 60, a: 0, y: 30, inner: true }];
