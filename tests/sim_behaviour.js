@@ -102,7 +102,7 @@ const CHECKS = [
   { id: 'sub_bowbeam',   desc: 'sub torpedo shots from bow/beam arc',    op: '>=', thr: 0.7, level: 'FAIL' },
   { id: 'sub_dived_dd',  desc: 'sub submerged share when <40u of a DD',  op: '>=', thr: 0.8, level: 'FAIL' },
   // fighters
-  { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL' },
+  { id: 'ftr_leash',     desc: 'CAP fighter time within leash of carrier', op: '>=', thr: 0.8, level: 'FAIL', levelIn: { midway: 'WARN' } }, // midway: raids from the island come in from every side
   { id: 'ftr_bombers',   desc: 'bomber share of fighter kills in a raid', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'cap_on_bmb',    desc: 'CAP fighters in a fight during a raid that fight bombers', op: '>=', thr: 0.6, level: 'WARN' },
   { id: 'cap_gap',       desc: 'carrier time with <2 CAP up while it could (after 60 s)', op: '<=', thr: 0.25, level: 'WARN' },

@@ -104,6 +104,7 @@ window.WW = window.WW || {};
     }
     a.launchT -= dt;
     if (!a.queue.length || a.launchT > 0 || !WW.islandBase.runwayOpen()) return;
+    if (WW.dayNight && WW.daylight < 0.53) return; // dusk: nothing more goes up (daylight.js recalls below 0.5)
     const q = a.queue.shift();
     let t = q.target;
     if (t && (!t.alive || t.sinking)) t = WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null;
