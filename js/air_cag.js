@@ -87,13 +87,45 @@ window.WW = window.WW || {};
     if (w.dT < ARRIVE && !w.attackSaid && t) { w.attackSaid = true; emit({ carrier: w.carrier, squadron: w.cag && w.cag.squadron, order: 'attack', plane: w.cag, leader: w.cag, target: t, squadrons: sqNames(w) }); }
     return t;
   }
-  // Wave heading: steer round the detected AA umbrella of escorts while far from the target.
+  // Wave heading: steer round the detected AA umbrella of escorts while far from the target, and give an enemy raid in
+  // sight a wide berth: where its bombers will be when we get there (RAID_LOOK s ahead, run on along their course),
+  // scored like AA. Opposing strikes in 1942 passed in sight of each other and flew on (Santa Cruz).
+  const RAID_LOOK = [2, 4, 6], RAID_AV = 130, RAID_W = 30;
+  function raidCost(w, h, foes) {
+    let c = 0;
+    const v = w.v || 22;
+    for (const tau of RAID_LOOK) {
+      const x = w.x + Math.cos(h) * v * tau, z = w.z + Math.sin(h) * v * tau;
+      let m = 0;
+      for (const u of foes) { const d = WW.dist(x, z, u.x + Math.cos(u.heading) * u.speed * tau, u.z + Math.sin(u.heading) * u.speed * tau); if (d < RAID_AV) m = Math.max(m, 1 - d / RAID_AV); }
+      c += m * RAID_W;
+    }
+    return c;
+  }
+  // Enemy armed bombers in transit near the wave that it knows of: the side's contacts within 350, and any enemy strike
+  // formation (FORM_N or more planes) within FORM_SEEN of the guide: a whole formation is seen well beyond the
+  // 100 a lone plane is (intel.js PLANE_PLANE), less in cloud or out of the sun (air_staff.js seeK).
+  const FORM_N = 6, FORM_SEEN = 260;
+  function raidFoes(w) {
+    const L = [];
+    if (!WW.intel || w.dT <= DETOUR_FAR) return L;
+    const ok = u => u && u.alive && u.ordnance && (u.kind === 'dive' || u.kind === 'torpedo') && u.state === 'transit';
+    for (const c of WW.intel.enemyPlanes(w.nation)) { const u = c.unit; if (ok(u) && WW.dist2(w.x, w.z, u.x, u.z) < 350 * 350) L.push(u); }
+    if (WW.strike && WW.strike._waves) for (const q of WW.strike._waves()) {
+      if (q.nation === w.nation || !q.go || q.done || q.members.length < FORM_N) continue;
+      const R = FORM_SEEN * (WW.staff && WW.staff.seeK ? WW.staff.seeK(w, { x: q.x, y: 50, z: q.z }) : 1) * (WW.daylight === undefined || WW.daylight > 0.3 ? 1 : 0.35);   // by night: a lone plane's reach
+      if (WW.dist2(w.x, w.z, q.x, q.z) > R * R) continue;
+      for (const u of q.members) if (ok(u) && L.indexOf(u) < 0) L.push(u);
+    }
+    return L;
+  }
   function detour(w, want, t) {
     if (w.dT < DETOUR_FAR) return want;
     let best = want, bc = 1e9;
+    const foes = WW.staff && WW.staff.TUNE.raid ? raidFoes(w) : [];
     for (const o of [0, -0.35, 0.35, -0.7, 0.7]) {
       const h = want + o;
-      let c = 0;
+      let c = foes.length ? raidCost(w, h, foes) : 0;
       for (const r of [30, 60]) c += aaAt(w.nation, w.x + Math.cos(h) * r, w.z + Math.sin(h) * r, t);
       if (WW.weather) for (const r of [40, 80]) c += WW.weather.cover(w.x + Math.cos(h) * r, w.z + Math.sin(h) * r) * 8; // round the worst of a squall
       c += Math.abs(o) * 6;
