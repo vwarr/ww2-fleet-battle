@@ -337,7 +337,7 @@ Fatal blows (`torpedo_review.js --seeds 10`, 40 rounds):
 | before | 142 (+23, +6) | 22 | 29 | 13 |
 | after | 150 (+24, +5) | 24 | 20 | 18 |
 
-Behaviour suite: 1 FAIL before (stuck: a submarine) and 2 after. The 2 FAILs are one USN destroyer that is stuck in the standard and mirror rounds of seed 1: the known intermittent ASW hold, which the ships branch owns. `determinism.js 1 200` and `--cross 1 200` pass.
+Behaviour suite: 1 FAIL before (stuck: a submarine) and 2 after. The 2 FAILs are one round counted twice (standard and mirror, seed 1): a USN destroyer in the escort role stands still at (1214, 429) from about 480 s to 510 s, 430 from its station, in the surface action. It is not the ASW listening hold, and the cause is not established; ship steering is the ships branch's. WARN checks 55 -> 62, in low-count rounds (for example `esc_with` and `form_later_max` for the island base's strikes in pt_vs_bb and battle_line). `determinism.js 1 200` and `--cross 1 200` pass.
 
 ![before: an IJN strike and a USN strike pass 11 u apart on the line between the carriers](planes/strikes_before.jpg) ![after: the USN strike bends north round the raid and passes 147 u away](planes/strikes_after.jpg) ![fighter tracks and gun bursts by angle off the nose](planes/guns_after.jpg) ![Wildcats firing on a D3A formation](planes/gun_wildcats_on_d3a.jpg) ![over the shoulder: the tracers converge ahead](planes/gun_over_the_shoulder.jpg) ![a Zero firing on a PBY](planes/gun_zero_on_pby.jpg)
 
