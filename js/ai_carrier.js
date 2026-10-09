@@ -54,6 +54,15 @@ window.WW = window.WW || {};
     const fl = fleeFrom(ship);
     let want, calm = false;
     if (fl !== null) { want = fl; ship.throttle = 1; } // run from every known gun ship close by
+    // Pinned on a map edge (a night pursuit runs carriers into their home corner): run along the edge, the way that
+    // keeps the nearest known gun ship farthest astern, rather than let the edge turn the bow toward it.
+    if (fl !== null && WW.threat && a.thrT === WW.time.now && WW.threat.edge(ship.x, ship.z) > 0) {
+      let bs = -1e9;
+      for (const off of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8]) {
+        const h = fl + off, e = WW.threat.edge(ship.x + Math.cos(h) * 60, ship.z + Math.sin(h) * 60), sc = -Math.cos(WW.angleDiff(h, a.thrB)) - 2 * e;
+        if (sc > bs) { bs = sc; want = h; }
+      }
+    }
     else if (o) {
       const d = WW.dist(ship.x, ship.z, o.sx, o.sz);
       if (d > 30) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
@@ -63,9 +72,11 @@ window.WW = window.WW || {};
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
     ship.desiredHeading = want;
     // Hunted (a known gun ship close), the carrier makes for the nearest rain squall: cover from eyes and planes (weather.js)
-    if (WW.weather && (fl !== null || WW.time.now - (a.cvWary || -1e9) < 10)) {
-      const sh = WW.weather.shelter(ship.x, ship.z, 220, 25);
-      if (sh && WW.dist(ship.x, ship.z, sh.x, sh.z) > 20) { ship.desiredHeading = blend(ship.desiredHeading, ship, sh.x, sh.z, 0.5); WW.weather.stats.shelter = (WW.weather.stats.shelter || 0) + dt; }
+    if (WW.weather && fl !== null) {
+      const sh = WW.weather.shelter(ship.x, ship.z, 220, 25), bs = sh ? Math.atan2(sh.z - ship.z, sh.x - ship.x) : 0;
+      let ok = !!sh && (fl === null || Math.abs(WW.angleDiff(fl, bs)) < 1.2);          // only a squall that lies away from the threat
+      for (let i = 0; ok && i < cone.length; i++) if (Math.abs(WW.angleDiff(cone[i], bs)) < CONE) ok = false;
+      if (ok && WW.dist(ship.x, ship.z, sh.x, sh.z) > 20) { ship.desiredHeading = blend(ship.desiredHeading, ship, sh.x, sh.z, 0.4); WW.weather.stats.shelter = (WW.weather.stats.shelter || 0) + dt; }
     }
     const here = WW.threat ? WW.threat.danger(ship.nation, ship.x, ship.z) : 0;
     // Into the wind while launching / recovering (air_deck.js), only with no danger near, on (or near) station and

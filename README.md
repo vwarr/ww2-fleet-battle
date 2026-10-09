@@ -3,6 +3,7 @@
 A calm, toy-like 3D sea battle that plays like a short film. Two fleets of World War 2 ships fight: the USN (blue) and the IJN (red).
 Carriers launch planes. The planes attack with bombs and torpedoes. Destroyers hunt submarines.
 Sunk ships stay on the seabed as wrecks. In shallow water, part of a wreck stays above the water.
+Most battles are fought by day, in the golden afternoon light. Some start late in the afternoon, and dusk falls during the battle. A few are night actions from the start, under a low moon. At night the fight is lit by gun flashes, burning ships, star shells and searchlights. Carriers stop flying at dusk. IJN lookouts see farther in the dark, and USN ships have radar. Rain squalls drift across some maps. Ships can hide in them, and they spoil dive bombing.
 
 You can watch it as a screensaver. A new round starts automatically after each battle.
 
@@ -138,7 +139,9 @@ The game does not show health bars.
 | `js/audio.js`, `js/audio_synth.js`, `js/audio_base.js`, `js/audio_amb.js` | The sound engine, the shared synth parts, the first sounds, and the ambience / UI / cinematic sounds. All sound is made by the code (no audio files). |
 | `js/audio_aa.js` | Anti-aircraft sounds: heavy AA, flak bursts, light AA by gun type, tracer whiz, a distant barrage rumble. |
 | `js/audio_naval.js`, `js/audio_naval_wire.js` | Naval sounds: guns by calibre, shell whistles, splashes, hits, fires, sinking, torpedoes, depth charges, submarines, ship engines. |
-| `js/sky.js` | The sky, the clouds, the lights and the haze. |
+| `js/sky.js`, `js/sky_time.js` | The sky, the clouds, the lights and the haze. The look of the time of day (dusk, the blue hour, a moonlit night) and of the rain. |
+| `js/daylight.js`, `js/weather.js`, `js/night_ops.js` | The round's clock and daylight, the rain squalls, and what darkness and rain change for the fleets: what they see, star shells, searchlights, radar and night tactics. |
+| `js/night_fx.js`, `js/weather_fx.js` | Night lighting (fires, star shells, searchlights, gun flashes) and the rain curtains and cloud decks. |
 | `js/water.js` | The water surface, the foam, the depth colours and the contact shadows under hulls. |
 | `js/terrain.js`, `js/terrain_islands.js` | The sea floor, the islands (a Midway-style atoll or a big volcanic island, with an airfield) and the depth grid. |
 | `js/island_base.js`, `js/base_ai.js`, `js/land_air.js`, `js/base_fx.js`, `js/models_base.js`, `js/models_landplanes.js` | The island air base: runways, hangars, guns, its planes (B-17s, B-26s, Bettys), the fight for the island, and how it looks. |

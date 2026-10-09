@@ -189,7 +189,7 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 | `amb.surf` | Waves breaking (crash, body thump, foam hissing back) | One positional loop per shore cluster (scan of `WW.terrain.depthAt`: coasts, reefs, sandbars, depth < 1.7). Volume fades to 0 by ~190 units; `max: 3` keeps the nearest three. Rebuilt when the map changes. |
 | `amb.rumble` | Far-off rolling thunder bed | Loop, vol = battle intensity × (more on wide shots far from the fight). |
 | `amb.thud` | One distant boom | Random-timed while intensity > 0.25 and the camera is > 160 units from the fight, placed 240+ units away in its direction. |
-| `amb.gull` | 1 to 4 soft gull calls | Every 14 to 40 s, 75% chance, only when the camera is below 70 units, within 140 units of land, and calm. |
+| `amb.gull` | 1 to 4 soft gull calls | Every 14 to 40 s, 75% chance, only when the camera is below 70 units, within 140 units of land, and calm. Never after dusk (`WW.daylight` < 0.5). |
 | `cine.slow` | Low whoomp + swell | Slow motion starts. Bus `ui` (not pitched or filtered again). |
 | `cine.whoosh` | Very soft air whoosh, panned across | Wide → close director cut. Bus `ui`. |
 | `cine.bell` | Distant ship's bell with its own 4 s reverb | Round start (2 strikes); stalemate (3 slow strikes). |
@@ -199,6 +199,7 @@ h.stop(0.5);                // fade time, s. Stop loops when the source dies.
 Battle intensity: events add heat (big shell 0.45, other shell 0.15, weapon impact 0.8, plane kill 1, sinking 3), which decays
 with a 12 s time constant in real time. Intensity = 1 − exp(−(heat + 0.12 × planes in the air) / 12), about 0.6 for a busy battle at 1×.
 Calm = 1 − intensity (1 between rounds and in setup), smoothed over ~4 s; it lifts the sea and wind and allows gulls.
+Night and rain: the sea is quieter at night (× 0.72 in full dark, from `WW.daylight`) and the wind a little softer (× 0.8); rain near the camera (`WW.skyTime.wx()`, the smoothed squall cover) roughens the sea and wind and makes the wind louder (up to × 1.8).
 The slow modulation of the beds comes from long "control" buffers (smooth random curves and event trains at 3 kHz,
 61 to 240 s long, played at random offsets and rates), so they do not repeat audibly and also render offline.
 All the world logic runs in one `onUpdate` hook, on wall-clock time, 5 times a second; while sound is off, nothing runs and the event

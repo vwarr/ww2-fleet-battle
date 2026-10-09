@@ -486,8 +486,10 @@ window.WW = window.WW || {};
     st.calm += (calmT - st.calm) * Math.min(1, dt / 4);
     const h = Math.max(0, L.y), ws = WW.wind ? Math.hypot(WW.wind.x, WW.wind.z) : 0.7, rough = clamp((ws - 0.35) / 0.6, 0, 1);
     const far = sm(25, 220, h);
-    sea.set({ vol: 0.85 * (0.8 + 0.25 * st.calm) * (1 - 0.35 * far), height: h, wind: rough });
-    wind.set({ vol: 0.35 * (0.8 + 0.3 * st.calm), height: h, wind: rough });
+    // night (daylight.js): a hushed sea and lighter wind; rain (weather.js) near the camera adds to the wind's hiss
+    const dl = WW.daylight === undefined ? 1 : WW.daylight, hush = 0.72 + 0.28 * dl, wet = WW.skyTime ? WW.skyTime.wx() : 0;
+    sea.set({ vol: 0.85 * (0.8 + 0.25 * st.calm) * (1 - 0.35 * far) * hush, height: h, wind: Math.min(1, rough + 0.4 * wet) });
+    wind.set({ vol: 0.35 * (0.8 + 0.3 * st.calm) * (0.8 + 0.2 * dl) * (1 + 0.8 * wet), height: h, wind: Math.min(1, rough + 0.5 * wet) });
     // distant rumble: louder on wide/high shots (close shots have the real guns)
     const dBattle = Math.hypot(st.cx - L.x, st.cz - L.z, L.y);
     rumble.set({ vol: 0.75 * st.inten * (0.45 + 0.55 * sm(60, 260, dBattle)) });
@@ -505,7 +507,7 @@ window.WW = window.WW || {};
     if ((st.gullT -= dt) <= 0) {
       st.gullT = R(14, 40);
       const nl = nearestLand(L.x, L.z);
-      if (nl && h < 70 && nl.d < 140 && st.calm > 0.55 && Math.random() < 0.75) {
+      if (nl && h < 70 && nl.d < 140 && st.calm > 0.55 && dl > 0.5 && Math.random() < 0.75) { // no gulls after dusk
         const a = Math.random() * Math.PI * 2, r = R(4, 25);
         play('amb.gull', { x: nl.p.x + Math.cos(a) * r, y: R(10, 30), z: nl.p.z + Math.sin(a) * r, vol: R(0.5, 0.9) });
       }

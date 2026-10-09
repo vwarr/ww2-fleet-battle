@@ -36,7 +36,7 @@ window.WW = window.WW || {};
     var kind = f === 'day' || f === 'dusk' || f === 'night' ? f : r < P.NIGHT ? 'night' : r < P.NIGHT + P.DUSK ? 'dusk' : 'day';
     if (kind === 'night') D.startHour = 20.5 + 1.5 * j;
     else if (kind === 'dusk') D.startHour = DUSK_H - (90 + 110 * j) / PER_H;    // dusk begins 90-200 s in
-    else D.startHour = 11 + 3.25 * j;                                         // 11:00-14:15: light all round
+    else D.startHour = 11 + 2 * j;                                            // 11:00-13:00: light all round (a pursuit can run 570 s)
     if (typeof f === 'number') { kind = 'dusk'; D.startHour = DUSK_H - f / PER_H; } // test hook: dusk begins f s in
     D.kind = kind;
     D.duskAt = (DUSK_H - D.startHour) * PER_H;
@@ -54,13 +54,15 @@ window.WW = window.WW || {};
     WW.air.launch = function () { if (!D.canFly()) { stats.blocked++; return null; } return base.apply(this, arguments); };
     WW.air.launch.night = true;
   }
+  // carrier planes and catapult scouts (not the shore-based flying boats: air_flyingboats.js, base objects)
+  function shipBorne(p) { return p.kind !== 'flyingboat' && p.carrier && p.carrier.stats && !p.carrier.base; }
   // Recall: once below RECALL, every airborne carrier plane in transit (and fighters in a fight) turns for home;
   // bombers already in an attack finish it. Re-applied each step, so a plane that is sent out again is turned back.
   function recall() {
     var P = WW.world.planes;
     for (var i = 0; i < P.length; i++) {
       var p = P[i];
-      if (!p.alive || p.removed || p.deathMode || !p.carrier) continue;
+      if (!p.alive || p.removed || p.deathMode || !shipBorne(p)) continue;
       if (p.state === 'transit' || (p.state === 'attack' && p.kind === 'fighter')) {
         if (p.kind === 'scout') { if (p.state === 'transit') { p.state = 'return'; stats.recalls++; } continue; }
         p.state = 'return'; p.foe = null; p.nightRecall = true; stats.recalls++;
@@ -72,7 +74,11 @@ window.WW = window.WW || {};
     wrapLaunch();
     WW.daylight = D.pin != null ? D.pin : D.level(D.roundT());   // pin: test hook (screenshots)
     if (WW.game.state !== 'battle') return;
-    if (WW.stats.planesLaunched > D.lastLaunched) { if (!D.canFly()) stats.launchesDark += WW.stats.planesLaunched - D.lastLaunched; }
+    if (WW.stats.planesLaunched > D.lastLaunched && !D.canFly()) { // metric: ship-borne launches after dusk (carrier planes, catapult
+      var L = WW.world.planes;                                     // scouts); shore-based flying boats fly at night ("Black Cats")
+      for (var i = 0; i < L.length; i++) if (!L[i].nightSeen) { L[i].nightSeen = true; if (shipBorne(L[i])) stats.launchesDark++; }
+    }
+    if (D.canFly()) for (var j = 0; j < WW.world.planes.length; j++) WW.world.planes[j].nightSeen = true;
     D.lastLaunched = WW.stats.planesLaunched;
     if (WW.daylight < RECALL) { if (!D.recalled) D.recalled = true; recall(); }
   }
