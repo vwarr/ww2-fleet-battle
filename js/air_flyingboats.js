@@ -95,7 +95,7 @@ window.WW = window.WW || {};
     }
     shotDown() { this.dropTask(); stats.lost[this.nation]++; if (this.mission === 'rescue') stats.catLost++; emit(this, 'lost'); base.shotDown.call(this); }
     ditch() { if (this.alive) { stats.lost[this.nation]++; if (this.mission === 'rescue') stats.catLost++; } this.dropTask(); base.ditch.call(this); }
-    dropTask() { var t = this.task; if (t && t.air === this) t.air = null; this.task = null; }
+    dropTask() { var t = this.task; if (t && t.air === this) { t.air = null; t.pickT = 0; } this.task = null; }
     update(dt) {
       if (!OWN[this.state] || this.deathMode) { base.update.call(this, dt); return; }
       this.t += dt; this.stT += dt;
