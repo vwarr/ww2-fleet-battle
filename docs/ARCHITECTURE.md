@@ -72,7 +72,8 @@ js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_li
 js/ai_endgame.js        WW.endgameAI: a broken side runs for its home edge (doctrine: rescue / escort or best speed), rescue steering, pursuit seams
 js/ai_charge.js         WW.smoke (smoke screens that block ship-to-ship sight), WW.charge (escorts charge an enemy closing on their carrier)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
-js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns, tracer rounds
+js/air_tracers.js       WW.planeTracers: the plane guns' glowing tracer rounds (visual only, pooled)
+js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns (snapshots, the gun line)
 js/air_intercept.js     WW.intercept: fighter gun passes on bombers (wheel arc lead, dive line, stern passes)
 js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
 js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spotting
@@ -269,6 +270,112 @@ Ship-launched torpedo hit rates are unchanged (~26-28%). Balance: gates USN 53 /
 
 ![before: the hole decal drawn over the water](torpedo/holes_before.jpg) ![after: ruptures cut by the water](torpedo/holes_after.jpg) ![a battleship listing onto her holed side](torpedo/list_holed_side.jpg) ![the column up a carrier's side](torpedo/hit_column.jpg) ![a USN aerial torpedo striking an IJN cruiser](torpedo/aerial_hit.jpg)
 
+### Ship movement review (2026-10-09, branch ships)
+
+User: "the ships also seem to come far closer together than they should and not really stay in formation." Measured with `tests/ship_review.js` (a read-only recorder: station keeping, spacing, near-collisions, heading coherence, broadside fire, main-battery rounds at PT boats, chases against a replayed tail chase and the ideal intercept, the AA ring against the raid bearing, torpedo spreads, fatal blows) and looked at with `tests/ship_tracks.js` (top-down track maps with the commander's stations overlaid, from `ship_review.js --trace SCEN:SEED`).
+
+**What it showed.** Stations were points `lead` ahead of the group's own centroid, so every ship chased a carrot that moved with it, each on its own course; a battle line abreast 45 u (1.7 L) apart, and personal spaces of 0.77 L (DD) and 1.35 L (BB / CA) with a push that is soft until very close: 14% of the time a surface ship had an own ship within 1.2 L, nearest-ship p1 0.64 L, 7.4 near-collisions (hulls < 0.15 L apart) a round. A ship with a far target (the island base, a contact 2 × gun range off) left the formation to orbit it; the two battle lines then met head on and passed through each other.
+
+**Changes:** the formation guide and the column, early collision avoidance, the deployment across the enemy's bearing, the formation hold, the intercept course, the raid-side ring (`threatAxis`, `slotMap`, round the ring), AA cover outside the ring, the BB / CA main battery off PT boats, cripple torpedo runs, sub pass shots (see the ships, formation doctrine and submarine sections above). Suite: a ship stopped alongside survivors (`ship.rescue`, throttle 0.03) is not "stuck" (the intermittent mirror FAIL: a USN lifeguard sub, seed 8 swapped, alongside for 35 s; the destroyer "in an ASW hold at throttle 0.03" was the same rescue pickup, `rescueSteer`); `sub_bowbeam` / `sub_dived_dd` need 3 shots / 60 s near a destroyer per scenario (one forced surfacing in eight rounds was failing the rate).
+
+**Results** (`node tests/ship_review.js --seeds 20`: 100 rounds of standard, carrier_duel, midway, surface (2 BB, 2 CA, 3 DD a side) and odd fleets; before = main b563ce0):
+
+| metric | before | after |
+|---|---|---|
+| distance from station keeping station (no target), cruise p50 / p90 (L) | 1.87 / 7.76 | 0.31 / 3.71 |
+| lateral error keeping station, cruise RMS (L) | 2.36 | 1.96 |
+| nearest own surface ship p1 / p5 (L); share under 1.2 L | 0.64 / 0.99; 13% | 0.96 / 1.29; 3% |
+| near-collisions per round (all; surface scenario) | 7.4; 12.7 | 2.2 (1.3 are PT pairs, which run 15 apart by doctrine); 1.0 |
+| heading coherence in cruise, formed (after 90 s): main body / carrier task group | 0.92 / 0.87 | 0.92 / 0.88 |
+| BB / CA main-battery firing seconds with the A-arcs open | 75% | 74% |
+| BB / CA main-battery rounds at PT boats per round (standard) | 0.65 | 0 |
+| chases (free: pressing, pursuing or off the guide): time to gun range ÷ replayed pure pursuit p50 | 1.14 | 1.16 |
+| ring escorts on the raid side: their stations within 45° of the raid bearing | (enemy centre) | 97% USN / 96% IJN |
+| ... the escorts themselves, within 45° | 70% / 76% | 68% / 67% |
+| destroyer torpedo spreads at crippled battleships (100 rounds) | 10 | 30 |
+| fatal blows (shell / torpedo / bomb / fire or flooding / other) | 83 / 338 / 52 / 107 / 51 | 103 / 296 / 63 / 102 / 43 |
+
+**Not reached, and why.**
+- The escorts' actual bearing off the raid did not improve, though their stations did (97%): a raid is on the plot for about 10 s inside 350 u, and an escort needs 12 to 20 s to move a quarter of the way round a 55 u ring (more near islands, where the ring point can be in the shallows). A ring that starts on the bearing of the enemy's flight decks is as good as it gets; raids routed round the AA (strikeplan) come from elsewhere on purpose.
+- The broadside share is unchanged at ~75%: the deployed line fights broadside on (tracks_surface_after.png), but the share is dominated by the melee after the lines have broken up and by destroyer-range fights.
+- The chase ratio (actual ÷ a replayed pure pursuit that turns at the ship's rate) is ~1.15 before and after: chases are short (p50 17 s) and the ghost does not avoid danger or keep station; against the ideal straight-line intercept the free chases are 1.3.
+- Coherence in the first 90 s is lower than before (the fleets spawn abreast and form a column: main 0.88 p10 0.50).
+
+Gates (100 rounds, seeds 1-100 / 1001-1100): before USN 46 / 43; after 45 / 50. Behaviour suite 0 FAIL (before: 1, the mirror rescue "stuck"; the planes branch's standard / mirror seed 1 "stuck" escort destroyer at (1214, 429) is the same case, a USN rescue pickup at throttle 0.03). `determinism.js 1 200` and `--cross 1 200` pass.
+
+Track plots (`tests/shots/ships/`, before / after on the same seeds): `tracks_cruise_*` (surface seed 2, USN, 120-300 s: the column on its guide vs ships chasing their own stations), `tracks_surface_*` (the same round 280-400 s, following the USN flagship: the deployment and the broadside duel vs the lines passing through each other), `tracks_air_*` (standard seed 3, USN carrier group under air attack), `tracks_air_ijn_*` (midway seed 1, IJN carrier division), `tracks_overview_*` (standard seed 3, the whole round).
+
+### Plane movement (2026-10-09, branch planes)
+
+User: "the fighters are not shooting at the targets directly ahead of them, and instead locking onto other stuff and trying to chase it", and "propose pathing changes to give the planes and ships more realistic AI ... without coming up with new features". Measured with `tests/plane_moves.js`, a read-only recorder. It measures opposing strikes in transit, escort peel-offs, targets of opportunity and snoopers round the carriers. For the guns it records each burst's angle from the nose to the plane fired at, the ignored snapshots per combat second, the foe switches, and whether the nose is on the lead point or on the target. `--trace SCEN:SEED` dumps one round for `tests/plane_tracks.js`, which draws top-down plots: the strike waves over the whole round, the fighter tracks with each burst coloured by angle off, and close-ups of the busiest fights with the nose and the line to the plane fired at.
+
+**What it showed.**
+
+- The guns fired only at the assigned foe. A fighter never fired at an enemy squarely in its gunsight and in gun range while its foe was elsewhere (100% of those chances were ignored, 68% with the guns ready).
+- A fighter stayed on a foe behind it or out of reach for the whole 5 to 7 s lock.
+- The trigger test was flat: the heading within 0.12 rad and the height within 30% of the range. So 1 burst in 3 opened with the target more than 10° off the nose (p90 15.5°).
+- Opposing strikes flew the same line between the carriers and passed through each other: 19% of crossing pairs came within 100 u (p10 51 u). Planes see planes at 100 (`intel.js PLANE_PLANE`), which is 2 s at their closing speed.
+- Escorts took on any fighter near their bombers, including a passing raid's escort.
+- The CAP never went after scout floatplanes: they got no vector and priority 40.
+- A strike whose target was not in sight waited 8 s, then looked only 170 out.
+
+**Changes** (sim code; nation differences are doctrine parameters):
+
+| what | where | how |
+|---|---|---|
+| snapshot | `air_dogfight.js guns` | With no shot at its foe, a fighter fires at any enemy plane within 0.2 rad of the nose and in gun range (`ahead`, looked up every 0.1 s; a bomber scores 0.06 rad better than a fighter). It does this while breaking too. `df.gunAt` is the plane fired at |
+| the gun line | `air_dogfight.js offence` | The fighter opens fire with the lead point within 0.12 rad in heading and 0.16 rad in climb angle (`elev`; the round itself pulls up to 0.1 rad). It holds the trigger within 0.22 / 0.24 rad |
+| switch foe | `air_dogfight.js pick` | If the foe is more than 50 away or more than 1.6 rad off the nose, and another enemy is within 45 and 0.45 rad of the nose, the fighter takes that one (a bomber first). An escort riding with its strike in transit does not switch |
+| tracers | `air_tracers.js` (split out of air_dogfight.js) | Unchanged: the rounds leave both wing guns along the toed-in stream, so they converge on what the nose is on |
+| top cover | `air_cag.js escortPick` | Top cover meets fighters coming at the strike (heading for its bombers, or already on one of ours). It leaves a passing raid's escort alone until that escort turns on ours |
+| IJN peel-off | `air_cag.js passing`, doctrine `air.peel` (USN 0, IJN 1) | With an ample escort (4 or more fighters, and the rest at least max(2, 0.3 x the bombers)), ONE top-cover element of a strike in transit may attack a passing enemy raid's bombers within 140, for 25 s (Santa Cruz: Zuiho's Zeros). The strike then arrives with less cover. `airOrder` 'peel' |
+| CAP and snoopers | `air_cap.js raidFor`, `air_ops.js capPick` / `leashed` | With no armed raid on the plot, one section is vectored onto a scout floatplane, flying boat or unarmed search plane within 260 of the carrier (`WW.cap.snooper`), at priority 200 and on the long leash |
+| retarget | `air_cag.js waveTick`, `retarget`, `air_strikes.js` | If the target is not in sight for 3 s (was 8 s) inside 140, the strike takes the best ship the side sees within its fuel. `reach` is half of the shortest-legged bomber's fuel after the way home and 25 s, 120-320 u (was 170) |
+| armed scouts | `air_search.js pounce`, doctrine `air.armedScout` (USN 1, IJN 0) | A USN SBD flying a search keeps its bomb. It attacks a carrier it has in sight within 220 if it has the fuel (Santa Cruz: Strong and Irvine on Zuiho). `airOrder` 'scoutAttack' |
+| homebound bombers | `air_ops.js homeward` (a goHome hook) | A bomber flying home armed attacks a ship in sight within 100, once a sortie, if it has the fuel |
+| homebound strafing | `air_strafe.js homeCheck` | A fighter going home with 45 s of fuel and 60% hp strafes a PT boat, surfaced sub or crippled destroyer within 110, for up to 20 s, once a sortie |
+| raids in the route cost | `air_staff.js remember` / `raidsAt` / `legCost` | The side remembers each enemy bomber it has seen in transit for 60 s, with its wave's course and speed. A route sample costs 0.4 per unit at a raid's centre (to 150 out, x min(1, bombers / 4)), at the place that raid will be when the strike gets there (run on along its course, at most 90 s). A raid newly on the plot replans the route at once. A/B: `?staff=raid:0` |
+| raids in the detour | `air_cag.js detour` / `raidFoes` | The strike leader scores the five headings by where the enemy bombers it knows of will be 2, 4 and 6 s ahead. It knows the side's contacts within 350, and any enemy strike of 6 or more planes within 260 (a formation is seen well beyond a lone plane; less in cloud, in glare or in the dark). The transit stack already keeps the heights apart: torpedo planes ~30, dive bombers ~54, escorts ~70 |
+
+**Results** (`node tests/plane_moves.js --seeds 20`: 100 rounds, 20 seeds each of standard, carrier_duel, midway, surface and odd fleets; before = main b563ce0):
+
+| metric | before | after |
+|---|---|---|
+| opposing strikes in transit: closest approach p10 / p50; pairs within 100 | 51 / 246; 19% | 118 / 236; 5% |
+| ... closest planes in 3D (pairs that came within 250), p50 | 89 | 104 |
+| bursts with the target inside 10° and gun range (or its lead point) | 67% (86%) | 74% (95%) |
+| angle off at the burst p50 / p90 | 7.8 / 15.9° | 7.6 / 11.9° |
+| snapshot chances ignored (all; with the guns ready) | 100%; 69% | 48%; 9% |
+| foe switches per combat minute | 2.1 | 3.4 |
+| hits per 100 rounds; gun kills per round | 28.6; 29.1 | 27.8; 33.5 |
+| escort peel-offs at a passing raid's bombers per round, USN / IJN | 0.2 / 0.0 | 0.2 / 0.6 (0.2 element orders) |
+| escort fights with a passing raid's planes of any kind per round, USN / IJN | 1.9 / 1.6 | 1.2 / 1.1 |
+| a strike lost its target -> first drop on another ship, p50 / p90 | 23.7 / 52.3 s | 20.5 / 50.5 s |
+| armed sorties home with the bomb | 5.6% | 7.3% (6.1% with the snooper hunt off) |
+| bombers attacking a ship on the way home; fighter strafing passes on the way home (per 100 rounds) | 0; 0 | 8; 29 |
+| scout floatplanes inside 300 of an enemy carrier: stint p50 / p90; shot down there | 9.8 / 20.5 s; 10% | 9.8 / 22.3 s; 21% |
+
+Notes:
+
+- Lead pursuit is not exaggerated. Within 60 of its foe, the nose is on the lead point but not on the target only 4% of the time, before and after.
+- The gun kills rise by about 15%, mostly bombers. Fewer bombs and torpedoes are dropped (strike drops 4136 -> 3691 per 100 rounds). That is for the balance pass.
+- The armed-scout attack works: in a forced probe, an SBD searcher 180 from an IJN carrier attacks it and drops. But in the measured rounds no carrier search flight came within 300 of an enemy carrier. The searches fly while nothing is known, and the floatplanes usually find the carriers first.
+- A bomber comes home armed mostly because its strike found nothing and its side had no fresh contact anywhere. The CAP now shoots down twice as many shadowing scouts, so the other side's strikes are a little blinder.
+- The scouts' time near a carrier does not fall. A scout breaks away low when a fighter closes, and the CAP leaves snoopers alone while a raid is on the plot.
+
+Gates (`sim_behaviour.js --only balance --seeds 100`, not tuned): USN 47 -> 45 (seeds 1-100) and 43 -> 50 (seeds 1001-1100).
+
+Fatal blows (`torpedo_review.js --seeds 10`, 40 rounds):
+
+| | torpedo (+ flooding, capsize) | bomb | shell | strafe |
+|---|---|---|---|---|
+| before | 142 (+23, +6) | 22 | 29 | 13 |
+| after | 150 (+24, +5) | 24 | 20 | 18 |
+
+Behaviour suite: 1 FAIL before (stuck: a submarine) and 2 after. The 2 FAILs are one round counted twice (standard and mirror, seed 1): a USN destroyer in the escort role stands still at (1214, 429) from about 480 s to 510 s, 430 from its station, in the surface action. It is not the ASW listening hold, and the cause is not established; ship steering is the ships branch's. WARN checks 55 -> 62, in low-count rounds (for example `esc_with` and `form_later_max` for the island base's strikes in pt_vs_bb and battle_line). `determinism.js 1 200` and `--cross 1 200` pass.
+
+![before: an IJN strike and a USN strike pass 11 u apart on the line between the carriers](planes/strikes_before.jpg) ![after: the USN strike bends north round the raid and passes 147 u away](planes/strikes_after.jpg) ![fighter tracks and gun bursts by angle off the nose](planes/guns_after.jpg) ![Wildcats firing on a D3A formation](planes/gun_wildcats_on_d3a.jpg) ![over the shoulder: the tracers converge ahead](planes/gun_over_the_shoulder.jpg) ![a Zero firing on a PBY](planes/gun_zero_on_pby.jpg)
+
 ## Main loop
 
 Each animation frame (`main.js`, `frame`):
@@ -290,7 +397,7 @@ Each animation frame (`main.js`, `frame`):
 `index.html?sim` sets `WW.simOnly` (and `WW.cfg.SIM_ONLY`) in `core.js`, before any module initializes. The page runs the full simulation and renders nothing. The headless sim tests use it; players never see it.
 
 - `main.js bootSim()` makes a plain `THREE.Scene` and camera, but no `WebGLRenderer`. It initializes only `terrain`, `models`, `combat`, `ships` and `air`, starts the game as usual (`?auto` or setup), and never calls `requestAnimationFrame`. The test drives `__sim.fastForward`.
-- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
+- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_tracers.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
 - Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
 - The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page, a sim-only page and the node runner; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
 - Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
@@ -320,10 +427,14 @@ node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier 
 node tests/sim_profile.js [rounds] [seed] [secs] --prof [--lines] [--root DIR]   # per-round time, CPU profile of the sim (--root: A/B against another checkout)
 node tests/flight_review.js [--seeds 5] [--only standard,carrier_duel,midway,night] [--check] [--trace SCEN:SEED]   # plane flight data: kinematics, circling, formations, CAP, attacks, pacing, deck ops (docs/PLANE_REVIEW.md)
 node tests/shape_probe.js SCEN SEED [logEvery=30]   # battle shape of one round: postures, the air-war hold, break / pursuit, PT sightings (POS=1: ships, roles, stations)
+node tests/ship_review.js [--seeds 5] [--only standard,carrier_duel,midway,surface,odd,sub_ambush] [--trace SCEN:SEED]   # ship movement (see Ship movement review); CHROMIUM=… node tests/ship_tracks.js tests/shots/ship_trace_SCEN_SEED.json [--zoom USN|IJN] [--win 30]
 node tests/air_defense.js [--seeds 5] [--only standard,carrier_duel,midway]   # air defence: raid fate by CAP size, idle fighters, circling swarms, landing pattern, ship spacing (see Air defence)
 BASE_URL=… CHROMIUM=… node tests/air_defense_shots.js [seed] [far,vt,marshal,group]   # render-mode pictures of the same
 node tests/dive_film.js [seeds=1,2,3,4] [simSecs=480]   # story camera: share of strike stories with their wave's dive on screen (gate 80%), Strike-away caption lag (CHROMIUM, BASE_URL)
 node tests/flight_tracks.js tests/shots/flight_trace_SCEN_SEED.json [window] [maxT]   # top-down plane track maps from a --trace round (CHROMIUM)
+node tests/plane_moves.js [--seeds 8] [--only standard,carrier_duel,midway,surface,odd] [--trace SCEN:SEED]   # plane movement review (see Plane movement)
+node tests/plane_tracks.js tests/shots/planes/trace_SCEN_SEED.json [outPrefix]   # its track plots: strike waves, gun bursts by angle off (CHROMIUM)
+BASE_URL=… CHROMIUM=… node tests/gun_shots.js [seed] [count] [target kinds]   # render-mode close-ups of a fighter firing at a plane ahead
 node tests/flight_shots.js [seed] [opening,cap,circle,story,intercept,dogfight,dive,torp,escort]   # render-mode air scenes (tests/shots/flight/)
 node tests/sim_behaviour.js --only night,dusk,weather   # night and weather scenarios and metrics
 TOD=night WX=line node tests/determinism.js --cross 3,4 250   # force the time of day / the weather
@@ -590,7 +701,7 @@ WW.shipAI = {
 - **Leaving the map**: `ship.escapeEdge` (−1 west, +1 east, set by `ai_endgame.js` for a broken side) switches off the soft edge push and the planner's edge margin on that edge (`ships_nav.js clearance` plans as if the sea went on); `endgame.js` removes the ship once it is within `EXIT` (20) of the edge (a corner can pin a big hull short of the line).
 - Navigation: `ships_nav.js` checks points along the keel and on the two sides of each hull. All points must be at a depth of 0.5 or more. If a move is not permitted, the ship tries a smaller turn, a turn in place, astern with a turn, a slow forward move, then straight astern.
 - If a ship pivots against shallow water for more than 2 s, it goes to the heading with the most clear water.
-- Spacing: each type has a personal space (carrier 70, battleship and cruiser 35, destroyer 20, PT boat and submarine 12). Escorts stay 50 to 80 units from their carrier.
+- Spacing: each type has a personal space, centre to centre (carrier 70, battleship 45, cruiser 42, destroyer 30, PT boat and submarine 12; was BB / CA 35, DD 20). Escorts stay 50 to 80 units from their carrier. Collision courses are avoided early (`ships_nav.js cpaPush`): two ships (not PT boats) whose closest point of approach within 20 s falls inside the pair's personal space push apart, harder as the CPA nears and tightens; head on, both turn to starboard. A ring escort and its own carrier use the hull term × 1.25 instead.
 - After all ships move, `WW.shipNav.resolve` pushes overlapping hulls apart. The lighter ship moves more. Wrecks above the water and sinking ships do not move.
 - Sinking takes approximately 8 s. The ship moves at most 15 units and does not go into another wreck or onto land. The wreck stays on the seabed until the next round. In shallow water, one end of the wreck stays above the water.
 - A submarine must come to the surface for 25 s after 45 s under water, 65 s while a known destroyer is within 90 (`ai_light.js`). A submerged submarine casts no shadow.
@@ -605,6 +716,7 @@ WW.shipAI = {
 - Per-mount guns:
   - the main battery takes the main target when it is in range, else the best target in range by its own weights;
   - secondaries take the closest small threat in range (`SEC_W`);
+  - the main battery of a battleship or cruiser takes a PT boat only inside 0.45 × its range (`PT_CLOSE`; a cruiser has no secondary battery);
   - a PT boat's MG never fires at a battleship or cruiser (`GUN_W.mg`).
 - `fireSpread` returns false and holds fire for 1.5 s when an allied surface ship is inside the fan, out to torpedo range.
 - **Cripples** (`h.withdraw`, used by carriers' own code and PT boats; surface ships use `crippleHome` below): below `WW.fleetGroups.CRIP = 0.35` hp, any ship except a sub turns away from the nearest known enemy (contacts up to 45 s old). It turns toward its own carrier or station when that is also away, at full throttle, through `bestHeading` with risk 0. It still shoots back.
@@ -620,7 +732,10 @@ WW.shipAI = {
   - they are tied to the station when more than 110 from it (escorts: 60; not while pressing), and every heading goes through `bestHeading` with the type's risk;
   - they launch torpedoes inside `(0.6 + 0.3 × doctrine.torpedo)` × torpedo range.
   - **Destroyer torpedo attack** (`torpedoRun`, a battleship or carrier target, which `h.score` only allows with another own destroyer within 150): the DD waits at 1.35 × its launch distance until a second destroyer is within 1.8 × that distance of the same quarry, runs in from the flank (flotilla members alternate sides by slot, so the pair come from different angles), launches beam on, then turns away for 14 s. It never goes inside 0.8 × the launch distance, the target's secondary range + 8, or `CV_KEEP` of a carrier: no ram-closing. Smoke is not modelled.
-  - **AA cover** (`aaCover`): while `B.airRaid` names an own carrier, cruisers (and a battleship of the carrier group) within 300 of it with nothing in gun range close to 45 of it.
+  - **AA cover** (`aaCover`): while `B.airRaid` names an own carrier, cruisers (and a battleship of the carrier group) within 300 of it with nothing in gun range steam for a point 80 out on the raid's side of it (`fleet_formation.js threatAxis`; was: to 45 of the carrier, inside its ring), then manoeuvre on their own.
+  - **Formation hold** (`formHold`): a ship of the battle line, screen or flotilla keeps its guide station while its target is beyond 1.35 × its gun range (not pressing / pursuing / withdrawing, not a destroyer's run on a capital ship); a deployed battle line (`B.battle`) fights from its stations unless the target is inside half the preferred range.
+  - **Closing** (`engage`): out of gun range a ship steers for the intercept point (`h.lead` at its own speed: no tail chase); in range but beyond 1.3 × `prefRange` it comes in angled 0.75 rad off the bearing, after turrets bearing.
+  - **Cripples** (`h.score`): a destroyer may make a torpedo run alone, in any posture, on a crippled battleship or carrier (`endgameAI.isCripple`) within 1.6 × its torpedo range, scored ×2, and does not wait for a second boat (`torpedoRun`).
   - **Torpedo threats**: big ships turn parallel to any side-wide torpedo track (`WW.intel.torpedoes`, so an escort's sighting counts) that will pass close within 150 (BB) / 120 (CA), after the type's reaction delay (`earlyComb`); the core comb then holds it. A battleship also angles bow or stern on to a known DD / PT (seen in the last 5 s) inside 1.1 × its torpedo range that has it in its bow arc (`angleOnBoats`).
   - **Carrier keep-off**: no surface ship closes inside `CV_KEEP` (108) of a known enemy carrier (contact ≤ 10 s old, moved along its course), unless its side pursues and the carrier is fair game (above).
   - **Cripples** (`crippleHome`, replaces `h.withdraw` for surface ships: `ai.ownWithdraw`): below `CRIP` hp, head home (60 behind the own carrier, else the own map edge), pushed away from every known enemy that could shoot (contacts ≤ 45 s, within 1.2 × its gun range + 20), at full speed through `bestHeading` with risk 0.
@@ -645,6 +760,7 @@ WW.shipAI = {
   - MG: only at PT boats, surfaced subs, or a DD within 25 (`calTarget` is rewritten every step). The PT handles its own cripples (`ownWithdraw`) and combs torpedo tracks only while lurking (`ownComb` otherwise).
 - **Submarines** (`ai_light.js`, state in `ship.ai.ls`, tuning in `WW.lightAI.SUB`):
   - **Ambush**: every 0.5 s, the best contact up to 30 s old (CV 4, BB 3, CA 2; never a DD or PT; × 0.45 when a DD is within 80 of it, × 1.4 crippled, × 1.15 slow). The sub goes to a point 55 off the target's predicted track (from its last-known heading and speed) that it can reach before the target gets there. There it waits slowly, bow on the lead point. It fires inside 82 (not under 22) only from the target's bow or beam (angle on the bow < 115°), with the fan and land check.
+  - **Pass shot** (`passingShot`): with the tubes loaded, no destroyer within 130 and not forced up, any seen enemy ship (not a DD / PT, not the ambush target) inside the firing range, from its bow or beam (< 1.75 rad), with its lead bearing within 0.6 rad of the bow: the boat comes round and fires (`docStats.subPassShot`).
   - **After firing** (`evadeT` 14 s): submerged, throttle 0.45, turned away from the target or a DD within 90.
   - **Depth**: down while a DD is known within 90, a plane within 125, a gun ship within 80, after a shot, or while closing a target within 105 with fresh air. A DD within 130 or a target within 105 keeps it down only until 18 s of dive time; then it surfaces to refresh while still unseen. Otherwise it runs surfaced. A surfacing aborts when any of these appears. The existing limit stands: 45 s under water forces 25 s on the surface; hunted (a known DD within 90) the boat stretches it to 65 s rather than surface under the destroyer.
   - **Destroyers**: headings go through `ddSteer`, which keeps 100 from every known DD's position and its position 8 s ahead. A DD inside sonar range (65), or one bearing down within 90, is "cornered" fire, the one time a sub targets a DD. With the tubes nearly ready, the sub holds its bow on that DD and fires inside 38. Otherwise it goes slow (0.3) and turns away. With the air running low and a gun ship within 130, it opens the distance before the forced surfacing; when forced up, it runs from the nearest threat. Crippled (< 35% hp) and forced up within 60 of a hunter, the crew scuttles her.
@@ -744,11 +860,10 @@ Order = { ship, group, role, slot, sx, sz, t };
   - PT boats go to `pt`, submarines to `sub`;
   - any ship (not a sub) below `WW.fleetGroups.CRIP = 0.35` hp gets role `withdraw`.
 - **Stations** (`WW.fleetGroups.stations`) are offsets (forward, lateral) along `axis.h`:
-  - main: line abreast at lateral 0, ±45, ±90, …, advanced by the posture lead (search / approach +45, press +35, engage 0, withdraw −45);
+  - main: a column (line ahead) on the formation guide (`fleet_formation.js guide`, below), `COL_L` 3 L apart, the guide steaming for the posture's aim point (search / approach +45, engage +30, press +35, pursue +60, withdraw −45 from the group, or the air-war hold anchor); with no guide, line abreast at lateral 0, ±45, ±90 as before;
   - carriers: `cvStandoff` behind the main guide (the guide is the centroid of the main group's ships that are not withdrawing cripples), in the band `CV_LO`–`CV_HI` (0.2–0.33) of the width from the own edge, withdrawing or not (a broken side's carrier then has a long run home and a pursuer a window, user decision Oct 2026). Then `cvSafe` slides the station away from every known enemy gun ship (contacts ≤ 60 s) to 1.9 × its gun range + 20 (down to 0.06 of the width from the edge: safety first);
   - escorts: each carrier's ring (`fleet_formation.js`, below): the USN AA ring (`ringR` 55) on the threat axis, live and turning with the carrier; the IJN loose ring about 80 out along the axis;
-  - screen: `screenAhead` ahead of the main body;
-  - flotilla: on the flanks (lateral ±110);
+  - screen: `screenAhead` ahead of the column's head; flotilla: on the flanks (lateral ±110); both on the same guide;
   - PT boats: lateral ±150, never past the midline;
   - subs: 220 ahead, ±100 to the flank; with `doctrine.subLine` (IJN) a patrol line across the axis, 90 apart, 0.55 of the way to the enemy's known centre (160 to 320 ahead);
   - withdrawing ships: 70 behind their own carrier (or the main body).
@@ -805,7 +920,9 @@ Torpedo performance per nation is a stat table, `WW.TORPEDO_NATION` in `core.js`
 
 #### Formation doctrine (fleet_formation.js, WW.formation)
 
-- **AA ring** (`ringR` > 0, USN): `assign` gives each carrier its escorts (`ringCounts`: a battleship with `ringBB` and two or more, the cruiser when the side has two or more, then `ringDD` destroyers, at least one), spread over the carriers round robin, big ships first. `ringStations` puts slot 0 on the threat axis (the bearing of the enemy's centre, else the axis of advance) and the others at ±1.15, ±2.2 rad and astern, `ringR` out (at least the two hulls' spacing + 6). The station is live (`ringPoint`): `followStation` hands a ring escort to `ringKeep`, which closes it with a lead along the carrier's course and on it matches the carrier's course and speed, so the group turns into the wind together. A ring escort keeps its station whatever it is shooting at (`ai_surface.js ringHold`) while its carrier lives and the side is not pressing, pursuing or withdrawing. `ship.ringCv` lets it inside the carrier's personal space (`ships.js move`).
+- **AA ring** (`ringR` > 0, USN): `assign` gives each carrier its escorts (`ringCounts`: a battleship with `ringBB` and two or more, the cruiser when the side has two or more, then `ringDD` destroyers, at least one), spread over the carriers round robin, big ships first. `ringStations` puts slot 0 on the threat axis (`threatAxis`: the bearing of an armed raid on the side's plot within 350 of the carrier, held 30 s after it clears; else the nearest known enemy carrier or air base; else the enemy's centre; else the axis of advance; changes under 0.35 rad are ignored); `slotMap` gives the slots to the escorts by the cyclic shift that moves the screen least, so the ring turns the short way and the others at ±1.15, ±2.2 rad and astern, `ringR` out (at least the two hulls' spacing + 6). The station is live (`ringPoint`): `followStation` hands a ring escort to `ringKeep`, which closes it with a lead along the carrier's course and on it matches the carrier's course and speed, so the group turns into the wind together; a station across the ring is reached round the ring (waypoint 0.7 rad ahead on it), never through the carrier. The IJN loose ring (`ringR` 0) is live too (`looseR`: its offsets turned onto the threat axis, kept with `ringKeep`). A ring escort keeps its station whatever it is shooting at (`ai_surface.js ringHold`) while its carrier lives and the side is not pressing, pursuing or withdrawing. `ship.ringCv` lets it inside the carrier's personal space (`ships.js move`).
+- **Formation guide** (`guide`, `guidePoint`, `guideKeep`; `B.fg.main`): a point that persists between ticks, steaming at 0.85 × the slowest fit member's top speed (eased off to 0.35 × while the ships are still far off their stations: forming up) toward the aim point, slowing as it nears it (10 s out), course turning at most 0.08 rad/s. Every ship turns with the course at once (a turn together); the formation axis that the station offsets hang on follows only at 0.012 rad/s (0.02 deployed), as the formation re-forms on the new course. Reseated half way to the members' centroid when they are dragged more than 6 L off. `guideKeep` closes the live station aiming ahead of it along the course by half the distance (a ship rejoins on the formation's course, not across it), and on it matches the guide's course and speed (zigzag added). Roles `line`, `asw`, `torpedo` (`ai_surface.js GUIDED`).
+- **Deployment** (`battleAim`, `B.battle`): in engage / press / approach (not the air-war hold), with a known enemy gun ship (a BB / CA first; ≤ 20 s old) within 1.5 × the line's main-battery range of the guide, the guide steers across the bearing at `rangeFrac` × that range (± 0.6 rad as it is farther / nearer), on the side that runs across the enemy's bow (re-chosen every 30 s): the line deploys broadside-on and crossing the T can emerge.
 - **Vanguard** (`vanguard` > 0, IJN): in search / approach / engage the carriers hold `max(cvStandoff, vanguard × MAP_W)` behind the main body (inside the carrier band `CV_LO`–`CV_HI`), and the line's lead grows by 35 in search / approach.
 - **Zigzag**: with an enemy sub contact (≤ 75 s old) within 300 of the main body, the carrier group or the screen, or a sub's torpedo track seen or a sub's torpedo hit in the last 75 s, `B.zig` follows a shared plan (`ZIG` offsets, `LEG` 22 s each, from the sim clock) × `zigzag`. Not while pressing or pursuing. `followStation` adds it to the course; carriers on passage too (`ai_carrier.js`). Ring escorts follow their carrier.
 
@@ -955,7 +1072,7 @@ Long-range flying boats come in from off the map: USN PBY Catalina, IJN H6K Mavi
 
 ### camera.js, freecam.js, camera_story.js, camera_finder.js, camera_follow.js
 
-- `WW.cam` (director): it selects a live subject (a sinking, a torpedo or dive-bomb attack, a carrier launch, a dogfight, a burning ship or a battleship that fires). It films the subject for 12 to 25 s with a slow orbit, chase, fly-by or wide shot, then cross-fades in 1.4 s. Every second shot is a wide shot. A wide shot or diorama orbit looks at the front line when the nearest enemy ships are less than 280 units apart, and otherwise at one fleet on its approach. The opening shot of a round shows one fleet side-on. The subject stays in the middle third of the frame. The camera stays more than 7 units from a hull and above the terrain. Setup mode and map view (`C`) use a high overview.
+- `WW.cam` (director): it selects a live subject (a sinking, a torpedo or dive-bomb attack, a carrier launch, a dogfight, a burning ship or a battleship that fires). It films the subject for 11 to 20 s with a slow orbit, chase, fly-by, low (waterline) or wide shot, then cross-fades in 1.4 s. Ship shots are sized by the share of the frame width the hull fills (`fillR`: about 35 to 45 % broadside). In a quiet moment it films one of the 3 best ships (big, in a gunfight, near the front, planes over its deck) as a low pass at toy's-eye level (camera ~2 to 3 u over deep water, off the bow quarter, on the outer side of its group), a low orbit or a fly-by. A wide establishing shot (8 to 11 s) comes at most every 5th shot: low, from just outside one task group (the fleet nearer the front), its near ships big and the rest behind. The opening shot of a round is one such wide shot. Story mode (`camera_story.js`) cuts every other transit / form-up shot to its strike's target or its carrier (a low shot), while the attack is more than 40 s away. `baseAlarm` `{x, z}` (the island base's alarm) cuts to a low 6 to 10 s orbit of the base, at most once a minute. `tests/cam_scale.js` measures the on-screen size of the largest visible ship per second of director camera. The subject stays in the middle third of the frame. The camera stays more than 7 units from a hull and above the terrain. Setup mode and map view (`C`) use a high overview.
 - `WW.camAction` (`camera_action.js`) adds action shots to the director. When the director films a dive-bomb attack and the bomb falls, the camera follows the bomb to the impact and holds on the explosion. When it films a torpedo run and the plane drops its torpedo, the camera follows the wake to the hit or the miss. These hand-offs do not cut. They change the current shot. A fighter with a foe can get an over-the-shoulder shot: behind and above the fighter, its foe ahead, with a slow, rate-limited turn. Planes with `kills` or `ace` (if present) get a higher priority. `combat_weapons.js` sends the events `weaponDropped` `{ kind: 'bomb' | 'torpedo', proj, plane, target }` and `weaponImpact` `{ kind, proj, x, z, ship }` (`ship` is null for a miss). Test hook: `WW.cam.film(candidate)`; `tests/action_cam.js` records each action shot.
 - `WW.freecam`: left-drag orbits, the wheel zooms (a trackpad pinch is a wheel event with `ctrlKey`), right-drag and `W` `A` `S` `D` pan (panning lets go of a followed subject), `Q` and `E` turn, `R` / `V` (or `Page Up` / `Page Down`) raise and lower. A click on a plane starts a story on it (`WW.camStory.follow`) and gives the camera back to the director.
   - Relative follow: a click on a ship (`'click'`), any input while the director films a ship or plane (`'inherit'`: the subject of `WW.cam._shot()`, so a story shot keeps its leader), or `WW.freecam.follow(o)` follows a subject. The orbit yaw, pitch and distance are then an offset in the subject's frame, measured from where the camera is (no jump): heading-relative by default (world yaw = `base(hS) + yaw`, `base(h)` puts the camera astern; `hS` is the subject heading eased at 1.5/s), or world-fixed (`toggleRel()`, key `O`, converts without a jump). The look point follows the subject tightly once settled (rate ramps 3 → 12/s over 1.5 s); an inherited distance glides in to a chase distance (≤ 48 units for a plane); a plane allows a pitch down to −0.3 (camera below it), the distance down to 12. A falling plane is followed until it is removed. `soft()` eases camera.js's manual rates for 1.2 s after a take-over.

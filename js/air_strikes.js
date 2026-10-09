@@ -152,7 +152,7 @@ window.WW = window.WW || {};
     let t = w.target;
     if (WW.cag) t = WW.cag.waveTick(w);                        // strike leader: redirect, handover (air_cag.js)
     if (w.done) return;                                        // broke off (air_staff.js)
-    if (!t || !t.alive || t.submerged) t = w.target = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: 200 }) : WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
+    if (!t || !t.alive || t.submerged) t = w.target = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: WW.cag && WW.cag.reach ? Math.max(200, WW.cag.reach(w)) : 200 }) : WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
     if (!t) { w.done = true; return; }
     const k = aimAt(w, t);                                     // where the side reckons it is now (intel.js)
     let want = Math.atan2(k.z - w.z, k.x - w.x);

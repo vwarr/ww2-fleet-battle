@@ -149,7 +149,8 @@ window.WW = window.WW || {};
   }
   // Station points. Offsets are (forward f, lateral l) along the axis of advance B.axis.h from the guide.
   var RING = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]];        // carrier escorts (radius ~80: SPACE.carrier is 70)
-  var LINE = [0, -45, 45, -90, 90, -135, 135];                              // battle line, lateral slots
+  var LINE = [0, -45, 45, -90, 90, -135, 135];                              // screen lateral slots (and the battle line with no guide)
+  var COL_L = 3;                                                            // battle line: column interval in L (~750 m, 1942 practice 500-1000 yd)
   // Carrier station safety: no closer than 1.9 x gun range + 20 to any known enemy gun ship (contacts up to 60 s
   // old): the station slides straight away from it (then back into the band x0..x1 and 80 off the north / south
   // edges). Keeps a pressing or advancing side from leading its carrier toward the enemy's guns.
@@ -166,7 +167,7 @@ window.WW = window.WW || {};
   }
   function stations(B) {
     var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, h = B.axis.h, c = Math.cos(h), s = Math.sin(h);
-    var lead = { search: 45, approach: 45, engage: 0, press: 35, pursue: 60, withdraw: -45 }[B.posture] || 0;
+    var lead = { search: 45, approach: 45, engage: 30, press: 35, pursue: 60, withdraw: -45 }[B.posture] || 0; // engage: the guide keeps closing (fleet_formation.js; the ships break off near gun range)
     var van = WW.formation ? WW.formation.vanguardBack(B, 0) > 0 : false; // IJN vanguard: the line pushes on ahead
     if (van && B.posture !== 'engage') lead += 35;
     // guides: the main body's centroid, else the first group that has ships
@@ -185,8 +186,22 @@ window.WW = window.WW || {};
     if (hold) lead = 0;
     var at = function (gx, gz, f, l) { return { x: WW.clamp(gx + c * f - s * l, 30, W - 30), z: WW.clamp(gz + s * f + c * l, 30, H - 30) }; };
     var set = function (q, p) { var o = B.orders.get(q.id); if (o) { o.sx = p.x; o.sz = p.z; } };
-    // main body: line abreast across the axis, advancing by `lead`
-    G.main.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead, LINE[i % LINE.length])); });
+    // main body: a column (line ahead) on the formation guide (fleet_formation.js), COL apart, the guide steaming for the
+    // posture's aim point `lead` ahead of the group (or the hold anchor); the screen ahead of the column's head and the
+    // flotilla on its flanks keep station on the same guide, so the whole formation turns together
+    B.orders.forEach(function (o) { o.fg = null; });
+    var fitOf = function (g) { return g.members.filter(function (q) { var o = B.orders.get(q.id); return o && o.role !== 'withdraw'; }); };
+    var fgList = fitMain.length ? fitMain : fitOf(G.screen).concat(fitOf(G.flotilla));
+    var ba = WW.formation && fitMain.length && !hold ? WW.formation.battleAim(B, fitMain) : (B.battle = null); // the line deploys across the enemy's bearing
+    var fg = WW.formation && fgList.length ? WW.formation.guide(B, 'main', fgList, ba || at(sg.x, sg.z, lead, 0)) : null;
+    var COL = COL_L * (WW.cfg.L || 26), nm = fitMain.length, half = Math.max(0, nm - 1) * COL / 2;
+    var onGuide = function (q, f, l) {
+      var o = B.orders.get(q.id); if (!o) return;
+      if (!fg || o.role === 'withdraw') { set(q, at(sg.x, sg.z, lead + f, l)); return; }
+      o.fg = fg; o.ff = f; o.fl = l; set(q, WW.formation.guidePoint(o));
+    };
+    if (fg) fitMain.forEach(function (q, i) { onGuide(q, half - i * COL, 0); });
+    else G.main.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead, LINE[i % LINE.length])); });
     // carriers: cvStandoff behind the main body (never ahead of it); escorts in a ring around the first carrier
     var back = B.doctrine.cvStandoff * (B.posture === 'search' ? 0.8 : 1);
     if (WW.formation) back = WW.formation.vanguardBack(B, back); // IJN: the surface vanguard well ahead of the carriers
@@ -212,8 +227,8 @@ window.WW = window.WW || {};
       if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
     });
     if (WW.formation) { WW.formation.ringStations(B, set, at); WW.formation.zigzag(B); }
-    G.screen.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });
-    G.flotilla.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead + 30, (i % 2 ? -1 : 1) * (110 + 25 * (i >> 1)))); });
+    G.screen.members.forEach(function (q, i) { onGuide(q, half + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2); });
+    G.flotilla.members.forEach(function (q, i) { onGuide(q, 30, (i % 2 ? -1 : 1) * (110 + 25 * (i >> 1))); });
     // PT boats: own-side flanks, never past the midline; subs: out on the flank of the enemy's approach
     G.pt.members.forEach(function (q, i) {
       var p = at(mg.x, mg.z, 60, (i % 2 ? -1 : 1) * (150 + 30 * (i >> 1)));

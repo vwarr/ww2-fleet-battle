@@ -154,12 +154,16 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
       ship: await p.evaluate(() => { const s = WW.cam._shot(); return !!(s && s.user); }) };
     console.log(((r.story || r.ship) && /^Follow: /.test(r.msg) && !/off/.test(r.msg) && /^Following/.test(r.label) ? 'PASS' : 'FAIL') + ' F jumps to the most imminent attack:', JSON.stringify(r));
     await snap('keys_F_imminent');
-    // Tab, Tab, Shift+Tab
-    const tabs = [];
-    for (const k of ['Tab', 'Tab', 'Shift+Tab']) { await p.keyboard.press(k); await p.evaluate(() => { __render = false; __step(45); }); tabs.push(await msg()); }
-    console.log('[Tab]', tabs.join(' | '));
-    const subj = t => t.replace(/^\d+\/\d+ \u00b7 /, '').replace(/ in ~.*$/, '');
-    console.log(tabs.every(t => /^\d+\/\d+/.test(t)) && subj(tabs[0]) === subj(tabs[2]) && subj(tabs[0]) !== subj(tabs[1]) ? 'PASS Tab / Shift+Tab cycle' : (/^No attacks/.test(tabs[0]) ? 'SKIP Tab (nothing upcoming)' : 'FAIL Tab cycle'));
+    // Tab, Tab, Shift+Tab: needs two or more distinct upcoming attacks (one per strike wave / fighter element / ship,
+    // as camera_follow.js cycles them); wait for them (up to 300 sim s), else SKIP
+    const two = await p.evaluate(() => { __sim.setScale(1); return !!until(() => { const k = new Set(); for (const i of WW.camFinder.upcoming(['strike', 'push', 'anvil', 'bandits', 'torps'])) if (i.subj && !i.subj.removed) k.add(i.subj.wave || i.subj.element || i.subj); return k.size >= 2; }, 300); });
+    const tabs = [], who = [];
+    for (const k of ['Tab', 'Tab', 'Shift+Tab']) {
+      await p.keyboard.press(k); who.push(await p.evaluate(() => { const f = WW.camFollow.following(); return f ? (f.wave ? 'w' + WW.strike._waves().indexOf(f.wave) : f.element ? 'e' + f.element.id : 'o' + (f.id !== undefined ? f.id : WW.world.planes.indexOf(f))) : '-'; }));
+      await p.evaluate(() => { __render = false; __step(45); }); tabs.push(await msg());
+    }
+    console.log('[Tab]', tabs.join(' | '), '| followed', who.join(' > '));
+    console.log(!two ? 'SKIP Tab (fewer than 2 attacks upcoming)' : tabs.every(t => /^\d+\/\d+/.test(t)) && who[0] === who[2] && who[0] !== who[1] && who[0] !== '-' ? 'PASS Tab / Shift+Tab cycle' : 'FAIL Tab cycle');
     await snap('keys_tab');
     await p.keyboard.press('f'); await p.evaluate(() => __step(5));
     const off = { msg: await msg(), story: await p.evaluate(() => WW.camStory.active()), fc: await p.evaluate(() => WW.freecam.active()) };

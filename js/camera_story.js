@@ -177,12 +177,12 @@ window.WW = window.WW || {};
   // shot menu per phase: [sub-kind, weight]
   const MENU = {
     launch: [['deck', 3], ['high', 1], ['side', 1]],
-    form: [['side', 3], ['high', 2], ['chase', 2], ['wing', 2]],
-    transit: [['chase', 3], ['wing', 3], ['side', 2], ['high', 2]],
+    form: [['side', 3], ['high', 1], ['chase', 2], ['wing', 2]],
+    transit: [['chase', 3], ['wing', 3], ['side', 2]],      // the context (the ships) comes from the transit's ship cutaways (pick())
     bandits: [['ots', 4], ['chase', 2], ['wing', 2]],
     attack: [['chase', 3], ['ots', 3], ['water', 4], ['high', 1]],
     after: [['chase', 3], ['side', 2], ['high', 1]],
-    home: [['high', 2], ['side', 2], ['chase', 1]],
+    home: [['high', 1], ['side', 2], ['chase', 2]],
     rescue: [['side', 3], ['chase', 2], ['high', 1]]      // a Catalina down on the water among the survivors
   };
   function choose(phase, L) {
@@ -206,6 +206,11 @@ window.WW = window.WW || {};
     log.push({ sk, kind: c.kind, phase: S.phase, at: wall(), dur: +d.toFixed(1), hard: !!hard, lead: L.kind + (L.wing ? ' wing' + L.wing : ' lead') });
     if (log.length > 200) log.shift();
     return c;
+  }
+  // the ship a story's transit cuts to: the strike's target, else the carrier the plane flies from (afloat ships only)
+  function shipFor(p) {
+    const live = s => s && s.alive && !s.removed && !s.submerged && WW.world.ships.indexOf(s) >= 0 ? s : null; // a ship, not the island base or a flying boat's home
+    return live(p.target) || live(p.wave && p.wave.target) || live(p.carrier) || null;
   }
   function successor() {
     const live = S.group.filter(m => airborne(m));
@@ -253,6 +258,17 @@ window.WW = window.WW || {};
     S.phase = phaseOf(L);
     const age = now - S.t0;
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
+    // a long, empty transit: every other shot cuts to the ships it is about (the target, else the carrier it guards)
+    // at toy's-eye level, so the story's minutes over open sea also show the ships big
+    if ((S.phase === 'transit' || S.phase === 'form' || S.phase === 'home') && S.shots >= 2 && S.last !== 'ships' && !(S.user && S.shots < 3)) {
+      const it = WW.camFinder && WW.camFinder.about(L), sh = shipFor(L);
+      if (sh && (!it || it.etaReal > 40)) {
+        S.last = 'ships'; S.shots++;
+        log.push({ sk: 'ships', kind: 'low', phase: S.phase, at: now, dur: 8, hard: false });
+        return Math.random() < 0.6 ? { kind: 'low', subj: sh, dur: dur(7, 10), story: true, ships: true }
+          : { kind: 'orbit', subj: sh, r: sh.stats.length * 2 + 8, dur: dur(7, 10), w: 0.04, hgt: 0.14, story: true, ships: true };
+      }
+    }
     const sk = S.user && !S.shots && WW.storyShots.valid('chase', L, S.group) ? 'chase' // the user asked: open close on the subject
       : !S.shots && S.mission === 'strike' && (S.phase === 'form' || S.phase === 'transit') && WW.storyShots.valid('side', L, S.group) ? 'side' // open on the formation, side on: its size and stack
       : choose(S.phase, L);
