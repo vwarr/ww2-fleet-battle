@@ -53,7 +53,8 @@ window.WW = window.WW || {};
       }
       if (hit) {
         if (WW.dstat) WW.dstat('torpHit' + p.src, p.nation);
-        I.damage(hit, p.dmg, p.x, p.z, 'torpedo');
+        var tv = WW.TORPEDO && WW.TORPEDO.vs && WW.TORPEDO.vs[hit.type];   // below the waterline (core.js WW.TORPEDO.vs)
+        I.damage(hit, p.dmg * (tv === undefined ? 1 : tv), p.x, p.z, 'torpedo');
         if (!WW.damage) { I.fx('splash', p.x, p.z, 4); I.fx('explosion', p.x, 0.8, p.z, 2.5); }
         if (WW.emit) WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: hit });
         p.dead = true; return;
