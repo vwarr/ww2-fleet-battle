@@ -67,7 +67,7 @@ window.WW = window.WW || {};
       for (const sh of NO.shells) if (sh.lit) add(sh.x, sh.y, sh.z, COL.star, 1.1 * fade(sh), 170, 5, 1);
       for (const L of NO.lights) { const t = L.target; if (t) add(t.x, topY(t) + 8, t.z, COL.beam, 0.9, 40, 4); }
     }
-    for (const s of WW.world.ships) if (burning(s)) add(s.x, topY(s) + 7, s.z, COL.fire, 0.85 * (0.85 + 0.15 * Math.sin(performance.now() * 0.013 + s.id)), 55, 3);
+    for (const s of WW.world.ships) if (burning(s)) add(s.x, topY(s) + 7, s.z, COL.fire, 0.55 * (0.85 + 0.15 * Math.sin(performance.now() * 0.013 + s.id)), 45, 3);
     for (const f of flashes) add(f.x, f.y, f.z, COL.flash, f.i * (1 - f.t / f.life), f.dist, 6);
     src.sort((a, b) => b.s - a.s);
   }
