@@ -155,7 +155,7 @@ window.WW = window.WW || {};
 
   // ---- schedule: one per side early, then occasional ones; one patrol up per side, two USN boats at most ----
   function schedule(dt) {
-    if (!battle()) return;
+    if (!battle() || location.search.includes('nopatrol')) return;
     tick -= dt; if (tick > 0) return; tick = 1;
     var now = WW.game.roundTime, end = WW.game.deadline ? WW.game.deadline() : WW.cfg.ROUND_TIMEOUT;
     ['USN', 'IJN'].forEach(function (n) {

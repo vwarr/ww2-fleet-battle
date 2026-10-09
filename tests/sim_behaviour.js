@@ -383,7 +383,7 @@ function install(P) {
       }
     }
     // ---- PT spacing: nearest same-side PT that is not its pair-mate (the commander's PT group pairs by slot) ----
-    if (t - R.nnT >= 2) {
+    if (t >= 30 && t - R.nnT >= 2) { // after the start formation has had time to break up
       R.nnT = t;
       for (const n of ['USN', 'IJN']) {
         const pts = L.filter(s => s.type === 'pt' && s.nation === n); if (pts.length < 2) continue;
@@ -489,7 +489,7 @@ function install(P) {
       cr: R.cr, lc: R.lc, torp: R.torp, th: R.th, air: Object.assign({}, R.air, { coh: R.air.coh.length ? [R.air.coh.sort((a, b) => a - b)[R.air.coh.length >> 1]] : [] }) };
     if (out.cv.cvcvMin === 1e9) out.cv.cvcvMin = null;
     if (out.cv.brkMin === 1e9) out.cv.brkMin = null;
-    out.label = spec.label || null; out.endReason = G.endReason || null; out.firstDmg = R.firstDmg; out.dmgSum = Math.round(R.dmgSum);
+    out.label = spec.label || null; out.A = spec.A || null; out.B = spec.B || null; out.endReason = G.endReason || null; out.firstDmg = R.firstDmg; out.dmgSum = Math.round(R.dmgSum);
     out.forms = R.forms; out.syncN = R.syncN; out.ptNN = R.ptNN;
     const SS = WW.search && WW.search.stats;
     out.search = SS ? { sect: { USN: SS.searched.USN.size, IJN: SS.searched.IJN.size }, lost: Object.assign({}, SS.lost), sorties: SS.sorties + SS.flown, breaks: SS.breaks, shadows: SS.shadows } : null;

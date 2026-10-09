@@ -14,7 +14,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var SEEN_AGE = 30, SWEEP_T = 75, DEEP_T = 120, SWEEP_V = 4;
+  var SEEN_AGE = 30, SWEEP_T = 75, BLIND_T = 25, BARRIER_T = 45, DEEP_T = 120, SWEEP_V = 4;
   var PAIR_SEP = 75, WING = 15, LANE = 150, COVER_R = 150;
   var PEN_LURK = -0.06, PEN_SWEEP = 0.1, PEN_DEEP = 0.8; // how far past the midline a PT spot may be (x half-map)
   var HEAVY = { battleship: 1, cruiser: 1, destroyer: 1 };
@@ -35,13 +35,16 @@ window.WW = window.WW || {};
       if (u.type === 'carrier') cvKnown = true;
     }
     B.searchFor = rt - B.contactT;
-    var sweep = B.searchFor > SWEEP_T;
+    var G = B.groups; // a side of PT boats and subs only has short eyes: it goes looking sooner, and faster
+    B.blind = !(G.main.members.length + G.screen.members.length + G.flotilla.members.length + G.carrier.members.length);
+    var sweep = B.searchFor > (B.blind ? BLIND_T : SWEEP_T);
     if (sweep && !B.sweep) stats.sweeps++;
     B.sweep = sweep;
-    B.sweepT = sweep ? B.sweepT + WW.fleetCmd.TICK : Math.max(0, B.sweepT - 2 * WW.fleetCmd.TICK); // the line steps back slowly
+    B.sweepT = sweep ? B.sweepT + WW.fleetCmd.TICK * (B.blind ? 1.5 : 1) : Math.max(0, B.sweepT - 2 * WW.fleetCmd.TICK); // the line steps back slowly
     var deep = !B.heavySeen && rt > 60 && (cvKnown || B.searchFor > DEEP_T || B.ptDeep);
     if (deep && !B.ptDeep) stats.deep++;
     B.ptDeep = deep;
+    barrier(B, rt);
     ptSpots(B);
     escortSweep(B);
   }
@@ -107,6 +110,17 @@ window.WW = window.WW || {};
       if (WW.terrain.isNavigable(x, z, 2.5)) return { x: x, z: z };
     }
     return { x: p.x + Math.cos(h) * WING, z: p.z + Math.sin(h) * WING };
+  }
+  // A long fruitless search: the surface force stops chasing sectors (two lone searchers sweeping each other's
+  // halves mirror each other and never meet) and patrols a north-south barrier line just short of the midline.
+  // fleet_cmd.js sectors() uses B.barrier as the search point while it is set.
+  function barrier(B, rt) {
+    var G = B.groups, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
+    if (B.searchFor < BARRIER_T || B.blind || B.posture === 'pursue' || B.posture === 'withdraw' || !(G.main.members.length + G.screen.members.length + G.flotilla.members.length)) { B.barrier = null; return; }
+    var x = xAt(B.nation, -0.08), g = B.axis;
+    if (!B.barrier) B.barrier = { x: x, z: g.z < H / 2 ? H - 90 : 90 };
+    else if (WW.dist(g.x, g.z, B.barrier.x, B.barrier.z) < 70) B.barrier.z = B.barrier.z < H / 2 ? H - 90 : 90;
+    B.barrier.x = x;
   }
   // Long search with no battle line, screen or flotilla: the carrier's extra escorts sweep to search sectors.
   function escortSweep(B) {
