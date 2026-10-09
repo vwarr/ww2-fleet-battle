@@ -117,6 +117,10 @@ window.WW = window.WW || {};
   // dmgK: the warhead, x WW.TORPEDO.dmg (balance pass, Oct 2026): Type 93 490 kg against the Mk 15's 374 kg (1.31x),
   // Type 95 405 kg against the Mk 14's 230 kg (1.76x; here 1.5x), Type 91 Mod 2 204 kg against the 1942 Mk 13's 182 kg
   // (1.12x), Mk 8 (PT) 211 kg; set about the old common 220 so a torpedo hit stays as deadly on average.
+  // Ship torpedo speeds (balance pass 2, Oct 2026): the Type 93 ran 48 kn and the Mk 15 45 kn, 1.5x / 1.4x a carrier's
+  // 32 kn = 8.4 / 7.9 u/s on the ship clock (was 16 / 13.5, 2.9x / 2.4x: a 130 u Long Lance shot was a near-certain
+  // hit). Ship torpedo hit rate 32 / 25% -> 19 / 16% (USN / IJN; torpedo_review.js), USN +6.5 +- 6.6 (200 mirrored
+  // rounds). Subs (Type 95 / Mk 14) and PT boats were not changed.
   // USN duds (balance pass): Mk 15 0.1 -> 0.2 and Mk 14 0.2 -> 0.3, nearer the 1942 record (the Mk 6 exploder both
   // carried; the Mk 14's failures were only fixed in 1943); they had been set low when the USN was the weaker side.
   WW.TORPEDO_NATION = {
