@@ -62,7 +62,10 @@ function report(rounds, log) {
     const f = [], sights = rs.map(r => r.firstSight), dmgs = rs.map(r => (r.firstSight === null || r.firstDmg === null ? null : r.firstDmg - r.firstSight));
     for (const r of rs) {
       const why = [], ST = blind(r.A) && blind(r.B) ? SIGHT_BLIND : SIGHT_T, DT = subs(r.A) || subs(r.B) ? DMG_SUB : DMG_T;
-      const quiet = ST === SIGHT_BLIND && r.endReason === 'stall' && r.firstSight === null; // main.js: no contact by 240 s ends a sub hunt
+      // main.js ends a sub hunt with no contact by SUB_SEARCH (420 s on the big map) as a stall: a quiet round when both
+      // sides are blind, or one side is submerged subs only (6 destroyers sweeping 2400 x 1350 with ~40 u sonar do not
+      // find 6 boats that lie in wait: the ASW hunts of 1942 took days), not a missed sighting
+      const quiet = (ST === SIGHT_BLIND || subs(r.A) || subs(r.B)) && r.endReason === 'stall' && r.firstSight === null;
       if (!quiet && (r.firstSight === null || r.firstSight > ST)) why.push('sight ' + (r.firstSight === null ? 'never' : r.firstSight.toFixed(0)));
       if (r.firstSight !== null && (r.firstDmg === null || r.firstDmg - r.firstSight > DT) && !(r.endReason === 'stall' && DT === DMG_SUB)) why.push('dmg ' + (r.firstDmg === null ? 'never' : (r.firstDmg - r.firstSight).toFixed(0)));
       if (why.length) { f.push(why.join(',')); bad.push(`s${r.seed} ${r.label}: ${why.join(', ')}`); }

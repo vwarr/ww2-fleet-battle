@@ -70,6 +70,26 @@ window.WW = window.WW || {};
   }
 
   // ---------- bombs ----------
+  // AA dps of the ships (not of `nation`) within r of (x, z): the screen a dive bomber pushes over into
+  function flakAt(nation, x, z, r) {
+    var list = (WW.world && WW.world.ships) || [], f = 0;
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      if (!I.shipUsable(s) || s.nation === nation || s.submerged || !s.stats || !s.stats.aa) continue;
+      if (WW.dist2(s.x, s.z, x, z) < r * r) f += s.stats.aa.dps * (s.sup && s.sup.aa <= 0 ? 0 : 1);   // a battery out of AA ammunition (ship_supply.js) does not count
+    }
+    return f;
+  }
+  // Dive-bombing aim error at release (core.js WW.BOMB.aim): a ground offset { x, z } (Gaussian, WW.rand)
+  function gauss() { return (I.rr(0, 1) + I.rr(0, 1) + I.rr(0, 1) + I.rr(0, 1) - 2) * 1.7320508; }
+  function diveAim(plane, dv, y) {
+    var A = (WW.BOMB && WW.BOMB.aim) || { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2 };
+    var hs = Math.hypot(dv.x, dv.z) || 1e-6, sinG = Math.max(0.5, -dv.y / Math.hypot(hs, dv.y || 0));
+    var slant = y / sinG, aim = plane.diveTgt || plane.target;
+    var fk = 1 + Math.min(A.flakMax, A.flakK * (aim ? flakAt(plane.nation, aim.x, aim.z, A.flakR) : 0));
+    var sa = A.k * slant * fk, sl = sa / sinG, fx = dv.x / hs, fz = dv.z / hs, ea = gauss() * sa, el = gauss() * sl;
+    return { x: fx * el - fz * ea, z: fz * el + fx * ea };
+  }
   function dropBomb(plane, target) {
     try {
       if (!plane) return null;
@@ -88,16 +108,18 @@ window.WW = window.WW || {};
         vx = wx; vz = wz;
       }
       var sc = 4 + y * 0.25, vy0 = 0, dv = plane.dropV;   // scatter grows with drop height
-      if (dv) { // dive release (air_strikes.js): keep the plane's dive velocity, small bomb-sight trim, ~1 unit scatter
-        vy0 = Math.min(0, dv.y); T = (vy0 + Math.sqrt(vy0 * vy0 + 2 * GRAV * y)) / GRAV; vx = dv.x; vz = dv.z; sc = 0.6 + y * 0.03;
+      if (dv) { // dive release (air_strikes.js): keep the plane's dive velocity, small bomb-sight trim, the pilot's aim error
+        vy0 = Math.min(0, dv.y); T = (vy0 + Math.sqrt(vy0 * vy0 + 2 * GRAV * y)) / GRAV; vx = dv.x; vz = dv.z; sc = 0;
         if (target && target.alive) {
           var ex = target.x + Math.cos(target.heading || 0) * (target.speed || 0) * T - (plane.x + vx * T);
           var ez = target.z + Math.sin(target.heading || 0) * (target.speed || 0) * T - (plane.z + vz * T), em = Math.hypot(ex, ez) / T, ec = 5;
           if (em > ec) { ex *= ec / em; ez *= ec / em; }
           vx += ex / T; vz += ez / T;
         }
+        var ae = diveAim(plane, dv, y);
+        vx += ae.x / T; vz += ae.z / T;
       }
-      vx += I.rr(-sc, sc) / T; vz += I.rr(-sc, sc) / T;
+      if (sc) { vx += I.rr(-sc, sc) / T; vz += I.rr(-sc, sc) / T; }
       var p = I.acquire('bomb', I.G.bomb, I.M.bomb);
       p.x = plane.x; p.y = y; p.z = plane.z; p.vx = vx; p.vy = vy0; p.vz = vz;
       p.nation = plane.nation; p.target = target || null;
@@ -117,7 +139,8 @@ window.WW = window.WW || {};
     var tgt = (p.target && p.target.alive) ? p.target : null;
     var hit = I.findHit(p.nation, p.x, p.z, 0.6, false, tgt);
     if (hit) {
-      I.damage(hit, p.dmg, p.x, p.z, 'bomb');
+      var vs = WW.BOMB && WW.BOMB.vs && WW.BOMB.vs[hit.type];   // deck armour (core.js WW.BOMB.vs)
+      I.damage(hit, p.dmg * (vs === undefined ? 1 : vs), p.x, p.z, 'bomb');
       if (!WW.damage) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
     } else if (WW.islandBase && WW.islandBase.impact(p.nation, p.x, p.z, p.dmg, 'bomb')) {
       I.fx('explosion', p.x, 1, p.z, 2); I.fx('smoke', p.x, 1.4, p.z, true, 2.2);   // on the island base

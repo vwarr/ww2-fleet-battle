@@ -101,14 +101,15 @@ window.WW = window.WW || {};
   // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;
   // Type 95 (sub) likewise; Type 91 (aerial) an ordinary air-driven wake. USN 1942 Mk 15 / Mk 14 / Mk 13: slower,
   // shorter, steam wakes easy to see, and the notorious exploder duds, worst in the Mk 14 (subs, 20%); the aerial
-  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds). Balance levers (AI_DESIGN §4, §8): on
+  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds): 33.5 kn against the Type 91's 42 kn, on
+  // the same scale as the ship torpedoes (Type 93 48 kn = 16 u/s) 11 u/s against 14 (balance pass, Oct 2026). Balance levers (AI_DESIGN §4, §8): on
   // the 200-round gate (Oct 2026) the USN entries were worth ~10 points together at 18-28% duds (duds ~6, the wake
   // ~4), so they sit lower; the Long Lance entries move it ~0-2.
   WW.TORPEDO_NATION = {
     IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7 },
            pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1 } },
     USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.1, sight: 1.1 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.2, sight: 1.1 },
-           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1.1 } }
+           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1 }, air: { rangeK: 1, speed: 11, dud: 0, sight: 1.1 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
     const N = WW.TORPEDO_NATION[nation] || {};
@@ -127,7 +128,16 @@ window.WW = window.WW || {};
     }
     return (_stCache[key] = st);
   };
-  WW.BOMB = { dmg: 180 };
+  // Bombs (combat_weapons.js). vs: share of a bomb's damage that reaches the vitals, by the target's protection: a
+  // battleship's 5-6 in armoured deck stops a dive bomber's 1000 lb SAP / 250 kg bomb above the citadel (the hit wrecks
+  // superstructure and secondaries: South Dakota's turret at Santa Cruz, Hiei and Kirishima were finished by guns and
+  // torpedoes, not bombs); a cruiser's 1-2.5 in deck keeps out part of it (Mogami lived through six 1000 lb hits,
+  // Mikuma took five or more); carriers, destroyers, PT boats and submarines have no deck armour to speak of.
+  // aim: dive-bombing aim error at release, Gaussian (combat_weapons.js diveAim): sigma across the dive line = k x the
+  // slant range at release (the pilot's sighting and release error, ~35 m at the game's release height), along the
+  // ground track / sin(dive angle) (a shallower dive stretches it along the track), x (1 + flakK x the AA dps of the
+  // target's side's ships within flakR, capped at flakMax): a dense AA screen spoils the aim (its main effect in 1942).
+  WW.BOMB = { dmg: 180, vs: { battleship: 0.35, cruiser: 0.7 }, aim: { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2 } };
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
   // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter.
   // Speeds follow docs/PLANE_REVIEW.md §3.3: planes fly on a clock ~1.15x the ship clock (real speed / carrier speed x 5.6
