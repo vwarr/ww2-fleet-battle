@@ -36,7 +36,7 @@ window.WW = window.WW || {};
     var kind = f === 'day' || f === 'dusk' || f === 'night' ? f : r < P.NIGHT ? 'night' : r < P.NIGHT + P.DUSK ? 'dusk' : 'day';
     if (kind === 'night') D.startHour = 20.5 + 1.5 * j;
     else if (kind === 'dusk') D.startHour = DUSK_H - (90 + 110 * j) / PER_H;    // dusk begins 90-200 s in
-    else D.startHour = 11 + 3.25 * j;                                         // 11:00-14:15: light all round
+    else D.startHour = 11 + 2 * j;                                            // 11:00-13:00: light all round (a pursuit can run 570 s)
     if (typeof f === 'number') { kind = 'dusk'; D.startHour = DUSK_H - f / PER_H; } // test hook: dusk begins f s in
     D.kind = kind;
     D.duskAt = (DUSK_H - D.startHour) * PER_H;
