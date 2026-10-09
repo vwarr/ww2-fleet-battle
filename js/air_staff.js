@@ -64,7 +64,7 @@ window.WW = window.WW || {};
     let s = 0;
     if (M) M.forEach(e => { if (WW.dist2(e.x, e.z, x, z) < R2) s += wAge(now - e.t); });
     if (s < 1 && WW.intel) {   // nothing seen there yet: the staff's guess for a known carrier, or an open airfield
-      for (const c of WW.intel.enemyShips(n, { fresh: 120 })) { const u = c.unit; if (u && u.alive && !u.isBase && WW.intel.typeOf(c) === 'carrier' && WW.dist2(c.x, c.z, x, z) < R2) s += PRIOR.carrier; }
+      for (const c of WW.intel.enemyShips(n)) { const u = c.unit; if (u && u.alive && !u.isBase && now - c.seenAt <= 120 && WW.intel.typeOf(c) === 'carrier' && WW.dist2(c.x, c.z, x, z) < R2) s += PRIOR.carrier; }   // (unfiltered: no intel scratch array under a caller's loop)
       const b = ebase(n); if (b && WW.islandBase.runwayOpen() && WW.dist2(b.x, b.z, x, z) < R2) s += PRIOR.base;
     }
     return s;
@@ -178,7 +178,7 @@ window.WW = window.WW || {};
   function judge(cv, look) {   // the ledger as the air officer reads it at the next strike order
     const L = led(cv), now = WW.time.now;
     let lostN = 0, last = null;
-    for (const r of L.waves) { r.lost = lost(r.B); lostN += r.lost; if (over(r, now)) last = r; }
+    for (const r of L.waves) { if (!r.done) { r.lost = lost(r.B); if (over(r, now)) r.done = true; } lostN += r.lost; if (r.done) last = r; }   // a finished strike's tally is frozen
     let left = cv.hangar ? cv.hangar.dive + cv.hangar.torpedo : 0;
     for (const p of WW.world.planes) if (p.alive && p.carrier === cv && (p.kind === 'dive' || p.kind === 'torpedo')) left++;
     if (cv.rearm) left += cv.rearm.filter(r => r.kind !== 'fighter').length;
@@ -210,7 +210,7 @@ window.WW = window.WW || {};
     // a heavy loss on the last strike: learn (more escorts) and send a smaller one
     if (J.last && !J.last.judged) { J.last.judged = true; if (J.lastLoss >= 0.3 && J.last.esc < J.last.n * 0.6) { S.escK = Math.min(1.8, S.escK + D.learn); ST.learned++; } }
     let { nd, nt, esc } = o, nb = nd + nt;
-    const capE = capEst(n, tgt.x, tgt.z), wingF = cv.wingF || 0, hg = cv.hangar;
+    const kt = WW.intel && WW.intel.known(n, tgt) || tgt, capE = capEst(n, kt.x, kt.z), wingF = cv.wingF || 0, hg = cv.hangar;
     // the CAP stays: capHold of the air group's fighters (more when mauled) is not for escorting
     let capUp = 0, out = 0, queued = 0;
     for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.state !== 'takeoff') { if (p.kind === 'fighter' && !p.target && !p.search) capUp++; if (p.target && !p.search && p.kind !== 'scout') out++; }
