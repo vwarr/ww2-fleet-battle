@@ -202,7 +202,7 @@ window.WW = window.WW || {};
     if (!R) { // nowhere to land: hold over the island, then divert (carrier types) or ditch by a friendly ship
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
-      p.rwPh = 'circuit'; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
+      p.rwPh = 'circuit'; p.cleared = false; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
       if (p.holdT > (b.neutralized ? LEAVE_T : HOLD_MAX)) { p.leaving = true; return; }
       stack(p, b, i, dt); return;
     }
@@ -210,17 +210,21 @@ window.WW = window.WW || {};
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); } // the circuit clears the hills
-      const clear = R.main ? o.mode === 'recover' && !o.occ && !o.hold : !o.crossOcc;
-      if (i > 0 || !clear) { stack(p, b, i, dt); p.apOut = false; return; }
+      // cleared to approach: the first in the stack (the second once the first is on final) while the field recovers;
+      // a cleared approach is never cancelled by the field changing mode (only a closed runway sends it round)
+      const clear = R.main ? o.mode === 'recover' && !o.hold : !o.crossOcc;
+      const next = i === 0 || (i === 1 && a.lq[0] && a.lq[0].rwPh === 'final');
+      if (!(p.cleared && p.clearedMain === R.main) && (!next || !clear)) { stack(p, b, i, dt); p.apOut = false; return; }
+      p.cleared = true; p.clearedMain = R.main;
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
       const ox = R.x - c * 150, oz = R.z - s * 150;
       if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
       const d = WW.dist(p.x, p.z, fx, fz);
       p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
-      if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7) {
+      if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7 && (R.main ? !o.occ : !o.crossOcc)) {   // the runway free: on final (else round the gate again)
         p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = R.x; p.rwZ = R.z; p.emergency = !R.main;
         if (R.main) o.occ = p; else { o.crossOcc = p; ST.emergency++; }
-      }
+      } else if (d < 14) p.apOut = false;
       return;
     }
     // final: down the centreline (PD on the cross-track drift), descending to the touchdown point
@@ -228,7 +232,7 @@ window.WW = window.WW || {};
     const along = dx * ch + dz * sh, cross = -dx * sh + dz * ch, vc = dt > 0 && p._cr !== undefined ? (cross - p._cr) / dt : 0; p._cr = cross;
     const togo = -along; p.togo = togo; p.hd = WW.angleDiff(p.heading, h);
     if (R.h !== h || R.main === !!p.emergency || p.rwT > 25) { // the runway closed under it: go round
-      p.rwPh = 'circuit'; p._cr = undefined; p.apOut = false; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
+      p.rwPh = 'circuit'; p._cr = undefined; p.apOut = false; p.cleared = false; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
     }
     const want = h - WW.clamp(cross * 0.12 + vc * 0.1, -0.7, 0.7), dd = WW.angleDiff(p.heading, want);
     if (Math.abs(dd) > 2.4) { p.finSign = p.finSign || Math.sign(dd) || 1; p.heading += p.finSign * 1.8 * dt; } // far off: one committed turn

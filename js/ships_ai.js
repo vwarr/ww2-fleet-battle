@@ -66,7 +66,7 @@ window.WW = window.WW || {};
   // Per-calibre overrides for guns that are not the ship's main battery role (a PT's machine gun never duels a
   // battleship or cruiser) and secondaries (closest small threat first).
   const GUN_W = { mg: { carrier: 0, battleship: 0, cruiser: 0, destroyer: 0.6, submarine: 1, pt: 1.5 } };
-  const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6 };
+  const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6, base: 0.4 }; // base: the island's pits and batteries in reach (base_ai.js aims them)
   const VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };
   const STICKY = 1.3; // switch targets only for a score this much better
   // The main battery of a battleship or cruiser does not waste shells on a PT boat beyond PT_CLOSE x its range (the
