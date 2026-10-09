@@ -178,7 +178,7 @@ window.WW = window.WW || {};
   const MENU = {
     launch: [['deck', 3], ['high', 1], ['side', 1]],
     form: [['side', 3], ['high', 1], ['chase', 2], ['wing', 2]],
-    transit: [['chase', 3], ['wing', 3], ['side', 2], ['high', 1]],
+    transit: [['chase', 3], ['wing', 3], ['side', 2]],      // the context (the ships) comes from the transit's ship cutaways (pick())
     bandits: [['ots', 4], ['chase', 2], ['wing', 2]],
     attack: [['chase', 3], ['ots', 3], ['water', 4], ['high', 1]],
     after: [['chase', 3], ['side', 2], ['high', 1]],
