@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   const P = new THREE.Vector3(), L = new THREE.Vector3();        // current camera position / look point
   const gP = new THREE.Vector3(), gL = new THREE.Vector3();      // goals for this frame
   const _c = new THREE.Vector3(), _f = new THREE.Vector3();
-  let manual = false, shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null;
+  let manual = false, shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null, lastWide = -9;
 
   // ---------- overview fit (setup / map mode) ----------
   function placeOverview(d, tz) {
@@ -61,15 +61,42 @@ window.WW = window.WW || {};
     return Object.assign(fleetCentre(Math.random() < 0.5 ? 'USN' : 'IJN'), { d: 160 });
   }
 
-  // Calm, fish-tank pacing: long slow shots (12-25 s), soft cross-fades, wide diorama shots every other time.
+  // Calm, fish-tank pacing: long slow shots (12-20 s), soft cross-fades. The ships are the stars: a quiet moment
+  // films a big ship near the action at toy's-eye level (shipShot), and a wide establishing shot comes only now
+  // and then (every 5th shot at most, 8-12 s) and stays tight on one fleet, never on empty ocean.
   const dur = (a, b) => a + (b - a) * Math.random(); // camera: Math.random, never WW.rand (seeded rounds)
+  // the distance at which a hull `len` long, seen broadside, fills `f` of the frame width
+  function fillR(len, f) { return len / (f * 2 * Math.tan(camera.fov * Math.PI / 360) * camera.aspect); }
+  const shipR = (s, f, extra) => Math.max(fillR(s.stats.length, f), s.stats.length * 0.5 + 9) + (extra || 0);
+  const SHIP_V = { carrier: 2.2, battleship: 2.2, cruiser: 1.7, destroyer: 1.2, submarine: 0.6, pt: 0.7 };
+  // quiet-moment ship shots: the best few ships (big, fighting, near the enemy, carrying planes), each as a low
+  // waterline pass, a low orbit or a fly-by along the beam
+  function shipShots(add) {
+    const f = frontCentre(), list = [];
+    for (const s of WW.world.ships) {
+      if (!s.alive || s.removed || s.submerged) continue;
+      let sc = SHIP_V[s.type] || 1;
+      if (s.target && WW.dist(s.x, s.z, s.target.x, s.target.z) < 200) sc += 1.2;            // in a gunfight
+      sc += 1 - WW.clamp(WW.dist(s.x, s.z, f.x, f.z) / 400, 0, 1);                            // near the front line
+      if (s.type === 'carrier' && WW.world.planes.some(p => p.carrier === s && p.alive && p.y < 25)) sc += 0.8; // planes over the deck
+      list.push({ s, sc });
+    }
+    list.sort((a, b) => b.sc - a.sc);
+    for (const { s, sc } of list.slice(0, 3)) {
+      const r = Math.random(), pr = 2.6 + sc * 0.6;
+      if (r < 0.5) add(pr, 'low', s, { dur: dur(11, 15) });
+      else if (r < 0.8) add(pr, 'orbit', s, { r: shipR(s, 0.36), dur: dur(12, 16), w: 0.035, hgt: 0.14 });
+      else add(pr, 'flyby', s, { dur: dur(12, 16) });
+    }
+  }
   function candidates() {
     const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr: pr + Math.random() * 2, kind, subj }, extra || {}));
+    shipShots(add);
     for (const s of WW.world.ships) {
       if (s.removed) continue;
-      if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: s.stats.length * 1.5 + 16, dur: dur(14, 18), w: 0.05 });
+      if (s.sinking && s.sinkT < 4) add(10, 'orbit', s, { r: shipR(s, 0.36, 4), dur: dur(14, 18), w: 0.05 });
       if (!s.alive) continue;
-      if (s.hp < s.maxHp * 0.5 && s.type !== 'pt') add(5, 'orbit', s, { r: s.stats.length * 1.4 + 14, dur: dur(13, 18), w: 0.045 }); // burning
+      if (s.hp < s.maxHp * 0.5 && s.type !== 'pt') add(5, 'orbit', s, { r: shipR(s, 0.38), dur: dur(13, 18), w: 0.045, hgt: 0.2 }); // burning
       const t = s.target, d = t ? WW.dist(s.x, s.z, t.x, t.z) : 1e9;
       if (s.type === 'battleship' && t && d < 170) add(6, 'flyby', s, { dur: dur(15, 20) });
       else if (s.type === 'cruiser' && t && d < 120) add(4.5, 'chase', s, { dur: dur(13, 17) });
@@ -81,7 +108,7 @@ window.WW = window.WW || {};
       if (!p.alive) continue;
       const ace = (p.ace ? 3 : 0) + Math.min(2, (+p.kills || 0) * 0.5); // aces (if the game tracks them) draw the eye
       if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8 + ace, 'chase', p, { dur: dur(12, 14) });
-      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add(7.5 + ace, 'orbit', p.target, { r: p.target.stats.length * 1.4 + 22, dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add(7.5 + ace, 'orbit', p.target, { r: shipR(p.target, 0.34, 6), dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
       else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(6.5 + ace, 'ots', p, { dur: dur(10, 13) }); // over the shoulder (camera_action.js)
       else if (p.state === 'transit' && p.ordnance) add(3 + ace, 'chase', p, { dur: dur(12, 15) });
     }
@@ -93,18 +120,16 @@ window.WW = window.WW || {};
     if (sc) return startShot(sc);
     shotCount++;
     let best = null;
-    if (shotCount % 2 === 0) for (const c of candidates()) {
+    const opening = shotCount === 1 && WW.game && WW.game.state === 'battle';
+    if (!opening) for (const c of candidates()) {
       let s = c.pr;
       if (c.kind === lastKind) s -= 2.5;
       if (c.subj && recent.indexOf(c.subj) >= 0) s -= 5; // no repeats back-to-back
       if (!best || s > best.score) { best = c; best.score = s; }
     }
-    if (!best || best.score < 3) {
-      if (shotCount % 4 === 1) best = { kind: 'wide', dur: dur(18, 25) };
-      else { // diorama: a slow, high-ish orbit around the front line
-        const f = sceneCentre();
-        best = { kind: 'orbit', subj: { x: f.x, z: f.z, y: 0, diorama: true }, r: WW.clamp((f.d || 120) * 0.45 + 50, 75, 165), dur: dur(18, 24), w: 0.022, hgt: 0.3 };
-      }
+    // a short establishing shot: the round's opening, and now and then in a quiet spell (never two within 5 shots)
+    if (opening || (shotCount - lastWide >= 5 && (!best || best.score < 6) && Math.random() < 0.35) || !best) {
+      best = { kind: 'wide', dur: opening ? dur(10, 13) : dur(8, 11) }; lastWide = shotCount;
     }
     startShot(best);
   }
@@ -129,20 +154,34 @@ window.WW = window.WW || {};
       shot.from = { x: -fx * len * 2.2 - fz * off * shot.side, z: -fz * len * 2.2 + fx * off * shot.side };
       shot.to = { x: fx * len * 2.2 - fz * off * shot.side, z: fz * len * 2.2 + fx * off * shot.side };
       shot.y = Math.max(5, len * 0.45);
-    } else if (c.kind === 'wide') {
-      const f = WW.game && WW.game.state === 'victory' && WW.game.winner ? fleetCentre(WW.game.winner) : sceneCentre();
-      shot.cx = f.x; shot.cz = f.z; shot.r = WW.clamp((f.d || 150) * 0.65 + 55, 115, 260);   // close enough that the ships read big
-      shot.a0 = Math.random() * Math.PI * 2; shot.w = 0.012 * shot.side;
-      if (shotCount === 1 && WW.game && WW.game.state === 'battle') { // opening shot: one fleet setting out, side-on
-        const nat = Math.random() < 0.5 ? 'USN' : 'IJN';
-        let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
-        for (const o of WW.world.ships) if (o.alive && o.nation === nat) { x0 = Math.min(x0, o.x); x1 = Math.max(x1, o.x); z0 = Math.min(z0, o.z); z1 = Math.max(z1, o.z); }
-        if (x1 > x0) {
-          shot.cx = (x0 + x1) / 2; shot.cz = (z0 + z1) / 2; shot.centred = true;
-          shot.r = WW.clamp(Math.max(x1 - x0, (z1 - z0) * 0.6) * 0.75 + 45, 150, 340);
-          shot.a0 = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2; shot.w = 0.006 * shot.side;
-        }
+    } else if (c.kind === 'low') { // toy's-eye level: low over the water off the bow quarter, the ship steaming past
+      const fc = fleetCentre(s.nation), h = s.heading, rx = -Math.sin(h), rz = Math.cos(h);
+      shot.r = shipR(s, 0.42); shot.y = 2.2 + s.stats.length * 0.04;
+      shot.aFrom = 0.6 + Math.random() * 0.3; shot.aTo = shot.aFrom + 0.45 + Math.random() * 0.35; // radians off the bow
+      // the outer side of the group (its other ships behind the subject), unless that side is shoal or blocked
+      shot.side = (s.x - fc.x) * rx + (s.z - fc.z) * rz >= 0 ? 1 : -1;
+      const mid = sd => h + sd * (shot.aFrom + shot.aTo) / 2;
+      const score = sd => openness(s.x, s.z, mid(sd), shot.r) - (blocked(s, mid(sd), shot.r) ? 25 : 0);
+      if (score(-shot.side) > score(shot.side) + 6) shot.side = -shot.side;
+    } else if (c.kind === 'wide') { // establishing: one fleet, low, from just outside it (its near ships big, the rest behind)
+      const win = WW.game && WW.game.state === 'victory' && WW.game.winner;
+      let nat = win || (Math.random() < 0.5 ? 'USN' : 'IJN');
+      if (!win && shotCount > 1) { // later: the fleet nearer the front line (either, when they are close)
+        const f = frontCentre(); let bd = 1e12;
+        for (const o of WW.world.ships) if (o.alive) { const d = WW.dist2(o.x, o.z, f.x, f.z) + Math.random() * 4e4; if (d < bd) { bd = d; nat = o.nation; } }
       }
+      const g = WW.world.ships.filter(o => o.alive && !o.submerged && o.nation === nat);
+      const big = g.slice().sort((a, b) => b.stats.length - a.stats.length)[0];
+      const grp = big ? g.filter(o => WW.dist(o.x, o.z, big.x, big.z) < 220) : []; // its task group, not a straggler far off
+      let cx = 0, cz = 0, R = 0;
+      for (const o of grp) { cx += o.x / grp.length; cz += o.z / grp.length; }
+      for (const o of grp) R = Math.max(R, WW.dist(o.x, o.z, cx, cz));
+      if (!grp.length) { const f = sceneCentre(); cx = f.x; cz = f.z; R = 60; }
+      shot.cx = cx; shot.cz = cz; shot.centred = true;
+      shot.r = WW.clamp(R * 0.85 + 50, 80, 175);
+      const hd = big ? big.heading : 0; // side-on to the fleet's course, from the side with more open water
+      shot.a0 = hd + (openness(cx, cz, hd + Math.PI / 2, shot.r) >= openness(cx, cz, hd - Math.PI / 2, shot.r) ? 1 : -1) * Math.PI / 2;
+      shot.w = 0.008 * shot.side;
     }
     lastKind = c.kind; lastSubj = s || null;
     if (s) { recent.push(s); if (recent.length > 3) recent.shift(); }
@@ -177,6 +216,14 @@ window.WW = window.WW || {};
         gL.set(sp.x + _f.x * back * 0.5, isPlane ? sp.y * 0.7 : 1.5, sp.z + _f.z * back * 0.5);
         break;
       }
+      case 'low': { // eased heading, so a ship's turn swings the camera round slowly
+        const h = shot.hS = shot.hS === undefined ? s.heading : shot.hS + WW.angleDiff(shot.hS, s.heading) * (1 - Math.exp(-rdt * 0.8));
+        const a = h + shot.side * WW.lerp(shot.aFrom, shot.aTo, ease(k));
+        gP.set(sp.x + Math.cos(a) * shot.r, shot.y, sp.z + Math.sin(a) * shot.r);
+        gL.set(sp.x, 1.6, sp.z);
+        shot.aim = shot.aim || new THREE.Vector3(); shot.aim.set(sp.x, 1 + s.stats.length * 0.05, sp.z);
+        break;
+      }
       case 'flyby': {
         const e = ease(k);
         gP.set(sp.x + WW.lerp(shot.from.x, shot.to.x, e), shot.y, sp.z + WW.lerp(shot.from.z, shot.to.z, e));
@@ -189,7 +236,7 @@ window.WW = window.WW || {};
         const a = shot.a0 + shot.w * shot.t;
         const past = shot.centred ? 0 : 0.15;   // a little past the action: the fleets in the middle distance, not on the horizon
         gL.set(shot.cx - Math.cos(a) * shot.r * past, 0, shot.cz - Math.sin(a) * shot.r * past);
-        gP.set(shot.cx + Math.cos(a) * shot.r, shot.r * 0.24, shot.cz + Math.sin(a) * shot.r);
+        gP.set(shot.cx + Math.cos(a) * shot.r, shot.r * (shot.centred ? 0.13 : 0.24), shot.cz + Math.sin(a) * shot.r);
       }
     }
   }
@@ -200,10 +247,21 @@ window.WW = window.WW || {};
     return o;
   }
   function depth(x, z) { return (x < 0 || x > W || z < 0 || z > H) ? 15 : WW.terrain.depthAt(x, z); }
-  function keepSane(v, look) { // stay over the world, above land, and keep the view line clear of terrain
+  // another ship (or land) between a camera at angle a, r from ship s, and s: a low shot would look at its side
+  function blocked(s, a, r) {
+    const cx = s.x + Math.cos(a) * r, cz = s.z + Math.sin(a) * r;
+    for (const o of WW.world.ships) {
+      if (o === s || o.removed || o.submerged) continue;
+      const t = WW.clamp(((o.x - cx) * (s.x - cx) + (o.z - cz) * (s.z - cz)) / (r * r), 0, 1);
+      if (WW.dist(o.x, o.z, cx + (s.x - cx) * t, cz + (s.z - cz) * t) < o.stats.length * 0.5 + 3) return true;
+    }
+    for (const f of [0.3, 0.6, 0.9]) if (depth(s.x + Math.cos(a) * r * f, s.z + Math.sin(a) * r * f) < 1) return true;
+    return false;
+  }
+  function keepSane(v, look, low) { // stay over the world, above land, and keep the view line clear of terrain
     v.x = WW.clamp(v.x, -120, W + 120); v.z = WW.clamp(v.z, -120, H + 120);
     const d0 = depth(v.x, v.z);
-    v.y = Math.max(v.y, 5, -d0 + 6, d0 < 3 ? 11 : 0); // over shoals sit higher, so they do not fill the frame
+    v.y = Math.max(v.y, low && d0 >= 4 ? 2 : 5, -d0 + 6, d0 < 3 ? 11 : 0); // over shoals sit higher, so they do not fill the frame; a low shot skims deep water
     let need = v.y;
     for (const f of [0.15, 0.3, 0.45, 0.6, 0.75]) {
       const x = WW.lerp(v.x, look.x, f), z = WW.lerp(v.z, look.z, f), y = WW.lerp(v.y, look.y, f);
@@ -219,7 +277,7 @@ window.WW = window.WW || {};
       const cl = 9 * PFK;   // 9 at the 1.7 plane scale
       if (d < cl && d > 0.01) { const k = cl / d; v.x = p.x + dx * k; v.y = p.y + dy * k; v.z = p.z + dz * k; }
     }
-    v.y = Math.max(v.y, 4);
+    v.y = Math.max(v.y, low && d0 >= 4 ? 2 : 4);
   }
 
   function clearHulls(v, top) {
@@ -268,7 +326,7 @@ window.WW = window.WW || {};
     init() {
       camera = WW.camera; cam.resize();
       if (typeof document !== 'undefined') makeFade();
-      WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; });
+      WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; lastWide = -9; });
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
       if (WW.camAction) WW.camAction.init();
       if (WW.camStory) WW.camStory.init();
@@ -316,7 +374,7 @@ window.WW = window.WW || {};
         if (shot) shot.t += rdt;
         if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && !shot.stage && !shot.story && dull(shot.subj))) { forced = null; pickShot(); }
         shotGoal(rdt);
-        keepSane(gP, gL);
+        keepSane(gP, gL, shot.kind === 'low');
         if (shot.kind !== 'wide' && (shot.aim || shot.last)) compose(shot.aim || shot.last);
       }
       if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)

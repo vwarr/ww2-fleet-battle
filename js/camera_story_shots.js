@@ -132,7 +132,7 @@ window.WW = window.WW || {};
           if (shot.u === undefined) shot.u = _t.clone(); else shot.u.lerp(_t, 1 - Math.exp(-rdt * 0.5)).normalize();
           const u = shot.u, far = Math.min(dist, 260);
           // well behind and above the strike, looking down the line of its run: strike in front, the enemy beyond, horizon on top
-          gP.set(C.x - u.x * 130 - u.z * shot.side * 45, Math.max(C.y, 20) + 38, C.z - u.z * 130 + u.x * shot.side * 45);
+          gP.set(C.x - u.x * 100 - u.z * shot.side * 36, Math.max(C.y, 20) + 30, C.z - u.z * 100 + u.x * shot.side * 36);
           gL.set(C.x + u.x * far * 0.6, 0, C.z + u.z * far * 0.6);
           shot.aim.set(C.x + u.x * far * 0.35, C.y * 0.5, C.z + u.z * far * 0.35);
           break;
