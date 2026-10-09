@@ -27,7 +27,7 @@ function install(P) {
     WW.seedRandom(seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     I.TUNE.group = P.GROUP; G.baseChoice = owner; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     const b = I.base, L = b.layout, LG = WW.landGround, LA = WW.landAir, AL = WW.airfieldLayout, R = { seed, owner,
-      offNet: 0, offMax: 0, overlap: 0, liftClosed: 0, bomberDeck: 0, reopenedT: null, closedT: null, launchAfter: 0, queuedAtReopen: 0, samples: 0,
+      offNet: 0, offMax: 0, overlap: 0, liftClosed: 0, bomberDeck: 0, reopenedT: null, closedT: null, launchAfter: 0, queuedAtReopen: 0, samples: 0, maxQ: 0, maxTaxi: 0,
       slots: b.slots.length, spots: L.spots.length, cls: L.spots.reduce((o, s) => (o[s.cls] = (o[s.cls] || 0) + 1, o), {}) };
     const ph = new Map(), BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 };
     let forced = false, lastLaunches = 0;
@@ -63,6 +63,8 @@ function install(P) {
         if (Math.hypot(a.x - c.x, a.z - c.z) < a.r + c.r - 0.05) { R.overlap++; if ((R.ovEx = R.ovEx || []).length < 4) { const qa = L.toL(a.x, a.z), qc = L.toL(c.x, c.z); R.ovEx.push(a.k + ' @' + qa.u.toFixed(1) + ',' + qa.v.toFixed(1) + ' ~ ' + c.k + ' @' + qc.u.toFixed(1) + ',' + qc.v.toFixed(1) + ' t' + G.roundTime.toFixed(0)); } }
       }
       if (R.reopenedT !== null && LA.stats.launches > lastLaunches) R.launchAfter = 1;
+      let q = 0, tx = 0; for (const p of WW.world.planes) if (p.carrier === b && p.alive) { if (p.rwPh === 'hold' || p.rwPh === 'lineup') q++; else if (p.rwPh === 'taxi' || p.rwPh === 'warm') tx++; }
+      R.maxQ = Math.max(R.maxQ, q); R.maxTaxi = Math.max(R.maxTaxi, tx + q);
     }
     R.towLog = LG.towLog.splice(0);
     const nSpot = b.slots.filter(s => s.spot).length;
@@ -87,7 +89,7 @@ function install(P) {
   const out = new Array(specs.length); let next = 0;
   await Promise.all(pages.map(async pg => { while (next < specs.length) { const i = next++; out[i] = await pg.evaluate(s => window.__bg(s.seed, s.owner), specs[i]); } }));
   const sum = k => out.reduce((s, r) => s + (r[k] || 0), 0);
-  for (const r of out) { console.log(`seed ${r.seed} ${r.owner}: slots ${r.slots}/${r.spots} of ${r.group} ${JSON.stringify(r.cls)}  launches ${r.launches} landings ${r.landings}  offNet ${r.offNet} (max ${r.offMax.toFixed(2)})  overlap ${r.overlap}  liftClosed ${r.liftClosed}  closed ${r.closedT === null ? '-' : r.closedT.toFixed(0)} reopened ${r.reopenedT === null ? '-' : r.reopenedT.toFixed(0)} resumed ${r.launchAfter}  tows ${r.tows} aborts ${r.aborts} groundLost ${r.groundLost} diverted ${r.diverted} ditched ${r.ditched} emergency ${r.emergency}`); if (r.offEx) console.log('   off: ' + r.offEx.join(' | ')); if (r.ovEx) console.log('   ov: ' + r.ovEx.join(' | ')); if (r.towLog.length) console.log('   tow: ' + r.towLog.join(' | ')); }
+  for (const r of out) { console.log(`seed ${r.seed} ${r.owner}: slots ${r.slots}/${r.spots} of ${r.group} ${JSON.stringify(r.cls)}  launches ${r.launches} landings ${r.landings}  offNet ${r.offNet} (max ${r.offMax.toFixed(2)})  overlap ${r.overlap}  liftClosed ${r.liftClosed}  closed ${r.closedT === null ? '-' : r.closedT.toFixed(0)} reopened ${r.reopenedT === null ? '-' : r.reopenedT.toFixed(0)} resumed ${r.launchAfter}  tows ${r.tows} aborts ${r.aborts} groundLost ${r.groundLost} diverted ${r.diverted} ditched ${r.ditched} emergency ${r.emergency}  queue ${r.maxQ}/${r.maxTaxi}`); if (r.offEx) console.log('   off: ' + r.offEx.join(' | ')); if (r.ovEx) console.log('   ov: ' + r.ovEx.join(' | ')); if (r.towLog.length) console.log('   tow: ' + r.towLog.join(' | ')); }
   const reopened = out.filter(r => r.reopenedT !== null), resumed = reopened.filter(r => r.launchAfter);
   const checks = [
     ['off_net', sum('offNet'), v => v === 0], ['overlap', sum('overlap'), v => v === 0], ['lift_closed', sum('liftClosed'), v => v === 0],

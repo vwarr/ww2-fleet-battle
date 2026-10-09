@@ -22,12 +22,15 @@ const SHOTS = [
     const L = B.layout, q = L.toW(sp.u - 14, sp.laneV - r.side * 9), t = L.toW(sp.u, sp.v);
     return [q.x, 9, q.z, t.x, 0.5, t.z];
   }],
-  ['taxi_queue', () => {
-    const Q = () => WW.world.planes.filter(p => p.carrier === B && p.alive && (p.rwPh === 'taxi' || p.rwPh === 'hold' || p.rwPh === 'lineup' || p.rwPh === 'roll'));
-    if (!__until(() => Q().filter(p => p.rwPh === 'hold' || p.rwPh === 'lineup').length >= 1 && Q().length >= 4, 300)) return null;
-    const L = B.layout, ps = Q(), u = ps.reduce((a, p) => a + L.toL(p.x, p.z).u, 0) / ps.length, v = ps.reduce((a, p) => a + L.toL(p.x, p.z).v, 0) / ps.length;
-    const sd = Math.sign(v) || 1, t = L.toW(u, v * 0.6), q = L.toW(u - B.ops.dir * 10, v + sd * 55);
-    return [q.x, 34, q.z, t.x, 0, t.z];
+  ['taxi_queue', () => { // the plane holding short (or lining up) and the nearest planes taxiing up behind it, from the side
+    const L = B.layout, G = () => WW.world.planes.filter(p => p.carrier === B && p.alive);
+    const H = () => G().find(p => p.rwPh === 'hold') || G().find(p => p.rwPh === 'lineup');
+    const near = h => G().filter(p => p !== h && (p.rwPh === 'taxi' || p.rwPh === 'hold' || p.rwPh === 'lineup' || p.rwPh === 'roll') && WW.dist(p.x, p.z, h.x, h.z) < 80);
+    if (!__until(() => H() && near(H()).length >= 2, 400)) return null;
+    const h = H(), ps = [h].concat(near(h)), cx = ps.reduce((a, p) => a + p.x, 0) / ps.length, cz = ps.reduce((a, p) => a + p.z, 0) / ps.length;
+    const sp = Math.max(20, ...ps.map(p => WW.dist(p.x, p.z, cx, cz))), c = L.toL(cx, cz), sd = Math.sign(c.v) || 1;
+    const q = L.toW(c.u - B.ops.dir * sp * 0.6, c.v + sd * sp * 1.3), t = L.toW(c.u, c.v);
+    return [q.x, sp * 0.8, q.z, t.x, 0, t.z];
   }],
   ['scramble', () => {
     if (!__until(() => __ev.scramble, 400)) return null;
