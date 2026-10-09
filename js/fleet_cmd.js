@@ -212,12 +212,15 @@ window.WW = window.WW || {};
     for (i = 0; i < planes.length; i++) if (planes[i].alive && planes[i].nation === B.nation) own.push(planes[i]);
     var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], enemyHalfEast = B.nation === 'USN';
     var best = null;
+    // the enemy's half first; after a long fruitless search (fleet_search.js searchFor) it may be anywhere, even
+    // behind us (two lone searchers sweeping each other's halves pass in the night)
+    var eh = 60 * WW.clamp(1 - ((B.searchFor || 0) - 60) / 60, 0, 1);
     for (k = 0; k < S.length; k++) {
       var sc = S[k];
       for (i = 0; i < own.length; i++) if (WW.dist2(own[i].x, own[i].z, sc.x, sc.z) < LOOK_R * LOOK_R) { sc.looked = now; break; }
       sc.stale = 0;
       for (i = 0; i < cs.length; i++) if (now - cs[i].seenAt > 20 && Math.abs(cs[i].x - sc.x) < W / SECT_X / 2 && Math.abs(cs[i].z - sc.z) < WW.cfg.MAP_H / SECT_Z / 2) sc.stale++;
-      sc.prio = Math.min(120, now - sc.looked) + ((sc.x > W / 2) === enemyHalfEast ? 60 : 0) + 80 * Math.min(1, sc.stale);
+      sc.prio = Math.min(120, now - sc.looked) + ((sc.x > W / 2) === enemyHalfEast ? eh : 0) + 80 * Math.min(1, sc.stale);
       // pursuit: the enemy's escape route, the band in front of its home edge
       if (B.posture === 'pursue' && Math.abs(sc.x - (enemyHalfEast ? W : 0)) < W * 0.42) sc.prio += 70;
       if (!best || sc.prio > best.prio) best = sc;
@@ -226,6 +229,7 @@ window.WW = window.WW || {};
     var g = B.axis, bp = null, bd = 1e9;
     for (k = 0; k < S.length; k++) if (S[k].prio >= best.prio - 30) { var dd = WW.dist(g.x, g.z, S[k].x, S[k].z); if (dd < bd) { bd = dd; bp = S[k]; } }
     B.searchPoint.x = bp.x; B.searchPoint.z = bp.z;
+    if (B.barrier) { B.searchPoint.x = B.barrier.x; B.searchPoint.z = B.barrier.z; } // long search: barrier patrol (fleet_search.js)
   }
 
   function update(dt) {

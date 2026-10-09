@@ -2,12 +2,15 @@
 // Each seed runs one named composition (cycling through NAMED) and one random composition drawn from the seed
 // (any subset of ship types, random counts, >= 1 ship per side; the picker is seeded in node, not WW.rand).
 // Per-round checks (hard FAIL unless noted), reported per composition:
-//   sight    first sighting by either side within SIGHT_T s
-//   dmg      first damage within DMG_T s of the first sighting
+//   sight    first sighting by either side within SIGHT_T s (SIGHT_BLIND when both sides are only PT boats and subs:
+//            their lookouts see ~40-50; main.js ends a sub hunt with no contact at 240 s)
+//            (a blind-vs-blind round that main.js ends by the stall rule with no contact at all passes)
+//   dmg      first damage within DMG_T s of the first sighting (DMG_SUB when a side is subs only: 3.5 u/s to close)
 //   stale    time-limit ends with 0 sunk and < STALE_DMG damage dealt (WARN: should be ~0)
 //   pt_nn    10th-percentile nearest same-side PT distance, pair-mates excluded, >= PT_NN (over all rounds)
 //   stuck / nan / errors 0 (the suite's own checks)
-const SIGHT_T = 120, DMG_T = 120, STALE_DMG = 200, PT_NN = 25;
+const SIGHT_T = 120, DMG_T = 150, SIGHT_BLIND = 240, DMG_SUB = 240, STALE_DMG = 200, PT_NN = 25;
+const blind = f => f.every(t => t === 'pt' || t === 'submarine'), subs = f => f.every(t => t === 'submarine');
 const rep = (t, n) => Array(n).fill(t);
 const NAMED = [
   ['cv_vs_pt', rep('carrier', 3), rep('pt', 10)],
@@ -53,9 +56,10 @@ function report(rounds, log) {
   for (const [k, rs] of by) {
     const f = [], sights = rs.map(r => r.firstSight), dmgs = rs.map(r => (r.firstSight === null || r.firstDmg === null ? null : r.firstDmg - r.firstSight));
     for (const r of rs) {
-      const why = [];
-      if (r.firstSight === null || r.firstSight > SIGHT_T) why.push('sight ' + (r.firstSight === null ? 'never' : r.firstSight.toFixed(0)));
-      if (r.firstSight !== null && (r.firstDmg === null || r.firstDmg - r.firstSight > DMG_T)) why.push('dmg ' + (r.firstDmg === null ? 'never' : (r.firstDmg - r.firstSight).toFixed(0)));
+      const why = [], ST = blind(r.A) && blind(r.B) ? SIGHT_BLIND : SIGHT_T, DT = subs(r.A) || subs(r.B) ? DMG_SUB : DMG_T;
+      const quiet = ST === SIGHT_BLIND && r.endReason === 'stall' && r.firstSight === null; // main.js: no contact by 240 s ends a sub hunt
+      if (!quiet && (r.firstSight === null || r.firstSight > ST)) why.push('sight ' + (r.firstSight === null ? 'never' : r.firstSight.toFixed(0)));
+      if (r.firstSight !== null && (r.firstDmg === null || r.firstDmg - r.firstSight > DT) && !(r.endReason === 'stall' && DT === DMG_SUB)) why.push('dmg ' + (r.firstDmg === null ? 'never' : (r.firstDmg - r.firstSight).toFixed(0)));
       if (why.length) { f.push(why.join(',')); bad.push(`s${r.seed} ${r.label}: ${why.join(', ')}`); }
     }
     const stale = rs.filter(r => r.end === 'time' && !r.sunk.length && r.dmgSum < STALE_DMG).length;

@@ -79,7 +79,7 @@ window.WW = window.WW || {};
   // While no enemy carrier is known, a strike on anything else leaves doctrine reserveFrac of the bombers in the
   // hangar, armed for ships, for when the enemy carriers turn up: a carrier sighting launches the reserve at once.
   // Held RSV_MAX s with no carrier found, the reserve is rearmed for the targets at hand (REARM s, the deck loaded
-  // with planes and ordnance meanwhile: cv.deckRearmUntil) and goes with the next strike.
+  // with them: they sit in cv.rearm, the deck load ship_fires.js reads; cv.deckRearmUntil) and goes with the next strike.
   const RSV_MAX = 110, REARM = 20;
   const RS = { held: 0, launches: 0, rearmed: 0, targets: {} };
   const cvKnown = n => WW.intel && WW.intel.enemyShips(n, { fresh: 90 }).some(c => c.unit && c.unit.alive && c.unit.type === 'carrier');
@@ -91,7 +91,12 @@ window.WW = window.WW || {};
     const r = a.rsv || (a.rsv = { t0: now, rearmT: 0 });
     if (!a.rsvHeld) { a.rsvHeld = true; RS.held++; }
     if (now - r.t0 > RSV_MAX) {
-      if (!r.rearmT) { r.rearmT = now + REARM; cv.deckRearmUntil = r.rearmT; }
+      if (!r.rearmT) { // the swap is done on deck: the planes join the rearm cycle (ship_fires.js deck load: a bomb now is costly)
+        r.rearmT = now + REARM; cv.deckRearmUntil = r.rearmT;
+        const k = { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
+        for (const kind in k) for (let i = 0; i < k[kind]; i++) { cv.hangar[kind]--; (cv.rearm = cv.rearm || []).push({ kind, at: r.rearmT }); }
+      }
+      if (now < r.rearmT) return none;  // the reserve is on deck being rearmed (out of the hangar)
       if (now >= r.rearmT) { RS.rearmed++; RS.targets[tgt.type] = (RS.targets[tgt.type] || 0) + 1; a.rsv = null; a.rsvGo = true; return none; }
     }
     return { dive: Math.round(cv.hangar.dive * frac), torpedo: Math.round(cv.hangar.torpedo * frac) };
