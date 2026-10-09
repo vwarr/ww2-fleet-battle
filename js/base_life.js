@@ -86,7 +86,7 @@ window.WW = window.WW || {};
       const c = dir(q.face + PI), n = c[1], m = -c[0];
       for (let k = 0; k < (i % 3 ? 1 : 2); k++) { const o = (k ? -1 : 1) * 0.4; out.push({ act: 'idle', x: q.x + c[0] * 0.3 + n * o, z: q.z + c[1] * 0.3 + m * o, face: q.face + PI + (k ? 0.9 : -0.9) * (i % 3 ? 0.4 : 1) }); }
     });
-    return out.filter(q => W().stand(q.x, q.z, 0.15));
+    return out.filter(q => W().stand(q.x, q.z, 0.3));
   }
   function populate() {
     P = [];
@@ -313,7 +313,8 @@ window.WW = window.WW || {};
       if (p.act === 'prone') { fx -= Math.cos(face) * 0.2 * FIG_K / 1.17; fz -= Math.sin(face) * 0.2 * FIG_K / 1.17; }   // feet back: the body lies centred on his spot
       if (p.team) { // the bearers fore and aft must be clear too (else the team waits unseen behind it)
         const c = Math.cos(face), sn = Math.sin(face), k = 0.32 * FIG_K / 1.17;
-        if (!blocker(p.x + c * k, p.z + sn * k, gp, vs, 0.12, false) && !blocker(p.x - c * k, p.z - sn * k, gp, vs, 0.12, false)) carry(p, face, y, tr);
+        const ok = q => !blocker(q[0], q[1], gp, vs, 0.12, false) && W().stand(q[0], q[1], 0.25);
+        if (ok([p.x + c * k, p.z + sn * k]) && ok([p.x - c * k, p.z - sn * k])) carry(p, face, y, tr);
         continue;
       }
       figure(fx, fz, face, p.role, y, lean, sy, tr);
