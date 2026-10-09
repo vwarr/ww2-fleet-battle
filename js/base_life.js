@@ -184,7 +184,7 @@ window.WW = window.WW || {};
     if (b !== base || bl !== built) { base = b; built = bl; W().build(b, bl); S = sites(); phase = 'peace'; populate(); lastT = WW.time.now; hitSeen = b.hitT || -1e9; threatT = -1e9; afterT = 0; if (WW.baseLifeCars) WW.baseLifeCars.reset(b, bl); }
     const now = WW.time.now, sdt = Math.max(0, Math.min(0.5, now - lastT)); lastT = now;
     const cam = WW.camera.position; if ((cam.x - b.x) ** 2 + (cam.z - b.z) ** 2 > FAR * FAR) return;
-    const attack = threat(now), al = b.alarm && !b.neutralized;
+    const attack = threat(now), al = !!b.alarm;
     // the mood
     if (al && phase === 'peace') { phase = 'alarm'; alarm(); if (WW.baseLifeCars) WW.baseLifeCars.alarm(); }
     if (phase !== 'peace') {

@@ -22,22 +22,22 @@ const CAMP = `(g, back, up, side) => { const L = B.layout, its = B.decor.filter(
 const SHOTS = [
   ['camp', () => __camp('huts', 16, 7, 6)],
   ['camp_wide', () => __camp('mess', 34, 20, 10)],
-  ['peace', () => { __sim.fastForward(25); return __camp('huts', 13, 5, 4); }],
-  ['person', () => { WW.baseFx.update(0.016); __sim.fastForward(25); WW.baseFx.update(0.016); WW.baseFx.update(0.016); const p = WW.baseLife.people.find(p => p.act === 'drill') || WW.baseLife.people[0], y0 = B.site.padH; return [p.x + 5, y0 + 2.2, p.z + 3, p.x, y0 + 0.4, p.z]; }],
-  ['peace_drill', () => { __sim.fastForward(25); return __camp('drill', 9, 4, 3); }],
-  ['alarm', () => { if (!__until(() => __ev.alarm, 400)) return null; __sim.fastForward(3); return __camp('huts', 22, 9, 8); }],
-  ['alarm_pilots', () => { if (!__until(() => __ev.alarm, 400)) return null; __sim.fastForward(4);
+  ['peace', () => { __ff(25); return __camp('huts', 13, 5, 4); }],
+  ['person', () => { WW.baseFx.update(0.016); __ff(25); WW.baseFx.update(0.016); WW.baseFx.update(0.016); const p = WW.baseLife.people.find(p => p.act === 'drill') || WW.baseLife.people[0], y0 = B.site.padH; return [p.x + 5, y0 + 2.2, p.z + 3, p.x, y0 + 0.4, p.z]; }],
+  ['peace_drill', () => { __ff(25); return __camp('drill', 9, 4, 3); }],
+  ['alarm', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(3); return __camp('huts', 22, 9, 8); }],
+  ['alarm_pilots', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4);
     const p = WW.baseLife.people.find(p => p.pilot && p.path); if (!p) return null; return [p.x + 6, B.site.padH + 3, p.z + 6, p.x, B.site.padH + 0.3, p.z]; }],
-  ['attack', () => { if (!__until(() => __ev.alarm, 400)) return null; __sim.fastForward(10);
+  ['attack', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(10);
     const en = WW.enemyOf(B.nation), hs = B.decor.filter(d => d.kind === 'hut' || d.kind === 'tent');
     for (const d of hs.slice(0, 3)) WW.islandBase.impact(en, d.x + 1, d.z, 200, 'bomb');
-    __sim.fastForward(6); return __camp('huts', 22, 10, 6); }],
-  ['after', () => { if (!__until(() => __ev.alarm, 400)) return null; __sim.fastForward(10);
+    __ff(6); return __camp('huts', 22, 10, 6); }],
+  ['after', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(10);
     const en = WW.enemyOf(B.nation), rw = B.runways[0];
     for (const d of B.decor.filter(d => d.kind === 'hut').slice(0, 2)) WW.islandBase.impact(en, d.x, d.z, 200, 'bomb');
     for (const k of [-14, 9]) WW.islandBase.impact(en, rw.x + rw.c * k, rw.z + rw.s * k, 180, 'bomb');
-    __until(() => WW.baseLife.phase === 'after', 200); __sim.fastForward(20); return __camp('huts', 26, 12, 8); }],
-  ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __sim.fastForward(4); return __camp('huts', 40, 14, 10); }],
+    __until(() => WW.baseLife.phase === 'after', 200); __ff(20); return __camp('huts', 26, 12, 8); }],
+  ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4); return __camp('huts', 40, 14, 10); }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {
     const r = B.layout.rows.find(r => r.spots.length >= 3) || B.layout.rows[0], sp = r.spots[Math.floor(r.spots.length / 2)];
@@ -117,7 +117,9 @@ const SHOTS = [
     WW.seedRandom(seed); window.__comp = WW.game.randomComposition();
     WW.on('baseEvent', e => { if (window.B && e.base === B && !__ev[e.kind]) __ev[e.kind] = e; });
     window.__camp = eval(camp);
-    window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __sim.fastForward(0.1); } return !!f(); };
+    // sim time with the base's visual life stepped along (as frames would): the camera parked over the base
+    window.__ff = secs => { for (let t = 0; t < secs - 1e-6; t += 0.1) { __sim.fastForward(0.1); if (window.B) { WW.camera.position.set(B.x, 40, B.z); WW.baseFx.update(0.1); } } };
+    window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __ff(0.1); } return !!f(); };
   }, [SEED, OWNER, CAMP]);
   const done = [];
   for (const [name, fn] of SHOTS) {
@@ -134,7 +136,7 @@ const SHOTS = [
       WW.cam.update(0.016); WW.crew.update(0.016); WW.baseFx.update(0.016); } });
     await p.waitForTimeout(1500);
     await p.screenshot({ path: path.join(OUT, name + '.png'), timeout: 180000 });
-    if (ONLY) console.log(name, JSON.stringify(await p.evaluate(() => ({ life: WW.baseLife && { phase: WW.baseLife.phase, people: WW.baseLife.people.length, acts: WW.baseLife.people.reduce((a, p) => (a[p.act] = (a[p.act] || 0) + 1, a), {}), err: String(WW.baseLife._err || ''), fxErr: String(WW.baseLifeFx._err || ''), birds: WW.baseLifeFx.birds.length, cars: WW.baseLifeCars.cars.length, ms: WW.baseLife.perf.ms.toFixed(2), max: WW.baseLife.perf.max.toFixed(1) }, g: WW.baseGroundFx._stats(), crew: WW.crew.stats(), rp: B.repairing && { at: B.repairing.at, now: WW.time.now, inc: B.craters.includes(B.repairing.crater) } }))));
+    if (ONLY) console.log(name, JSON.stringify(await p.evaluate(() => ({ life: WW.baseLife && { phase: WW.baseLife.phase, people: WW.baseLife.people.length, acts: WW.baseLife.people.reduce((a, p) => (a[p.act] = (a[p.act] || 0) + 1, a), {}), err: String(WW.baseLife._err || ''), fxErr: String(WW.baseLifeFx._err || ''), birds: WW.baseLifeFx.birds.length, cars: WW.baseLifeCars.cars.length, paths: WW.baseLifePaths.ST.n + '/' + WW.baseLifePaths.ST.ms.toFixed(0) + 'ms', ms: WW.baseLife.perf.ms.toFixed(2), max: WW.baseLife.perf.max.toFixed(1) }, g: WW.baseGroundFx._stats(), crew: WW.crew.stats(), rp: B.repairing && { at: B.repairing.at, now: WW.time.now, inc: B.craters.includes(B.repairing.crater) } }))));
     done.push(name);
   }
   const st = await p.evaluate(() => WW.baseGroundFx._stats());
