@@ -364,7 +364,8 @@ window.WW = window.WW || {};
     pick(p, best) {
       const s = st(p), cur = p.foe;
       // the foe behind or out of reach and another enemy in front, close: take the one in front (a bomber first)
-      if (cur && cur.alive && (d3(p, cur) > SWITCH_D || noseOff(p, cur.x, cur.y, cur.z) > SWITCH_BEHIND)) {
+      const w = p.wave, onWay = w && p.target && w.go && !w.done && w.dT > 220;   // an escort in transit stays with its strike (snapshots only)
+      if (!onWay && cur && cur.alive && (d3(p, cur) > SWITCH_D || noseOff(p, cur.x, cur.y, cur.z) > SWITCH_BEHIND)) {
         const q = ahead(p, FRONT_R, FRONT_CONE, 0.15);
         if (q && q !== cur && d3(p, q) < d3(p, cur)) { s.lock = 0; DS.switches = (DS.switches || 0) + 1; return q; }
       }

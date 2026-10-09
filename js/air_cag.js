@@ -177,7 +177,8 @@ window.WW = window.WW || {};
       let dmin = 1e9, nb = null;
       for (const b of B) { const d = WW.dist(u.x, u.z, b.x, b.z); if (d < dmin) { dmin = d; nb = b; } }
       const onUs = u.foe && u.foe.nation === pl.nation;
-      const coming = onUs || (nb && Math.abs(WW.angleDiff(u.heading, Math.atan2(nb.z - u.z, nb.x - u.x))) < 0.8);   // heading for our bombers
+      // heading for our bombers; a passing raid's escort (riding with its own strike) only once it turns on ours
+      const coming = onUs || (!(u.wave && u.wave.go && !u.wave.done && u.target) && nb && Math.abs(WW.angleDiff(u.heading, Math.atan2(nb.z - u.z, nb.x - u.x))) < 0.8);
       if (top ? dmin < 100 && coming : dmin < 35 && onUs) { const d = WW.dist(pl.x, pl.z, u.x, u.z) - (onUs ? 20 : 0); if (d < bd) { bd = d; best = u; } }
     }
     if (!best && top) best = passing(pl, B);

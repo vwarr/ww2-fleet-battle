@@ -188,12 +188,12 @@ function install() {
       if (P.h < 250) for (const a of A.c.L) for (const b of B.c.L) P.d3 = Math.min(P.d3, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
     }
     // 2. peel-offs: an escort of a wave in transit with a foe that is not on its own strike
-    for (const x of tw) for (const p of x.c.L) {
-      if (p.kind !== 'fighter' || !p.foe || !p.foe.alive) continue;
+    for (const x of tw) if (!x.w.carrier || WW.dist(x.c.x, x.c.z, x.w.carrier.x, x.w.carrier.z) > 250) for (const p of x.c.L) {   // out on the way (over the home fleet it is defence)
+      if (p.kind !== 'fighter' || !p.foe || !p.foe.alive || p.recall || WW.dist(p.x, p.z, x.c.x, x.c.z) > 150) continue;   // recalled to defend the carrier, or a straggler: not riding with it
       const f = p.foe, onUs = f.foe && f.foe.nation === p.nation && f.foe.wave === x.w, near = x.c.L.some(b => b.kind !== 'fighter' && WW.dist(b.x, b.z, f.x, f.z) < 60);
       if (onUs || near || !f.wave || !f.wave.go) continue;   // only a plane of a passing enemy strike (not the CAP, not one on our bombers)
       const k = id(p) + ':' + id(f.wave || f);
-      if (!S.peel.has(k)) { S.peel.set(k, { n: p.nation, k: f.kind, t }); x.W.peel++; }
+      if (!S.peel.has(k)) { S.peel.set(k, { n: p.nation, k: f.kind, t, cov: p.cover || null, d: Math.round(WW.dist(f.x, f.z, x.c.x, x.c.z)), ff: f.foe ? (f.foe.nation === p.nation ? (f.foe.kind === 'fighter' ? 'ourF' : 'ourB') : 'x') : null, dT: Math.round(x.w.dT), tail: !!(f.foe === p) }); x.W.peel++; }
     }
     // 3. armed sorties that came home with the bomb
     for (const [p, r] of S.sortie) if (!r.fate && p.alive && (p.state === 'landing' || p.state === 'rollout') && p.ordnance) r.fate = 'home';
@@ -276,8 +276,12 @@ function report(rounds) {
   for (const n of ['USN', 'IJN']) {
     const P = pe.filter(x => x.n === n), W = wv.filter(w => w.n === n && w.esc0 !== null && w.escArr !== null && w.esc0 > 0);
     out.peel[n] = { perRound: P.length / N, atBomber: P.filter(x => x.k === 'dive' || x.k === 'torpedo').length / N, escKept: W.length ? W.reduce((s, w) => s + w.escArr / w.esc0, 0) / W.length : null, wavesPeeled: wv.filter(w => w.n === n && w.peel > 0).length };
-    say(`2. ${n}: escort peel-offs per round ${f1(out.peel[n].perRound)} (at bombers ${f1(out.peel[n].atBomber)}), waves with a peel-off ${out.peel[n].wavesPeeled}; escorts still with the strike at 200 from the target / at departure ${pc(out.peel[n].escKept)}`);
+    if (process.env.PEEL_DBG) for (const x of P.filter(x => x.k !== 'fighter').slice(0, 40)) say('   ' + JSON.stringify(x));
+    say(`2. ${n}: escorts riding with a strike in transit that took on a passing enemy strike's plane, per round: at its bombers ${f1(out.peel[n].atBomber)} (any plane ${f1(out.peel[n].perRound)}), waves with a peel-off ${out.peel[n].wavesPeeled}; escorts still with the strike at 200 from the target / at departure ${pc(out.peel[n].escKept)}`);
   }
+  const pk = rounds.reduce((a, r) => a + (r.rec.opp && r.rec.opp.peels || 0), 0);
+  say(`   element peel-offs ordered (air_cag.js, IJN doctrine air.peel): ${f1(pk / N)} per round`);
+  out.peelOrders = pk / N;
   // 3
   const lost = wv.filter(w => w.lost !== null), alt = lost.filter(w => w.alt !== null).map(w => w.alt - w.lost);
   const so = [].concat(...rounds.map(r => r.rec.sorties)), dr = { strike: 0, scout: 0, home: 0, other: 0 };
