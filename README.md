@@ -55,6 +55,8 @@ A typical battle lasts 9 to 13 minutes at 1× speed.
 Click **Auto battles** in the panel to watch endless random battles on new maps. A new battle starts automatically after each one.
 You can also open `index.html?auto` to start in this mode.
 
+For a hands-off screensaver, open `index.html?infinite` or click the **∞** button in the top-left corner. Infinite mode loops random battles on new maps for ever, filmed only by the director camera (the camera keys and the mouse do not take it over), and it skips the action report. The corner buttons and the pointer hide after a few seconds; move the mouse or push a key to show them again. Push `Esc` or click **∞** again to leave infinite mode (the battle goes on as an auto battle).
+
 ## Set up your own fleets
 
 1. In the **Fleet setup** panel, click a ship type (for example, **Destroyer**).
@@ -93,6 +95,7 @@ During a battle, push `H` and click **Edit fleet** to go back to your fleets.
 | `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
 | `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
+| **∞** button, or `index.html?infinite` | Infinite mode: endless random battles with the director camera only; the controls hide when idle. Only `Esc` (leave), `H` and `M` work. |
 
 After each battle, an **action report** shows: the winner and how, each side's admiral, the ships and planes each side lost, the ship of the day and the top pilot, and the key moments from the war diary. It stays on the ready screen until the next battle (in auto battles, for about half a minute). Click it to hide it.
 | **1× / 2× / 4×** buttons | Set the game speed. These buttons are in the panel. |

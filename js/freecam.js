@@ -17,7 +17,7 @@ window.WW = window.WW || {};
   let yaw = 0, pitch = 0.3, dist = 120, gYaw = 0, gPitch = 0.3, gDist = 120;
   const keys = {};
   const now = () => performance.now() / 1000;
-  const live = () => { const s = WW.game && WW.game.state; return (s === 'battle' || s === 'victory') && !(WW.cam && WW.cam.mode === 'map'); };
+  const live = () => { const s = WW.game && WW.game.state; return (s === 'battle' || s === 'victory') && !(WW.cam && WW.cam.mode === 'map') && !WW.game.infinite; }; // infinite: the director only
   const isPlane = o => !!(o && o.pt && o.kind);
   const followable = o => !!(o && !o.removed && !o.diorama && (isPlane(o) || o.stats) && o.heading !== undefined);
   // the yaw that puts the camera astern of heading h (freecam's offset is (sin yaw, cos yaw) on x / z)

@@ -93,6 +93,7 @@ window.WW = window.WW || {};
   function update() {
     const now = performance.now();
     if (WW.game.state === 'battle' && now > sampleT) { sampleT = now + 400; for (const p of WW.world.planes) seenPlanes.add(p); } // planes lost: every plane flown
+    if (WW.game.infinite) { showAt = 0; if (el && el.classList.contains('on')) hide(); return; } // infinite: no card to click away
     if (showAt && now > showAt) { showAt = 0; if (last) show(last); }
     if (hideAt && now > hideAt) hide();
   }

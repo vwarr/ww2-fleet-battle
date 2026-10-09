@@ -5,6 +5,7 @@ window.WW = window.WW || {};
   const SHORT = { carrier: 'CV', battleship: 'BB', cruiser: 'CA', destroyer: 'DD', submarine: 'SS', pt: 'PT' };
   let el = {}, hudPeek = false, selType = 'destroyer', selNation = 'USN';
   let lastHud = 0, msgTimer = 0, capEnd = 0, s0 = null; // s0: WW.stats at battle start (the panel counts this battle only)
+  let lastInput = 0; const IDLE_HIDE = 3000; // infinite mode: the chrome (and the pointer) hides after IDLE_HIDE ms without input (wall clock)
 
   const $ = (tag, cls, parent, text) => {
     const e = document.createElement(tag);
@@ -43,6 +44,8 @@ window.WW = window.WW || {};
     el.fsBtns[0].title = 'Fullscreen';
     el.sound = btn(el.corner, '', toggleSound, 'menu');
     el.sound.title = 'Sound (M)';
+    el.inf = btn(el.corner, '\u221e', toggleInfinite, 'menu');
+    el.inf.title = 'Infinite: endless random battles, director camera only (Esc leaves)';
     el.round = $('div', 'row title', el.panel);
     el.usn = $('div', 'row usn', el.panel);
     el.ijn = $('div', 'row ijn', el.panel);
@@ -107,6 +110,7 @@ window.WW = window.WW || {};
     canvas.addEventListener('mousedown', onMouse);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     window.addEventListener('keydown', onKey);
+    ['mousemove', 'mousedown', 'wheel', 'touchstart', 'keydown'].forEach(n => window.addEventListener(n, () => { lastInput = performance.now(); }, { passive: true, capture: true }));
   }
 
   // whole page (canvas + HUD) so the panel still works in fullscreen; webkit prefix for Safari
@@ -129,6 +133,7 @@ window.WW = window.WW || {};
     const L = n => { const P = WW.admirals.preview(n); return P ? n + ': ' + P.full.replace(/^(Rear |Vice )?Adm\. /, 'Adm. ') + ' \u2014 ' + P.blurb : ''; };
     el.adm.textContent = L('USN') + '\n' + L('IJN');
   }
+  function toggleInfinite() { say('Infinite ' + (WW.game.setInfinite(!WW.game.infinite) ? 'on  \u00b7  Esc leaves' : 'off')); }
   function say(text) { el.msg.textContent = text; msgTimer = 2.5; }
   // film-style caption: fades in, holds, fades out
   function caption(main, sub, secs, small) {
@@ -139,6 +144,13 @@ window.WW = window.WW || {};
 
   function onKey(e) {
     const k = e.key.toLowerCase();
+    if (WW.game.infinite) { // infinite: a key only wakes the menu (ui update); Esc leaves, H panel, M sound
+      if (k === 'escape') toggleInfinite();
+      else if (k === 'h') hudPeek = !hudPeek;
+      else if (k === 'm' && !e.repeat) toggleSound();
+      if (k === 'tab') e.preventDefault();
+      return;
+    }
     if (k === 'h') hudPeek = !hudPeek;
     else if (k === 'n') newRound();
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
@@ -256,9 +268,13 @@ window.WW = window.WW || {};
         el.count.textContent = 'USN ' + c.filter(s => s.nation === 'USN').length + '  IJN ' + c.filter(s => s.nation === 'IJN').length;
       }
     }
-    // HUD shows in setup; in battle it fades away (H shows it again)
+    // HUD shows in setup; in battle it fades away (H shows it again). Infinite: the corner stays (even in fullscreen) until idle.
+    const idle = g.infinite && performance.now() - lastInput > IDLE_HIDE;
+    if (idle) hudPeek = false;
+    el.inf.classList.toggle('on', !!g.infinite);
+    document.body.classList.toggle('idle', idle);
     el.panel.classList.toggle('hidden', !inSetup && !hudPeek);
-    el.corner.classList.toggle('hidden', inSetup || hudPeek || !!fsEl());
+    el.corner.classList.toggle('hidden', inSetup || hudPeek || idle || (!!fsEl() && !g.infinite));
     el.close.style.display = inSetup ? 'none' : '';
     el.film.classList.toggle('cinema', !inSetup && !(WW.cam && WW.cam.mode === 'map'));
     if (capEnd && performance.now() > capEnd) { capEnd = 0; el.cap.classList.remove('on'); }
