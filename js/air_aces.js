@@ -77,7 +77,7 @@ window.WW = window.WW || {};
     if (skin[key] !== undefined) return skin[key];
     var g = p.group, z = SIDE_Z[p.kind] || 0.24, body = [];
     try {
-      if (!ray) ray = new THREE.Raycaster();
+      if (!ray) { ray = new THREE.Raycaster(); ray.layers.enableAll(); } // plane meshes sit on WW.planeRender.LAYER
       g.updateMatrixWorld(true);
       g.children.forEach(function (o) { if (o.isMesh && o !== (p.model && p.model.payload)) body.push(o); });
       var o0 = g.localToWorld(new THREE.Vector3(x, y, 2)), o1 = g.localToWorld(new THREE.Vector3(x, y, -2));
