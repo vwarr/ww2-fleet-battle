@@ -15,6 +15,10 @@
 //   air_hill       a base plane in the air (take-off, circuit, final) below the terrain / a palm / a building
 //   veh_fac        a vehicle inside a building or a tank
 //   veh_berm       a vehicle through a revetment berm
+//   fig_fac        a figure inside a solid building (huts, tents, the mess, tanks, towers; pits, trenches and the
+//                  laundry line are walked into)
+//   fig_veh        a figure inside a vehicle's footprint (a truck driving through people)
+//   veh_veh        two vehicles overlapping
 // Info: samples, max ground planes, vehicles, figures; the first examples of each.
 'use strict';
 const { chromium } = require('playwright');
@@ -58,7 +62,7 @@ function round(P) {
   const b = I.base, L = b.layout, tr = WW.baseGroundFx._trace(true);
   WW.cam.update = function () { WW.camera.position.set(b.x, 40, b.z + 30); WW.camera.lookAt(b.x, 0, b.z); WW.camera.updateMatrixWorld(); };
   const R = { seed: P.seed, owner: P.owner, samples: 0, maxGround: 0, maxVeh: 0, maxFig: 0, ex: {} };
-  const CK = ['plane_plane', 'plane_veh', 'plane_fig', 'plane_fac', 'plane_berm', 'plane_hill', 'air_hill', 'veh_fac', 'veh_berm'];
+  const CK = ['plane_plane', 'plane_veh', 'plane_fig', 'plane_fac', 'plane_berm', 'plane_hill', 'air_hill', 'veh_fac', 'veh_berm', 'fig_fac', 'fig_veh', 'veh_veh'];
   for (const k of CK) R[k] = 0;
   const hit = (k, msg) => { R[k]++; const e = R.ex[k] = R.ex[k] || []; if (e.length < 3) e.push(msg + ' t' + G.roundTime.toFixed(0)); };
   const CLS = v => AL.CLS[(VAR[v] && VAR[v].cls) || 'S'];
@@ -66,10 +70,13 @@ function round(P) {
   const ground = (x, z) => Math.max(b.site.padH, -WW.terrain.depthAt(x, z));
   // static bodies: facilities (model footprints), berms, palms
   const built = WW.baseFx._built(), facs = [];
+  const SOFT = { aa: 1, battery: 1, mg: 1, trench: 1, laundry: 1, light: 1 };   // walked into (pits, trenches) or under (the line)
   if (built) for (const part of built.parts) {
-    const m = part.mesh, g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
-    const bb = g.boundingBox, h = -m.rotation.y, c = Math.cos(h), s = Math.sin(h), cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
-    facs.push({ k: part.f.kind, f: part.f, top: m.position.y + bb.max.y, box: { x: m.position.x + c * cx - s * cz, z: m.position.z + s * cx + c * cz, c, s, hu: (bb.max.x - bb.min.x) / 2, hv: (bb.max.z - bb.min.z) / 2 } });
+    const m = part.mesh; if (!m) continue;   // the drill ground: open grass
+    const g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
+    const bb = g.boundingBox, h = -m.rotation.y, c = Math.cos(h), s = Math.sin(h), k = m.scale.x, cx = (bb.min.x + bb.max.x) / 2 * k, cz = (bb.min.z + bb.max.z) / 2 * k;
+    facs.push({ k: part.f.kind, f: part.f, decor: !!part.decor, solid: !SOFT[part.f.kind], top: m.position.y + bb.max.y * m.scale.y,
+      box: { x: m.position.x + c * cx - s * cz, z: m.position.z + s * cx + c * cz, c, s, hu: (bb.max.x - bb.min.x) / 2 * k, hv: (bb.max.z - bb.min.z) / 2 * k } });
   }
   const berms = [];
   for (const sp of L.spots) for (const w of WW.baseModels.revetWalls(sp)) {
@@ -126,15 +133,19 @@ function round(P) {
     for (const v of tr.veh) {
       const d = VD[v.kind] || [2.4, 1], vb = __box(v.x, v.z, v.h, d[0] * VK, d[1] * VK, 0);
       for (const q of gp) if (__sat(vb, q.b[0], 0.05) || __sat(vb, q.b[1], 0.05)) { const qq = L.toL(q.x, q.z); hit('plane_veh', v.kind + ' @' + L.toL(v.x, v.z).u.toFixed(1) + ',' + L.toL(v.x, v.z).v.toFixed(1) + ' ~ ' + q.k + ' @' + qq.u.toFixed(1) + ',' + qq.v.toFixed(1)); break; }
-      for (const f of facs) if (__sat(vb, f.box, 0.05)) { hit('veh_fac', v.kind + ' h' + v.h.toFixed(2) + ' d' + Math.hypot(v.x - f.box.x, v.z - f.box.z).toFixed(2) + ' ~ ' + f.k + ' ' + (f.box.hu * 2).toFixed(1) + 'x' + (f.box.hv * 2).toFixed(1) + (v.t ? ' trip p0 ' + Math.hypot(v.t.p0.x - f.box.x, v.t.p0.z - f.box.z).toFixed(2) + ' n' + v.t.n + ' out ' + v.t.out.toFixed(1) + '/' + v.t.len.toFixed(1) : '')); break; }
+      for (const f of facs) if (!(v.parked && v.parked === f.f) && __sat(vb, f.box, 0.05)) { hit('veh_fac', v.kind + ' h' + v.h.toFixed(2) + ' d' + Math.hypot(v.x - f.box.x, v.z - f.box.z).toFixed(2) + ' ~ ' + f.k + ' ' + (f.box.hu * 2).toFixed(1) + 'x' + (f.box.hv * 2).toFixed(1) + (v.t ? ' trip p0 ' + Math.hypot(v.t.p0.x - f.box.x, v.t.p0.z - f.box.z).toFixed(2) + ' n' + v.t.n + ' out ' + v.t.out.toFixed(1) + '/' + v.t.len.toFixed(1) : '')); break; }
       const vq = L.toL(v.x, v.z); let vs = v.kind + ' @' + vq.u.toFixed(1) + ',' + vq.v.toFixed(1);
       if (v.t) vs += ' trip n' + v.t.n + ' p0 ' + L.toL(v.t.p0.x, v.t.p0.z).u.toFixed(1) + ',' + L.toL(v.t.p0.x, v.t.p0.z).v.toFixed(1) + ' out ' + v.t.out.toFixed(1);
       for (const w of berms) if (__sat(vb, w.box, 0.05)) { hit('veh_berm', vs + ' ~ spot' + w.sp.i + ' @' + w.sp.u.toFixed(1) + ',' + w.sp.v.toFixed(1) + ' lane ' + w.sp.laneV.toFixed(1) + ' col ' + w.sp.col + ' ' + w.sp.cls); break; }
     }
     const FR = 0.12 * (WW.crew ? WW.crew.SCALE : 1) * 2;
+    const vbs = tr.veh.map(v => { const d = VD[v.kind] || [2.4, 1]; return { v, b: __box(v.x, v.z, v.h, d[0] * VK, d[1] * VK, 0) }; });
+    for (let i = 0; i < vbs.length; i++) for (let j = i + 1; j < vbs.length; j++) if (__sat(vbs[i].b, vbs[j].b, 0.05)) hit('veh_veh', vbs[i].v.kind + ' ~ ' + vbs[j].v.kind + ' @' + L.toL(vbs[i].v.x, vbs[i].v.z).u.toFixed(1) + ',' + L.toL(vbs[i].v.x, vbs[i].v.z).v.toFixed(1));
     for (const f of tr.figs) {
       const fb = __box(f.x, f.z, 0, FR, FR, 0);
-      for (const q of gp) if (__sat(fb, q.b[0], 0.02) || __sat(fb, q.b[1], 0.02)) { hit('plane_fig', f.role + ' ~ ' + q.k); break; }
+      for (const q of gp) if (__sat(fb, q.b[0], 0.02) || __sat(fb, q.b[1], 0.02)) { hit('plane_fig', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + q.k); break; }
+      for (const g of facs) if (g.solid && __sat(fb, g.box, 0.02)) { const fq = L.toL(f.x, f.z); hit('fig_fac', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + g.k + ' @' + fq.u.toFixed(1) + ',' + fq.v.toFixed(1)); break; }
+      if (!f.ride) for (const q of vbs) if (__sat(fb, q.b, 0.02)) { hit('fig_veh', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + q.v.kind); break; }
     }
   }
   WW.baseGroundFx._trace(false);
@@ -157,7 +168,7 @@ function round(P) {
   const specs = []; for (let i = 0; i < ROUNDS; i++) specs.push({ seed: SEED0 + i, owner: (SEED0 + i) % 2 ? 'USN' : 'IJN', SECS, SAMPLE, FORCE_T });
   const out = new Array(specs.length); let next = 0;
   await Promise.all(pages.map(async pg => { while (next < specs.length) { const i = next++; out[i] = await pg.evaluate(`(${round.toString()})(${JSON.stringify(specs[i])})`); } }));
-  const CK = ['plane_plane', 'plane_veh', 'plane_fig', 'plane_fac', 'plane_berm', 'plane_hill', 'air_hill', 'veh_fac', 'veh_berm'];
+  const CK = ['plane_plane', 'plane_veh', 'plane_fig', 'plane_fac', 'plane_berm', 'plane_hill', 'air_hill', 'veh_fac', 'veh_berm', 'fig_fac', 'fig_veh', 'veh_veh'];
   for (const r of out) {
     console.log(`seed ${r.seed} ${r.owner}: samples ${r.samples} ground<=${r.maxGround} veh<=${r.maxVeh} figs<=${r.maxFig}  ` + CK.map(k => k + ' ' + r[k]).join('  '));
     for (const k in r.ex) console.log('   ' + k + ': ' + r.ex[k].join(' | '));

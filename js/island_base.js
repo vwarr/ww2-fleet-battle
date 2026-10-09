@@ -121,6 +121,7 @@ window.WW = window.WW || {};
       f.unit = { isBattery: true, id: ID + 30 + i, type: 'battery', nation: owner, alive: true, x: f.x, z: f.z, heading: p.a, speed: 0,
         stats: { guns: [BATTERY], length: 4, aa: null }, fac: f };
     });
+    if (WW.baseLifeLayout) WW.baseLifeLayout.place(base);   // the camp (huts, mess, trenches, ...) last: nothing above moves
     WW.landGround.setup(base, pl);
     base.maxHp = base.facilities.reduce((s, f) => s + f.maxHp, 0); base.hp = base.maxHp; base.stats.hp = base.maxHp;
     refresh();
@@ -168,6 +169,8 @@ window.WW = window.WW || {};
       f.hp -= dmg * (d < f.r ? 1 : 1 - (d - f.r) / blast * 0.8);
       if (f.hp <= 0) knockOut(f);
     }
+    if (WW.baseLifeLayout) WW.baseLifeLayout.hit(base, x, z, dmg, blast);   // the camp's huts and tents (base.decor)
+    base.hitT = WW.time.now; base.hitX = x; base.hitZ = z;                   // the ground life takes cover / runs to it
     if (cw && WW.landGround) WW.landGround.groundHit(base, x, z, blast); // planes on the ground in the blast are wrecked
     refresh(); check();
     return true;
@@ -286,6 +289,7 @@ window.WW = window.WW || {};
     if (!base || Math.abs(x - base.x) > 140 || Math.abs(z - base.z) > 140) return 0;
     let top = 0;
     for (const f of base.facilities) if (Math.abs(f.x - x) < f.r + 2 && Math.abs(f.z - z) < f.r + 2) top = Math.max(top, base.site.padH + (ROOF[f.kind] || 1));
+    if (base.decor) for (const d of base.decor) if (d.roof && Math.abs(d.x - x) < d.r + 2 && Math.abs(d.z - z) < d.r + 2) top = Math.max(top, base.site.padH + d.roof);
     return top;
   }
   WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, roofAt, runwayOpen: () => runwayOpen(),

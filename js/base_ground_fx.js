@@ -133,8 +133,8 @@ window.WW = window.WW || {};
       const a = i / 6 * Math.PI * 2 + 0.4, r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
       figure(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, a + Math.PI + Math.sin(t * 3 + i) * 0.3, base.nation, i === 0 ? 'o' : 'c', i % 2 === 0);
     }
-    const sw = Math.sin(t * 0.5) * (c.r + 2.5); // the roller works to and fro beside the hole
-    const ro = { x: c.x + hx * (c.r + 3 + sw * 0.4) - hz * 2.2, z: c.z + hz * (c.r + 3 + sw * 0.4) + hx * 2.2, h: rw.h };
+    const sw = Math.sin(t * 0.5) * (c.r + 2.5), side = c.r * 1.25 + 0.6 + (busy ? 6 : 0) + 1.1; // the roller works to and fro beside the hole, outside the gang's ring
+    const ro = { x: c.x + hx * sw * 0.5 - hz * side, z: c.z + hz * sw * 0.5 + hx * side, h: rw.h };
     vehSet('roller', busy && inWay(ro, groundPlanes()) ? null : [ro]);   // a plane taxiing by: the roller is driven off
   }
 
@@ -250,14 +250,16 @@ window.WW = window.WW || {};
   function facR(f) {
     let k = facK.get(f);
     if (!k) {
-      const part = WW.baseFx._built && WW.baseFx._built() && WW.baseFx._built().parts.find(q => q.f === f), g = part && part.mesh.geometry;
+      const part = WW.baseFx._built && WW.baseFx._built() && WW.baseFx._built().parts.find(q => q.f === f), g = part && part.mesh && part.mesh.geometry;
       if (g && !g.boundingBox) g.computeBoundingBox();
       const q = base.layout.toL(f.x, f.z);
-      facK.set(f, k = [g ? Math.hypot(g.boundingBox.max.x - g.boundingBox.min.x, g.boundingBox.max.z - g.boundingBox.min.z) / 2 : (f.r || 3) + 0.5, q.u, q.v]);
+      const sc = part && part.mesh ? part.mesh.scale.x : 1;
+      facK.set(f, k = [g ? sc * Math.hypot(g.boundingBox.max.x - g.boundingBox.min.x, g.boundingBox.max.z - g.boundingBox.min.z) / 2 : (f.r || 3) + 0.5, q.u, q.v]);
     }
     return k[0];
   }
   function inFac(u, v, own, skipOwn) {
+    if (base.decor) for (const g of base.decor) { if (g.kind === 'drill') continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + 0.6) return true; } // the camp too
     for (const g of base.facilities) { if (skipOwn && g === own) continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + (g === own ? 0.4 : 0.6)) return true; } // own: the door (+0.8) is just outside
     return false;
   }

@@ -48,6 +48,11 @@ window.WW = window.WW || {};
     clear();
     if (!e || !e.base) return; // no base (the Base button's 'none'): the old airfield goes
     built = WW.baseModels.build(e.base); built.base = e.base;
+    if (WW.baseLifeModels) { // the camp (base.decor): huts, tents, the mess, pits, trenches, masts, ... and the lit windows
+      const life = WW.baseLifeModels.build(e.base, built.strips.material);
+      for (const part of life.parts) { for (const o of [part.mesh, part.gun, part.head, part.flag]) if (o) built.group.add(o); built.parts.push(part); }
+      if (life.glow) built.group.add(built.glow = life.glow);
+    }
     WW.scene.add(built.group);
     lastT = WW.time.now;
   }
@@ -69,8 +74,8 @@ window.WW = window.WW || {};
     // facilities: wrecks, fires, guns
     for (const part of built.parts) {
       const f = part.f;
-      if (f.out && !part.wrecked) { WW.baseModels.wreck(part); fires.set(f, { t0: now }); }
-      if (part.gun && !f.out) {
+      if (f.out && !part.wrecked) { if (part.decor) WW.baseLifeModels.wreck(part, WW.baseModels._tpl().scorch); else WW.baseModels.wreck(part); fires.set(f, { t0: now }); }
+      if (part.gun && !f.out && !part.decor) {   // (the camp's machine guns and searchlights: base_life.js)
         let want = null;
         if (f.kind === 'battery') want = f.aim;
         else { // AA: the nearest enemy plane in reach
@@ -87,12 +92,13 @@ window.WW = window.WW || {};
   function burn(dt, now) {
     const ld = WW.damage ? WW.damage.load() : 0;
     fires.forEach((st, f) => {
-      const age = now - st.t0, big = f.kind === 'fuel' || f.kind === 'hangar', life = big ? 180 : 60;
+      const age = now - st.t0, big = f.kind === 'fuel' || f.kind === 'hangar', mid = f.decor && (f.kind === 'mess' || f.kind === 'hut' || f.kind === 'sick' || f.kind === 'drums' || f.kind === 'truck' || f.kind === 'radio'), life = big ? 180 : mid ? 150 : 60;
       if (age > life) return;
       const k = (1 - age / life) * (ld > 0.9 ? 0.4 : 1), y = Math.max(WW.terrain.PAD_H, -WW.terrain.depthAt(f.x, f.z));
-      const rate = (f.kind === 'fuel' ? 9 : f.kind === 'hangar' ? 7 : 2.5) * k;
+      if (f.kind === 'trench' || f.kind === 'drill') return;
+      const rate = (f.kind === 'fuel' ? 9 : f.kind === 'hangar' ? 7 : mid ? 4 : 2.5) * k;
       for (let n = 0; n < 3; n++) if (R() < rate * dt) WW.fx.fire(f.x + rr(-f.r, f.r) * 0.7, y + rr(0.5, 2.5), f.z + rr(-f.r, f.r) * 0.7);
-      for (let n = 0; n < 2; n++) if (R() < (big ? 2.4 : 0.8) * k * dt) WW.fx.smoke(f.x + rr(-1.5, 1.5), y + (big ? rr(3, 9) : 2.5), f.z + rr(-1.5, 1.5), true, big ? rr(3, 4.6) : 1.6); // the smoke column
+      for (let n = 0; n < 2; n++) if (R() < (big ? 2.4 : mid ? 1.4 : 0.8) * k * dt) WW.fx.smoke(f.x + rr(-1.5, 1.5), y + (big ? rr(3, 9) : 2.5), f.z + rr(-1.5, 1.5), true, big ? rr(3, 4.6) : 1.6); // the smoke column
       if (WW.damage) WW.damage.want(big ? 2.6 * k : 0.9 * k);
     });
   }

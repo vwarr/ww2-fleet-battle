@@ -15,7 +15,13 @@ require('fs').mkdirSync(OUT, { recursive: true });
 const SEED = +(process.argv[2] || 3), OWNER = process.argv[3] || 'USN', ONLY = process.argv[4] || null; // ONLY: one shot by name
 
 // each shot: [name, page-side setup returning the camera [x, y, z, tx, ty, tz] (or null: skip)]
+// the camp (base.decor): the centre of a group's items and a camera on the field side of it, low and close
+const CAMP = `(g, back, up, side) => { const L = B.layout, its = B.decor.filter(d => d.group === g); if (!its.length) return null;
+  const u = its.reduce((a, d) => a + d.u, 0) / its.length, v = its.reduce((a, d) => a + d.v, 0) / its.length, sv = v >= 0 ? -1 : 1;
+  const q = L.toW(u + (side || 0), v + sv * back), t = L.toW(u, v); return [q.x, up, q.z, t.x, 0.6, t.z]; }`;
 const SHOTS = [
+  ['camp', () => __camp('huts', 16, 7, 6)],
+  ['camp_wide', () => __camp('mess', 34, 20, 10)],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {
     const r = B.layout.rows.find(r => r.spots.length >= 3) || B.layout.rows[0], sp = r.spots[Math.floor(r.spots.length / 2)];
@@ -83,7 +89,7 @@ const SHOTS = [
   await p.goto((process.env.BASE_URL || 'http://localhost:8776/') + 'index.html?v=' + Date.now());
   await p.waitForTimeout(2500);
   await p.addStyleTag({ content: '#hud, .panel, #film .caption { display: none !important; }' });
-  await p.evaluate(([seed, owner]) => {
+  await p.evaluate(([seed, owner, camp]) => {
     WW.terrain.generate(seed); WW.seedRandom(seed);
     window.__fresh = () => { // every shot from a fresh round on the same map (the same fleets, the same base)
       WW.seedRandom(seed * 7919 + 1); WW.time.scale = 1;
@@ -93,8 +99,9 @@ const SHOTS = [
     };
     WW.seedRandom(seed); window.__comp = WW.game.randomComposition();
     WW.on('baseEvent', e => { if (window.B && e.base === B && !__ev[e.kind]) __ev[e.kind] = e; });
+    window.__camp = eval(camp);
     window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __sim.fastForward(0.1); } return !!f(); };
-  }, [SEED, OWNER]);
+  }, [SEED, OWNER, CAMP]);
   const done = [];
   for (const [name, fn] of SHOTS) {
     if (ONLY && name !== ONLY) continue;
