@@ -24,7 +24,7 @@ window.WW = window.WW || {};
   var bucketList = [];
   var hooked = false, enabled = true, frame = 0;
   var noop = THREE.Object3D.prototype.onBeforeRender;
-  var RAD = 4;                   // culling sphere around a plane (span 1.7 x ~3.2 units)
+  var RAD = 4.2 * (WW.cfg.PLANE_SCALE || 0.82) / 0.82;  // culling sphere around a plane (a B-17's half span ~3.5 at 0.82)
   var _fr = new THREE.Frustum(), _pm = new THREE.Matrix4(), _sp = new THREE.Sphere(), culled = 0;
 
   function off() { return WW.simOnly || !WW.scene || !WW.renderer; }
