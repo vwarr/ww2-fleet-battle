@@ -16,14 +16,18 @@ window.WW = window.WW || {};
   const ENGAGE = 130;                    // a vectored fighter takes the raider as its foe inside this range (the tally: ~5 L)
   // Per doctrine: leash (CAP stays inside), long leash (armed raid inbound, fighters escorting it), vector range.
   const DOC = {
-    picket:   { leash: 190, leash2: 300, vecR: 300, spd: 0.85 },   // the racetrack ends reach ~185 (140 out, 90 across, the turns)
+    // vecR: a raid this far from the carrier is vectored on. USN: the CXAM plot and a fighter director, 15-25 nm out
+    // in 1942, so the meeting point is 2-3 x the drop range out and the CAP works the bombers over all the way in.
+    // IJN: no radar and few fighter radios: the Zeros go for what their own loops and the lookouts see (200; 270 put
+    // them onto raids reported by scouts, and moved the 100-round gate from USN 52 to 44)
+    picket:   { leash: 190, leash2: 420, vecR: 420, spd: 0.85 },   // the racetrack ends reach ~185 (140 out, 90 across, the turns)
     overhead: { leash: 160, leash2: 205, vecR: 200, spd: 0.8 }   // the loops reach ~155 (115 + 12% + 25 toward the threat)
   };
   // USN stations by section index: distance out, angle off the threat bearing, altitude band, inner (kept back)
   const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 66 }, { d: 60, a: 0, y: 30, inner: true }];
   const LEG = 90, TURN = 0.42;           // racetrack half-leg (u) and turn rate (rad/s)
   const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 45, dir: -1 }, { r: 80, y: 36, dir: 1 }]; // IJN loops round the fleet
-  const ST = { vectors: 0, contacts: 0 };
+  const ST = { vectors: 0, contacts: 0, joins: 0 };
 
   function doc(nation) {
     const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(nation) : null;
@@ -133,7 +137,35 @@ window.WW = window.WW || {};
   // the height band a CAP fighter flies in (its section leader's): 'high' | 'low' | null
   function band(pl) { return pl.capBand || (pl.leader && pl.leader.capBand) || null; }
 
-  function reset() { ST.vectors = ST.contacts = 0; }
+  // ---------- every fighter in reach joins in ----------
+  // A raid on the plot inside JOIN_R of the carrier: its fighters coming home (on the way back within JOIN_R, or holding
+  // in the marshal stack) with the fuel for a fight (JOIN_FUEL s) and not badly hit leave the stack and fight as CAP
+  // until the raid is gone (Yorktown's VF-3 at Midway, Enterprise's returning VF-10 at Santa Cruz). Called every 1 s
+  // by the air boss (air_boss.js capTick). air_ops.js fighter() sends a joined fighter home once no raid is near.
+  const JOIN_R = 300, JOIN_FUEL = 22, JOIN_MIN = 8;   // fuel (s): to join in / a joined fighter fights down to
+  function raidNear(cv, R) {
+    if (!WW.intel) return false;
+    for (const c of WW.intel.enemyPlanes(cv.nation)) { const u = c.unit; if (u && u.alive && WW.airOps.armed(u) && WW.dist(cv.x, cv.z, c.x, c.z) < R) return true; }
+    return false;
+  }
+  function join(cv) {
+    if (!raidNear(cv, JOIN_R)) return;
+    cv._joinT = WW.time.now;
+    const D = cv._deck;
+    for (const p of WW.world.planes) {
+      if (!p.alive || p.removed || p.carrier !== cv || p.kind !== 'fighter' || p.search || p.fuel < JOIN_FUEL || p.hp < p.maxHp * 0.6) continue;
+      const stack = p.state === 'landing' && p.deckPh === 'marshal', home = p.state === 'return' && !p.nightRecall && WW.dist(p.x, p.z, cv.x, cv.z) < JOIN_R;
+      if (!stack && !home) continue;
+      if (D) { const i = D.lq.indexOf(p); if (i >= 0) D.lq.splice(i, 1); }
+      p.state = 'transit'; p.deckPh = null; p.lqT = undefined; p.phT = 0; p.target = null; p.wave = null; p.sk = null; p.recall = false; p.foe = null; p.scanT = 0;
+      p.joined = WW.time.now; ST.joins++;
+      if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'join', plane: p, squadron: p.squadron || null });
+    }
+  }
+  // a joined fighter with no foe goes back home once no raid has been near its carrier for 3 s
+  function joinDone(pl) { return !!pl.joined && (pl.fuel < JOIN_MIN || !pl.foe && WW.time.now - (pl.carrier._joinT || -1e9) > 3); }
+
+  function reset() { ST.vectors = ST.contacts = ST.joins = 0; }
   WW.on('roundStart', reset);
-  WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, ENGAGE, DOC, stats: ST };
+  WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, join, joinDone, ENGAGE, DOC, stats: ST };
 })();

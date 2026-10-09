@@ -24,7 +24,7 @@ window.WW = window.WW || {};
     PATROL: 140,                                       // patrol flying boats (air_patrol.js): trained observers, high and steady
     CLOSE_ID: 45,                                      // an air observer this close identifies the type correctly
     SEE_PLANE: { carrier: 170, battleship: 130, cruiser: 130, destroyer: 110, submarine: 40, pt: 60 }, // ships see planes (AA directors, lookouts)
-    SEE_PLANE_NATION: { USN: { carrier: 250 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE)
+    SEE_PLANE_NATION: { USN: { carrier: 400 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE; CXAM saw big raids 4-5 x a lookout's range: 400 gives the director ~15 s to put the CAP out on the bearing)
     PLANE_PLANE: 100,                                  // planes see planes
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
     TORP: 45,                                          // a ship sees an enemy torpedo track this close (scanTorps)
@@ -177,7 +177,7 @@ window.WW = window.WW || {};
         s = ships[j];
         if (s.nation !== nation || !usableShip(s)) continue;
         if (s.submerged) continue;
-        r = R.SEE_PLANE[s.type] || 110;
+        r = (R.SEE_PLANE[s.type] || 110) * (WW.staff ? WW.staff.seeK(s, o) : 1);   // a low sun's glare, cloud (air_staff.js); radar is blind to neither
         var rn = R.SEE_PLANE_NATION[nation], rr = (rn && rn[s.type]) || r;   // radar fighter direction reaches farther
         d2 = WW.dist2(s.x, s.z, o.x, o.z);
         if (d2 < r * r) { sight(nation, S, o, s, 'visual', now); got = true; }
@@ -186,7 +186,8 @@ window.WW = window.WW || {};
       for (j = 0; j < planes.length && !got; j++) {
         p = planes[j];
         if (p.nation !== nation || !airborne(p)) continue;
-        if (WW.dist2(p.x, p.z, o.x, o.z) < R.PLANE_PLANE * R.PLANE_PLANE) { sight(nation, S, o, p, 'air', now); got = true; }
+        var rp = R.PLANE_PLANE * (WW.staff ? WW.staff.seeK(p, o) : 1);
+        if (WW.dist2(p.x, p.z, o.x, o.z) < rp * rp) { sight(nation, S, o, p, 'air', now); got = true; }
       }
     }
     // the island base: on the enemy's chart, and its owner's radar / lookout station (island_base.js)

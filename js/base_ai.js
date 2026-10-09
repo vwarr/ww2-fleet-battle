@@ -49,6 +49,7 @@ window.WW = window.WW || {};
     var b = base(); if (!b || b.neutralized || b.nation === B.nation) return 0;
     var k = B.objective && B.objective.base === b && B.objective.fleetFirst ? FLEET_K : 1;
     if ((WW.game ? WW.game.roundTime : 0) < SEARCH_T && (!cv || WW.dist2(cv.x, cv.z, b.x, b.z) > NEAR_CV * NEAR_CV)) return 0;
+    if (WW.staff) k *= WW.staff.baseK(B.nation, cv);   // a neutralization raid needs the escort for the airfield's fighters (air_staff.js)
     return (WW.islandBase.runwayOpen() ? STRIKE_OPEN : b.stats.guns.length ? STRIKE_SHUT : 2) * WW.islandBase.TUNE.target * k;
   }
   function assign(ship, target) {

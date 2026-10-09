@@ -261,7 +261,8 @@ window.WW = window.WW || {};
     const off = Math.abs(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)));   // where we are off the ship's bow
     const drop = dh < dropR && pl.y < 3 && Math.abs(d) < 0.3 && off > 0.35 && off < 2.8 && wet(pl.x + c, pl.z + s, WW.lerp(pl.x, px, 0.8), WW.lerp(pl.z, pz, 0.8));
     if (drop) {
-      WW.combat.fireTorpedo(pl, pl.x + c, pl.z + s, pl.heading, pl.nation, TORP_RANGE);
+      const hz = WW.intercept && WW.intercept.harried ? WW.intercept.harried(pl) : 0;   // harried: thrown off its line (air_intercept.js)
+      WW.combat.fireTorpedo(pl, pl.x + c, pl.z + s, pl.heading + (hz > 0 ? (WW.rand() + WW.rand() - 1) * 1.7 * WW.intercept.HARRY.torp * hz : 0), pl.nation, TORP_RANGE);
       const w = pl.wave; if (w) { if (w.bowT !== t) { w.bowT = t; w.bow = {}; } const sd = WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)) < 0 ? -1 : 1; w.bow[sd] = (w.bow[sd] || 0) + 1; }
       if (WW.fx) WW.fx.splash(pl.x + c * 3, pl.z + s * 3, 0.9);
       pl.dropped();

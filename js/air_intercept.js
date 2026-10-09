@@ -6,7 +6,7 @@
 // Uses the dogfight's guns (wing guns, per-round hit checks), energy, rate and climb. Sim code: WW.rand only.
 window.WW = window.WW || {};
 (function () {
-  const ST = { passes: 0, firing: 0 };
+  const ST = { passes: 0, firing: 0, releases: 0, harried: 0, harriedSum: 0 };
   const P = { x: 0, y: 0, z: 0 };
   // Where plane f will be in t s, along its current turn (an arc) and climb rate (t < 0: where it was).
   function predict(f, t, o) {
@@ -65,7 +65,19 @@ window.WW = window.WW || {};
     K.guns(p, f, s, dt, can, keep);
     return true;
   }
-  function reset() { ST.passes = 0; ST.firing = 0; }
+  function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.intercept = { attack, predict, stats: ST };
+  // How harried a bomber is at its release, 0..1: a fighter on it now (the jink's threat, air_dogfight.js) or a
+  // shot-up airframe. The CAP's real effect on the raiders that got through in 1942 was the drop: a pilot with a
+  // Zero or a Wildcat on his tail, or a holed plane, released early, wide and shallow (combat_weapons.js diveAim
+  // widens the aim error, air_attack.js torp throws the torpedo off its line). Deterministic.
+  function harried(pl) {
+    const s = pl.df;
+    let on = s && s.from && s.from.alive && WW.dist(s.from.x, s.from.z, pl.x, pl.z) < 45 ? 1 : 0;
+    if (!on) for (const q of WW.world.planes) if (q.alive && q.foe === pl && q.kind === 'fighter' && WW.dist(q.x, q.z, pl.x, pl.z) < 80) { on = 0.8; break; }   // a fighter working it over
+    const h = Math.min(1, Math.max(on, (1 - pl.hp / pl.maxHp) * 1.4));
+    ST.releases++; if (h > 0) { ST.harried++; ST.harriedSum += h; }
+    return h;
+  }
+  WW.intercept = { attack, predict, harried, HARRY: { aim: 1.2, torp: 0.16 }, stats: ST };
 })();
