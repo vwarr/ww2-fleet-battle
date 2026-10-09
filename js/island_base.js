@@ -114,7 +114,9 @@ window.WW = window.WW || {};
     put('barracks', PLACES.barracks, 3); put('aa', PLACES.aa, Math.round(3 * TUNE.pits));
     base.facilities.filter(f => f.kind === 'aa').forEach(f => {
       f.unit = { isBasePit: true, id: ID + 10 + base.facilities.indexOf(f), type: 'base', nation: owner, alive: true, sinking: false, submerged: false,
-        x: f.x, z: f.z, heading: S.h, speed: 0, stats: { aa: Object.assign({}, PIT_AA), length: 4, guns: [] }, fac: f };
+        x: f.x, z: f.z, heading: S.h, speed: 0, stats: { aa: Object.assign({}, PIT_AA), length: 4, guns: [] }, fac: f,
+        sup: { main: 0, aa: 1e9, aa0: 1e9, torp: 0, fuel: 0, main0: 0, fuel0: 0, flags: {} } };   // the island's own magazines
+        // (ship_supply.js has no allowance for a 'base' type: without this the pits counted as out of ammunition and never fired)
     });
     shorePoints(S, TUNE.guns > 0 ? 2 : 0).forEach((p, i) => {
       const q = L.toL(p.x, p.z); AL.addFac(L, q.u, q.v, R.battery + 1);

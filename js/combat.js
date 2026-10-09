@@ -180,7 +180,7 @@ window.WW = window.WW || {};
     var S = WW.SHELL[p.cal];
     var tgt = (p.target && p.target.alive) ? p.target : null;
     var hit = findHit(p.nation, x, z, S.splash * 0.3, false, tgt);
-    if (WW.emit) WW.emit('shellLanded', { cal: p.cal, x: x, z: z, ship: hit }); // sound hook (audio_naval_wire.js)
+    if (WW.emit) WW.emit('shellLanded', { cal: p.cal, x: x, z: z, ship: hit, proj: p }); // sound hook (audio_naval_wire.js)
     if (hit) {
       damage(hit, p.dmg, x, z, 'shell', p.cal);
       if (WW.damage) return;   // impact fx at the hull hit point are placed by WW.damage
