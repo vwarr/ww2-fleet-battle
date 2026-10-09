@@ -55,7 +55,7 @@ window.WW = window.WW || {};
     });
     ST.slots = b.slots.length;
     var wh = WW.wind ? WW.wind.a + Math.PI : b.heading;   // take off and land into the wind (fixed for a round)
-    b.ops = { mode: 'idle', occ: null, holdQ: [], lastRoll: -1e9, launchSince: null, landSince: null, scrambleT: -1e9,
+    b.ops = { mode: 'idle', occ: null, holdQ: [], lastRoll: -1e9, modeT: 0, lastL: -1e9, lastR: -1e9, scrambleT: -1e9,
       dir: Math.cos(WW.angleDiff(b.heading, wh)) >= 0 ? 1 : -1, crossOcc: null, closedT: 0, gidN: 0 };
     sync(b);
   }
@@ -238,19 +238,22 @@ window.WW = window.WW || {};
       else if (p.state === 'rollout' && p.rwPh !== 'towed') inN++;
       else if (p.state === 'landing' && (p.rwPh === 'circuit' || p.rwPh === 'final')) { wantLand = true; if (p.rwPh === 'final') inN++; }
     }
-    o.launchSince = wantLaunch ? (o.launchSince === null ? now : o.launchSince) : null;
-    o.landWait = wantLand ? (o.landWait || 0) + dt : 0;
-    o.landSince = wantLand ? (o.landSince === null ? now : o.landSince) : null;
-    var prev = o.mode;
+    // Turns, like a carrier deck. A mode keeps the field while its planes move; with none moving it keeps it for
+    // TURN_WAIT s while it still has demand; otherwise the side served longer ago gets it (a scramble always does).
+    // Once the other side waits and the mode is TURN_WAIT old, no new movers start in it (yield / hold), so it drains.
+    var prev = o.mode, age = now - o.modeT;
+    if (o.mode === 'launch') o.lastL = now; else if (o.mode === 'recover') o.lastR = now;
     if (o.mode === 'launch' && outN) { /* keep */ }
     else if (o.mode === 'recover' && inN) { /* keep */ }
-    else if (wantLaunch && (scr || !wantLand || o.launchSince <= o.landSince)) o.mode = 'launch';
+    else if (scr) o.mode = 'launch';
+    else if (o.mode === 'launch' && wantLaunch && (!wantLand || age < TURN_WAIT)) { /* keep */ }
+    else if (o.mode === 'recover' && wantLand && (!wantLaunch || age < TURN_WAIT * 1.5)) { /* keep */ }
+    else if (wantLaunch && (!wantLand || o.lastL <= o.lastR)) o.mode = 'launch';
     else if (wantLand) o.mode = 'recover';
     else if (!outN && !inN) o.mode = 'idle';
-    if (o.mode !== prev) ST.modeSwitches++;
-    // turns: after TURN_WAIT s of planes waiting for the other mode, no new movers start in this one (a scramble jumps the queue)
-    o.yield = o.mode === 'launch' && !scr && o.landWait > TURN_WAIT;
-    o.hold = o.mode === 'recover' && wantLaunch && (scr || now - o.launchSince > TURN_WAIT * 1.5);
+    if (o.mode !== prev) { ST.modeSwitches++; o.modeT = now; age = 0; }
+    o.yield = o.mode === 'launch' && !scr && wantLand && age > TURN_WAIT;
+    o.hold = o.mode === 'recover' && wantLaunch && (scr || age > TURN_WAIT * 1.5);
     // slots: rearmed planes are ready; a plane lost in the air leaves its spot empty
     for (i = 0; i < b.slots.length; i++) {
       var s = b.slots[i];

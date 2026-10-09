@@ -190,10 +190,13 @@ window.WW = window.WW || {};
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
       const clear = R.main ? o.mode === 'recover' && !o.occ && !o.hold : !o.crossOcc;
-      if (i > 0 || !clear) { stack(p, b, i, dt); return; }
+      if (i > 0 || !clear) { stack(p, b, i, dt); p.apOut = false; return; }
+      // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
+      const ox = R.x - c * 150, oz = R.z - s * 150;
+      if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
       const d = WW.dist(p.x, p.z, fx, fz);
       p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
-      if (d < 14) {
+      if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7) {
         p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = R.x; p.rwZ = R.z; p.emergency = !R.main;
         if (R.main) o.occ = p; else { o.crossOcc = p; ST.emergency++; }
       }
@@ -204,9 +207,11 @@ window.WW = window.WW || {};
     const along = dx * ch + dz * sh, cross = -dx * sh + dz * ch, vc = dt > 0 && p._cr !== undefined ? (cross - p._cr) / dt : 0; p._cr = cross;
     const togo = -along; p.togo = togo; p.hd = WW.angleDiff(p.heading, h);
     if (R.h !== h || R.main === !!p.emergency || p.rwT > 25) { // the runway closed under it: go round
-      p.rwPh = 'circuit'; p._cr = undefined; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
+      p.rwPh = 'circuit'; p._cr = undefined; p.apOut = false; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
     }
-    p.turnTo(h - WW.clamp(cross * 0.12 + vc * 0.1, -0.7, 0.7), dt, 1.8);
+    const want = h - WW.clamp(cross * 0.12 + vc * 0.1, -0.7, 0.7), dd = WW.angleDiff(p.heading, want);
+    if (Math.abs(dd) > 2.4) { p.finSign = p.finSign || Math.sign(dd) || 1; p.heading += p.finSign * 1.8 * dt; } // far off: one committed turn
+    else { p.finSign = 0; p.turnTo(want, dt, 1.8); }
     const ty = groundY(b) + gearOf(p) + WW.clamp(togo * 0.12, 0, 10);
     p.speed += WW.clamp(Math.max(p.pt.speed * 0.55, 13) - p.speed, -6 * dt, 6 * dt);
     p.vy = WW.clamp((ty - p.y) * 2.5, -6, 4);
