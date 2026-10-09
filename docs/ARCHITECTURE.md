@@ -72,7 +72,8 @@ js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_li
 js/ai_endgame.js        WW.endgameAI: a broken side runs for its home edge (doctrine: rescue / escort or best speed), rescue steering, pursuit seams
 js/ai_charge.js         WW.smoke (smoke screens that block ship-to-ship sight), WW.charge (escorts charge an enemy closing on their carrier)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
-js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns, tracer rounds
+js/air_tracers.js       WW.planeTracers: the plane guns' glowing tracer rounds (visual only, pooled)
+js/air_dogfight.js      WW.dogfight: fighter-vs-plane manoeuvres, wing guns (snapshots, the gun line)
 js/air_intercept.js     WW.intercept: fighter gun passes on bombers (wheel arc lead, dive line, stern passes)
 js/air_aces.js          WW.aces: pilots, kill credit, aces and kill marks
 js/air_scouts.js        WW.scouts, WW.Scout: catapult scout floatplanes and spotting
@@ -304,6 +305,77 @@ Gates (100 rounds, seeds 1-100 / 1001-1100): before USN 46 / 43; after 45 / 50. 
 
 Track plots (`tests/shots/ships/`, before / after on the same seeds): `tracks_cruise_*` (surface seed 2, USN, 120-300 s: the column on its guide vs ships chasing their own stations), `tracks_surface_*` (the same round 280-400 s, following the USN flagship: the deployment and the broadside duel vs the lines passing through each other), `tracks_air_*` (standard seed 3, USN carrier group under air attack), `tracks_air_ijn_*` (midway seed 1, IJN carrier division), `tracks_overview_*` (standard seed 3, the whole round).
 
+### Plane movement (2026-10-09, branch planes)
+
+User: "the fighters are not shooting at the targets directly ahead of them, and instead locking onto other stuff and trying to chase it", and "propose pathing changes to give the planes and ships more realistic AI ... without coming up with new features". Measured with `tests/plane_moves.js`, a read-only recorder. It measures opposing strikes in transit, escort peel-offs, targets of opportunity and snoopers round the carriers. For the guns it records each burst's angle from the nose to the plane fired at, the ignored snapshots per combat second, the foe switches, and whether the nose is on the lead point or on the target. `--trace SCEN:SEED` dumps one round for `tests/plane_tracks.js`, which draws top-down plots: the strike waves over the whole round, the fighter tracks with each burst coloured by angle off, and close-ups of the busiest fights with the nose and the line to the plane fired at.
+
+**What it showed.**
+
+- The guns fired only at the assigned foe. A fighter never fired at an enemy squarely in its gunsight and in gun range while its foe was elsewhere (100% of those chances were ignored, 68% with the guns ready).
+- A fighter stayed on a foe behind it or out of reach for the whole 5 to 7 s lock.
+- The trigger test was flat: the heading within 0.12 rad and the height within 30% of the range. So 1 burst in 3 opened with the target more than 10° off the nose (p90 15.5°).
+- Opposing strikes flew the same line between the carriers and passed through each other: 19% of crossing pairs came within 100 u (p10 51 u). Planes see planes at 100 (`intel.js PLANE_PLANE`), which is 2 s at their closing speed.
+- Escorts took on any fighter near their bombers, including a passing raid's escort.
+- The CAP never went after scout floatplanes: they got no vector and priority 40.
+- A strike whose target was not in sight waited 8 s, then looked only 170 out.
+
+**Changes** (sim code; nation differences are doctrine parameters):
+
+| what | where | how |
+|---|---|---|
+| snapshot | `air_dogfight.js guns` | With no shot at its foe, a fighter fires at any enemy plane within 0.2 rad of the nose and in gun range (`ahead`, looked up every 0.1 s; a bomber scores 0.06 rad better than a fighter). It does this while breaking too. `df.gunAt` is the plane fired at |
+| the gun line | `air_dogfight.js offence` | The fighter opens fire with the lead point within 0.12 rad in heading and 0.16 rad in climb angle (`elev`; the round itself pulls up to 0.1 rad). It holds the trigger within 0.22 / 0.24 rad |
+| switch foe | `air_dogfight.js pick` | If the foe is more than 50 away or more than 1.6 rad off the nose, and another enemy is within 45 and 0.45 rad of the nose, the fighter takes that one (a bomber first). An escort riding with its strike in transit does not switch |
+| tracers | `air_tracers.js` (split out of air_dogfight.js) | Unchanged: the rounds leave both wing guns along the toed-in stream, so they converge on what the nose is on |
+| top cover | `air_cag.js escortPick` | Top cover meets fighters coming at the strike (heading for its bombers, or already on one of ours). It leaves a passing raid's escort alone until that escort turns on ours |
+| IJN peel-off | `air_cag.js passing`, doctrine `air.peel` (USN 0, IJN 1) | With an ample escort (4 or more fighters, and the rest at least max(2, 0.3 x the bombers)), ONE top-cover element of a strike in transit may attack a passing enemy raid's bombers within 140, for 25 s (Santa Cruz: Zuiho's Zeros). The strike then arrives with less cover. `airOrder` 'peel' |
+| CAP and snoopers | `air_cap.js raidFor`, `air_ops.js capPick` / `leashed` | With no armed raid on the plot, one section is vectored onto a scout floatplane, flying boat or unarmed search plane within 260 of the carrier (`WW.cap.snooper`), at priority 200 and on the long leash |
+| retarget | `air_cag.js waveTick`, `retarget`, `air_strikes.js` | If the target is not in sight for 3 s (was 8 s) inside 140, the strike takes the best ship the side sees within its fuel. `reach` is half of the shortest-legged bomber's fuel after the way home and 25 s, 120-320 u (was 170) |
+| armed scouts | `air_search.js pounce`, doctrine `air.armedScout` (USN 1, IJN 0) | A USN SBD flying a search keeps its bomb. It attacks a carrier it has in sight within 220 if it has the fuel (Santa Cruz: Strong and Irvine on Zuiho). `airOrder` 'scoutAttack' |
+| homebound bombers | `air_ops.js homeward` (a goHome hook) | A bomber flying home armed attacks a ship in sight within 100, once a sortie, if it has the fuel |
+| homebound strafing | `air_strafe.js homeCheck` | A fighter going home with 45 s of fuel and 60% hp strafes a PT boat, surfaced sub or crippled destroyer within 110, for up to 20 s, once a sortie |
+| raids in the route cost | `air_staff.js remember` / `raidsAt` / `legCost` | The side remembers each enemy bomber it has seen in transit for 60 s, with its wave's course and speed. A route sample costs 0.4 per unit at a raid's centre (to 150 out, x min(1, bombers / 4)), at the place that raid will be when the strike gets there (run on along its course, at most 90 s). A raid newly on the plot replans the route at once. A/B: `?staff=raid:0` |
+| raids in the detour | `air_cag.js detour` / `raidFoes` | The strike leader scores the five headings by where the enemy bombers it knows of will be 2, 4 and 6 s ahead. It knows the side's contacts within 350, and any enemy strike of 6 or more planes within 260 (a formation is seen well beyond a lone plane; less in cloud, in glare or in the dark). The transit stack already keeps the heights apart: torpedo planes ~30, dive bombers ~54, escorts ~70 |
+
+**Results** (`node tests/plane_moves.js --seeds 20`: 100 rounds, 20 seeds each of standard, carrier_duel, midway, surface and odd fleets; before = main b563ce0):
+
+| metric | before | after |
+|---|---|---|
+| opposing strikes in transit: closest approach p10 / p50; pairs within 100 | 51 / 246; 19% | 118 / 236; 5% |
+| ... closest planes in 3D (pairs that came within 250), p50 | 89 | 104 |
+| bursts with the target inside 10° and gun range (or its lead point) | 67% (86%) | 74% (95%) |
+| angle off at the burst p50 / p90 | 7.8 / 15.9° | 7.6 / 11.9° |
+| snapshot chances ignored (all; with the guns ready) | 100%; 69% | 48%; 9% |
+| foe switches per combat minute | 2.1 | 3.4 |
+| hits per 100 rounds; gun kills per round | 28.6; 29.1 | 27.8; 33.5 |
+| escort peel-offs at a passing raid's bombers per round, USN / IJN | 0.2 / 0.0 | 0.2 / 0.6 (0.2 element orders) |
+| escort fights with a passing raid's planes of any kind per round, USN / IJN | 1.9 / 1.6 | 1.2 / 1.1 |
+| a strike lost its target -> first drop on another ship, p50 / p90 | 23.7 / 52.3 s | 20.5 / 50.5 s |
+| armed sorties home with the bomb | 5.6% | 7.3% (6.1% with the snooper hunt off) |
+| bombers attacking a ship on the way home; fighter strafing passes on the way home (per 100 rounds) | 0; 0 | 8; 29 |
+| scout floatplanes inside 300 of an enemy carrier: stint p50 / p90; shot down there | 9.8 / 20.5 s; 10% | 9.8 / 22.3 s; 21% |
+
+Notes:
+
+- Lead pursuit is not exaggerated. Within 60 of its foe, the nose is on the lead point but not on the target only 4% of the time, before and after.
+- The gun kills rise by about 15%, mostly bombers. Fewer bombs and torpedoes are dropped (strike drops 4136 -> 3691 per 100 rounds). That is for the balance pass.
+- The armed-scout attack works: in a forced probe, an SBD searcher 180 from an IJN carrier attacks it and drops. But in the measured rounds no carrier search flight came within 300 of an enemy carrier. The searches fly while nothing is known, and the floatplanes usually find the carriers first.
+- A bomber comes home armed mostly because its strike found nothing and its side had no fresh contact anywhere. The CAP now shoots down twice as many shadowing scouts, so the other side's strikes are a little blinder.
+- The scouts' time near a carrier does not fall. A scout breaks away low when a fighter closes, and the CAP leaves snoopers alone while a raid is on the plot.
+
+Gates (`sim_behaviour.js --only balance --seeds 100`, not tuned): USN 47 -> 45 (seeds 1-100) and 43 -> 50 (seeds 1001-1100).
+
+Fatal blows (`torpedo_review.js --seeds 10`, 40 rounds):
+
+| | torpedo (+ flooding, capsize) | bomb | shell | strafe |
+|---|---|---|---|---|
+| before | 142 (+23, +6) | 22 | 29 | 13 |
+| after | 150 (+24, +5) | 24 | 20 | 18 |
+
+Behaviour suite: 1 FAIL before (stuck: a submarine) and 2 after. The 2 FAILs are one round counted twice (standard and mirror, seed 1): a USN destroyer in the escort role stands still at (1214, 429) from about 480 s to 510 s, 430 from its station, in the surface action. It is not the ASW listening hold, and the cause is not established; ship steering is the ships branch's. WARN checks 55 -> 62, in low-count rounds (for example `esc_with` and `form_later_max` for the island base's strikes in pt_vs_bb and battle_line). `determinism.js 1 200` and `--cross 1 200` pass.
+
+![before: an IJN strike and a USN strike pass 11 u apart on the line between the carriers](planes/strikes_before.jpg) ![after: the USN strike bends north round the raid and passes 147 u away](planes/strikes_after.jpg) ![fighter tracks and gun bursts by angle off the nose](planes/guns_after.jpg) ![Wildcats firing on a D3A formation](planes/gun_wildcats_on_d3a.jpg) ![over the shoulder: the tracers converge ahead](planes/gun_over_the_shoulder.jpg) ![a Zero firing on a PBY](planes/gun_zero_on_pby.jpg)
+
 ## Main loop
 
 Each animation frame (`main.js`, `frame`):
@@ -325,7 +397,7 @@ Each animation frame (`main.js`, `frame`):
 `index.html?sim` sets `WW.simOnly` (and `WW.cfg.SIM_ONLY`) in `core.js`, before any module initializes. The page runs the full simulation and renders nothing. The headless sim tests use it; players never see it.
 
 - `main.js bootSim()` makes a plain `THREE.Scene` and camera, but no `WebGLRenderer`. It initializes only `terrain`, `models`, `combat`, `ships` and `air`, starts the game as usual (`?auto` or setup), and never calls `requestAnimationFrame`. The test drives `__sim.fastForward`.
-- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
+- Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_tracers.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
 - Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
 - The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page, a sim-only page and the node runner; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
 - Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
@@ -360,6 +432,9 @@ node tests/air_defense.js [--seeds 5] [--only standard,carrier_duel,midway]   # 
 BASE_URL=… CHROMIUM=… node tests/air_defense_shots.js [seed] [far,vt,marshal,group]   # render-mode pictures of the same
 node tests/dive_film.js [seeds=1,2,3,4] [simSecs=480]   # story camera: share of strike stories with their wave's dive on screen (gate 80%), Strike-away caption lag (CHROMIUM, BASE_URL)
 node tests/flight_tracks.js tests/shots/flight_trace_SCEN_SEED.json [window] [maxT]   # top-down plane track maps from a --trace round (CHROMIUM)
+node tests/plane_moves.js [--seeds 8] [--only standard,carrier_duel,midway,surface,odd] [--trace SCEN:SEED]   # plane movement review (see Plane movement)
+node tests/plane_tracks.js tests/shots/planes/trace_SCEN_SEED.json [outPrefix]   # its track plots: strike waves, gun bursts by angle off (CHROMIUM)
+BASE_URL=… CHROMIUM=… node tests/gun_shots.js [seed] [count] [target kinds]   # render-mode close-ups of a fighter firing at a plane ahead
 node tests/flight_shots.js [seed] [opening,cap,circle,story,intercept,dogfight,dive,torp,escort]   # render-mode air scenes (tests/shots/flight/)
 node tests/sim_behaviour.js --only night,dusk,weather   # night and weather scenarios and metrics
 TOD=night WX=line node tests/determinism.js --cross 3,4 250   # force the time of day / the weather

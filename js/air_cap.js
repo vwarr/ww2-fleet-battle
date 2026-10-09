@@ -68,16 +68,23 @@ window.WW = window.WW || {};
   }
 
   // ---------- vectors: the raid contact this section should meet ----------
+  // A snooper (scout floatplane, flying boat, carrier search plane) shadowing the fleet: with no raid on the plot, one
+  // section goes after it out to SNOOP_R (a shadower's report brings the strike: the CAP's first job in 1942)
+  const SNOOP_R = 260;
+  const snooper = u => u.kind === 'scout' || u.kind === 'flyingboat' || (u.search && !u.ordnance);
+  function chasing(pl, u) { for (const q of WW.world.planes) if (q !== pl && q.alive && q.nation === pl.nation && (q.vec === u || q.foe === u) && !(q.element && q.element === pl.element)) return true; return false; }
   function raidFor(pl, band, inner, D) {
     if (!WW.intel) return null;
-    const c = pl.carrier, armed = WW.airOps.armed;
+    const c = pl.carrier, armed = WW.airOps.armed, quiet = !WW.airOps.picture(c).armed;
     let best = null, bs = -1e9;
     for (const ct of WW.intel.enemyPlanes(pl.nation)) {
-      const u = ct.unit; if (!u || !u.alive || u.kind === 'scout') continue;
+      const u = ct.unit; if (!u || !u.alive) continue;
       const dc = WW.dist(c.x, c.z, ct.x, ct.z);
-      if (dc > (inner ? 150 : D.vecR)) continue;
+      if (snooper(u)) {   // not the inner section; one section to a snooper
+        if (!quiet || inner || dc > Math.min(SNOOP_R, D.vecR) || (pl.vec !== u && chasing(pl, u))) continue;
+      } else if (dc > (inner ? 150 : D.vecR)) continue;
       const arm = armed(u);
-      if (!arm && u.kind !== 'fighter' && u.kind !== 'flyingboat') continue;   // empty bombers going home: not worth a vector
+      if (!arm && u.kind !== 'fighter' && !snooper(u)) continue;   // empty bombers going home: not worth a vector
       let s = arm ? 200 : u.kind === 'fighter' ? 60 : 90;
       if (arm && u.kind === 'torpedo') s += band === 'low' ? 80 : style(pl.nation) === 'overhead' ? 60 : -20;   // the Zeros go for the torpedo planes
       if (arm && u.kind === 'dive') s += band === 'high' ? 60 : -30;
@@ -167,5 +174,5 @@ window.WW = window.WW || {};
 
   function reset() { ST.vectors = ST.contacts = ST.joins = 0; }
   WW.on('roundStart', reset);
-  WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, join, joinDone, ENGAGE, DOC, stats: ST };
+  WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, join, joinDone, snooper, ENGAGE, DOC, SNOOP_R, stats: ST };
 })();
