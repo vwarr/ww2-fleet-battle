@@ -53,8 +53,9 @@ function install() {
   const id = o => { let v = ids.get(o); if (!v) { v = nid++; ids.set(o, v); } return v; };
   const armedB = u => u && u.alive && (u.kind === 'dive' || u.kind === 'torpedo') && u.ordnance;
   let S = null;
+  const dfs = () => { const D = WW.dogfight.stats; return { rounds: D.rounds || 0, hits: D.hits || 0, gunKills: D.gunKills || 0, snaps: D.snaps || 0, switches: D.switches || 0 }; };
   function fresh() {
-    S = { next: 0, k: 0, pairs: new Map(), wv: new Map(), peel: new Map(), sortie: new Map(), drops: { strike: 0, scout: 0, home: 0, other: 0 }, snoop: new Map(), stints: [],
+    S = { df0: dfs(), next: 0, k: 0, pairs: new Map(), wv: new Map(), peel: new Map(), sortie: new Map(), drops: { strike: 0, scout: 0, home: 0, other: 0 }, snoop: new Map(), stints: [],
       g: { bursts: [], samples: 0, snapOpp: 0, snapIgn: 0, snapIgnR: 0, switches: 0, combatT: 0, noseLead: 0, noseTgt: 0, noseNone: 0 }, gs: new WeakMap(),
       tr: R.trace ? { rows: [], bursts: [], waves: [], drops: [] } : null };
   }
@@ -175,7 +176,7 @@ function install() {
       // 3. losing the target
       if (W.lostT === null) {
         const tg = w.target, seen = tg && tg.alive && !tg.sinking && WW.intel && WW.intel.visible(w.nation, tg, 4);
-        if (!tg || !tg.alive || tg.sinking || (w.dT < LOST_R && !seen)) { W.lostT = t; W.lostTgt = tg; }
+        if ((!tg || !tg.alive || tg.sinking || (w.dT < LOST_R && !seen)) && c.L.some(p => p.ordnance)) { W.lostT = t; W.lostTgt = tg; }
       }
       if (S.tr && half) S.tr.waves.push([+t.toFixed(1), W.id, w.nation, +c.x.toFixed(0), +c.z.toFixed(0), w.dT > TRANSIT ? 1 : 0]);
     }
@@ -221,10 +222,10 @@ function install() {
   R.flush = function () {
     const t = now();
     for (const [p, st] of S.snoop) if (st.in) S.stints.push({ n: p.nation, k: st.k, t: +(t - st.t0).toFixed(1), end: 'end' });
-    const waves = []; for (const W of S.wv.values()) waves.push({ n: W.n, lost: W.lostT, alt: W.altT, esc0: W.esc0, escArr: W.escArr, peel: W.peel });
+    const waves = []; for (const W of S.wv.values()) waves.push({ n: W.n, lost: W.lostT !== null && W.lostT < t - 60 ? W.lostT : null, alt: W.altT, esc0: W.esc0, escArr: W.escArr, peel: W.peel });
     const sorties = []; for (const r of S.sortie.values()) sorties.push(r);
     const out = { pairs: [...S.pairs.values()].map(P => ({ h: Math.round(P.h), d3: P.d3 < 1e9 ? Math.round(P.d3) : null })), peel: [...S.peel.values()], waves, sorties, drops: S.drops, stints: S.stints,
-      g: S.g, strafe: WW.strafe ? Object.assign({}, WW.strafe.stats) : null, opp: WW.cag && WW.cag.stats ? Object.assign({}, WW.cag.stats) : null, err: R.err, last: R.last || null };
+      g: S.g, df: (() => { const a = dfs(), o = {}; for (const k in a) o[k] = a[k] - S.df0[k]; return o; })(), strafe: WW.strafe ? Object.assign({}, WW.strafe.stats) : null, opp: WW.cag && WW.cag.stats ? Object.assign({}, WW.cag.stats) : null, err: R.err, last: R.last || null };
     if (S.tr) out.trace = S.tr;
     return out;
   };
@@ -308,6 +309,9 @@ function report(rounds) {
     nearerInFront: nearBetter / Math.max(1, B.length), snapOpp: G.snapOpp / Math.max(1, G.combatT), snapIgn: G.snapIgn / Math.max(1, G.combatT), snapIgnShare: G.snapIgn / Math.max(1, G.snapOpp),
     switchPerMin: G.switches / Math.max(1, G.combatT) * 60, noseTgt: G.noseTgt / Math.max(1, nn), noseLead: G.noseLead / Math.max(1, nn), combatT: G.combatT };
   say(`5. guns: bursts ${B.length}; target inside 10 deg and gun range ${pc(out.guns.onTarget)} (target or its lead point ${pc(out.guns.onTgtOrLead)}); angle off p50 ${f1(out.guns.aP50)} p90 ${f1(out.guns.aP90)} deg; range p50 ${f1(out.guns.dP50)}; at a plane other than the assigned foe ${pc(out.guns.notFoe)}; a nearer enemy squarer in front ${pc(out.guns.nearerInFront)}`);
+  const D = { rounds: 0, hits: 0, gunKills: 0, snaps: 0, switches: 0 }; for (const r of rounds) if (r.rec.df) for (const k in D) D[k] += r.rec.df[k] || 0;
+  out.df = { hitPer100: 100 * D.hits / Math.max(1, D.rounds), killsPerRound: D.gunKills / N, roundsPerKill: D.rounds / Math.max(1, D.gunKills), snapsPerRound: D.snaps / N, switchesPerRound: D.switches / N };
+  say(`   rounds fired ${D.rounds}, hits per 100 ${f1(out.df.hitPer100)}, gun kills per round ${f1(out.df.killsPerRound)} (${Math.round(out.df.roundsPerKill)} rounds a kill); snapshot bursts per round ${f1(out.df.snapsPerRound)}, front switches per round ${f1(out.df.switchesPerRound)}`);
   say(`   per combat second (${Math.round(G.combatT)} fighter-s): snapshot chances ${out.guns.snapOpp.toFixed(3)}/s, ignored ${out.guns.snapIgn.toFixed(3)}/s (${pc(out.guns.snapIgnShare)} of chances; with the guns ready ${pc(out.guns.snapIgnReady)}); foe switches ${f1(out.guns.switchPerMin)}/min; within 60 of the foe: nose on target ${pc(out.guns.noseTgt)}, on the lead point only ${pc(out.guns.noseLead)}, neither ${pc(1 - out.guns.noseTgt - out.guns.noseLead)}`);
   return out;
 }

@@ -109,13 +109,14 @@ window.WW = window.WW || {};
       if (!u || !u.alive) continue;
       if (WW.cap && !WW.cap.inReach(pl, u)) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
-      if (u.kind === 'flyingboat' && picture(c).armed) continue;   // bombers first: the snooper waits
+      const snoop = WW.cap ? WW.cap.snooper(u) : u.kind === 'flyingboat';
+      if (dc > (arm && inbound(u, c) || snoop || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
+      if (snoop && picture(c).armed) continue;   // bombers first: the snooper waits
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
       else if (arm && u.kind === 'dive' && (u.phase || u.state === 'attack')) pr = 320;
       else if (arm) pr = 220;
-      else if (u.kind === 'flyingboat') pr = 200;   // a snooper shadowing the fleet: shoot it down before it reports
+      else if (snoop) pr = 200;   // a snooper shadowing the fleet (flying boat, scout, search plane): shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
       if (arm && bd) pr += u.kind === (bd === 'high' ? 'dive' : 'torpedo') ? 140 : -150;   // USN height bands: each band its own raiders
@@ -131,7 +132,7 @@ window.WW = window.WW || {};
     const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z), Lh = leashOf(pl);
     if (d <= Lh.leash) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
-    if (f.kind === 'flyingboat') return d <= Lh.leash2;              // a shadower: the long leash, as for an inbound raid
+    if (WW.cap ? WW.cap.snooper(f) : f.kind === 'flyingboat') return d <= Lh.leash2;   // a shadower: the long leash, as for an inbound raid
     if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= Lh.leash2 * 0.75) return true;   // finish a damaged bomber turning for home
     if (d > Lh.leash2) return false;
     if (pl.df && pl.df.foe === f && pl.df.lock > 0) return true;   // a committed attack runs its passes (a raider that jettisoned is still shot at)

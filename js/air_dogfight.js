@@ -181,10 +181,11 @@ window.WW = window.WW || {};
   // plane in the gunsight cone is fired at instead (snapshot). s.gunAt: the plane being fired at (tests, visuals).
   function guns(p, f, s, dt, can, keep) {
     s.cool -= dt; s.flashT -= dt;
-    if (!can) { const q = snapTarget(p, s); if (q && q !== f) { f = q; can = keep = true; DS.snaps = (DS.snaps || 0) + (s.burst > 0 ? 0 : 1); } else if (q) { can = keep = true; } }
+    let snap = false;
+    if (!can) { const q = snapTarget(p, s); if (q) { snap = q !== f; f = q; can = keep = true; } }
     if (!f) { s.burst = 0; s.gunAt = null; s.roundT = 0; return; }
     if (s.burst > 0) { s.burst -= dt; if (!keep) s.burst = 0; }
-    else if (can && s.cool <= 0) { s.burst = WW.randRange(0.4, 0.85); s.cool = s.burst + WW.randRange(0.5, 1.1); s.roundT = 0; }
+    else if (can && s.cool <= 0) { s.burst = WW.randRange(0.4, 0.85); s.cool = s.burst + WW.randRange(0.5, 1.1); s.roundT = 0; if (snap) DS.snaps = (DS.snaps || 0) + 1; }
     s.gunAt = s.burst > 0 ? f : null;
     if (s.burst <= 0) { s.roundT = 0; return; }
     s.roundT -= dt;

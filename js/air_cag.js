@@ -13,7 +13,7 @@
 window.WW = window.WW || {};
 (function () {
   const ARRIVE = 140, DETOUR_FAR = 120, VB_HOLD = 20, VT_HOLD = 15, SEARCH_R = 60, UNSEEN_T = 8, CV_NEAR = 250;
-  const ST = { redirects: 0, handovers: 0, detours: 0, saves: 0, syncHolds: 0 };
+  const ST = { redirects: 0, handovers: 0, detours: 0, saves: 0, syncHolds: 0, peels: 0 };
   const bomber = p => p.alive && (p.kind === 'dive' || p.kind === 'torpedo');
   const emit = (o) => { if (WW.emit) WW.emit('airOrder', o); };
   const sqNames = (w) => { const s = []; for (const p of w.members) if (p.squadron && s.indexOf(p.squadron.short) < 0) s.push(p.squadron.short); return s; };
@@ -140,7 +140,31 @@ window.WW = window.WW || {};
     return (pl.cover = idx % 2 ? 'top' : 'close');
   }
   function strikeBombers(pl) { const L = []; for (const p of WW.world.planes) if (bomber(p) && p.carrier === pl.carrier && (p.state === 'transit' || p.state === 'attack' || p.state === 'return') && WW.dist(p.x, p.z, pl.x, pl.z) < 220) L.push(p); return L; }
-  // air_ops fighter(): the escort's foe. Saving a bomber first, then by cover role.
+  // air_ops fighter(): the escort's foe. Saving a bomber first, then by cover role. Top cover meets fighters coming
+  // at the strike (closing on its bombers, or already on one of ours), not every fighter that passes: a passing
+  // raid's escort is left alone. Doctrine air.peel (IJN): with an ample escort, ONE element of a strike in transit
+  // may go for a passing enemy raid's bombers (Santa Cruz: Zuiho's Zeros jumped the Enterprise strike on the way);
+  // the strike then arrives with less cover. USN escorts stay with their strike.
+  const PEEL = { USN: 0, IJN: 1 }, PEEL_R = 140, PEEL_T = 25, PEEL_MIN = 4;
+  const peelDoc = n => { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null; return d && d.air && d.air.peel !== undefined ? d.air.peel : PEEL[n] || 0; };
+  function passing(pl, B) {   // the nearest armed bomber of a passing enemy strike, not attacking ours
+    const w = pl.wave, now = WW.time.now;
+    if (!w || !w.go || w.done || w.dT < 220 || !pl.element || !peelDoc(pl.nation)) return null;
+    if (w.peel && (w.peel.el !== pl.element || now - w.peel.t > PEEL_T)) return null;   // one element, for a while
+    if (!w.peel) {
+      let E = 0, nb = 0; for (const p of w.members) if (p.alive && p.state !== 'return') { if (p.kind === 'fighter') E++; else if (p.ordnance) nb++; }
+      if (E < PEEL_MIN || E - pl.element.members.length < Math.max(2, 0.3 * nb)) return null;   // the escort is not ample
+    }
+    let best = null, bd = PEEL_R;
+    for (const c of WW.intel.enemyPlanes(pl.nation)) {
+      const u = c.unit; if (!u || !u.alive || !u.ordnance || (u.kind !== 'dive' && u.kind !== 'torpedo') || !u.wave || !u.wave.go) continue;
+      const d = WW.dist(pl.x, pl.z, u.x, u.z); if (d >= bd) continue;
+      if (B.some(b => WW.dist2(b.x, b.z, u.x, u.z) < 50 * 50)) continue;   // mixed up with our bombers: the close cover's job
+      bd = d; best = u;
+    }
+    if (best && !w.peel) { w.peel = { el: pl.element, t: now }; ST.peels++; emit({ carrier: pl.carrier, squadron: pl.squadron, order: 'peel', plane: pl, leader: pl, target: w.target }); }
+    return best;
+  }
   function escortPick(pl) {
     const B = strikeBombers(pl), DF = WW.dogfight;
     let best = null, bd = 1e9;
@@ -150,11 +174,13 @@ window.WW = window.WW || {};
     const top = cover(pl) === 'top';
     for (const c of WW.intel.enemyPlanes(pl.nation)) {
       const u = c.unit; if (!u.alive || u.kind !== 'fighter') continue;
-      let dmin = 1e9;
-      for (const b of B) dmin = Math.min(dmin, WW.dist(u.x, u.z, b.x, b.z));
+      let dmin = 1e9, nb = null;
+      for (const b of B) { const d = WW.dist(u.x, u.z, b.x, b.z); if (d < dmin) { dmin = d; nb = b; } }
       const onUs = u.foe && u.foe.nation === pl.nation;
-      if (top ? dmin < 100 : dmin < 35 && onUs) { const d = WW.dist(pl.x, pl.z, u.x, u.z) - (onUs ? 20 : 0); if (d < bd) { bd = d; best = u; } }
+      const coming = onUs || (nb && Math.abs(WW.angleDiff(u.heading, Math.atan2(nb.z - u.z, nb.x - u.x))) < 0.8);   // heading for our bombers
+      if (top ? dmin < 100 && coming : dmin < 35 && onUs) { const d = WW.dist(pl.x, pl.z, u.x, u.z) - (onUs ? 20 : 0); if (d < bd) { bd = d; best = u; } }
     }
+    if (!best && top) best = passing(pl, B);
     return best;
   }
   // air_ops fighter() with a strike target and no foe: formation, then over the target, then home with the bombers.
