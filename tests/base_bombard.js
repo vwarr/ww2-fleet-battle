@@ -86,7 +86,7 @@ function page(spec) {
   }
   for (const f of B.facilities) if (f.out) R.facOut[f.kind] = (R.facOut[f.kind] || 0) + 1;
   R.groundLost = LG.stats.groundLost; R.neutAt = WW.islandBase.stats.neutralizedAt; R.hpEnd = B.hp / B.maxHp; R.len = Math.round(G.roundTime);
-  R.st = WW.islandBase.stats; R.winner = G.winner || null;
+  R.st = WW.islandBase.stats; R.defStrikes = WW.landAir.stats.defStrikes || 0; R.landHits = WW.islandBase.stats.landHits; R.winner = G.winner || null;
   WW.islandBase.impact = imp0; window.__bbTok = null; void [L1, L2, L3, L4, L5];
   delete R.bombarders;
   return R;
@@ -122,7 +122,7 @@ function page(spec) {
     console.log(`  facilities out (total): ${JSON.stringify(fo)}`);
     console.log(`  coastal battery shots / round ${avg(L.map(r => r.batShots))}, hits ${avg(L.map(r => r.batHits))}, range p50 ${med([].concat(...L.map(r => r.batRange)))}`);
     console.log(`  ship light AA at base planes ON THE GROUND / round ${avg(L.map(r => r.groundAA))} (hits ${avg(L.map(r => r.groundAAhit))}); in the air ${avg(L.map(r => r.airAA))}; base pit AA streams ${avg(L.map(r => r.pitAA))}`);
-    console.log(`  base strikes by target ${JSON.stringify(st)}; scrambles / round ${avg(L.map(r => r.scr))}`);
+    console.log(`  base strikes by target ${JSON.stringify(st)}; scrambles / round ${avg(L.map(r => r.scr))}; self-defence strikes / round ${avg(L.map(r => r.defStrikes))}; land hits on ships / round ${avg(L.map(r => r.landHits))}`);
   }
   if (JSON_OUT) require('fs').writeFileSync(JSON_OUT, JSON.stringify(out, null, 1));
 })().catch(e => { console.error(e); process.exit(2); });

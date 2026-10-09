@@ -152,6 +152,7 @@ window.WW = window.WW || {};
     else if (B && B.posture === 'withdraw') pref *= 1.15;
     if (B && WW.nightOps) pref *= WW.nightOps.rangeK(B); // the night-fighting side closes in the dark
     if (t && t.type === 'carrier' && !fair(ship, t, B)) pref = Math.max(pref, CV_KEEP + 5);
+    if (t && t.isBase && WW.baseAI && WW.baseAI.bombardRange) pref = WW.baseAI.bombardRange(ship, pref); // a bombardment run (base_ai.js)
     return pref;
   }
   // Gun fight: orbit the target at the preferred range, holding a pure broadside within +-BAND of it. The orbit

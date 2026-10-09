@@ -91,20 +91,56 @@ window.WW = window.WW || {};
     var fs = WW.shipAI.h.fireSpread;
     WW.shipAI.h.fireSpread = function (ship, t) { if (t && t.isBase) return false; return fs.apply(this, arguments); };
   }
-  // Bombardment fire control: each ship spots for one aim point at a time - the nearest live coastal battery in its
-  // range first (counter-battery), then the runways, then the AA pits and the rest (fireShell aims at target.x / z).
+  // Bombardment fire control (Kongo and Haruna on Henderson Field, 13-14 Oct 1942): each ship works one line of fall at
+  // a time and WALKS its shells along it (WALK u per round fired, out and back) - a live coastal battery in its range
+  // first (counter-battery: a point), then the planes parked in their dispersal rows, the fuel farm and the hangars,
+  // an open runway end to end, the AA pits and the rest. Two ships do not work the same line if they can help it.
+  // fireShell aims at target.x / z, so the wrapper below moves the base's x / z to the walking aim point for the call.
+  var WALK = 3.2, LINE_T = 30, BOMB_K = 0.7;   // BOMB_K: a bombardment run closes to this x the main battery's range
+  function bombardRange(ship, pref) { var g = ship.stats.guns[0]; return g ? Math.min(pref, g.range * BOMB_K) : pref; }
+  function aimLines(ship, b) {
+    var R = ship.stats.guns[0] ? ship.stats.guns[0].range : 100, L = [], i, f, d;
+    var add = function (key, x0, z0, x1, z1, pr) {
+      d = WW.dist(ship.x, ship.z, (x0 + x1) / 2, (z0 + z1) / 2);
+      L.push({ key: key, x0: x0, z0: z0, x1: x1, z1: z1, sc: pr - d * 0.5 - (d > R ? 400 : 0) });
+    };
+    for (i = 0; i < b.facilities.length; i++) {
+      f = b.facilities[i]; if (f.out) continue;
+      // a battery that can reach us (or has fired on us) first: counter-battery; one out of its reach can wait
+      var duel = f.kind === 'battery' && (WW.dist(ship.x, ship.z, f.x, f.z) < WW.islandBase.BATTERY.range + 15 || WW.time.now - (f.firedAt || -1e9) < 40);
+      var pr = f.kind === 'battery' ? (duel ? 300 : 60) : f.kind === 'fuel' ? 200 : f.kind === 'hangar' ? 170 : f.kind === 'aa' ? 100 : 30;
+      if (f.kind === 'battery') add(f, f.x, f.z, f.x, f.z, pr);
+      else { var cx = Math.cos(f.a || 0) * (f.r + 3), cz = Math.sin(f.a || 0) * (f.r + 3); add(f, f.x - cx, f.z - cz, f.x + cx, f.z + cz, pr); }
+    }
+    // the dispersal: from a parked plane to the farthest parked plane within 26 u of it (a row of revetments)
+    var P = (b.slots || []).filter(function (s) { return s.spot && (s.state === 'parked' || s.state === 'rearm'); });
+    for (i = 0; i < P.length; i += 3) {
+      var s0 = P[i], far = s0, fd = 0, n = 0;
+      for (var j = 0; j < P.length; j++) { var dd = Math.hypot(P[j].x - s0.x, P[j].z - s0.z); if (dd < 26) { n++; if (dd > fd) { fd = dd; far = P[j]; } } }
+      add('row' + s0.i, s0.x, s0.z, far.x, far.z, 120 + 12 * Math.min(n, 6));
+    }
+    for (i = 0; i < b.runways.length; i++) { var r = b.runways[i]; if (r.closed) continue; var h = r.len * 0.42; add(r, r.x - r.c * h, r.z - r.s * h, r.x + r.c * h, r.z + r.s * h, i ? 110 : 140); }
+    return L;
+  }
   function shipAim(ship, b) {
     var a = ship._baseAim, now = WW.time.now;
-    if (a && now - a.t < 25 && !(a.f && a.f.out)) return a;
-    var R = ship.stats.guns[0] ? ship.stats.guns[0].range : 100, best = null, bs = -1e9;
-    for (var i = 0; i < b.facilities.length; i++) {
-      var f = b.facilities[i]; if (f.out) continue;
-      var d = WW.dist(ship.x, ship.z, f.x, f.z), pr = f.kind === 'battery' ? 300 : f.kind === 'aa' ? 120 : f.kind === 'hangar' || f.kind === 'fuel' ? 90 : 20;
-      var sc = pr - d * 0.5 - (d > R ? 400 : 0); if (sc > bs) { bs = sc; best = f; }
+    if (!a || now - a.t > LINE_T || a.done || (a.key && a.key.out) || (a.key && a.key.closed)) {
+      var L = aimLines(ship, b), best = null, bs = -1e9;
+      for (var i = 0; i < L.length; i++) {
+        var c = L[i], sc = c.sc;
+        for (var k = 0; k < WW.world.ships.length; k++) { var o = WW.world.ships[k]; if (o !== ship && o._baseAim && o._baseAim.key === c.key && now - o._baseAim.t < LINE_T) sc -= 90; }
+        if (a && a.key === c.key) sc -= 40;                   // a fresh line after a full pass
+        if (sc > bs) { bs = sc; best = c; }
+      }
+      a = ship._baseAim = best ? { key: best.key, x0: best.x0, z0: best.z0, x1: best.x1, z1: best.z1, u: 0, dir: 1, t: now, done: false }
+        : { key: null, x0: b.x, z0: b.z, x1: b.x, z1: b.z, u: 0, dir: 1, t: now, done: false };
+      a.len = Math.hypot(a.x1 - a.x0, a.z1 - a.z0);
     }
-    var rw = null; for (var j = 0; j < b.runways.length; j++) if (!b.runways[j].closed) { rw = b.runways[j]; break; }
-    if (rw && (!best || best.kind !== 'battery') && ((ship.id + Math.floor(now / 25)) & 1)) best = { x: rw.x + rw.c * rw.len * 0.25 * ((ship.id & 1) ? 1 : -1), z: rw.z + rw.s * rw.len * 0.25 * ((ship.id & 1) ? 1 : -1), f: null };
-    return (ship._baseAim = best ? { x: best.x, z: best.z, f: best.f === undefined ? best : best.f, t: now } : { x: b.x, z: b.z, f: null, t: now });
+    var u = a.len > 0.5 ? a.u / a.len : 0.5;
+    a.x = a.x0 + (a.x1 - a.x0) * u; a.z = a.z0 + (a.z1 - a.z0) * u;
+    a.u += WALK * a.dir;                                        // the next round falls a little further along
+    if (a.u > a.len) { a.u = a.len; a.dir = -1; } else if (a.u < 0) { a.u = 0; a.done = true; }
+    return a;
   }
   if (WW.combat && WW.combat.fireShell) {
     var fire0 = WW.combat.fireShell;
@@ -119,6 +155,6 @@ window.WW = window.WW || {};
   if (WW.strike && WW.strike.TOP) WW.strike.TOP.base = 3;                         // pull-out clearance over the field
   WW.on('baseBuilt', function (e) { if (e && e.base) weights(true); });
 
-  WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, alarm: alarm, W_BASE: W_BASE,
+  WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, alarm: alarm, W_BASE: W_BASE, bombardRange: bombardRange, BOMB_K: BOMB_K,
     ALARM: { SHIP: ALARM_SHIP, PLANE: ALARM_PLANE, NEAR: ALARM_NEAR } };
 })();

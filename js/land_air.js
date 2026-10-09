@@ -36,7 +36,7 @@ window.WW = window.WW || {};
   };
   for (const k in VAR) if (VAR[k].gear) VAR[k].gear *= WW.cfg.PLANE_K || 1;   // gear heights above were measured at the 1.7 plane scale
   const KATE = { alt: 40, bombs: 1 };
-  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0 };
+  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0, defence: 0, defStrikes: 0 };
 
   const groundY = b => b.site.padH;
   const gearOf = p => (p.variant && VAR[p.variant].gear) || WW.air._pool.deckY;
@@ -68,6 +68,20 @@ window.WW = window.WW || {};
     }
     return { on, coming };
   }
+  // The enemy warship that threatens the island most: a fresh contact within DEF_R of it, a ship shelling it (_bombT,
+  // island_base.js) or a gun ship counting double; null when the sea round the island is clear.
+  const DEF_R = 300, DEF_V = { battleship: 9, cruiser: 6, carrier: 8, destroyer: 3, pt: 1.2, submarine: 1.5 };
+  function defTarget(b) {
+    if (!WW.intel) return null;
+    let best = null, bs = 0; const now = WW.time.now;
+    for (const c of WW.intel.enemyShips(b.nation, { fresh: true })) {
+      const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase) continue;
+      const d = WW.dist(b.x, b.z, c.x, c.z); if (d > DEF_R) continue;
+      const sc = (DEF_V[u.type] || 1) * (now - (u._bombT || -1e9) < 60 ? 2 : 1) / (1 + d / 150);
+      if (sc > bs) { bs = sc; best = u; }
+    }
+    return best;
+  }
   function variants(b, kind) { const L = []; for (const s of b.slots) if (VAR[s.v].kind === kind && !VAR[s.v].level && L.indexOf(s.v) < 0) L.push(s.v); return L; }
   function pick(b, kind) { for (const v of variants(b, kind)) if (G().ready(b, v) > 0) return v; return null; }
   function canLaunch(b) { return G().opsOpen(b) && !(WW.dayNight && WW.daylight < 0.53); }
@@ -90,10 +104,14 @@ window.WW = window.WW || {};
       if (raid && now - a.scrT > 60 && canLaunch(b) && a.queue.some(q => q.fast)) { a.scrT = now; ST.scrambles++; WW.emit('baseEvent', { kind: 'scramble', base: b, nation: b.nation, x: b.x, z: b.z }); }
     }
     a.strikeT -= dt;
+    const def = defTarget(b);   // self-defence first: warships off the island (the Cactus Air Force after the bombardment)
+    if (def && def !== a.defFor) { a.defFor = def; a.strikeT = Math.min(a.strikeT, 4); ST.defence++; }
     if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
       a.strikeT = WW.randRange(55, 75);
-      const t = WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null;
+      const t = def || (WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null);
+      if (t && !canLaunch(b) && def) a.strikeT = 5;   // runway cratered / dark: the strike goes the moment it can (at dawn)
       if (t && WW.dist(b.x, b.z, t.x, t.z) < STRIKE_R && canLaunch(b)) {
+        if (t === def) ST.defStrikes++;
         const wave = [], avail = {};
         for (const s of b.slots) if (s.state === 'parked' && s.readyAt <= now && !s.moved) avail[s.v] = (avail[s.v] || 0) + 1;
         for (const k in avail) {
