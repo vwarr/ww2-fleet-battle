@@ -253,7 +253,9 @@ window.WW = window.WW || {};
     S.phase = phaseOf(L);
     const age = now - S.t0;
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
-    const sk = S.user && !S.shots && WW.storyShots.valid('chase', L, S.group) ? 'chase' : choose(S.phase, L); // the user asked: open close on the subject
+    const sk = S.user && !S.shots && WW.storyShots.valid('chase', L, S.group) ? 'chase' // the user asked: open close on the subject
+      : !S.shots && S.mission === 'strike' && (S.phase === 'form' || S.phase === 'transit') && WW.storyShots.valid('side', L, S.group) ? 'side' // open on the formation, side on: its size and stack
+      : choose(S.phase, L);
     const d = S.phase === 'attack' && sk !== 'high' ? dur(10, 14) : dur(CUT[0], CUT[1]);
     // hard cuts inside a scene; a soft cross-fade into the story, out of a cutaway and on a new phase
     const hard = (S.user && !S.shots) || (S.shots > 0 && S.last !== 'cutaway' && S.prevPhase === S.phase && Math.random() < 0.5); // a key press answers at once
@@ -334,7 +336,7 @@ window.WW = window.WW || {};
     }
     if (S.cutaway && shot && shot.story && !shot.stage && shot.t > 3 && !shot.cutaway && S.phase !== 'attack' && !S.fall) shot.dur = Math.min(shot.dur, shot.t);
     // the title card, through the air-caption throttle
-    if (S.title && now < S.titleUntil && shot && shot.t > 0.8 && WW.airCaptions && WW.airCaptions.say && WW.airCaptions.say(S.title[0], S.title[1])) S.title = null;
+    if (S.title && now < S.titleUntil && shot && shot.t > 0.8 && WW.airCaptions && WW.airCaptions.say && WW.airCaptions.say(S.title[0], S.title[1], S.lead)) S.title = null;
   }
 
   WW.camStory = {

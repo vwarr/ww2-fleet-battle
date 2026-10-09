@@ -31,6 +31,13 @@ window.WW = window.WW || {};
     if (!s || s.diorama) return null;
     return s;
   }
+  // the strike's wave (the leader's at the order) and the "Strike away" line, naming the wave's target NOW (a
+  // redirect after the order changes it)
+  const waveOf = m => (m.leader && m.leader.wave) || (m.plane && m.plane.wave) || null;
+  function awayLine(m) {
+    const w = waveOf(m), t = (w && w.target) || m.target, c = m.carrier;
+    return [c.nation === 'USN' ? 'Strike away: ' + m.squadrons.join(', ') : 'Strike away from ' + (c.name || 'the carrier'), (c.nation === 'USN' ? '' : m.squadrons.length + ' units, ') + (t ? 'against a ' + (KIND[t.type] || 'ship') : '')];
+  }
   function lineFor(s) {
     const now = WW.time.now, fresh = moments.filter(m => now - m.sim < KEEP);   // fresh in sim time too
     const isP = s.pt && s.kind && s.alive && s.squadron, k0 = isP && (s.t0id || (s.t0id = Math.random()));
@@ -45,8 +52,8 @@ window.WW = window.WW || {};
       if ((m.order === 'kill' || m.order === 'ace') && m.plane === s) {
         const k = s.pilot ? s.pilot.kills : s.kills;
         line = [who(s) || 'Ace', (m.order === 'ace' ? 'becomes an ace, ' : '') + k + (k === 1 ? ' kill' : ' kills') + (sqName(s) ? ' · ' + sqName(s) : '')];
-      } else if (m.order === 'strikeAway' && m.squadrons && m.squadrons.length && (s === m.carrier || (isPlane && s.wave && s.wave.carrier === m.carrier && s.sk === 'form')))
-        line = [m.carrier.nation === 'USN' ? 'Strike away: ' + m.squadrons.join(', ') : 'Strike away from ' + (m.carrier.name || 'the carrier'), (m.carrier.nation === 'USN' ? '' : m.squadrons.length + ' units, ') + (m.target ? 'against a ' + (KIND[m.target.type] || 'ship') : '')];
+      } else if (m.order === 'strikeAway' && m.squadrons && m.squadrons.length && (s === m.carrier || (isPlane && s.wave && s.wave === waveOf(m) && s.state === 'transit')))
+        line = awayLine(m);
       else if (m.order === 'scramble' && m.raid && cv === m.carrier && (s === cv || (isPlane && s.kind === 'fighter' && !s.target)))
         line = ['CAP vectored to raid', vector(m.carrier, m.raid) + (cv.name ? ' · ' + cv.name : '')];
       else if (m.order === 'redirect' && isPlane && s.wave && s.wave.carrier === m.carrier && m.target)
@@ -123,9 +130,17 @@ window.WW = window.WW || {};
       for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.foe === p) { add(7.5, 'ots', q, { dur: dur(10, 13) }); break; }
     }
   });
-  // story mode title card (camera_story.js): shown only when the throttle allows; true if shown
-  function say(main, sub) {
+  // story mode title card (camera_story.js): shown only when the throttle allows; true if shown. p: the story's
+  // leader: when its strike has just gone ("Strike away"), the card says so in its second line (one caption, not
+  // a title card now and the strike call 15 s later)
+  function say(main, sub, p) {
     if (!WW.ui || !WW.ui.caption || wall() - lastCap < GAP || (WW.ui.captionOn && WW.ui.captionOn())) return false;
+    const w = p && p.wave, now = WW.time.now;
+    if (w) for (const m of moments) {
+      const key = m.order + ':' + (m.plane ? m.plane.t0id || (m.plane.t0id = Math.random()) : '') + ':' + m.at;
+      if (m.order !== 'strikeAway' || waveOf(m) !== w || now - m.sim > KEEP || said.has(key)) continue;
+      said.add(key); const a = awayLine(m); sub = a[0] + (a[1] ? ' · ' + a[1] : ''); break;
+    }
     WW.ui.caption(main, sub || '', SECS, true);
     lastCap = wall(); ST.shown++; ST.last = [main, sub];
     return true;
