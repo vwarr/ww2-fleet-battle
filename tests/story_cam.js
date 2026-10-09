@@ -150,15 +150,16 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
   console.log('[F] imminent:', imm);
   if (imm) {
     await p.keyboard.press('f'); await p.evaluate(() => { __render = false; __step(75); });
-    const r = { msg: await msg(), label: await lab(), story: await p.evaluate(() => { const s = WW.camStory.story(); return s && s.user && s.begun; }) };
-    console.log((r.story && /in ~|now/.test(r.msg) ? 'PASS' : 'FAIL') + ' F jumps to the imminent attack:', JSON.stringify(r));
+    const r = { msg: await msg(), label: await lab(), story: await p.evaluate(() => { const s = WW.camStory.story(); return !!(s && s.user && s.begun); }),
+      ship: await p.evaluate(() => { const s = WW.cam._shot(); return !!(s && s.user); }) };
+    console.log(((r.story || r.ship) && /^Follow: /.test(r.msg) && !/off/.test(r.msg) && /^Following/.test(r.label) ? 'PASS' : 'FAIL') + ' F jumps to the most imminent attack:', JSON.stringify(r));
     await snap('keys_F_imminent');
     // Tab, Tab, Shift+Tab
     const tabs = [];
     for (const k of ['Tab', 'Tab', 'Shift+Tab']) { await p.keyboard.press(k); await p.evaluate(() => { __render = false; __step(45); }); tabs.push(await msg()); }
     console.log('[Tab]', tabs.join(' | '));
-    const n0 = (tabs[0].match(/^(\d+)\//) || [])[1], n2 = (tabs[2].match(/^(\d+)\//) || [])[1];
-    console.log(/^\d+\/\d+/.test(tabs[0]) && n0 === n2 ? 'PASS Tab / Shift+Tab cycle' : (/^No attacks/.test(tabs[0]) ? 'SKIP Tab (nothing upcoming)' : 'FAIL Tab cycle'));
+    const subj = t => t.replace(/^\d+\/\d+ \u00b7 /, '').replace(/ in ~.*$/, '');
+    console.log(tabs.every(t => /^\d+\/\d+/.test(t)) && subj(tabs[0]) === subj(tabs[2]) && subj(tabs[0]) !== subj(tabs[1]) ? 'PASS Tab / Shift+Tab cycle' : (/^No attacks/.test(tabs[0]) ? 'SKIP Tab (nothing upcoming)' : 'FAIL Tab cycle'));
     await snap('keys_tab');
     await p.keyboard.press('f'); await p.evaluate(() => __step(5));
     const off = { msg: await msg(), story: await p.evaluate(() => WW.camStory.active()), fc: await p.evaluate(() => WW.freecam.active()) };

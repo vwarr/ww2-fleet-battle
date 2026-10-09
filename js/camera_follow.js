@@ -111,17 +111,17 @@ window.WW = window.WW || {};
     const fc = WW.freecam && WW.freecam.active();
     const fo = fc && WW.freecam.following();
     if (fc && fo) return 'Following ' + nameOf(fo) + '  ·  drag: orbit  ·  scroll: zoom  ·  O: ' + (WW.freecam.rel() ? 'heading-relative' : 'world-fixed') + '  ·  F: director';
+    const shot = WW.cam._shot();
+    if (cur && cur.ship && shot && shot.user && shot.subj === cur.subj) { // the user jumped to a ship
+      const it = WW.camFinder && WW.camFinder.about(cur.subj);
+      return 'Following ' + nameOf(cur.subj) + '  \u00b7  ' + (it ? say(it) : cur.item.label);
+    }
     const sto = WW.camStory.story();
     if (sto) {
       const it = WW.camFinder && WW.camFinder.about(sto.lead);
       const tail = it && it.etaReal >= 3 ? '  ·  ' + say(it) : '';
       if (!sto.begun) return sto.user || sto.item ? 'Next: ' + (it ? say(it) : nameOf(sto.lead)) : '';
       return 'Following ' + nameOf(sto.lead) + tail;
-    }
-    const shot = WW.cam._shot();
-    if (cur && cur.ship && shot && shot.user && shot.subj === cur.subj) {
-      const it = WW.camFinder && WW.camFinder.about(cur.subj);
-      return it ? say(it) : cur.item.label;
     }
     return '';
   }
