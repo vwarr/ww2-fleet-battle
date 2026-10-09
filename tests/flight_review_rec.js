@@ -67,7 +67,7 @@ function install(opts) {
   function first(k, extra) { if (S.first[k] === undefined) { S.first[k] = +now().toFixed(1); S.first[k + 'Sep'] = sepNow(); if (extra) Object.assign(S.first, extra); } }
 
   function fresh() {
-    S = { H: {}, sorties: [], recs: new Map(), eng: [], drops: [], deaths: [], waves: [], wrec: new Map(), min: [], first: {}, pilots: new Map(),
+    S = { H: {}, sorties: [], recs: new Map(), eng: [], drops: [], deaths: [], waves: [], wrec: new Map(), min: [], first: {}, pilots: new Map(), sunk: [], lastHit: {},
       deckCycle: [], next: 0, nextSlow: 0, alone: {}, lead: [], fdir: {}, foeFirst: new Map(), proj: new Map(), hang: [], cvL: {}, cvT: {},
       escPos: [], trace: opts.trace ? [] : null, push: [], deck: {}, trapT: {}, trapGap: [], contact: {} };
   }
@@ -170,8 +170,9 @@ function install(opts) {
     else if (k === 'shell' || k === 'hits' || k === undefined || k === null) { m.gunDmg += e.amount; first('gunDmg'); }
     else m.otherDmg += e.amount;
     if (k && !S.first['k_' + k]) S.first['k_' + k] = 1;
+    S.lastHit[e.ship.id] = k || 'shell';
   });
-  WW.on('shipSunk', () => { if (S) minute().sunk++; });
+  WW.on('shipSunk', sh => { if (!S) return; minute().sunk++; if (sh && sh.type) S.sunk.push({ t: +now().toFixed(1), type: sh.type, n: sh.nation, base: !!sh.isBase, by: S.lastHit[sh.id] || null }); });
 
   // ---------- the sampler ----------
   const U0 = WW.air.update;
@@ -316,7 +317,7 @@ function install(opts) {
     const sorties = S.sorties.map(r => ({ n: r.nation, k: r.kind, v: r.v, o: r.o, role: r.role, t0: r.t0, t1: r.t1, end: r.end, b: r.b, circ: r.circ, air: +r.air.toFixed(1), kills: r.kills, wv: r.wv || null, out: r.armed0 ? (r.dropped ? 'dropped' : r.jett ? 'jettison' : r.end === 'roundEnd' ? 'armedAtEnd' : r.end === 'landed' ? 'landedArmed' : 'lostArmed') : null }));
     const ff = []; for (const v of S.foeFirst.values()) ff.push(v);
     const W = S.waves.map(w => Object.assign({}, w, { sepMin: w.sepMin === 1e9 ? null : +w.sepMin.toFixed(1) }));
-    const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
+    const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, sunk: S.sunk, boss: WW.airBoss ? JSON.parse(JSON.stringify(WW.airBoss.stats)) : null, deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
       fdir: S.fdir, foeFirst: ff, hang: S.hang, cvL: S.cvL, cvT: S.cvT, escPos: S.escPos, push: S.push, trace: S.trace, err: R.err, lastErr: R.lastErr || null,
       cvSep0: S.cvSep0 || null, deck: S.deck, trapGap: S.trapGap, contact: S.contact, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
     return out;

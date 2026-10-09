@@ -150,12 +150,22 @@ window.WW = window.WW || {};
     if (WW.cag) t = WW.cag.waveTick(w);                        // strike leader: redirect, handover (air_cag.js)
     if (!t || !t.alive || t.submerged) t = w.target = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: 200 }) : WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
     if (!t) { w.done = true; return; }
-    const k = WW.intel && WW.intel.known(w.nation, t) || t;   // fly to where the side last saw it (intel.js)
+    const k = aimAt(w, t);                                     // where the side reckons it is now (intel.js)
     let want = Math.atan2(k.z - w.z, k.x - w.x);
     if (WW.cag) want = WW.cag.detour(w, want, t);              // round the AA umbrella of escorts
     w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
     w.x += Math.cos(w.h) * GUIDE_V * dt; w.z += Math.sin(w.h) * GUIDE_V * dt;
     w.dT = WW.dist(w.x, w.z, k.x, k.z);
+  }
+  // The strike navigates on the side's plot: the last report, run on at its course and speed for up to DR_MAX s
+  // (dead reckoning: a carrier reported an hour ago is not where it was seen). In sight, the target itself.
+  const DR_MAX = 45, AIM = { x: 0, z: 0 };
+  function aimAt(w, t) {
+    const c = WW.intel && WW.intel.known(w.nation, t);
+    if (!c) return t;
+    const age = Math.min(DR_MAX, Math.max(0, WW.time.now - c.seenAt));
+    AIM.x = c.x + Math.cos(c.heading || 0) * (c.speed || 0) * age; AIM.z = c.z + Math.sin(c.heading || 0) * (c.speed || 0) * age;
+    return AIM;
   }
   // Fly to slot (a = ahead, s = right of the guide, alt): aim a little ahead of the slot, speed by along-track error.
   function keep(pl, w, a, s, alt, dt) {

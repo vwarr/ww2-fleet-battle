@@ -151,7 +151,8 @@ window.WW = window.WW || {};
   function orderStrike(cv) {
     const a = cv.ai, hg = cv.hangar;
     let tgt = O().pickTarget(cv);
-    if (tgt && tgt.type !== 'carrier') { const k = cvContact(cv.nation, cv.x, cv.z); if (k) { tgt = k; BS.cvFirst++; } } // the carriers first
+    let cvf = false;
+    if (tgt && tgt.type !== 'carrier') { const k = cvContact(cv.nation, cv.x, cv.z); if (k) { tgt = k; cvf = true; } } // the carriers first
     if (!tgt || hg.dive + hg.torpedo <= 0) { a.strikeT = RETRY; return; }
     const SB = WW.fleetCmd && WW.fleetCmd.side(cv.nation);
     if (SB && SB.timeLeft < 30 + WW.dist(cv.x, cv.z, tgt.x, tgt.z) / 22) { a.strikeT = RETRY; return; } // it could not get there before the end
@@ -175,7 +176,7 @@ window.WW = window.WW || {};
       if (i < nd) a.queue.push({ kind: 'dive', target: tgt });
       if (i < nt) a.queue.push({ kind: 'torpedo', target: tgt });
     }
-    BS.strikes++;
+    BS.strikes++; if (cvf) BS.cvFirst++;
     if (WW.strike) WW.strike.newWave(cv, tgt, a.queue, { reserve: !!a.rsvGo });
     a.rsvGo = false;
     a.strikeT = 1e9;                // the clock restarts when this strike departs (departed)
@@ -190,8 +191,8 @@ window.WW = window.WW || {};
   function formTarget(w) {
     const t = w.target;
     if (w.carrier.isBase || (t && t.type === 'carrier' && t.alive)) return;
-    const k = cvContact(w.nation, w.carrier.x, w.carrier.z); if (!k) return;
-    w.target = k; BS.cvRetarget++;
+    const k = cvContact(w.nation, w.carrier.x, w.carrier.z); if (!k || k === w.hunted) return;   // (a reported carrier may be a cruiser: once)
+    w.target = w.hunted = k; BS.cvRetarget++;
     for (const p of w.members) if (p.alive && p.target) p.target = k;
   }
 
