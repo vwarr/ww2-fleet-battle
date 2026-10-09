@@ -23,7 +23,7 @@ const SR = require('./sanity_rules');
 // id, severity (3 = what the user named: bombers through, obvious targets ignored, guns silent; 2 = plainly odd;
 // 1 = untidy / doctrine-adjacent; 0 = info), owner (who would fix it), what counts and why the threshold
 const RULES = [
-  ['P1', 3, 'planes2', 'seen armed bomber inbound (drop < 45 s) on a friendly ship, NO fighter on it or vectored to it, while a CAP / returning / stacked fighter could reach it on a lead course 1 s before the drop with fuel home; fighters already on a raider are not counted as able (3 s)'],
+  ['P1', 3, 'planes2', 'seen armed bomber inbound (drop < 45 s) on a friendly ship, NO fighter on it or vectored to it, while a CAP / returning / stacked fighter could reach it on a lead course 1 s before the drop with fuel home; fighters already on or vectored to a raider are not counted as able (3 s)'],
   ['P1L', 1, 'planes2', 'as P1 but the bomber is outside the fighter carrier\'s doctrine long leash (air_cap DOC.leash2): doctrine, not a blunder'],
   ['P1u', 0, 'intel', 'as P1 but the bomber is not on the side\'s plot (undetected): a detection matter'],
   ['P2', 2, 'planes2', 'CAP fighter with no foe and no vector while a seen raider it can reach before the drop, inside its leash2, has < 2 fighters on it (3 s)'],
@@ -50,7 +50,8 @@ const RULES = [
   ['S4c', 2, 'ships (ai_carrier.js)', 'carrier steaming (> 30% speed, within 70 deg) at a known BB / CA inside 1.5 x its range (2 s)'],
   ['S5', 2, 'formation', 'carrier with no BB / CA / DD within 150 u (~2 x the IJN loose ring, ~4 x the USN ring) while the side has some afloat (10 s)'],
   ['S6', 1, 'formation', 'a known gun ship within 500 u of a carrier, escorts within 200 u, none of them on the threat side (10 s)'],
-  ['S7', 2, 'ships (ai_surface / ships_nav)', 'a bomber on its run / dive at the ship (or a torpedo track at it) within 100 u and < 20 deg of turn and < 15% speed change in 6 s (4 s)'],
+  ['S7', 2, 'ships (ai_surface / ships_nav)', 'a bomber on its run / dive at the ship within 100 u, and < 20 deg of turn and < 15% speed change in the last 6 s (4 s)'],
+  ['S7t', 2, 'ships (ai_surface comb)', 'as S7 under a torpedo track the side has SEEN (intel.torpedoes) running at the ship within 100 u'],
   ['S8', 2, 'ships', 'ship (not sub) below 10% speed for 20 s with a known enemy within 600 u (rescue alongside, ASW hold excluded)'],
   ['S8c', 1, 'ships', 'ship circling: > 6 L steamed with < 2 L net in 60 s, enemy known within 600 u'],
   ['S9', 2, 'ships (ai_surface / fleet_groups)', 'lone ship (no friend within 250 u, not PT / sub) at > 50% speed heading (40 deg) at a known enemy within 300 u whose group has > 3 x its hp (10 s)'],

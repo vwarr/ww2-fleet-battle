@@ -52,7 +52,6 @@ function install(P) {
 
   // ---------------- events ----------------
   WW.on('shellFired', e => { if (R && e && e.ship) R.fired.set(e.ship, WW.game.roundTime); });
-  WW.on('weaponDropped', e => { if (R && e && e.proj && e.kind === 'torpedo') R.torps.push(e.proj); });
   function aaShot(e, heavy) {   // S2: the AA battery fired at a departing / distant plane while an attacker closes on the ship
     if (!R || !e || !e.ship || !e.target || !e.ship.stats || !e.ship.stats.aa) return;
     const s = e.ship, pl = e.target, aa = s.stats.aa, reach = aa.range * (heavy ? P.AA_HEAVY_K : P.AA_LIGHT_K);
@@ -117,7 +116,7 @@ function install(P) {
         if (onCount(u) > 0) continue;
         let best = null, bt = 1e9, cnt = 0;
         for (const f of ftr) {
-          if (f.nation !== n || f.target || f.search || f.recall || armed(f.foe)) continue;
+          if (f.nation !== n || f.target || f.search || f.recall || armed(f.foe) || armed(f.vec)) continue;
           const ok = capF(f) || (f.state === 'return' && !f.crippled) || (f.state === 'landing' && f.deckPh === 'marshal');
           if (!ok) continue;
           const r = reach(f, th); if (!r.ok) continue;
@@ -301,15 +300,17 @@ function install(P) {
       // S7: under attack (a bomber on its run / dive at it, or a torpedo track at it) and holding course and speed
       let att = null;
       for (const u of WW.world.planes) if (armed(u) && u.nation !== s.nation && u.target === s && (u.phase === 'run' || u.phase === 'dive' || u.phase === 'roll' || u.sk === 'anvil') && dist(u, s) < P.ATT_R) { att = u; break; }
-      if (!att) for (const p of R.torps) {
-        if (p.dead || p.kind !== 'torp' || p.nation === s.nation) continue;
+      let tk = false;
+      if (!att) for (const c of (WW.intel ? WW.intel.torpedoes(s.nation) : [])) {   // torpedo tracks the side has seen
+        const p = c.proj;
+        if (!p || p.dead || p.kind !== 'torp' || p.nation === s.nation) continue;
         const dx = s.x - p.x, dz = s.z - p.z, along = dx * Math.cos(p.h) + dz * Math.sin(p.h), perp = Math.abs(-dx * Math.sin(p.h) + dz * Math.cos(p.h));
-        if (along > 0 && along < P.ATT_R && perp < s.stats.length) { att = p; break; }
+        if (along > 0 && along < P.ATT_R && perp < s.stats.length) { att = p; tk = true; break; }
       }
       if (att) {
         const hq = R.hist.get(s), i0 = hq.findIndex(r => t - r[0] <= P.EVADE_T);
         const dh = Math.abs(WW.angleDiff(hq[i0][1], s.heading)), dv = Math.abs(hq[i0][2] - s.speed) / s.stats.speed;
-        if (dh < P.EVADE_DH && dv < 0.15) H('S7', [s], P.MIN.S7, () => `${lbl(s)} held course (${(dh * 180 / PI).toFixed(0)} deg in ${P.EVADE_T}s) under ${att.kind === 'torp' ? 'a torpedo track' : lbl(att) + ' ' + (att.phase || att.sk)}`);
+        if (dh < P.EVADE_DH && dv < 0.15) H(tk ? 'S7t' : 'S7', [s], P.MIN.S7, () => `${lbl(s)} held course (${(dh * 180 / PI).toFixed(0)} deg in ${P.EVADE_T}s) under ${att.kind === 'torp' ? 'a torpedo track' : lbl(att) + ' ' + (att.phase || att.sk)}`);
       }
       // S8: stopped or circling mid-battle (not alongside survivors, not an ASW hold)
       const mid = en.some(o => known(o) && dist(s, o) < P.MID_R);
@@ -353,12 +354,11 @@ function install(P) {
     return WW.world.planes.find(p => pid.get(p) === +m[2]) || null;
   };
   S.begin = meta => {
-    R = { meta, ep: new Map(), res: {}, fired: new Map(), torps: [], inb: 0, inbS: new WeakSet(), wand: new WeakMap(), track: new WeakMap(), hist: new WeakMap(), aaN: 0, aaAtt: 0, aaBad: 0, only: meta && meta.only ? Object.fromEntries(meta.only.map(k => [k, 1])) : null };
+    R = { meta, ep: new Map(), res: {}, fired: new Map(), inb: 0, inbS: new WeakSet(), wand: new WeakMap(), track: new WeakMap(), hist: new WeakMap(), aaN: 0, aaAtt: 0, aaBad: 0, only: meta && meta.only ? Object.fromEntries(meta.only.map(k => [k, 1])) : null };
   };
   S.sample = () => {
     if (!R || WW.game.state !== 'battle') return;
     const t = WW.game.roundTime;
-    R.torps = R.torps.filter(p => !p.dead && p.kind === 'torp');
     if (!R.only || ['P1', 'P1L', 'P1u', 'P2', 'P3', 'P4', 'P4b', 'P5', 'P5b', 'P6', 'P6c', 'P7', 'P7f', 'P8', 'P8b', 'P9', 'P10', 'P10s', 'P10b'].some(k => R.only[k])) planes(t);
     ships(t);
   };
