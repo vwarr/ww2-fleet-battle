@@ -184,7 +184,8 @@ window.WW = window.WW || {};
       const rate = (TURRET_RATE[ts.cal] || 1) * dt;
       ts.off += WW.clamp(off - ts.off, -rate, rate);
       ts.aim = ts.rest + ts.off;
-      ts.t.obj.rotation.y = -ts.aim;
+      const ry = -ts.aim, rot = ts.t.obj.rotation;
+      if (!Object.is(rot.y, ry)) rot.y = ry; // unchanged (no target, at rest): skip the quaternion rebuild (same result)
       if (tgt && ts.reload <= 0 && d <= ts.gun.range && Math.abs(WW.angleDiff(ts.aim, rel)) < 0.12) {
         if (!mw) { ship.group.updateMatrixWorld(true); mw = true; }
         if (!WW.supply || WW.supply.shell(ship, ts.gun, d)) WW.combat.fireShell(ship, ts.t, tgt, ts.gun.cal); // main-battery ammunition (ship_supply.js)

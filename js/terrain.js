@@ -39,6 +39,14 @@ window.WW = window.WW || {};
   const KIT = { rnd, rr: (a, b) => rr(a, b), vnoise: (x, z) => vnoise(x, z), smooth: (a, b, x) => smooth(a, b, x), BASE: BASE_DEPTH };
   function makeFeatures() { features = TI().make(KIT).features; }
   function featureHeight(f, x, z) { return TI().featureHeight(f, x, z, radScale); }
+  // squared reach per feature for the current radScale (recomputed when generate's size search changes radScale)
+  let reachFor = NaN, reachOf = null, reachSq = [];
+  function reach2(i) {
+    if (reachFor !== radScale || reachOf !== features) {
+      reachFor = radScale; reachOf = features; reachSq = features.map(f => { const r = TI().reach(f, radScale); return r * r; });
+    }
+    return reachSq[i];
+  }
   // raw terrain height (negative = under water) anywhere, including outside the map
   function heightRaw(x, z) {
     let h = -BASE_DEPTH + (fbm(x * 0.012, z * 0.012) - 0.5) * 8;
@@ -46,7 +54,9 @@ window.WW = window.WW || {};
     const open = Math.min(smooth(95, 135, x), 1 - smooth(W - 135, W - 95, x));
     const keep = Math.max(open, smooth(45, 25, z), smooth(H - 45, H - 25, z));
     if (keep > 0.01) for (let i = 0; i < features.length; i++) {
-      let fh = featureHeight(features[i], x, z);
+      const f = features[i], ex = x - f.cx, ez = z - f.cz;
+      if (ex * ex + ez * ez > reach2(i)) continue; // certainly -99 there (terrain_islands.js reach): cannot raise h
+      let fh = featureHeight(f, x, z);
       if (keep < 1) fh = WW.lerp(-BASE_DEPTH - 4, fh, keep);
       if (fh > h) h = fh;
     }

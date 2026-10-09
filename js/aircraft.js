@@ -195,7 +195,6 @@ window.WW = window.WW || {};
     sync(dt) {
       const g = this.group, G_EFF = 35;
       g.position.set(this.x, this.y, this.z);
-      g.rotation.y = -this.heading;
       const path = Math.atan2(this.vy, Math.max(1, this.speed)), p0 = this.pitch === undefined || !(dt > 0) ? path : this.pitch;
       this.pitch = p0 + (path - p0) * (dt > 0 ? 1 - Math.exp(-dt / 0.12) : 1);
       const pr = dt > 0 ? (this.pitch - p0) / dt : 0;
@@ -206,10 +205,12 @@ window.WW = window.WW || {};
       this.roll += WW.clamp(dr * Math.min(1, dt * 7), -maxR, maxR);
       const v = Math.hypot(this.speed, this.vy);
       this.gload = Math.hypot(this.speed * this.tr, v * Math.max(0, pr));
-      g.rotation.z = this.pitch + WW.clamp(pr * 0.05, 0, 0.08);  // a touch of nose-up while pulling out
       const f = this.hp / this.maxHp; // a badly damaged plane wobbles (visual only)
-      g.rotation.x = this.roll + (f < 0.4 && this.alive && this.state !== 'rollout' ? Math.sin(this.t * 7.3) * 0.12 + Math.sin(this.t * 3.1) * 0.08 : 0);
-      if (WW.airFx) WW.airFx.sync(this, dt); else if (this.prop) this.prop.rotation.x += dt * 45;
+      // x: roll (+ wobble), y: heading, z: pitch (+ a touch of nose-up while pulling out); one Euler.set, so the
+      // quaternion is rebuilt once, not once per axis (same final values)
+      g.rotation.set(this.roll + (f < 0.4 && this.alive && this.state !== 'rollout' ? Math.sin(this.t * 7.3) * 0.12 + Math.sin(this.t * 3.1) * 0.08 : 0),
+        -this.heading, this.pitch + WW.clamp(pr * 0.05, 0, 0.08));
+      if (WW.airFx) WW.airFx.sync(this, dt); else if (this.prop && !WW.simOnly) this.prop.rotation.x += dt * 45; // prop spin: visual only
     }
 
     takeoff(dt) {

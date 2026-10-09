@@ -137,6 +137,14 @@ window.WW = window.WW || {};
     if (e < sh[0]) return Math.min(f.peak, shoreH) - 2.8 * e / sh[0];
     return WW.lerp(Math.min(f.peak, shoreH) - 2.8, -K.BASE - 4, K.smooth(sh[0], sh[0] + sh[1], e));
   }
+  // A distance from the feature centre beyond which featureHeight is certainly -99 (its own early-outs above), with a
+  // margin. terrain.js skips the call past it: a -99 feature never raises the height, so the result is unchanged.
+  // Ellipse: n >= dist / max(rx, rz), and n > (1 + shelf / rmin) / 0.75 returns -99. Ring: d0 > R + 45 returns -99.
+  function reach(f, radScale) {
+    if (f.kind === 'ring') return f.rx + 45 + 1;
+    const k = f.fixed ? 1 : radScale, rx = f.rx * k, rz = f.rz * k, sh = SHELF[f.kind];
+    return (1 + (sh[0] + sh[1]) / Math.min(rx, rz)) / 0.75 * Math.max(rx, rz) * 1.001 + 1;
+  }
   // distance from (x, z) outside the nearest pad rectangle (0 inside)
   function padDist(x, z) {
     let best = 1e9;
@@ -155,5 +163,5 @@ window.WW = window.WW || {};
     return WW.lerp(h, PAD_H, K.smooth(10, 0, e));
   }
 
-  WW.terrainIslands = { make, featureHeight, flatten, padDist, PAD_H, get site() { return site; }, get features() { return features; } };
+  WW.terrainIslands = { make, featureHeight, reach, flatten, padDist, PAD_H, get site() { return site; }, get features() { return features; } };
 })(window.WW);

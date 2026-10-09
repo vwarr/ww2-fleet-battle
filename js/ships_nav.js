@@ -102,17 +102,18 @@ window.WW = window.WW || {};
   let wreckList = [];
   function fixedOverlap(s, x, z, h) {
     let worst = 0;
-    const L = s.stats.length * 0.5 + GAP, test = f => {
-      if (f === s || f.removed || !f.hullPts) return;
+    const L = s.stats.length * 0.5 + GAP, sh = WW.world.ships, nS = sh.length, nW = wreckList.length;
+    // ships that are sinking, then above-water wrecks (no per-call closure: this runs several times per ship per step)
+    for (let i = 0; i < nS + nW; i++) {
+      const f = i < nS ? sh[i] : wreckList[i - nS];
+      if (i < nS ? !f.sinking : !(f.wreckInfo && f.wreckInfo.top > 0.2)) continue;
+      if (f === s || f.removed || !f.hullPts) continue;
       const R = L + f.stats.length * 0.5, dx = x - f.x, dz = z - f.z;
-      if (dx * dx + dz * dz > R * R) return;
+      if (dx * dx + dz * dz > R * R) continue;
       capsule(s, FA, x, z, h); capsule(f, FB);
       const ov = FA[4] + FB[4] + GAP - segSeg(FA, FB);
       if (ov > worst) worst = ov;
-    };
-    const sh = WW.world.ships;
-    for (let i = 0; i < sh.length; i++) if (sh[i].sinking) test(sh[i]);
-    for (let i = 0; i < wreckList.length; i++) { const w = wreckList[i]; if (w.wreckInfo && w.wreckInfo.top > 0.2) test(w); }
+    }
     return worst;
   }
 

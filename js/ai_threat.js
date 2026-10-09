@@ -18,6 +18,7 @@ window.WW = window.WW || {};
   var DREF = 20;          // danger that counts as "1" in bestHeading (about a battleship's broadside at mid range)
   var EDGE = 45;          // map-edge penalty band in bestHeading
   var OFFS = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1, 2.6, -2.6, Math.PI];
+  var COFFS = OFFS.map(Math.cos); // cos of each offset, once (bestHeading)
   var nx = 0, nz = 0, F = {}, stats = { builds: 0, ms: 0, lookups: 0 };
 
   function grid() { return { surf: new Float32Array(nx * nz), air: new Float32Array(nx * nz), max: 0, airMax: 0, t: -1e9, n: 0 }; }
@@ -99,7 +100,7 @@ window.WW = window.WW || {};
       var h = want + OFFS[i], c = Math.cos(h), s = Math.sin(h);
       var x1 = ship.x + c * look * 0.5, z1 = ship.z + s * look * 0.5, x2 = ship.x + c * look, z2 = ship.z + s * look;
       var dg = Math.max(danger(n, x1, z1, opts), danger(n, x2, z2, opts));
-      var sc = Math.cos(OFFS[i]) - dg * K - edge(x2, z2, opts && opts.edge) - 0.15 * Math.abs(WW.angleDiff(ship.heading, h));
+      var sc = COFFS[i] - dg * K - edge(x2, z2, opts && opts.edge) - 0.15 * Math.abs(WW.angleDiff(ship.heading, h));
       if (av) for (var j = 0; j < av.length; j++) { var off = Math.abs(WW.angleDiff(av[j], h)); if (off < cone) sc -= 3 - 1.5 * off / cone; }
       if (sc > bs) { bs = sc; best = h; }
     }
