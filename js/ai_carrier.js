@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
-  const FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
+  const URGENT_D = 170, RUN_D = 140, FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
   // Summed repulsion from every known gun ship inside its flee radius (weight (1 - d / radius)^2): the heading
   // away from all of them, or null when none is close.
   const cone = []; // bearings of known gun ships the carrier must not head toward (filled by fleeFrom)
@@ -40,7 +40,7 @@ window.WW = window.WW || {};
       const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
       const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / (Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD) * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
       if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;
-      if (d < (ship.ai.thrD || 1e9) || ship.ai.thrT !== WW.time.now) { ship.ai.thrD = d; ship.ai.thrT = WW.time.now; ship.ai.thrB = Math.atan2(cz - ship.z, cx - ship.x); } // nearest known gun ship's bearing
+      if (d < (ship.ai.thrD || 1e9) || ship.ai.thrT !== WW.time.now) { ship.ai.thrD = d; ship.ai.thrT = WW.time.now; ship.ai.thrB = Math.atan2(cz - ship.z, cx - ship.x); ship.ai.thrR = r; } // nearest known gun ship's bearing
       if (d < r * FLEE_K + CONE_PAD) cone.push(Math.atan2(cz - ship.z, cx - ship.x)); // never steer toward it (see carrierAI)
       if (k >= 1 || d < 1) continue;
       const w = (1 - k) * (1 - k) + 0.05;
@@ -55,14 +55,19 @@ window.WW = window.WW || {};
     let want, calm = false;
     if (fl !== null) { want = fl; ship.throttle = 1; } // run from every known gun ship close by
     // Pinned on a map edge (a night pursuit runs carriers into their home corner): run along the edge, the way that
-    // keeps the nearest known gun ship farthest astern, rather than let the edge turn the bow toward it.
-    if (fl !== null && WW.threat && a.thrT === WW.time.now && WW.threat.edge(ship.x, ship.z) > 0) {
+    // keeps the nearest known gun ship farthest astern, rather than let the edge turn the bow toward it (also, with
+    // a gun ship already close, when the run away would end on an edge within ~60: take the way with room).
+    const near = fl !== null && WW.threat && a.thrT === WW.time.now;
+    if (near && (WW.threat.edge(ship.x, ship.z) > 0 || (a.thrD < URGENT_D && WW.threat.edge(ship.x + Math.cos(fl) * 60, ship.z + Math.sin(fl) * 60, 90) > 0))) {
       let bs = -1e9;
       for (const off of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8]) {
         const h = fl + off, e = WW.threat.edge(ship.x + Math.cos(h) * 60, ship.z + Math.sin(h) * 60), sc = -Math.cos(WW.angleDiff(h, a.thrB)) - 2 * e;
         if (sc > bs) { bs = sc; want = h; }
       }
     }
+    // With one inside RUN_D, the run away comes first (station keeping, which cvSafe already slides clear of known gun
+    // ships, used to override it: a carrier kept its station while a destroyer closed on it in the dark)
+    else if (near && a.thrD < RUN_D) { /* want = fl */ }
     else if (o) {
       const d = WW.dist(ship.x, ship.z, o.sx, o.sz);
       if (d > 30) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
@@ -99,9 +104,10 @@ window.WW = window.WW || {};
     if (WW.threat) ship.desiredHeading = WW.threat.bestHeading(ship, ship.desiredHeading, B ? B.doctrine.risk.carrier : 0,
       { look: 80, k: calm ? 2 : 4, edge: EDGE_BAND, avoid: cone, cone: CONE });
     ship.navAvoid = cone.slice(); ship.navAvoidT = now; // ships_nav planNav: no detour toward them either
-    // Coming about while pointed at a known gun ship: back the engines (a slow carrier turning away is not charging).
+    // Coming about while pointed at a known gun ship: back the engines (a slow carrier turning away is not charging);
+    // with one already close (URGENT_D) keep way on instead: a crawling carrier hardly turns, and is run down in the dark.
     if (Math.abs(WW.angleDiff(ship.heading, ship.desiredHeading)) > 1.2)
-      for (let i = 0; i < cone.length; i++) if (Math.abs(WW.angleDiff(cone[i], ship.heading)) < 1.4) { ship.throttle = 0.25; break; }
+      for (let i = 0; i < cone.length; i++) if (Math.abs(WW.angleDiff(cone[i], ship.heading)) < 1.4) { ship.throttle = a.thrT === now && a.thrD < URGENT_D && Math.abs(WW.angleDiff(cone[i], ship.heading)) > 0.9 ? Math.max(ship.throttle, 0.75) : 0.25; break; }
     // A reversal of course turns away from the nearest known gun ship: if the shortest turn would swing the bow
     // across its bearing, step the other way round (90 deg at a time) instead.
     const dd = WW.angleDiff(ship.heading, ship.desiredHeading);
