@@ -101,6 +101,16 @@ window.WW = window.WW || {};
     pl.fly(px, pz, alt, dt, pl.pt.speed, 0.5);
   }
 
+  // A ship of ours under air attack within the cover reach (air_cover.js) comes before a raid still far from the
+  // carrier: the bombers on their run at a destroyer or a cripple are the raid that is hitting us now.
+  function cover(pl, u, inner) {
+    if (inner || !WW.airCover) return u;
+    if (u && WW.dist(pl.carrier.x, pl.carrier.z, u.x, u.z) < 200) return u;
+    const k = WW.airCover.raidOn(pl);
+    if (k && pl.vec !== k && WW.airCover.stats[pl.nation]) WW.airCover.stats[pl.nation].vectors++;
+    return k || u;
+  }
+
   // ---------- stations ----------
   function racetrack(pl, cx, cz, axis, alt, D, dt) { // two turn points across the threat bearing; teardrop turns between them
     const ux = Math.cos(axis + Math.PI / 2), uz = Math.sin(axis + Math.PI / 2);
@@ -119,7 +129,7 @@ window.WW = window.WW || {};
     if (sty === 'picket') {
       const S = PICKET[i % PICKET.length], band = S.y > 45 ? 'high' : 'low';
       pl.capBand = band;                  // capPick: the high band takes the dive bombers, the low band the torpedo planes
-      const u = raidFor(pl, band, S.inner, D);
+      const u = cover(pl, raidFor(pl, band, S.inner, D), S.inner);
       if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, band, dt); return true; }
       pl.vec = null;
       const a = b + S.a, p = inMap(c.x + Math.cos(a) * S.d, c.z + Math.sin(a) * S.d, 60);
@@ -127,7 +137,7 @@ window.WW = window.WW || {};
       return true;
     }
     // overhead: loops round the fleet, shifted a little toward the threat; all react to a seen raid
-    const L = LOOP[i % LOOP.length], u = raidFor(pl, L.y < 35 ? 'low' : 'high', false, D);
+    const L = LOOP[i % LOOP.length], u = cover(pl, raidFor(pl, L.y < 35 ? 'low' : 'high', false, D), false);
     pl.capBand = null;                    // the Zeros all go for whatever is lowest and nearest (drawn to the torpedo planes)
     if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, L.y < 35 ? 'low' : 'high', dt); return true; }
     pl.vec = null;
@@ -156,7 +166,7 @@ window.WW = window.WW || {};
     return false;
   }
   function join(cv) {
-    if (!raidNear(cv, JOIN_R)) return;
+    if (!raidNear(cv, JOIN_R) && !(WW.airCover && WW.airCover.near(cv))) return;
     cv._joinT = WW.time.now;
     const D = cv._deck;
     for (const p of WW.world.planes) {

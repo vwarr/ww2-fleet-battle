@@ -109,8 +109,8 @@ window.WW = window.WW || {};
       if (!u || !u.alive) continue;
       if (WW.cap && !WW.cap.inReach(pl, u)) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      const snoop = WW.cap ? WW.cap.snooper(u) : u.kind === 'flyingboat';
-      if (dc > (arm && inbound(u, c) || snoop || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
+      const snoop = WW.cap ? WW.cap.snooper(u) : u.kind === 'flyingboat', cov = WW.airCover ? WW.airCover.onShip(pl, u) : null;   // on one of our ships (air_cover.js)
+      if (!cov && dc > (arm && inbound(u, c) || snoop || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
       if (snoop && picture(c).armed) continue;   // bombers first: the snooper waits
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
@@ -119,6 +119,7 @@ window.WW = window.WW || {};
       else if (snoop) pr = 200;   // a snooper shadowing the fleet (flying boat, scout, search plane): shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
+      if (cov) pr = Math.max(pr, arm ? 330 : 240);   // on its run at one of our ships (a fighter strafing a PT): now
       if (arm && bd) pr += u.kind === (bd === 'high' ? 'dive' : 'torpedo') ? 140 : -150;   // USN height bands: each band its own raiders
       const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4 - claimed(u, pl) * 70;   // spread out: one section per raider
       if (s > bs) { bs = s; best = u; }
@@ -134,6 +135,7 @@ window.WW = window.WW || {};
     if (f.kind === 'fighter' && f.foe === pl) return true;
     if (WW.cap ? WW.cap.snooper(f) : f.kind === 'flyingboat') return d <= Lh.leash2;   // a shadower: the long leash, as for an inbound raid
     if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= Lh.leash2 * 0.75) return true;   // finish a damaged bomber turning for home
+    if (WW.airCover && WW.airCover.onShip(pl, f)) return d <= WW.airCover.reach(pl) + 60;   // covering a ship of ours under attack
     if (d > Lh.leash2) return false;
     if (pl.df && pl.df.foe === f && pl.df.lock > 0) return true;   // a committed attack runs its passes (a raider that jettisoned is still shot at)
     return armed(f) || escorting(f, pl.nation);   // an armed bomber will attack something of ours: chase it to the long leash
