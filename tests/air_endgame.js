@@ -38,7 +38,7 @@ function install(o) {
   const GONE = 4, SAMPLE = o.dt;
   let S = null, idN = 0;
   const ids = new WeakMap(), idOf = p => ids.get(p) || (ids.set(p, ++idN), idN);
-  const fresh = () => { S = { next: 0, rows: [], cv: [], ships: [], forced: false, first: {}, size: [] }; };
+  const fresh = () => { S = { next: 0, rows: [], cv: [], ships: [], pos: [], forced: false, first: {}, size: [] }; };
   fresh(); WW.on('roundStart', fresh);
   R.force = null; R.trace = false;
   const hangN = n => { let k = 0; for (const s of WW.world.ships) if (s.alive && s.nation === n && s.hangar) { k += s.hangar.fighter + s.hangar.dive + s.hangar.torpedo + (s.rearm ? s.rearm.length : 0); } return k; };
@@ -101,6 +101,8 @@ function install(o) {
       // enemy ships as this side knows them
       const kn = eShips.map(s => { const c = WW.intel.known(n, s); return [s.type, c ? +(WW.time.now - c.seenAt).toFixed(0) : -1, +(s.hp / s.maxHp).toFixed(2)]; });
       S.ships.push([+t.toFixed(0), n, B.posture, BE ? BE.posture : '', BE && BE.brokenAt ? 1 : 0, eCV, kn, WW.game.metT === null ? 0 : 1, WW.dayNight && WW.dayNight.canFly ? (WW.dayNight.canFly() ? 1 : 0) : 1]);
+      // the ships (for the plots)
+      for (const s of WW.world.ships) if (s.alive && !s.isBase) S.pos.push([+t.toFixed(0), s.id, s.nation, s.type, +s.x.toFixed(0), +s.z.toFixed(0), +s.heading.toFixed(2), n]);
       // the planes
       for (const p of WW.world.planes) {
         if (!p.alive || p.nation !== n || !isAir(p)) continue;
@@ -122,7 +124,7 @@ function install(o) {
       }
     }
   }
-  R.flush = function () { return { first: S.first, rows: S.rows, cv: S.cv, ships: S.ships, size: S.size, err: R.err, last: R.last || null }; };
+  R.flush = function () { return { first: S.first, rows: S.rows, cv: S.cv, ships: S.ships, pos: S.pos, size: S.size, err: R.err, last: R.last || null }; };
   return true;
 }
 

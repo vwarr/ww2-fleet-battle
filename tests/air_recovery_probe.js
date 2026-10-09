@@ -26,7 +26,11 @@ const SC = {
     WW.air.update = function (dt) {
       const r = u0.apply(this, arguments);
       const t = WW.game.roundTime; if (t < next) return r; next = t + STEP;
-      const RS = WW.airDeck.recovery;
+      const RS = WW.airDeck.recovery, IB = WW.islandBase, b = IB && IB.base;
+      if (b && b.ai) {   // the island base: circuit, ground, runway
+        const st = {}; for (const q of WW.world.planes) if (q.alive && q.carrier === b) { const k = q.state + (q.rwPh ? ':' + q.rwPh : '') + (q.gPh ? ':' + q.gPh : ''); st[k] = (st[k] || 0) + 1; }
+        L.push([t.toFixed(0), 'BASE', b.nation, 'runwayOpen', IB.runwayOpen() ? 1 : 0, 'neutralized', b.neutralized ? 1 : 0, 'mode', b.ops ? b.ops.mode : '', 'lq', b.ai.lq ? b.ai.lq.length : 0, 'landings', WW.landAir ? WW.landAir.stats.landings : '', 'holds', WW.landAir ? WW.landAir.stats.holds : '', JSON.stringify(st)].join(' '));
+      }
       for (const c of WW.world.ships) {
         const D = c._deck; if (!c.alive || !D || c.isBase) continue;
         const ph = {}; for (const q of D.lq) ph[q.deckPh] = (ph[q.deckPh] || 0) + 1;
