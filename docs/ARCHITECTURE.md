@@ -169,6 +169,7 @@ Each animation frame (`main.js`, `frame`):
 ```
 node tests/sim_behaviour.js                          # behaviour suite, 15 scenarios x 8 seeds
 node tests/sim_behaviour.js --only balance --seeds 100   # balance gate (--seeds 400 for tuning)
+node tests/balance_ab.js --seeds 100 [--ab "fleetGroups.BASE.IJN.aggression=0.7"]   # paired balance: mirrored pairs, A/B on the same seeds (--save / --against: before / after a code change)
 node tests/sim_behaviour.js --only fuzz --seeds 42       # composition fuzz: odd and lopsided fleets (tests/fuzz.js)
 node tests/oddfleets_shots.js search|spots|attack <seed> # render-mode shots of 3 carriers vs 10 PT boats
 node tests/sim_behaviour.js --only midway --base IJN --tune guns=0.5,air=0.6   # island base: owner and strength knobs (island_base.js TUNE)
@@ -197,6 +198,15 @@ The browser `--pages` default of 6 was measured on an 8-core M1 Pro (6 performan
 - Proof: `node tests/determinism.js --cross 1,2,3 300 --modes browser,node` gives the same trace hash in Chrome (headless shell 1243, Chrome 153) and in the runner, and the behaviour suite's per-round JSON (`JSON=… node tests/sim_behaviour.js` vs `… --browser`) is identical.
 - Limits: sim-only mode only (no renderer, so no screenshots, camera, audio or UI tests); game code must not touch browser APIs outside the stubs while loading or in the sim path (a new one fails loudly; add it to `node_env.js`); `waitForTimeout` is a no-op, since there is no render loop or network to wait for.
 - Speed (M1 Pro, measured with load average 20 to 30 from other jobs, so read the ratios, not the seconds): one game runs a round at the same speed as a Chrome page (seed 1, 300 sim s: about 1.05 s in both once warm), so wall time and CPU time tie at the same parallelism. Behaviour suite (8 seeds, 2 games): browser 28.4 s / 62 CPU s, node 29.5 s / 63 CPU s. Balance gate (100 rounds, 2 games): browser 59.7 s / 128 CPU s, node 59.1 s / 121 CPU s. The gains: about 2.4× less memory (2 games: 373 to 449 MB against 882 to 925 MB; 6 games: about 0.9 GB against 2.4 GB); no Chrome, `CHROMIUM` path, web server or port; a game boots in about 0.3 s; and a run can use more games for the same memory. The old Node (V8 12.9) also ran a round about 1.5× slower than Chrome. A V8 15 Node closes that gap.
+
+### Paired balance statistics (tests/balance_ab.js)
+
+A seed fixes the map, the fleets and the round, so balance runs can pair out noise. These are balance-gate rounds (light: no behaviour sampling), run through the same page code as `sim_behaviour.js`.
+
+- **Mirrored pairs** (default): each seed is fought twice, with the same fleets and the sides swapped. The seed's score is the mean of its two rounds (USN win 1, draw ½), and its standard error comes from the spread of pair scores. On the October 2026 build this gained little (about 1×): the same fleet won from both sides in only about half the pairs, and the nation effect dominates (USN about 38%).
+- **A/B on common random numbers**: `--a CFG --b CFG` (or `--ab CFG` against the build as it is) runs the same seeds and mirrors under two configurations. It reports the per-seed difference with its own CI, the unpaired CI for comparison, and how many rounds a 3-point effect would need. CFG is `path=value` items assigned to `WW.<path>` after load (for example `fleetGroups.BASE.IJN.damageControl=1.5`; a misspelt path fails), or plain names as query flags (`nopatrol`). Only settings read at run time can be switched this way. For a code change, `--save before.json` on the old code and `--against before.json` on the new one pairs the two runs.
+- Both reports also give a **loss margin**: the share of its starting tonnage IJN lost minus the share USN lost. It is continuous, and it usually narrows the CI more than the win score.
+- **The limit is chaos.** A change of 0.1% to one doctrine number (`damageControl` 1 → 1.001) already flips the winner in 18% of rounds (100 mirrored seeds, 200 rounds per arm). So even on the same seeds, about a fifth of the rounds are a fresh draw. Pairing is worth 2 to 2.7× the rounds for the win score and 2.4 to 3.6× for the loss margin. With 200 rounds per arm, a paired win-score CI is about ±6 to 7 points (unpaired ±9.5), and the margin CI about ±7 to 8. Detecting a 3-point win-rate effect at 80% power still takes about 3,000 to 4,000 rounds in all (unpaired: about 8,700). I tried reseeding `WW.rand` every 5 sim s from (seed, block), so diverged rounds roll the same dice again, and it did not raise the agreement: the divergence is in the state, not in the random stream. Use the paired CI to accept or reject a change of 6 points or more with 200 to 400 rounds, and the margin for smaller shifts.
 
 ### Sim performance
 

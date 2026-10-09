@@ -501,6 +501,7 @@ function install(P) {
     G.noRetire = !!spec.noStall; // ASW scenarios measure the hunt: no sub stall, no retire ending
     G.baseChoice = spec.base || null; // the island base's owner (island_base.js); null: the round's WW.rand roll
     G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
+    const tons0 = { USN: G.tonnage('USN'), IJN: G.tonnage('IJN') }; // fleet tonnage at the start (out.tons: the loss margin, balance_ab.js)
     const snap = () => JSON.parse(JSON.stringify({ d: WW.dayNight ? WW.dayNight.stats : {}, n: WW.nightOps ? WW.nightOps.stats : {}, w: WW.weather ? WW.weather.stats : {} }));
     const s0 = snap();
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
@@ -545,6 +546,7 @@ function install(P) {
     const s1 = snap(), dlt = (a, b) => (typeof a === 'number' ? a - (b || 0) : Object.fromEntries(Object.keys(a).map(k => [k, dlt(a[k], b && b[k])])));
     out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
     out.det = R.det;
+    out.tons = { USN: [tons0.USN, G.tonnage('USN')], IJN: [tons0.IJN, G.tonnage('IJN')] }; // [start, afloat at the end]
     out.dmg = R.dmg; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
@@ -688,7 +690,7 @@ const fmt = v => (v === null || v === undefined ? 'n/a' : typeof v === 'number' 
 const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.thr}`);
 
 // ======================= MAIN =======================
-(async () => {
+if (require.main === module) (async () => {
   const T0 = Date.now();
   const b = await HL.launch();
   let errs = [];
@@ -793,3 +795,6 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
   await b.close();
   process.exitCode = hardFails ? 1 : 0;
 })().catch(e => { console.error(e); process.exit(2); });
+
+// tests/balance_ab.js reuses the page side and the aggregation
+module.exports = { install, P, aggregate, wilson };

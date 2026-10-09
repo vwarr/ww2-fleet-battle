@@ -20,6 +20,7 @@
     "shots": "bash tests/run.sh peek.js",
     "test:ai": "node tests/sim_behaviour.js",
     "test:balance": "node tests/sim_behaviour.js --only balance --seeds 100",
+    "balance:ab": "node tests/balance_ab.js",
     "test:rounds": "node tests/sim_rounds.js",
     "test:determinism": "bash tests/run.sh determinism.js --cross 1,2,3 300",
     "test:determinism:node": "node tests/determinism.js 1 300",
