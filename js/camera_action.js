@@ -171,10 +171,10 @@ window.WW = window.WW || {};
       _q.setFromUnitVectors(shot.dir, _d); _q0.identity().slerp(_q, Math.min(k, 0.7 * rdt / ang));
       shot.dir.applyQuaternion(_q0).normalize();
     }
-    const dir = shot.dir, back = 16;
+    const FK = Math.pow(WW.cfg.PLANE_K || 1, 0.6), dir = shot.dir, back = 16 * FK;   // closer in for smaller planes (16 at the 1.7 plane scale)
     _r.set(-dir.z, 0, dir.x).normalize();
-    shot.lat = shot.lat === undefined ? shot.side * 3 : shot.lat;
-    gP.set(a.x - dir.x * back + _r.x * shot.lat, a.y - dir.y * back + 5, a.z - dir.z * back + _r.z * shot.lat);
+    shot.lat = shot.lat === undefined ? shot.side * 3 * FK : shot.lat;
+    gP.set(a.x - dir.x * back + _r.x * shot.lat, a.y - dir.y * back + 5 * FK, a.z - dir.z * back + _r.z * shot.lat);
     const want = WW.clamp(dist * 0.5, 8, 30);
     shot.ahead = shot.ahead === undefined ? want : shot.ahead + (want - shot.ahead) * k; // a new foe: no jump
     const ahead = shot.ahead;

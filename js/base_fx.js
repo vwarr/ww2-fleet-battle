@@ -153,5 +153,5 @@ window.WW = window.WW || {};
   WW.on('baseEvent', caption);
   WW.on('roundStart', () => { for (const k in diaryT) delete diaryT[k]; if (!(WW.islandBase && WW.islandBase.base)) clear(); });
   WW.on('setupStart', () => { if (!(WW.islandBase && WW.islandBase.base)) clear(); });
-  WW.baseFx = { update(rdt) { if (WW.simOnly) return; try { update(rdt); retry(); } catch (e) { console.error('baseFx', e); } }, clear, _parked: () => (WW.baseGroundFx ? WW.baseGroundFx._parked() : []) };
+  WW.baseFx = { update(rdt) { if (WW.simOnly) return; try { update(rdt); retry(); } catch (e) { console.error('baseFx', e); } }, clear, _parked: () => (WW.baseGroundFx ? WW.baseGroundFx._parked() : []), _built: () => built };
 })();

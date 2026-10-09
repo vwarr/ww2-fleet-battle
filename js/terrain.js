@@ -254,5 +254,6 @@ window.WW = window.WW || {};
   }
 
   WW.terrain = { init() {}, generate, depthAt, isNavigable, randomSeaPoint, update, seed: 0, landFraction: 0,
-    get site() { return TI().site; }, padDist: (x, z) => TI().padDist(x, z), PAD_H: 1.2 };
+    get site() { return TI().site; }, padDist: (x, z) => TI().padDist(x, z), PAD_H: 1.2,
+    _props: () => propsGroup };   // palms and huts (tests/base_clip.js)
 })(window.WW);

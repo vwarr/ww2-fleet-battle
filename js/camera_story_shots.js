@@ -12,6 +12,7 @@ window.WW = window.WW || {};
   const V = () => new THREE.Vector3();
   const _f = V(), _r = V(), _c = V(), _t = V();
   const ok = p => p && !p.removed && p.alive;
+  const FK = Math.pow(WW.cfg.PLANE_K || 1, 0.6);   // single-plane framing distances (written at the 1.7 plane scale) close in with the plane size
   const airborne = p => ok(p) && p.state !== 'takeoff' && p.state !== 'rollout' && p.state !== 'landing';
 
   // eased heading: hard turns swing the camera round slowly
@@ -76,7 +77,7 @@ window.WW = window.WW || {};
           _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
           // the wingman's side of the leader: the camera sits outboard of it, a little behind and above
           if (shot.wSide === undefined) shot.wSide = ((w.x - L.x) * _r.x + (w.z - L.z) * _r.z) >= 0 ? 1 : -1;
-          gP.set(w.x - _f.x * 9 + _r.x * shot.wSide * 7, w.y + 3.2, w.z - _f.z * 9 + _r.z * shot.wSide * 7);
+          gP.set(w.x - _f.x * 9 * FK + _r.x * shot.wSide * 7 * FK, w.y + 3.2 * FK, w.z - _f.z * 9 * FK + _r.z * shot.wSide * 7 * FK);
           gL.set(L.x + _f.x * 6, ly, L.z + _f.z * 6);
           shot.aim.set((L.x + w.x) / 2, (ly + w.y) / 2, (L.z + w.z) / 2);
           break;
@@ -89,7 +90,7 @@ window.WW = window.WW || {};
           const tw = Math.atan2(_t.z, _t.x), off = WW.clamp(WW.angleDiff(L.heading, tw), -0.6, 0.6); // over the shoulder: never far off the plane's own heading (anvil turns)
           const h = smoothH(shot, L.heading + off, rdt, 1.4);
           _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
-          gP.set(L.x - _f.x * 15 + _r.x * shot.side * 4, ly + 5.5, L.z - _f.z * 15 + _r.z * shot.side * 4);
+          gP.set(L.x - _f.x * 15 * FK + _r.x * shot.side * 4 * FK, ly + 5.5 * FK, L.z - _f.z * 15 * FK + _r.z * shot.side * 4 * FK);
           const d = Math.min(_t.length(), 160);
           gL.set(L.x + _f.x * d, Math.max(1.5, ly * (1 - d / 160)), L.z + _f.z * d);
           shot.aim.set(L.x, ly, L.z);
@@ -157,8 +158,8 @@ window.WW = window.WW || {};
         default: { // chase: behind, above and a little to the side of the leader
           const h = smoothH(shot, L.heading, rdt, 1.3);
           _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
-          const back = shot.back || 22;
-          gP.set(L.x - _f.x * back + _r.x * shot.side * 6, ly + 6.5, L.z - _f.z * back + _r.z * shot.side * 6);
+          const back = (shot.back || 22) * FK;
+          gP.set(L.x - _f.x * back + _r.x * shot.side * 6 * FK, ly + 6.5 * FK, L.z - _f.z * back + _r.z * shot.side * 6 * FK);
           gL.set(L.x + _f.x * 18, Math.max(1, ly - 2), L.z + _f.z * 18);
           shot.aim.set(L.x, ly, L.z);
         }

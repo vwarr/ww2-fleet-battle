@@ -186,15 +186,20 @@ window.WW = window.WW || {};
   // a revetment for a plane class: low grassed earth walls behind the tail and beside the wingtips (clear of them by
   // 0.9), open at the nose; local +x = the nose, centred on the spot
   var REV = {};
+  // the berms of a spot's revetment, spot-local (+x = the nose): [centre x, centre z, length, base width, yaw]
+  function revetWalls(sp) {
+    var hl = sp.len / 2, hs = sp.span / 2, back = -hl - 1.4, side = hs + 1.35, front = hl - 0.6;
+    return [[back, -side, back, side], [back, -side, front, -side], [back, side, front, side]].map(function (w) {
+      return [(w[0] + w[2]) / 2, (w[1] + w[3]) / 2, Math.hypot(w[2] - w[0], w[3] - w[1]) + 0.9, 1.15, -Math.atan2(w[3] - w[1], w[2] - w[0])];
+    });
+  }
   function revetGeo(k, sp) {
     if (REV[k]) return REV[k];
-    var g = new THREE.Group(), hl = sp.len / 2, hs = sp.span / 2, back = -hl - 1.4, side = hs + 1.35, front = hl - 0.6;
-    var wall = function (x0, z0, x1, z1) { // a berm: a wide base and a narrower grassed top
-      var cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, l = Math.hypot(x1 - x0, z1 - z0) + 0.9, a = -Math.atan2(z1 - z0, x1 - x0);
-      var b = M._bar(g, C.revet, l, 0.55, 1.15, cx, 0, cz); b.rotation.y = a;
-      var t = M._bar(g, C.revetTop, l - 0.3, 0.4, 0.7, cx, 0.5, cz); t.rotation.y = a;
-    };
-    wall(back, -side, back, side); wall(back, -side, front, -side); wall(back, side, front, side);
+    var g = new THREE.Group();
+    revetWalls(sp).forEach(function (w) { // a berm: a wide base and a narrower grassed top
+      var b = M._bar(g, C.revet, w[2], 0.55, w[3], w[0], 0, w[1]); b.rotation.y = w[4];
+      var t = M._bar(g, C.revetTop, w[2] - 0.3, 0.4, 0.7, w[0], 0.5, w[1]); t.rotation.y = w[4];
+    });
     REV[k] = bake(g); return REV[k];
   }
   // a knocked-out facility: scorched and slumped (hangars cave in, tanks burst, guns tip)
@@ -209,8 +214,9 @@ window.WW = window.WW || {};
     if (part.gun) { part.gun.material = TPL.scorch; part.gun.rotation.z = -0.35; part.gun.rotation.x = 0.25; }
     if (part.flag) part.flag.visible = false;
   }
-  // ---- ground vehicles (base_ground_fx.js): nose +x, wheels on y = 0, about 2.4 long ----
-  var VEH = {};
+  // ---- ground vehicles (base_ground_fx.js): nose +x, wheels on y = 0, about 2.4 long, drawn x VEH_K (they follow the
+  // planes' size: 1 at the 1.7 plane scale, ~0.56 at 0.82, a fuel truck ~1.35 u = 6.5 m at 2x) ----
+  var VEH = {}, VEH_K = Math.pow(WW.cfg.PLANE_K || 1, 0.8);
   function wheels(g, xs, w) { xs.forEach(function (x) { [-1, 1].forEach(function (s) { var t = M._cyl(g, C.tyre, 0.26, 0.2, x, 0.26, s * w); t.rotation.x = PI / 2; t.position.y = 0.26; t.position.z = s * w + s * 0.1; }); }); }
   function vehicle(kind, nation) {
     var k = kind + (nation || 'USN'); if (VEH[k]) return VEH[k];
@@ -236,5 +242,5 @@ window.WW = window.WW || {};
     }
     VEH[k] = bake(g); return VEH[k];
   }
-  WW.baseModels = { build: build, wreck: wreck, vehicle: vehicle, C: C };
+  WW.baseModels = { build: build, wreck: wreck, vehicle: vehicle, revetWalls: revetWalls, VEH_K: VEH_K, C: C };
 })();

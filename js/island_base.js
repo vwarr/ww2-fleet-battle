@@ -72,7 +72,8 @@ window.WW = window.WW || {};
       if (!last) continue;
       const bx = last.x - Math.cos(a) * 4, bz = last.z - Math.sin(a) * 4;
       const lq = base && base.layout ? base.layout.toL(bx, bz) : null;
-      if (!onLand(bx, bz) || (lq && (WW.airfieldLayout.onNetwork(base.layout, lq.u, lq.v, 4) || base.layout.facs.some(f => Math.hypot(f.u - lq.u, f.v - lq.v) < f.r + 6)))) continue;
+      if (!onLand(bx, bz) || (lq && (WW.airfieldLayout.onNetwork(base.layout, lq.u, lq.v, 4) || WW.airfieldLayout.climbOut(base.layout, lq.u, lq.v, 4) || base.layout.facs.some(f => Math.hypot(f.u - lq.u, f.v - lq.v) < f.r + 6) ||
+        base.layout.spots.some(p => Math.hypot(p.u - lq.u, p.v - lq.v) < Math.max(p.len, p.span) / 2 + 6)))) continue;   // clear of the revetments
       cand.push({ x: bx, z: bz, a, sc: Math.cos(WW.angleDiff(a, out)) });
     }
     cand.sort((p, q) => q.sc - p.sc);
@@ -279,7 +280,15 @@ window.WW = window.WW || {};
     build(g ? g.baseChoice || g.basePreview : null);
   });
 
-  WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, runwayOpen: () => runwayOpen(),
+  // the top of the base's buildings under (x, z), above the pad (0: none): a low plane's floor (aircraft.js integrate)
+  const ROOF = { hangar: 5, tower: 10, fuel: 2.6, ammo: 1.3, barracks: 3, aa: 0.8, battery: 0.9 };
+  function roofAt(x, z) {
+    if (!base || Math.abs(x - base.x) > 140 || Math.abs(z - base.z) > 140) return 0;
+    let top = 0;
+    for (const f of base.facilities) if (Math.abs(f.x - x) < f.r + 2 && Math.abs(f.z - z) < f.r + 2) top = Math.max(top, base.site.padH + (ROOF[f.kind] || 1));
+    return top;
+  }
+  WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, roofAt, runwayOpen: () => runwayOpen(),
     opsOpen: () => !!base && WW.landGround.opsOpen(base),   // main runway open, not fouled by a wreck, base not neutralized
     get stats() { return stats; }, TUNE, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };
   stats = newStats();

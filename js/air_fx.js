@@ -8,6 +8,7 @@ window.WW = window.WW || {};
   'use strict';
   var R = Math.random;
   var RIB = 28, K = 18, KV = K + 1;        // ribbons, committed points per ribbon (+1 live head at the tip)
+  var PK = WW.cfg.PLANE_K || 1;            // plane size vs the 1.7 tuning scale: streak width, exhaust and glint sizes follow it
   var LIFE = 0.55, SEG = 0.7;              // vapour life (sim s), spacing between committed points (units)
   var MAXP = 192;                          // exhaust points (2 per plane, planes within EXH_D of the camera)
   var EXH_D = 160, VAP_D = 220;            // beyond these camera distances a plane gets no exhaust glow / no vapour (sub-pixel)
@@ -118,7 +119,7 @@ window.WW = window.WW || {};
         if (k1 === rb.n && rb.head) _t.set(rb.hx, rb.hy, rb.hz); else _t.set(p[k1 * 5], p[k1 * 5 + 1], p[k1 * 5 + 2]);
         _t.sub(_b.set(p[k0 * 5], p[k0 * 5 + 1], p[k0 * 5 + 2]));
         var age = isHead ? 0 : (now - p[kk * 5 + 3]) / LIFE, inten = isHead ? rb.hi : p[kk * 5 + 4];
-        var w = 0.05 + 0.2 * age;
+        var w = (0.05 + 0.2 * age) * PK;
         _v.subVectors(_cam, _a).cross(_t); var l = _v.length() || 1; _v.multiplyScalar(w / l);
         var al = k >= cnt ? 0 : inten * Math.pow(1 - Math.min(1, age), 1.6) * Math.min(1, (cnt - 1 - kk) * 0.5 + 0.0) * 0.6;
         if (kk === cnt - 1) al = 0;                                   // fade in from the tip
@@ -168,7 +169,7 @@ window.WW = window.WW || {};
         for (var e = 0; e < 2; e++) {
           _v.copy(f.exh[e]).applyMatrix4(grp.matrixWorld);
           var fl = (0.55 + R() * 0.45) * pw;
-          addPt(ex, _v.x, _v.y, _v.z, 0.34 * fl, 0.55 * fl, 0.3 * fl, 0.12 * fl);
+          addPt(ex, _v.x, _v.y, _v.z, 0.34 * PK * fl, 0.55 * fl, 0.3 * fl, 0.12 * fl);
         }
       }
       // canopy glint: canopy normal (plane up) along the sun/camera half vector, only while banked
@@ -181,7 +182,7 @@ window.WW = window.WW || {};
         if (p._glint > 0.02) {
           _b.subVectors(cam.position, _a).normalize().multiplyScalar(0.5).add(_a);
           var gi = p._glint;
-          addPt(gl, _b.x, _b.y, _b.z, 2.6 * gi, 1.5 * gi, 1.4 * gi, 1.2 * gi);
+          addPt(gl, _b.x, _b.y, _b.z, 2.6 * Math.sqrt(PK) * gi, 1.5 * gi, 1.4 * gi, 1.2 * gi);
         }
       } else p._glint = 0;
       // vapour: lateral + pull-up acceleration (from sync: p.gload, units/s^2), computed above

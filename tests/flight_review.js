@@ -211,7 +211,7 @@ function report(rounds) {
   out.form.alone = {}; for (const k in AL) out.form.alone[k] = { t: AL[k].t, share: AL[k].alone / AL[k].t };
   const LD = []; for (const r of rounds) if (r.rec) for (const x of r.rec.lead) LD.push(x);
   out.form.lead = { p10: qs(LD, 0.1), p50: med(LD), p90: qs(LD, 0.9), n: LD.length };
-  say(`wingman-leader distance (cap/transit/formup): p10 ${f1(out.form.lead.p10)} p50 ${f1(out.form.lead.p50)} p90 ${f1(out.form.lead.p90)} (slot ~11.7 u)`);
+  say(`wingman-leader distance (cap/transit/formup): p10 ${f1(out.form.lead.p10)} p50 ${f1(out.form.lead.p50)} p90 ${f1(out.form.lead.p90)} (slot ~11.7 u x PLANE_K: 5.6 at the default 0.82)`);
   const WF = W.filter(w => w.fs > 0);
   out.form.wave = { spread: mean(WF.map(w => w.spread / w.fs)), strag: WF.reduce((s, w) => s + w.strag, 0) / Math.max(1, WF.reduce((s, w) => s + w.stragN, 0)),
     altF: mean(WF.filter(w => w.nF).map(w => w.altF / w.nF)), altD: mean(WF.filter(w => w.nD).map(w => w.altD / w.nD)), altT: mean(WF.filter(w => w.nT).map(w => w.altT / w.nT)), sepMin: med(WF.map(w => w.sepMin).filter(x => x !== null)) };

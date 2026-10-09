@@ -54,6 +54,7 @@ window.WW = window.WW || {};
   // what a wide / diorama shot looks at: the front line once the fleets are close, else one fleet on its approach
   // (on the big map the midpoint between two distant fleets is empty sea)
   const APART = 280;
+  const PFK = Math.pow(WW.cfg.PLANE_K || 1, 0.6);   // plane framing distances close in with the plane size (camera_story_shots FK)
   function sceneCentre() {
     const f = frontCentre();
     if (!(f.d > APART)) return f;
@@ -102,7 +103,7 @@ window.WW = window.WW || {};
       if (shotCount % 4 === 1) best = { kind: 'wide', dur: dur(18, 25) };
       else { // diorama: a slow, high-ish orbit around the front line
         const f = sceneCentre();
-        best = { kind: 'orbit', subj: { x: f.x, z: f.z, y: 0, diorama: true }, r: WW.clamp((f.d || 120) * 0.6 + 70, 100, 220), dur: dur(18, 24), w: 0.018, hgt: 0.3 };
+        best = { kind: 'orbit', subj: { x: f.x, z: f.z, y: 0, diorama: true }, r: WW.clamp((f.d || 120) * 0.45 + 50, 75, 165), dur: dur(18, 24), w: 0.022, hgt: 0.3 };
       }
     }
     startShot(best);
@@ -130,7 +131,7 @@ window.WW = window.WW || {};
       shot.y = Math.max(5, len * 0.45);
     } else if (c.kind === 'wide') {
       const f = WW.game && WW.game.state === 'victory' && WW.game.winner ? fleetCentre(WW.game.winner) : sceneCentre();
-      shot.cx = f.x; shot.cz = f.z; shot.r = WW.clamp((f.d || 150) * 0.9 + 80, 160, 360);
+      shot.cx = f.x; shot.cz = f.z; shot.r = WW.clamp((f.d || 150) * 0.65 + 55, 115, 260);   // close enough that the ships read big
       shot.a0 = Math.random() * Math.PI * 2; shot.w = 0.012 * shot.side;
       if (shotCount === 1 && WW.game && WW.game.state === 'battle') { // opening shot: one fleet setting out, side-on
         const nat = Math.random() < 0.5 ? 'USN' : 'IJN';
@@ -138,7 +139,7 @@ window.WW = window.WW || {};
         for (const o of WW.world.ships) if (o.alive && o.nation === nat) { x0 = Math.min(x0, o.x); x1 = Math.max(x1, o.x); z0 = Math.min(z0, o.z); z1 = Math.max(z1, o.z); }
         if (x1 > x0) {
           shot.cx = (x0 + x1) / 2; shot.cz = (z0 + z1) / 2; shot.centred = true;
-          shot.r = WW.clamp(Math.max(x1 - x0, (z1 - z0) * 0.6) * 0.95 + 60, 200, 460);
+          shot.r = WW.clamp(Math.max(x1 - x0, (z1 - z0) * 0.6) * 0.75 + 45, 150, 340);
           shot.a0 = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2; shot.w = 0.006 * shot.side;
         }
       }
@@ -164,7 +165,7 @@ window.WW = window.WW || {};
       }
       case 'chase': {
         const h = s.heading !== undefined ? s.heading : 0, isPlane = sp.y > 0.5;
-        const back = isPlane ? 20 : (s.stats ? s.stats.length : 10) * 1.2 + 10;
+        const back = isPlane ? 20 * PFK : (s.stats ? s.stats.length : 10) * 1.2 + 10;
         if (shot.t === 0 || shot.sideT === undefined) { // choose the quarter with open water once
           shot.sideT = 1;
           const hb = h + Math.PI;
@@ -183,10 +184,10 @@ window.WW = window.WW || {};
         break;
       }
       default: { // wide establishing shot: slow arc around the front line
-        if (shot.cx === undefined) { const f = frontCentre(); shot.cx = f.x; shot.cz = f.z; shot.r = 200; shot.a0 = 1; shot.w = 0.025; }
+        if (shot.cx === undefined) { const f = frontCentre(); shot.cx = f.x; shot.cz = f.z; shot.r = 150; shot.a0 = 1; shot.w = 0.025; }
         // low and wide, looking a little past the action so the hazy horizon shows at the top
         const a = shot.a0 + shot.w * shot.t;
-        const past = shot.centred ? 0 : 0.35;
+        const past = shot.centred ? 0 : 0.15;   // a little past the action: the fleets in the middle distance, not on the horizon
         gL.set(shot.cx - Math.cos(a) * shot.r * past, 0, shot.cz - Math.sin(a) * shot.r * past);
         gP.set(shot.cx + Math.cos(a) * shot.r, shot.r * 0.24, shot.cz + Math.sin(a) * shot.r);
       }
@@ -215,7 +216,8 @@ window.WW = window.WW || {};
     for (const p of WW.world.planes) {
       if (p.removed) continue;
       const dx = v.x - p.x, dy = v.y - p.y, dz = v.z - p.z, d = Math.hypot(dx, dy, dz);
-      if (d < 9 && d > 0.01) { const k = 9 / d; v.x = p.x + dx * k; v.y = p.y + dy * k; v.z = p.z + dz * k; }
+      const cl = 9 * PFK;   // 9 at the 1.7 plane scale
+      if (d < cl && d > 0.01) { const k = cl / d; v.x = p.x + dx * k; v.y = p.y + dy * k; v.z = p.z + dz * k; }
     }
     v.y = Math.max(v.y, 4);
   }

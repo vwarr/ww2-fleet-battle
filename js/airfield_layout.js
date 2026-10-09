@@ -15,8 +15,9 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var TAXI_V = 16, HOLD_V = 11, TAXI_U = 44, LINEUP_U = 39, RUN_HALF_W = 4.5;
-  var CLS = { S: { len: 4.6, span: 5.3 }, M: { len: 6.4, span: 8.0 }, L: { len: 8.3, span: 11.8 } };
-  var COL_U = 38, ROW_U = 64, MAX_V = 66; // columns within |u| <= COL_U (their exits are on the runway); rows within |u| <= ROW_U and |v| <= MAX_V
+  var PK = WW.cfg.PLANE_K || 1;   // the plane footprints below are at the 1.7 plane scale (ship_classes.js)
+  var CLS = { S: { len: 4.6 * PK, span: 5.3 * PK }, M: { len: 6.4 * PK, span: 8.0 * PK }, L: { len: 8.3 * PK, span: 11.8 * PK } };
+  var COL_U = 38, ROW_U = 64, MAX_V = 66, CLIMB_U = 100; // climb-out lanes run to |u| CLIMB_U past the main runway's ends
 
   function make(S) {
     var c = Math.cos(S.h), s = Math.sin(S.h), x0 = S.x, z0 = S.z;
@@ -54,14 +55,23 @@ window.WW = window.WW || {};
   function free(L, u, v, r, rowsToo) {
     for (var k = 0; k < 40; k++) {
       var a = k * 2.4, d = k * 1.6, uu = u + Math.cos(a) * d, vv = v + Math.sin(a) * d;
-      if (!L.landBox(uu, vv, r, r) || onNetwork(L, uu, vv, r)) continue;
+      if (!L.landBox(uu, vv, r, r) || onNetwork(L, uu, vv, r) || climbOut(L, uu, vv, r)) continue;
       if (L.facs.some(function (f) { return Math.hypot(f.u - uu, f.v - vv) < f.r + r + 3; })) continue;
-      if (rowsToo !== false && L.spots.some(function (p) { return Math.hypot(p.u - uu, p.v - vv) < p.r + r + 2; })) continue;
+      if (rowsToo !== false && L.spots.some(function (p) { return Math.hypot(p.u - uu, p.v - vv) < Math.max(p.len, p.span) / 2 + 2.5 + r + 2; })) continue; // clear of the revetment and a truck's way round it
       return { u: uu, v: vv };
     }
     return null;
   }
   function addFac(L, u, v, r) { L.facs.push({ u: u, v: v, r: r }); }
+  // the climb-out / approach lanes past both ends of each runway: no building there (a plane lifting off at the far
+  // end is still low over them)
+  function climbOut(L, u, v, r) {
+    if (Math.abs(u) > 40 && Math.abs(u) < CLIMB_U && Math.abs(v) < RUN_HALF_W + 3 + r) return true;
+    var R2 = L.S.runways[1]; if (!R2) return false;
+    var q = L.toL(R2.x, R2.z), a = R2.h - L.S.h, c = Math.cos(a), s = Math.sin(a), du = u - q.u, dv = v - q.v;
+    var al = du * c + dv * s, ac = -du * s + dv * c;
+    return Math.abs(al) > R2.len / 2 - 3 && Math.abs(al) < R2.len / 2 + CLIMB_U - 47 && Math.abs(ac) < RUN_HALF_W + 3 + r;
+  }
 
   // Column candidates (every 2 u on each side): on land from the taxiway outward (reach) and clear of the cross runway.
   function columns(L) {
@@ -104,7 +114,7 @@ window.WW = window.WW || {};
       var cls = order.find(function (k) { return need[k] > 0; }), C = CLS[cls], placed = 0;
       for (var si = 0; si < 2 && need[cls] > 0; si++) {
         var sd = sideTurn[si], fk = sd + cls; if (full[fk]) continue;
-        var half = C.span / 2 + 0.8, laneV = edge[sd] + prevHalf[sd] + half, spotV = laneV + half + C.len / 2;
+        var half = C.span / 2 + 1.3, laneV = edge[sd] + prevHalf[sd] + half, spotV = laneV + half + C.len / 2;
         if (spotV + C.len / 2 > MAX_V) { full[fk] = true; continue; }
         var cand = L.cols[sd].filter(function (cl) { return cl.reach >= laneV && colClear(L, cl.u, sd * TAXI_V, sd * laneV) && laneOK(L, cl.u, cl.u * 0.4, sd * laneV); });
         if (!cand.length) { full[fk] = true; continue; }
@@ -121,7 +131,7 @@ window.WW = window.WW || {};
           var w = L.toW(u, sp.v); sp.x = w.x; sp.z = w.z;
           sp.h = Math.atan2(-sd * Math.cos(L.S.h), sd * Math.sin(L.S.h)); // nose to the lane (toward the runway)
           L.spots.push(sp); row.spots.push(sp); need[cls]--; n++;
-          u += C.span + 1.6 - 0.5;                                          // the next revetment along the row
+          u += C.span + 2.7 - 0.5;                                          // the next revetment: its berm is shared with this one (models_base revetWalls)
         }
         if (n) { L.rows.push(row); placed += n; edge[sd] = spotV + C.len / 2 + 1; prevHalf[sd] = 0; }
         else full[fk] = true;
@@ -187,5 +197,5 @@ window.WW = window.WW || {};
   }
 
   WW.airfieldLayout = { make: make, columns: columns, rows: rows, free: free, addFac: addFac, outPath: outPath, inPath: inPath,
-    netDist: netDist, onNetwork: onNetwork, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
+    netDist: netDist, onNetwork: onNetwork, climbOut: climbOut, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
 })();

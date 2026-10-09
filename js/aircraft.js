@@ -6,8 +6,8 @@ window.WW = window.WW || {};
   const tracers = [];         // pooled THREE.Line
   let tracerIdx = 0, v3 = null;
   const REARM = 10;
-  const PLANE_SCALE = WW.cfg.PLANE_SCALE || 1.7; // arcade scale 1.7 (ship_classes.js; true scale ~0.41, ?planeScale=)
-  const DECK_Y = 0.75;        // fuselage centre above the flight deck (scaled model)
+  const PLANE_SCALE = WW.cfg.PLANE_SCALE || 0.82, PK = WW.cfg.PLANE_K || 1, FXK = Math.sqrt(PK); // ~2x true (ship_classes.js; ?planeScale=); FXK: puff sizes
+  const DECK_Y = 0.75 * PK;   // fuselage centre above the flight deck (0.75 at the 1.7 tuning scale)
 
   function getModel(kind, nation) {
     const k = kind + nation, p = pool[k];
@@ -64,14 +64,14 @@ window.WW = window.WW || {};
         this.hitFxT = this.t + 0.18;
         if (WW.emit) WW.emit('planeHit', { plane: this, amount: amount }); // sound hook (audio_air.js), throttled with the hit flash
         WW.fx.sparks(this.x, this.y, this.z);
-        if (Math.random() < 0.5) WW.fx.smoke(this.x, this.y, this.z, true, 0.35);
+        if (Math.random() < 0.5) WW.fx.smoke(this.x, this.y, this.z, true, 0.35 * FXK);
       }
       if (this.hp <= 0) { this.shotDown(); return; }
       // Badly hit: jettison the payload and turn for home (not mid-dive / mid-run).
       if (!this.crippled && this.hp < this.maxHp * 0.35 && (this.state === 'transit' || this.state === 'attack') && !this.phase) {
         this.crippled = true;
         if (WW.airDeaths && WW.airDeaths.onCrippled(this)) return;
-        if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8); }
+        if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8 * FXK); }
         this.state = 'return'; this.foe = null;
       }
     }
@@ -82,17 +82,17 @@ window.WW = window.WW || {};
       const f = this.hp / this.maxHp, fx = WW.fx;
       if (!falling && f >= 0.7) return;
       const n = 1.25 * PLANE_SCALE * 0.6, c = Math.cos(this.heading), sn = Math.sin(this.heading);
-      const ex = this.x + c * (n - 0.8), ey = this.y + 0.1, ez = this.z + sn * (n - 0.8);
+      const ex = this.x + c * (n - 0.8 * PK), ey = this.y + 0.1 * PK, ez = this.z + sn * (n - 0.8 * PK);
       if (!falling && f >= 0.5) {
         this.trailT -= dt;
-        if (this.trailT <= 0) { this.trailT = 1.5 + Math.random() * 2; fx.smoke(ex, ey, ez, true, 0.25); }
+        if (this.trailT <= 0) { this.trailT = 1.5 + Math.random() * 2; fx.smoke(ex, ey, ez, true, 0.25 * FXK); }
         this.tx = undefined; return;
       }
       const heavy = falling || f < 0.3;
       this.flameT = (this.flameT || 0) - dt; // flickering flames at the engine
-      if (heavy && this.flameT <= 0) { this.flameT = falling ? 0.08 : 0.2; fx.fire(ex + c * 0.8, ey, ez + sn * 0.8); }
+      if (heavy && this.flameT <= 0) { this.flameT = falling ? 0.08 : 0.2; fx.fire(ex + c * 0.8 * PK, ey, ez + sn * 0.8 * PK); }
       const ld = WW.damage ? WW.damage.load() : 1, ribbon = !!fx.trail;
-      const sp = (ribbon ? 0.7 : 3.5) * Math.min(2, ld), size = heavy ? 1.35 : 1.05, life = falling ? 1.4 : heavy ? 1.1 : 0.85; // size ~1.5-2x spacing: overlapping ribbon
+      const sp = (ribbon ? 0.7 : 3.5) * FXK * Math.min(2, ld), size = (heavy ? 1.35 : 1.05) * FXK, life = falling ? 1.4 : heavy ? 1.1 : 0.85; // size ~1.5-2x spacing: overlapping ribbon
       if (WW.damage) WW.damage.want((this.speed || 20) / sp * life / 3);
       if (this.tx === undefined) { this.tx = ex; this.ty = ey; this.tz = ez; return; }
       let dx = ex - this.tx, dy = ey - this.ty, dz = ez - this.tz, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -102,13 +102,13 @@ window.WW = window.WW || {};
       for (let k = 0; k < 12 && d >= sp; k++, d -= sp) {
         this.tx += dx * sp; this.ty += dy * sp; this.tz += dz * sp;
         if (ribbon) fx.trail(this.tx, this.ty, this.tz, heavy, size * (0.85 + Math.random() * 0.3), life);
-        else fx.smoke(this.tx, this.ty, this.tz, true, heavy ? 0.6 : 0.4);
+        else fx.smoke(this.tx, this.ty, this.tz, true, (heavy ? 0.6 : 0.4) * FXK);
       }
       if (d >= sp) { this.tx = ex; this.ty = ey; this.tz = ez; }
     }
     shotDown() {
       this.alive = false; this.state = 'falling'; WW.stats.planesLost++;
-      WW.fx.explosion(this.x, this.y, this.z, 0.6);
+      WW.fx.explosion(this.x, this.y, this.z, 0.6 * FXK);
       this.spin = (WW.rand() < 0.5 ? -1 : 1) * WW.randRange(1.5, 3); this.vy = Math.min(this.vy, -1);
       if (WW.airDeaths) WW.airDeaths.onShotDown(this);
     }
@@ -150,13 +150,13 @@ window.WW = window.WW || {};
         this.vy -= 9 * dt; this.heading += this.spin * dt; this.turn = this.spin * 2; this.speed *= 1 - 0.3 * dt;
         this.trail(dt, true);
         this.integrate(dt, true);
-        if (this.y <= 0) { fx.splash(this.x, this.z, 1.6); fx.explosion(this.x, 0.3, this.z, 0.6); this.remove(); }
+        if (this.y <= 0) { fx.splash(this.x, this.z, 1.6 * FXK); fx.explosion(this.x, 0.3, this.z, 0.6 * FXK); this.remove(); }
         return;
       }
       if (this.state === 'ditch') {
         this.vy += WW.clamp(-3 - this.vy, -4 * dt, 4 * dt); this.speed = Math.max(8, this.speed - 4 * dt); this.turn = 0;
         this.integrate(dt, true);
-        if (this.y <= 0.3) { fx.splash(this.x, this.z, 1); this.remove(); }
+        if (this.y <= 0.3) { fx.splash(this.x, this.z, FXK); this.remove(); }
         return;
       }
       const c = this.carrier;
@@ -187,7 +187,8 @@ window.WW = window.WW || {};
       this.x += Math.cos(this.heading) * this.speed * dt;
       this.z += Math.sin(this.heading) * this.speed * dt;
       this.y += this.vy * dt;
-      if (!free && this.state !== 'takeoff' && this.state !== 'landing' && this.y < 1.5) { this.y = 1.5; this.vy = Math.max(0, this.vy); }
+      const fl = this.y < 16 ? 1.5 + Math.max(0, -WW.terrain.depthAt(this.x, this.z), WW.islandBase ? WW.islandBase.roofAt(this.x, this.z) : 0) : 0; // wave tops, or 1.5 over the hills / roofs
+      if (!free && this.state !== 'takeoff' && this.state !== 'landing' && this.y < fl) { this.y = fl; this.vy = Math.max(0, this.vy); }
       this.sync(dt);
     }
 
