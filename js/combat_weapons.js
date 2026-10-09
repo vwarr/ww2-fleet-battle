@@ -46,7 +46,7 @@ window.WW = window.WW || {};
       }
       var hit = I.findHit(p.nation, p.x, p.z, 0.4, true, null);
       if (hit && p.dud) { // a dud: it hits the hull and does not go off (fx only; no damage)
-        I.fx('splash', p.x, p.z, 1); I.fx('sparks', p.x, 0.6, p.z);
+        I.fx('splash', p.x, p.z, 1.8); I.fx('sparks', p.x, 0.8, p.z); I.fx('sparks', p.x, 1.2, p.z); // a thin column, a clang: no fireball
         if (WW.dstat) WW.dstat('torpDud' + p.src, p.nation);
         if (WW.emit) { WW.emit('torpedoDud', { proj: p, ship: hit, x: p.x, z: p.z }); WW.emit('weaponImpact', { kind: 'torpedo', proj: p, x: p.x, z: p.z, ship: hit, dud: true }); }
         p.dead = true; return;
@@ -64,7 +64,7 @@ window.WW = window.WW || {};
     // the track on the water: a steam torpedo leaves a bubbly white streak, an oxygen one (sight < 1) a faint trace
     p.wakeT -= dt;
     if (p.wakeT <= 0) {
-      if (p.sight < 1) { p.wakeT = 0.25; I.fx('wake', p.x, p.z, p.h, 0.4, true); }
+      if (p.sight < 1) { p.wakeT = 0.2; I.fx('wake', p.x, p.z, p.h, 0.45, true); }
       else { p.wakeT = 0.1; I.fx('wake', p.x, p.z, p.h, 0.7); if (p.run % 3 < 1) I.fx('torpBubbles', p.x, p.z, p.h); }
     }
   }

@@ -178,8 +178,8 @@ window.WW = window.WW || {};
         // room to run in every direction
         // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
         // CV_LO..CV_HI of the width in from its own edge, withdrawing or not: a broken side's carrier then has a long
-        // run home (ai_endgame.js), and a pursuer a real window to catch it (user, Oct 2026)
-        var wd = B.posture === "withdraw", lo = van && !wd ? Math.min(0.08, CV_LO) : CV_LO, hi = CV_HI; // van: the IJN vanguard holds its carriers back (doctrine) // withdrawing too: the run home starts at the break (ai_endgame.js)
+        // run home (ai_endgame.js), and a pursuer a real window to catch it (user, Oct 2026); the IJN vanguard (fleet_formation.js) keeps to this band too
+        var wd = B.posture === "withdraw", lo = CV_LO, hi = CV_HI; // withdrawing too: the run home starts at the break (ai_endgame.js)
         if (wd) p.z = q.z; // straight home, not across the front
         p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
         cvSafe(B, p, ownX === 0 ? W * 0.06 : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * 0.94); // safety may slide it home

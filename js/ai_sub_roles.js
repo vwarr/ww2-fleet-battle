@@ -9,12 +9,13 @@
 //    claims an open pickup of its own side's survivors or aircrew from endgame.js (the shared rescue task list:
 //    destroyers get first call for LG_WAIT s), runs there surfaced, stops alongside and takes them aboard
 //    (endgame.js pickup: within reach and nearly stopped for its PICKUP_T s). Lifeboats row to her (lifeboats.js
-//    rescuerNear). Given up when a destroyer, aircraft or gun ship comes near, or the boat is hurt.
+//    rescuerNear). Given up when a destroyer or gun ship comes near or the boat is hurt; an enemy plane within
+//    LG_AIR only sends her down until it has gone (the pickup stays hers).
 // Reads the enemy only through WW.intel / WW.threat; no randomness.
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var LG_R = 380, LG_WAIT = 6, LG_SAFE = 8, LG_HP = 0.5, SHADOW = 110;
+  var LG_R = 260, LG_WAIT = 6, LG_SAFE = 8, LG_HP = 0.5, LG_AIR = 70, SHADOW = 110;
   function doctrine(n) { return (WW.fleetCmd && WW.fleetCmd.doctrine(n)) || {}; }
   // ambush score factor for a target type, and the time scale of the "can get ahead of it" discount (s)
   function weight(ship, type) { var d = doctrine(ship.nation); return type === 'carrier' ? d.subCV || 1 : 1; }
@@ -29,14 +30,20 @@ window.WW = window.WW || {};
     if (WW.rescue && typeof WW.rescue.tasks === 'function') return WW.rescue.tasks(); // the shared list (flyingboats)
     return WW.endgame && WW.endgame.tasks ? WW.endgame.tasks() : [];
   }
+  function planeNear(ship, r) {
+    var ps = WW.intel && WW.intel.enemyPlanes ? WW.intel.enemyPlanes(ship.nation) : [];
+    for (var i = 0; i < ps.length; i++) if (ps[i].unit && ps[i].unit.alive && WW.dist2(ship.x, ship.z, ps[i].x, ps[i].z) < r * r) return true;
+    return false;
+  }
   function release(ship) { var t = ship.rescue; if (t && t.by === ship) { t.by = null; t.pick = 0; } ship.rescue = null; }
   // Lifeguard duty. L: the boat's picture (ai_light.js subAI). Returns true while it has the helm.
   function lifeguard(ship, dt, L) {
     var a = ship.ai, d = doctrine(ship.nation), now = WW.time.now;
     var t = ship.rescue;
     if (t && (t.done || t.by !== ship)) { ship.rescue = null; t = null; }
-    var safe = ship.hp >= LG_HP * ship.maxHp && L.ddD > 160 && !L.air && L.thrD > 130 && !(a.evadeT > 0) && !L.ddTgt;
+    var safe = ship.hp >= LG_HP * ship.maxHp && L.ddD > 160 && L.thrD > 130 && !(a.evadeT > 0) && !L.ddTgt;
     if (!d.lifeguard || !safe) { if (t) release(ship); return false; }
+    if (L.air && planeNear(ship, LG_AIR)) return false; // an enemy plane close: dive for now, the pickup stays hers
     if (!t) {
       a.lgT = (a.lgT || 0) - dt;
       if (a.lgT > 0 || (L.amb && WW.dist(ship.x, ship.z, L.amb.c.x, L.amb.c.z) < 200)) return false; // a target close by comes first
