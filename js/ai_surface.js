@@ -302,7 +302,7 @@ window.WW = window.WW || {};
     if (WW.intel) for (const c of WW.intel.enemyShips(ship.nation)) {
       const u = c.unit;
       if (!u || !u.alive || u.submerged || now - c.seenAt > 45) continue;
-      const r = (u.stats.guns[0] ? u.stats.guns[0].range : 60) * 1.2 + 20, d = WW.dist(ship.x, ship.z, c.x, c.z);
+      const r = u.isBase ? (u.stats.guns[0] ? u.stats.guns[0].range + 10 : 0) : (u.stats.guns[0] ? u.stats.guns[0].range : 60) * 1.2 + 20, d = WW.dist(ship.x, ship.z, c.x, c.z); // the island base: only its own gun reach
       if (d > r || d < 1) continue;
       const w = 1.2 - d / r;
       ax += (ship.x - c.x) / d * w; az += (ship.z - c.z) / d * w; n++;

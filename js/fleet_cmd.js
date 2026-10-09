@@ -270,16 +270,16 @@ window.WW = window.WW || {};
     // within TTK s, not counting this shooter's own share) x0.6; else 1
     assignment: function (ship, target) {
       var B = sides[ship.nation]; if (!B) return 1;
-      var bf = WW.baseAI ? WW.baseAI.assign(ship, target) : 0; if (bf) return bf; // an enemy at the own island base
+      var bf = (WW.baseAI && WW.baseAI.assign(ship, target)) || 1; // x an enemy at the own island base (base_ai.js)
       for (var i = 0; i < B.defend.length; i++) {
         var q = B.defend[i];
-        if (q.enemy === target && ship !== q.carrier && WW.dist(ship.x, ship.z, q.carrier.x, q.carrier.z) < DEFEND_HELP) return 2.5; // protect the carrier
+        if (q.enemy === target && ship !== q.carrier && WW.dist(ship.x, ship.z, q.carrier.x, q.carrier.z) < DEFEND_HELP) return 2.5 * bf; // protect the carrier
       }
       var inc = B.incoming.get(target) || 0;
       if (ship.target === target) inc -= gunDps(ship.stats, WW.dist(ship.x, ship.z, target.x, target.z));
-      if (inc * TTK > target.hp * 1.1) return 0.6;
+      if (inc * TTK > target.hp * 1.1) return 0.6 * bf;
       var F = this.focusFor(ship);
-      return F.indexOf(target) >= 0 ? 1.35 : 1;
+      return (F.indexOf(target) >= 0 ? 1.35 : 1) * bf;
     },
     // the strike decision for a carrier: { target, contact, score, hold } or null (ai_carrier.js / air ops)
     strikeOrder: function (cv) { var B = sides[cv.nation]; return (B && B.strikes.get(cv.id)) || null; },

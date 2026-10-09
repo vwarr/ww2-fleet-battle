@@ -220,6 +220,7 @@ window.WW = window.WW || {};
     const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], now = WW.time.now;
     for (const c of cs) {
       if (!c.unit || !c.unit.alive || c.unit.submerged || now - c.seenAt > 45) continue;
+      if (c.unit.isBase && (!c.unit.stats.guns.length || WW.dist(ship.x, ship.z, c.x, c.z) > c.unit.stats.guns[0].range + 20)) continue; // the island base: only while under its guns
       const d = WW.dist(ship.x, ship.z, c.x, c.z);
       if (d < ed) { ed = d; e = c; }
     }
