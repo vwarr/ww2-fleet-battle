@@ -211,6 +211,7 @@ function install(opts) {
       if (r.ring.length > CIRC_W && AIR[ph]) { const o = r.ring[0], path = r.cum - o[2], net = Math.hypot(p.x - o[0], p.z - o[1]); circ = path > 40 && net < 0.4 * path; }
       const cat = CAT[ph] || 'other';
       r.b[cat] = (r.b[cat] || 0) + DT;
+      if (ph === 'pattern' && p.deckPh === 'marshal') r.b.marshal = (r.b.marshal || 0) + DT;   // holding in the marshal stack (part of the pattern)
       if (circ) {
         const c = p.carrier, tg = tgtOf(p);
         const where = c && WW.dist(p.x, p.z, c.x, c.z) < 70 ? 'cv' : tg && WW.dist(p.x, p.z, tg.x, tg.z) < 70 ? 'tgt' : 'else';
@@ -219,7 +220,7 @@ function install(opts) {
       }
       if (AIR[ph]) { r.air += DT; if (r.o === 'cv' || r.o === 'base') { M.air++; if (p.kind === 'fighter' && !p.target && !p.search) M.cap++; else M.strikeAir++; } }
       if (r.armed0 && !p.ordnance && !r.dropped && !r.jett) r.jett = true;
-      if (r.wv === undefined && AIR[ph] && p.kind !== 'fighter' && !p.search && !p.level) r.wv = p.wave ? (p.wave.go ? 'late' : 'formed') : 'none'; // joined its wave while it formed / after it left / never
+      if (r.wv === undefined && AIR[ph] && p.kind !== 'fighter' && !p.search && !p.level && (p.wave !== undefined || !WW.strike)) r.wv = p.wave ? (p.wave.go ? 'late' : 'formed') : 'none'; // joined its wave while it formed / after it left / never
       r.ph = ph;
       const key = r.o + '|' + p.nation + '|' + (r.v || p.kind) + '|' + ph, H = S.H[key] || (S.H[key] = { n: 0, mx: {} });
       H.n++;
@@ -265,7 +266,7 @@ function install(opts) {
     // waves in the air: first up, departure, formation quality in transit
     for (const [w, wr] of S.wrec) {
       if (wr.tUp === null && w.t1 >= 0) wr.tUp = +t.toFixed(1);
-      if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; }
+      if (wr.tGo === null && w.go) { wr.tGo = +t.toFixed(1); wr.formed = w.why ? w.why === 'formed' : null; const tg = w.target; wr.dGo = tg ? Math.round(WW.dist(w.x, w.z, tg.x, tg.z)) : null; }
       wr.members = Math.max(wr.members, w.members.filter(q => q.alive).length);
       if (!w.go || w.done) continue;
       if (wr.tArr === null && w.dT < 140) wr.tArr = +t.toFixed(1);
