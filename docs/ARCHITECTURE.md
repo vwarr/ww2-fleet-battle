@@ -193,6 +193,33 @@ Not changed: the PT hit box (`HIT_MIN_L` 5: with no strikes on PT boats while bi
 
 Screenshots (render mode, `tests/shape_shots.js 6 airwar,closing`): ![a 24-plane USN strike in transit](battle_shape/balance_strike_in_transit.jpg) ![the fleets meet at 317 s: destroyers trading fire under the air war](battle_shape/balance_fleets_meet.jpg) ![the plot at the meeting](battle_shape/balance_fleets_meet_map.jpg)
 
+### Torpedoes restored (2026-10-09)
+
+User: "torpedoes seem to have been nerfed". The balance pass slowed the aerial torpedoes, raised the USN duds and had every ship comb a track from the drop, and the hit itself had always been weak: one torpedo took 12% of a carrier's hp, 9% of a battleship's (a carrier needed ~8 hits on its own). In 1942 the torpedo was the ship killer: Yorktown dead in the water after two at Midway, Prince of Wales sunk by six, Northampton and Chicago by two, a destroyer broken by one. Changes (sim, `WW.rand`; nation-neutral: the nations differ only in their torpedoes, as before):
+
+- Damage below the waterline: `WW.TORPEDO.vs` by target type (CV 1.7, BB 1.3, CA 1.5, DD 2.2, sub 2.5) × the warhead.
+- Breaches (ship_fires.js): each hit floods hp until shored, counter-flooding eases the list, a heavy list with breaches open can capsize the ship; a torpedo in a carrier may start an avgas fire.
+- Bigger visible effect per hit: list 0.07 rad (cap 0.26), flooding speed loss 0.12 (cap 0.45), engine / shaft / rudder hits 0.25 (aft third 0.45).
+- Combing: only a ship that saw the drop (within `R.DROP`) or the wake, and that can come parallel before the track arrives at its real tactical-diameter turn rate (`T90`); otherwise it holds its course. Torpedo speeds, duds, warheads and AA are unchanged.
+- Visuals: `fx.torpedoHit` (underwater flash, bubble bloom, a tall column up the ship's side, spray, a foam slick); torpedo ruptures drawn before the water so the sea covers and tints their lower half (the user's "holes look wrong underwater": the old hole decal sat half below the waterline and was drawn on top of the water, untinted).
+
+Measured with `node tests/torpedo_review.js --seeds 20` (80 rounds: standard, carrier_duel, midway, surface). Before = 7efc36f (before the balance pass), balance = main 02c9280, after = this branch:
+
+| | before | balance | after |
+|---|---|---|---|
+| aerial hit rate USN / IJN | 41 / 36% | 19 / 25% | 28 / 26% |
+| anvils of >= 3 torpedoes that score, USN / IJN | 64 / 73% | 39 / 68% | 61 / 74% |
+| aerial torpedoes whose target combed | 89% | 91% | 61% |
+| direct hp per hit: CV / BB / CA / DD | 12 / 9 / 17 / 37% | 13 / 10 / 19 / 40% | 22 / 13 / 27 / 84% (+ flooding) |
+| carrier 20 s after its first hit: speed / hp | 0.71 / 0.72 | 0.52 / 0.44 | 0.48 / 0.34 |
+| list 5 s after the first hit (CV / CA) | 0.06 / 0.10 rad | 0.10 / 0.10 | 0.17 / 0.18 |
+| ships sunk where torpedoes did it, CV / BB / CA / DD | 32 / 27 / 37 / 47% | 36 / 41 / 64 / 67% | 68 / 82 / 87 / 81% |
+| fatal blows: torpedo (+ flooding, capsize) / bomb / shell | 151 / 253 / 71 | 206 / 93 / 115 | 313 (+41, +13) / 73 / 50 |
+
+Ship-launched torpedo hit rates are unchanged (~26-28%). Balance: gates USN 53 / 54 of 100 (seeds 1 / 1001, PASS); mirrored pairs against main 02c9280: USN +2.0 ± 6.8 points, loss margin +3.0 ± 6.7 (neither significant). Gun kills fall (shell fatal blows 115 → 50 in 80 rounds): the destroyers' and cruisers' torpedoes now finish what the guns start. That is a matter for the closing balance pass. Behaviour suite 0 FAIL; `determinism.js 1 200` and `--cross 2,3 450` (42 and 75 torpedoes) PASS. Screenshots: `node tests/torpedo_shots.js` and `node tests/flight_shots.js 3 anvilhit`.
+
+![before: the hole decal drawn over the water](torpedo/holes_before.jpg) ![after: ruptures cut by the water](torpedo/holes_after.jpg) ![a battleship listing onto her holed side](torpedo/list_holed_side.jpg) ![the column up a carrier's side](torpedo/hit_column.jpg) ![a USN aerial torpedo striking an IJN cruiser](torpedo/aerial_hit.jpg)
+
 ## Main loop
 
 Each animation frame (`main.js`, `frame`):
