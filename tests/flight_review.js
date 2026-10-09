@@ -227,7 +227,12 @@ function report(rounds) {
   out.fighters.eng = {};
   for (const k of Object.keys(eg).sort()) { const G = eg[k], o = { n: G.length, durP50: med(G.map(e => e.d)), durP90: qs(G.map(e => e.d), 0.9), killRate: G.filter(e => e.kill).length / G.length, short: G.filter(e => e.d < 2).length / G.length }; out.fighters.eng[k] = o; say(`engagements ${pad(k, 34)} n ${lp(o.n, 4)} dur p50 ${f1(o.durP50)} p90 ${f1(o.durP90)} s, <2 s ${pc(o.short)}, kill / engagement ${f1(o.killRate)}`); }
   const FF = []; for (const r of rounds) if (r.rec) for (const x of r.rec.foeFirst) FF.push(x);
-  for (const n of ['USN', 'IJN']) { const d = FF.filter(x => x.n === n && x.d !== null).map(x => x.d); if (d.length) { out.fighters['icept_' + n] = { n: d.length, p10: qs(d, 0.1), p50: med(d), p90: qs(d, 0.9) }; say(`${n} CAP first contact with each armed raider: distance of the raider from the CAP's carrier p10 ${f1(qs(d, 0.1))} p50 ${f1(med(d))} p90 ${f1(qs(d, 0.9))} u (n ${d.length})`); } }
+  // carrier CAP (the PLANE_REVIEW 5 target) and the island base's CAP (raids on the island are met over it) apart
+  for (const n of ['USN', 'IJN']) for (const o of ['cv', 'base']) {
+    const d = FF.filter(x => x.n === n && x.d !== null && (x.o || 'cv') === o).map(x => x.d); if (!d.length) continue;
+    out.fighters['icept_' + n + (o === 'cv' ? '' : '_base')] = { n: d.length, p10: qs(d, 0.1), p50: med(d), p90: qs(d, 0.9) };
+    say(`${n} ${o === 'cv' ? 'carrier' : 'island base'} CAP first contact with each armed raider: distance of the raider from the CAP's ${o === 'cv' ? 'carrier' : 'base'} p10 ${f1(qs(d, 0.1))} p50 ${f1(med(d))} p90 ${f1(qs(d, 0.9))} u (n ${d.length})`);
+  }
 
   // 6. attacks and losses
   say('\n== 6. ATTACKS ==');

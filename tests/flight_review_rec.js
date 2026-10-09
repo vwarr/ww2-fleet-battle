@@ -238,7 +238,7 @@ function install(opts) {
           if (foe) {
             const c = p.carrier;
             r.eng = { foe, t0: t, role: role(p), fk: foe.kind, armed: armed(foe), dcv: c ? Math.round(WW.dist(foe.x, foe.z, c.x, c.z)) : null, mode: p.df ? p.df.mode : null };
-            if (armed(foe) && role(p) === 'cap' && !S.foeFirst.has(foe)) S.foeFirst.set(foe, { n: p.nation, d: r.eng.dcv, t });
+            if (armed(foe) && role(p) === 'cap' && !S.foeFirst.has(foe)) S.foeFirst.set(foe, { n: p.nation, d: r.eng.dcv, t, o: r.o });
           }
         }
         if (AIR[ph] && ph !== 'return' && ph !== 'search') {
