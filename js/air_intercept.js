@@ -22,8 +22,8 @@ window.WW = window.WW || {};
     const pt = p.pt, dist = Math.hypot(f.x - p.x, f.y - p.y, f.z - p.z);
     const diving = f.kind === 'dive' && (f.phase === 'roll' || f.phase === 'dive');
     const low = f.kind === 'torpedo';                // low and slow: stern / high-side pass from behind and above
-    if (s.ipFoe !== f) { s.ipFoe = f; s.ip = dist < 70 ? 'run' : 'setup'; s.ipT = 0; s.foe = f; s.ipDir = WW.rand() < 0.5 ? -1 : 1; if (s.ip === 'run') ST.passes++; }
-    if (s.lock < 1.5) s.lock = 1.5;                  // stay on this bomber through the pass (dogfight.pick honours the lock)
+    if (s.ipFoe !== f) { s.ipFoe = f; s.ip = dist < 70 ? 'run' : 'setup'; s.ipT = 0; s.foe = f; s.ipDir = WW.rand() < 0.5 ? -1 : 1; if (s.ip === 'run') ST.passes++; s.lock = Math.max(s.lock, 4); }
+    if (s.lock < 1.5) s.lock = 1.5;                  // stay on this bomber through the passes (dogfight.pick honours the lock)
     s.ipT += dt; s.mt += dt;
     if (diving && s.ip === 'setup') { s.ip = 'run'; s.ipT = 0; ST.passes++; }
     let can = false, keep = false;

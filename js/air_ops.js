@@ -226,18 +226,28 @@ window.WW = window.WW || {};
     }
   }
 
-  // ---------- fighter director: CAP pick, leash, orbit ----------
+  // ---------- fighter director: CAP pick, leash, stations (air_cap.js) ----------
   // CAP priority: a torpedo bomber on its run (or heading at a ship of ours) > a dive bomber in the wheel / dive >
-  // other armed bombers > fighters > the rest; nearer is better. Only targets inside the leash of the carrier.
+  // other armed bombers > fighters > the rest; nearer is better. Only targets inside the leash of the carrier, and
+  // (with air_cap.js) only at visual range of this fighter: the vector out to a raid is flown without a foe.
+  const leashOf = pl => (WW.cap ? WW.cap.doc(pl.nation) : { leash: LEASH, leash2: LEASH2 });
+  // an enemy fighter riding with an armed raid (escort or sweep), or already on one of ours
+  function escorting(u, nation) {
+    if (u.kind !== 'fighter') return false;
+    if (u.foe && u.foe.nation === nation) return true;
+    for (const q of WW.world.planes) if (q.alive && q.nation === u.nation && armed(q) && WW.dist2(q.x, q.z, u.x, u.z) < 8100) return true;
+    return false;
+  }
   function capPick(pl) {
-    const c = pl.carrier;
+    const c = pl.carrier, Lh = leashOf(pl);
     if (!WW.intel) return null;
     let best = null, bs = -1e9;
     for (const ct of WW.intel.enemyPlanes(pl.nation)) {
       const u = ct.unit;
       if (!u || !u.alive) continue;
+      if (WW.cap && !WW.cap.inReach(pl, u)) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
-      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' ? LEASH2 : LEASH) || !leashed(pl, u)) continue;
+      if (dc > (arm && inbound(u, c) || u.kind === 'flyingboat' || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
       if (u.kind === 'flyingboat' && picture(c).armed) continue;   // bombers first: the snooper waits
       let pr;
       if (arm && u.kind === 'torpedo' && (u.phase === 'run' || u.sk === 'anvil' || (u.target && u.target.nation === pl.nation && u.state === 'attack'))) pr = 400;
@@ -251,15 +261,17 @@ window.WW = window.WW || {};
     }
     return best;
   }
-  // Keep the foe? A CAP fighter beyond the leash lets go, unless the foe is an armed bomber still closing on the
-  // fleet (to 2x), or an enemy fighter on its own tail (air_dogfight's defence).
+  // Keep the foe? A CAP fighter beyond its doctrine leash lets go, unless the foe is an armed bomber still closing on
+  // the fleet, a fighter riding with the raid, an enemy fighter on its own tail (air_dogfight's defence), a snooper,
+  // or a damaged bomber to finish.
   function leashed(pl, f) {
-    const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z);
-    if (d <= LEASH) return true;
+    const c = pl.carrier, d = WW.dist(pl.x, pl.z, c.x, c.z), Lh = leashOf(pl);
+    if (d <= Lh.leash) return true;
     if (f.kind === 'fighter' && f.foe === pl) return true;
-    if (f.kind === 'flyingboat') return d <= LEASH2;              // a shadower: the long leash, as for an inbound raid
-    if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= LEASH2 * 0.75) return true;   // finish a damaged bomber turning for home
-    return d <= LEASH2 && armed(f) && inbound(f, c);
+    if (f.kind === 'flyingboat') return d <= Lh.leash2;              // a shadower: the long leash, as for an inbound raid
+    if (f.kind !== 'fighter' && f.hp < f.maxHp * 0.5 && d <= Lh.leash2 * 0.75) return true;   // finish a damaged bomber turning for home
+    if (d > Lh.leash2) return false;
+    return armed(f) || escorting(f, pl.nation);   // an armed bomber will attack something of ours: chase it to the long leash
   }
   function fighter(pl, dt) {
     const c = pl.carrier;
@@ -275,7 +287,7 @@ window.WW = window.WW || {};
     if (pl.foe && !esc && !leashed(pl, pl.foe)) { pl.foe = null; ST.leashDrops++; }
     if (pl.foe && esc && pl.recall) pl.foe = pl.foe.foe === pl ? pl.foe : null;   // recalled: only self-defence on the way
     const f = pl.foe;
-    if (f) { pl.state = 'attack'; WW.dogfight.fight(pl, f, dt); return; }
+    if (f) { pl.state = 'attack'; pl.vec = null; WW.dogfight.fight(pl, f, dt); return; }
     pl.state = 'transit';
     if (pl.recall) { pl.fly(c.x, c.z, 34, dt, pl.pt.speed * 1.05); return; }
     if (esc) {
@@ -286,7 +298,8 @@ window.WW = window.WW || {};
     }
     // relieved: low on fuel and a fresh fighter is on station
     if (pl.fuel < 20 || (pl.fuel < RELIEF * 0.6 && capState(c).on >= 2)) { pl.state = 'return'; return; }
-    if (WW.squadrons && WW.squadrons.follow(pl, dt)) return;      // wingman: hold the slot on the element leader
+    if (WW.squadrons && WW.squadrons.follow(pl, dt)) return;      // wingman: hold the slot on the section leader
+    if (WW.cap && WW.cap.patrol(pl, dt)) return;                 // doctrine CAP: stations, vectors (air_cap.js)
     const A = picture(c);
     let cx = c.x, cz = c.z;
     if (A.near) { const b = Math.atan2(A.raidZ - c.z, A.raidX - c.x); cx += Math.cos(b) * 15; cz += Math.sin(b) * 15; } // vectored toward the raid

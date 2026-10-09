@@ -126,16 +126,29 @@ window.WW = window.WW || {};
   };
   WW.BOMB = { dmg: 180 };
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
-  // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter
-  WW.PLANE_TYPES = { fighter: { hp: 20, speed: 38, range: 1000 }, dive: { hp: 28, speed: 30, range: 1000 },
-                     torpedo: { hp: 30, speed: 26, range: 1000 } };
+  // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter.
+  // Speeds follow docs/PLANE_REVIEW.md §3.3: planes fly on a clock ~1.15x the ship clock (real speed / carrier speed x 5.6
+  // u/s x 1.15). speed: the plane's working speed (a fighter's combat speed, a bomber's cruise); cruise: a fighter's
+  // patrol / formation speed. Turn rates keep the real turn radius in hull lengths (fighters 0.7-1.2 L).
+  WW.PLANE_TYPES = { fighter: { hp: 20, speed: 40, cruise: 31, range: 1000 }, dive: { hp: 28, speed: 28, range: 1000 },
+                     torpedo: { hp: 30, speed: 25, range: 1000 } };
+  // Altitude: a separate, non-linear compression (§3.3): y = 0.4 * h_real[m]^0.59 game units (at a 26 u carrier).
+  // 15 m -> 2, 600 m -> 18, 1,500 m -> 30, 3,000 m -> 46, 4,500 m -> 58, 6,000 m -> 69, 7,500 m -> 79.
+  WW.altOf = h => 0.4 * Math.pow(Math.max(0, h), 0.59);
   // Flight model for air combat: turn (rad/s), climb (units/s), dive (top speed in a dive). Added to each type,
   // so WW.PLANE_TYPES[kind] keeps working; WW.PLANE_NATION overrides per nation (Zero: nimble, fragile, light guns; Corsair: tough, dives, six .50s); gun = damage per hitting round.
-  const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52 }, dive: { turn: 1.1, climb: 5, dive: 44 }, torpedo: { turn: 1.0, climb: 4.5, dive: 38 } };
+  // alt: transit altitude in a strike (VT ~1,500-2,000 m, VB 3,000-4,500 m, escorts above); dive bombers: push (push-over
+  // altitude), ang (dive angle, rad), brake (dive speed held by the dive brakes); torpedo bombers: runK (run speed x cruise).
+  const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52, alt: 64 }, dive: { turn: 1.1, climb: 5, dive: 44, alt: 54, push: 60, ang: 1.2, brake: 22 },
+                         torpedo: { turn: 1.0, climb: 4.5, dive: 38, alt: 32, runK: 0.78 } };
   for (const k in PLANE_FLIGHT) for (const f in PLANE_FLIGHT[k]) if (WW.PLANE_TYPES[k][f] === undefined) WW.PLANE_TYPES[k][f] = PLANE_FLIGHT[k][f];
+  // SBD-3 Dauntless: 70 deg from ~4,500 m (58-70 u), split flaps hold ~240 kt; D3A1 Val: 55-60 deg from ~3,000-3,500 m (45-55 u).
+  // TBD-1 Devastator slow (110 kt cruise), B5N2 Kate faster; A6M2 faster and nimbler than the F4F-4 Wildcat.
   WW.PLANE_NATION = {
-    IJN: { fighter: { hp: 14, speed: 39, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' }, dive: { hp: 26 }, torpedo: { hp: 27 } },
-    USN: { fighter: { hp: 28, speed: 37, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' }, dive: { hp: 30 }, torpedo: { hp: 33 } }
+    IJN: { fighter: { hp: 11, speed: 42, cruise: 33, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' },
+           dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.8 } },
+    USN: { fighter: { hp: 28, speed: 39, cruise: 30, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' },
+           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.22, brake: 21 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
   };
   const _ptCache = {};
   WW.planeType = function (kind, nation) { // merged per-nation stats (cached; falls back to WW.PLANE_TYPES[kind])
