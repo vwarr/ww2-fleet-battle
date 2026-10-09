@@ -13,6 +13,14 @@ window.WW = window.WW || {};
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
   var OUT_SHARE = 0.35, OUT_K = 0.4; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
+  // Air cover lost (balance pass 2): a side that brought carriers and has none fit left (sunk or below CRIP), facing
+  // an enemy carrier that can fly now (daylight), breaks off once the fleets have met (as the outfought rule). 1942:
+  // Yamamoto turned the Main Body back at Midway rather than meet Spruance's air at dawn without cover; Kondo after
+  // Ryujo (Eastern Solomons), Kinkaid after Hornet (Santa Cruz), Inoue after Shoho (Coral Sea). By night a surface force
+  // without air cover still fights (Savo, the Guadalcanal night actions): the rule needs the enemy able to fly.
+  // TUNE.airCover 0: off (A/B). A/B (200 mirrored rounds): USN +8.0 +- 5.5; a break at 50 / 70 / 90% of the fit gun
+  // tonnage instead was +1 / +2 / +2 (the bare side's surface force was mostly intact and winning).
+  var TUNE = { airCover: 1 };
   var PURSUE_AGE = 120;  // pursuit: strikes on contacts this old, anywhere on the map (PURSUE_STRIKE_R below)
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship (not the PT pickets far out ahead): engage, else approach
@@ -89,7 +97,9 @@ window.WW = window.WW || {};
     }
     if (B.startTons < 0) B.startTons = allT;  // first tick: the side's starting surface combatants
     B.fit = fit; B.fitTons = fitT; if (fit) B.hadFit = true;   // a side that never had gun ships (a PT / sub raid) never "breaks"
-    if (B.hadFit && !B.brokenAt && beaten(fitT, B.startTons, B.foeFit, B.foeTons, fit)) B.brokenAt = now;
+    if (B.hadCV === undefined) B.hadCV = B.groups.carrier.members.some(function (q) { return q.type === 'carrier'; });
+    var bare = TUNE.airCover > 0 && B.hadCV && !fitCV(B.nation, null) && fitCV(WW.enemyOf(B.nation), B);  // air cover lost
+    if (B.hadFit && !B.brokenAt && beaten(fitT, B.startTons, B.foeFit, B.foeTons, fit, bare)) B.brokenAt = now;
     // Pursue a broken enemy; when both sides are broken, the side with the larger fit share (its own true one against
     // the enemy's as seen) turns to hunt instead of running.
     var pursue = foeBroken(B, cs, now) && (!B.brokenAt || fitT / Math.max(1, B.startTons) > B.foeFit / Math.max(1, B.foeTons));
@@ -168,14 +178,28 @@ window.WW = window.WW || {};
       for (var k = 0; k < cs.length; k++) if (cs[k].unit && cs[k].unit.type === 'carrier' && cs[k].unit.alive) return true;
       return false;
     }
-    return beaten(fitT, all, B.fitTons, B.startTons, 1);
+    // the enemy's air cover as seen: every enemy carrier seen is sunk or crippled, and an own carrier can fly
+    var bare = false;
+    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (q.alive && !q.sinking && q.hp >= WW.fleetGroups.CRIP * q.maxHp) bare = false; }); }
+    return beaten(fitT, all, B.fitTons, B.startTons, 1, bare);
+  }
+  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now; seenBy: only one the side seenBy knows of
+  function fitCV(n, seenBy) {
+    var D = WW.dayNight; if (D && !D.canFly()) return false;
+    var S = WW.world.ships;
+    for (var i = 0; i < S.length; i++) {
+      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp) continue;
+      if (!seenBy || seenBy.foeCV.has(q.id)) return true;
+    }
+    return false;
   }
   // The break rule, one for both views: the side's fit BB / CA / DD tonnage below BREAK of what it had; or, outfought,
   // below OUT_SHARE of it while its fit share is under OUT_K of the enemy's (one fit cruiser against an intact battle
   // line: Savo, Cape Esperance; a side holding on to a hopeless gun fight until the time limit was not realistic).
-  function beaten(fitT, all, foeFit, foeAll, nfit) {
+  function beaten(fitT, all, foeFit, foeAll, nfit, bare) {
     if (fitT < BREAK * all) return true;
     if (!nfit || !(foeAll > 0) || !WW.game || WW.game.roundTime < 90 || WW.game.metT === null) return false; // outfought: only once the fleets have met (main.js metT), not by the air war alone
+    if (bare) return true; // air cover lost (TUNE.airCover)
     return fitT < OUT_SHARE * all && fitT / all < OUT_K * foeFit / foeAll;
   }
   function foeCarrier(B) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].type === 'carrier' && S[i].nation !== B.nation && WW.intel && WW.intel.known(B.nation, S[i])) return true; return false; }
@@ -317,7 +341,7 @@ window.WW = window.WW || {};
   function side(n) { return sides[n] || null; }
   function order(ship) { var B = sides[ship.nation]; return (B && B.orders.get(ship.id)) || null; }
   WW.fleetCmd = {
-    TICK: TICK, VALUE: VALUE, stats: stats, update: update, reset: reset,
+    TICK: TICK, VALUE: VALUE, TUNE: TUNE, stats: stats, update: update, reset: reset,
     side: side, order: order,
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },

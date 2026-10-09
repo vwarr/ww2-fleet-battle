@@ -194,6 +194,43 @@ Not changed: the PT hit box (`HIT_MIN_L` 5: with no strikes on PT boats while bi
 
 Screenshots (render mode, `tests/shape_shots.js 6 airwar,closing`): ![a 24-plane USN strike in transit](battle_shape/balance_strike_in_transit.jpg) ![the fleets meet at 317 s: destroyers trading fire under the air war](battle_shape/balance_fleets_meet.jpg) ![the plot at the meeting](battle_shape/balance_fleets_meet_map.jpg)
 
+### Balance pass 2 (2026-10-09): after the batch merge
+
+The end-of-batch balance pass on main 6394d36 (scalebase, airdefense, strikeplan, torpedo, planes, ships, camerascale, baselife, infinite). Same method as the first pass: diagnose, then one lever at a time on mirrored pairs (`balance_ab.js --seeds 100 --a CFG --against before.json`, 200 rounds paired seed by seed against the saved baseline), then both 100-round gates and a 400-round mirrored check. Every change is a 1942 physical fact or a doctrine rule that applies to both nations.
+
+**Diagnosis** (both gates, 200 rounds, before). USN 40 / 40 (mirrored pairs 45.0% ± 6.3). The base owner is not the asymmetry: no-base rounds 40%, USN base 56%, IJN base 23%, a symmetric ±16 around the fleet result. The USN won the air war and lost the round: IJN carriers sank in ~54 of 100 rounds, USN carriers in ~5 (bomb damage received IJN 1308 / USN 280 per round). The round is decided by the break rule, which counts only battleship / cruiser / destroyer tonnage, and there the IJN destroyers' and cruisers' torpedoes won: 6.0 ship-launched torpedo hits a round on USN ships against 3.1 the other way, fired 2.4 times as often, with a hit rate of 25-29% even from 120-150 u (`sim_behaviour.js` now records the launch distance, `tl`, and each torpedo hit's launcher, `tsrc`). Ending: 149 of 200 rounds by retire, IJN 100 of them. By carriers left at the end: the IJN won 42 rounds in which it had no carrier afloat and the USN had one (and the USN 0 of 9 the other way round); in the 98 rounds where both kept a carrier the IJN won 69.
+
+**Changes** (A/B effect on the USN score, 200 mirrored rounds, paired):
+
+| parameter | before | after | why | A/B |
+|---|---|---|---|---|
+| ship torpedo speed (`TORPEDO_NATION.*.ship.speed`, core.js) | IJN 16, USN 13.5 u/s | 8.4 / 7.9 | the Type 93 ran 48 kn and the Mk 15 45 kn, 1.5x / 1.4x a carrier's 32 kn on the ship clock; at 2.9x / 2.4x a long shot arrived before the target could move off the solution (the same overspeed the first pass took out of the aerial torpedoes). Ship torpedo hit rate 32 / 25% -> 19 / 16% (USN / IJN, `torpedo_review.js --seeds 20`), close to the night actions' record; damage per hit unchanged | +6.5 ± 6.6, margin +6.2 ± 6.3 |
+| air cover lost (`fleet_cmd.js` `TUNE.airCover`, new) | the break rule counted gun tonnage only | a side that brought carriers and has none fit (sunk or below CRIP), facing an enemy carrier that can fly now (daylight), breaks off once the fleets have met | Yamamoto turned the Main Body back at Midway rather than meet Spruance's air at dawn; Kondo after Ryujo, Kinkaid after Hornet, Inoue after Shoho. By night a surface force without air cover still fights (Savo, Guadalcanal): the rule needs the enemy able to fly. Only after `metT`, so the fleets still meet. The pursuit's view of the enemy uses the same rule on what it has seen | +8.0 ± 5.5 (significant), margin +8.3 ± 4.8; as a break at 50 / 70 / 90% of the fit gun tonnage instead: +1.0 / +2.0 / +2.0 (the bare side's surface force was mostly intact) |
+| torpedo tubes on the Northampton and New Orleans classes (`ship_classes.js` `torpedoes: null`) | every USN cruiser had the type's 4 tubes | none on those two classes; the Atlanta class keeps its 8 | the Northampton class landed its tubes before the war and the New Orleans class was built without; USN heavy cruisers fought 1942 with guns only | −4.0 ± 4.1 against the two above together (+13.0 ± 7.3) |
+
+Tried and dropped: optical gunnery in the dark and in rain (dispersion x (1 + darkness + 0.6 x rain) against an unlit target, fire-control radar exempt on USN battleships and cruisers): −2.0 ± 3.7, it changed 14 of 100 seeds. A larger torpedo aim error (`fireSpread` 0.06 -> 0.10 rad per 100 u): −1.5 ± 6.3; a 4-torpedo fan still covers a hull at 120 u. Battleship damage by broadside weight (North Carolina / South Dakota 9 x 1,225 kg 1.24, Nagato 0.92, Kongo 8 x 673 kg 0.61): +2.5 ± 4.9; physical, but on top of the others the gates would have sat at 57-60. It is the next lever if the balance drifts toward the IJN again. Not changed: the island base, `BOMBER_K` (the IJN's strikes already lost 47 planes a round to the USN CAP and AA), the air staff doctrine.
+
+**Results** (before = main 6394d36, after = this pass):
+
+| target | before | after |
+|---|---|---|
+| gate seeds 1-100 / 1001-1100, USN wins | 40 / 40 (FAIL) | 52 / 55 (PASS) |
+| mirrored pairs, seeds 1-100 (200 rounds) | 45.0% ± 6.3 | 54.0% ± 5.7 |
+| mirrored pairs, seeds 1-200 (400 rounds) | - | 52.8% ± 4.3 (USN 211 / IJN 189), loss margin +10.0 ± 5.2 |
+| gates by carriers left (USN / IJN): both some; IJN none; USN none | 29-69; 51-42; 0-9 | 40-56; 67-23; 0-14 |
+| gates, rounds ending in the dark, USN wins | 33 of 87 | 50 of 91 |
+| gates by base owner, USN wins: USN base / IJN base / none | 45-35 / 18-60 / 17-25 | 51-29 / 33-45 / 23-19 |
+| ship torpedoes fired / round, hit rate (gates) | IJN 22.2 / 27%, USN 8.7 / 36% (seeds 1-100) | IJN 21.8 / 16%, USN 6.5 / 19% |
+| fleets met, carrier rounds (`flight_review.js --seeds 40`) | 96 / 110 (87%) | 102 / 110 (93%) |
+| end reasons retire / kill / time (flight_review) | 75 / 26 / 9 | 69 / 31 / 10 |
+| action by thirds; dead minutes | 38.1 / 84.3 / 65.7; 0.1 | 38.6 / 84.8 / 64.3; 0.1 |
+| a side lost all its carriers (flight_review) | 50 / 120 | 49 / 120 |
+| round length p50 (gates) | 609 s | 606 s |
+
+Unchanged metrics: behaviour suite 0 FAIL (278 PASS, 55 WARN); `ship_review.js --seeds 5` spacing nearest own ship p1 / p5 0.94 / 1.26 L, 4% under 1.2 L (ship review: 0.96 / 1.29, 3% on 20 seeds); `plane_moves.js --seeds 8` snapshot chances ignored 45%, 8% with the guns ready (plane movement: 48 / 9%). `determinism.js 1 200` and `--cross 1 200` PASS (render, browser and node identical).
+
+Still lopsided: one carrier against two (USN 7 / IJN 35 of 42 gate rounds) against two against one (32 / 11 of 43). The IJN's joint deck-load strikes and the USN's separate task groups (`cvSpread` 150) are doctrine; a paired run of `cvSpread` is the next thing to look at.
+
 ### Air defence (2026-10-09): the CAP meets raids, the stack lands, the ships spread
 
 User feedback: "100+ aircraft flying above a carrier and they let through torpedo and dive attacks", "the enormous circular swarms above a bunch of clumped ships", "there should be consequences for deploying a huge swarm of planes into a CAP patrol". Measured with `tests/air_defense.js` (a read-only recorder, like flight_review's). For every armed carrier or base bomber sortie it records whether a fighter engaged it before its drop, and whether it was shot down armed, jettisoned or dropped, plus its hit; the sorties are bucketed by the enemy fighters within 250 of its target as it comes within 150. It also measures fighters within 120 of a raider near their carrier (engaged, idle, in the marshal stack), the largest cluster of circling planes (single link 50 u, every 1 s), the landing pattern, trap-to-trap gaps and deck modes, and each ship's nearest friendly ship in L. `tests/air_defense_shots.js` takes the render-mode pictures.

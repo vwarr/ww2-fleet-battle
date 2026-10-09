@@ -258,9 +258,30 @@ function install(P) {
   WW.on('waveGo', e => { if (R && e) R.forms.push({ n: e.nation, f: !!e.first, m: e.mode, t: +(+e.formT).toFixed(1), r: !!e.reserve, tt: e.target ? e.target.type : null }); });
   WW.on('shipHit', e => { if (R && e && e.ship && e.amount > 0) { if (R.firstDmg === null) R.firstDmg = now(); R.dmgSum += +e.amount || 0; } });
   WW.on('shipHit', e => { if (R && e && e.ship) { R.lastHit[e.ship.id] = e.kind; const k = e.ship.nation + ':' + e.ship.type + ':' + e.kind; R.dmg[k] = (R.dmg[k] || 0) + (+e.amount || 0); } });
+  // ship-launched torpedoes by launch distance to the nearest enemy hull near the line of fire (balance diagnosis):
+  // R.tl['USN:destroyer:70'] = [fired, hit] (buckets of 30 u)
+  WW.on('weaponDropped', e => {
+    const p = e && e.proj, o = p && p.owner;
+    if (p) p._tl = null; // (pooled projectiles)
+    if (!R || !e || e.kind !== 'torpedo' || !o || !o.stats) return;
+    let bd = 1e9;
+    for (const s of WW.world.ships) if (s.alive && s.nation !== o.nation && !s.submerged) {
+      const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd && Math.abs(WW.angleDiff(p.h, Math.atan2(s.z - p.z, s.x - p.x))) < 0.5) bd = d;
+    }
+    p._tl = o.nation + ':' + o.type + ':' + (bd > 1e8 ? 'x' : Math.min(150, Math.floor(bd / 30) * 30));
+    (R.tl[p._tl] || (R.tl[p._tl] = [0, 0]))[0]++;
+  });
+  WW.on('weaponImpact', e => { const p = e && e.proj; if (R && p && p._tl && e.ship && !e.dud) R.tl[p._tl][1]++; });
+  // torpedo hits by launcher (balance diagnosis): victim nation : launcher type (plane / ship type) : victim type
+  WW.on('weaponImpact', e => {
+    if (!R || !e || e.kind !== 'torpedo' || !e.ship || e.dud) return;
+    const o = e.proj && e.proj.owner, src = o ? (o.stats ? o.type : 'air') : (e.proj && e.proj.src === 'Air' ? 'air' : '?');
+    R.lastSrc[e.ship.id] = src; if (!e.ship.alive || e.ship.sinking) for (const q of R.sunk) if (q.id === e.ship.id && !q.src) q.src = src; // the hit that sank her (shipSunk came first)
+    const k = e.ship.nation + ':' + src + ':' + e.ship.type; R.tsrc[k] = (R.tsrc[k] || 0) + 1;
+  });
   WW.on('shipSunk', s => {
     if (!R || !s) return;
-    R.sunk.push({ type: s.type, nation: s.nation, t: +now().toFixed(1), by: R.lastHit[s.id] || null });
+    R.sunk.push({ type: s.type, nation: s.nation, t: +now().toFixed(1), by: R.lastHit[s.id] || null, src: R.lastSrc[s.id] || null, id: s.id });
     if (s.type === 'submarine') { const k = R.lastHit[s.id] || '?'; R.dd.subDeaths++; if (k === 'dc') R.dd.subDC++; R.dd.kinds[k] = (R.dd.kinds[k] || 0) + 1; }
   });
   WW.on('planeKill', e => {
@@ -514,7 +535,7 @@ function install(P) {
     const snap = () => JSON.parse(JSON.stringify({ d: WW.dayNight ? WW.dayNight.stats : {}, n: WW.nightOps ? WW.nightOps.stats : {}, w: WW.weather ? WW.weather.stats : {} }));
     const s0 = snap();
     if (spec.cripple >= 0) { const s = WW.world.ships.filter(s => s.nation === spec.aNation)[spec.cripple]; if (s) { s.hp = s.maxHp * 0.25; s.__beCripple = true; if (s.applyLook) s.applyLook(); } }
-    R = { vis: {}, det: { day: [], dusk: [], night: [], radar: [], flash: [], rain: [], clear: [] }, forms: [], firstDmg: null, dmgSum: 0, ptNN: [], nnT: -99, syncN: {}, th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
+    R = { vis: {}, det: { day: [], dusk: [], night: [], radar: [], flash: [], rain: [], clear: [] }, forms: [], firstDmg: null, dmgSum: 0, ptNN: [], nnT: -99, syncN: {}, th: { pt: { fired: 0, hit: 0 }, submarine: { fired: 0, hit: 0 } }, stuckWho: [], dmg: {}, tsrc: {}, lastSrc: {}, tl: {}, firstFire: null, firstContact: null, firstSight: null, stuck: 0, nan: 0, moved: {}, lastHit: {}, sunk: [], lastMain: {}, focus: {}, lastSpread: {}, torps: [], ptS: {}, ddP: {}, crip: {},
       cv: { samples: 0, inGun: 0, d: [], thr: 0, closing: 0, cvcvMin: 1e9, brkN: 0, brkGun: 0, brkMin: 1e9 }, spd: [0, 0, 0, 0], spdN: [0, 0, 0, 0], pt: { time: 0, inBig: 0, loiter: 0, spreads: 0, mgShots: 0, mgBig: 0, n: 0, pen: [] },
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
@@ -557,7 +578,7 @@ function install(P) {
     out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
     out.det = R.det;
     out.tons = { USN: [tons0.USN, G.tonnage('USN')], IJN: [tons0.IJN, G.tonnage('IJN')] }; // [start, afloat at the end]
-    out.dmg = R.dmg; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
+    out.dmg = R.dmg; out.tsrc = R.tsrc; out.tl = R.tl; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
     return out;
