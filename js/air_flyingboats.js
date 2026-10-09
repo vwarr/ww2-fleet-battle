@@ -14,7 +14,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   if (!WW.Plane) { console.error('air_flyingboats.js must load after aircraft.js'); return; }
-  var SCALE = 1.7, WATER_Y = 0.45, OFF = 34;          // flight scale (span ~11-13 units), hull resting height, spawn / exit beyond the edge
+  var SCALE = WW.cfg.PLANE_SCALE || 0.82, WATER_Y = 0.45 * (WW.cfg.PLANE_K || 1), OFF = 34; // the planes' scale (span ~5.5-6 at 0.82), hull resting height, spawn / exit beyond the edge
   var ALT_R = 18, CIRCLE_R = 34, SAFE_DPS = 10, HOLD_MAX = 80, FTR_R = 150, ESC_R = 70; // rescue: altitude, orbit, landing rules
   var PICK_T = { pilot: 9, ship: 16 }, SHIP_WAIT = 30, PILOT_WAIT = 5, MAX_UP = 2, MAX_RESCUE = 4;
   if (WW.PLANE_TYPES && !WW.PLANE_TYPES.flyingboat) WW.PLANE_TYPES.flyingboat = { hp: 34, speed: 22, range: 4000 };

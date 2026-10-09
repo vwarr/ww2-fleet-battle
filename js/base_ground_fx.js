@@ -14,7 +14,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
-  const FAR = 420, NEAR_FIG = 170, FIG_K = 2,  // ground crews at twice the sailors' size: the planes are toy-scaled up
+  const FAR = 420, NEAR_FIG = 170, FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73), // ground crews x the sailors' size: about a fifth of a fighter's length (2 at the 1.7 plane scale)
     MAX_FIG = 110, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
   let base = null, planes = new Map(), wrecks = new Map(), prev = new Map(), crews = new Map(), trips = [], veh = {}, scrT = -1e9, fig = 0;
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);

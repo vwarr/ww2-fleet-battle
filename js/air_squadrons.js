@@ -18,10 +18,12 @@ window.WW = window.WW || {};
   const IJN_UNIT = { fighter: 'fighter unit', dive: 'dive-bomber unit', torpedo: 'attack unit' };
   const SIZE = { USN: { fighter: 2, dive: 3, torpedo: 3 }, IJN: { fighter: 3, dive: 3, torpedo: 3 } };
   const JOIN_T = 30;                      // a new launch joins an open element of its mission for this long
-  // wingman slots off the element leader: [ahead, right, up]. 10 abeam ~ 2 spans (span ~5 at PLANE_SCALE 1.7):
-  // a clear wingtip gap of about one span, so close camera shots read two planes, not one stacked pair
-  const SLOT = { 2: [[0, 0, 0], [-6, 10, 1]], 3: [[0, 0, 0], [-6, 10, 1], [-6, -10, 1.5]] };
-  const DIV2 = [-13, -23, 3];             // USN second section leader off the division leader
+  // wingman slots off the element leader: [ahead, right, up], written at the 1.7 tuning scale and x PLANE_K. 10 abeam
+  // ~ 2 spans (span ~5 at 1.7, ~2.4 at 0.82): a clear wingtip gap of about one span, so close camera shots read two
+  // planes, not one stacked pair
+  const PK = WW.cfg.PLANE_K || 1, sc = a => a.map(v => v * PK);
+  const SLOT = { 2: [[0, 0, 0], [-6, 10, 1]].map(sc), 3: [[0, 0, 0], [-6, 10, 1], [-6, -10, 1.5]].map(sc) };
+  const DIV2 = sc([-13, -23, 3]);         // USN second section leader off the division leader
   let persist = { USN: [], IJN: [] }, elems = [], nextEl = 1;
   const ST = { elements: 0, reforms: 0, rejoins: 0 };
 

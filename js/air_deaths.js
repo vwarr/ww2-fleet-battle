@@ -13,7 +13,9 @@ window.WW = window.WW || {};
   'use strict';
   var R = Math.random;
   function rr(a, b) { return a + (b - a) * R(); }
-  var DECK_Y = 0.75, DECK_HALF = 2.5;   // fuselage above the flight deck (aircraft.js), flight-deck half width
+  var PK = WW.cfg.PLANE_K || 1, FXK = Math.sqrt(PK);   // plane size vs the 1.7 tuning scale (ship_classes.js); puff sizes
+  var DECK_Y = 0.75 * PK;                // fuselage above the flight deck (aircraft.js)
+  function deckHalf(c) { var k = c && c.model && c.model.deckDims; return k ? k.halfW : 2.5 * (WW.cfg.DECK_K || 1.8) / 1.8; } // flight-deck half width
   var v3 = null, P = function () { return WW.airProps; };
   var count = { spin: 0, wing: 0, comet: 0, crash: 0, ditch: 0, abandon: 0, slide: 0, chutes: 0, shipHits: 0 };
 
@@ -65,12 +67,12 @@ window.WW = window.WW || {};
         if (P()) P().wing(m, w, c * sp - s * lat, p.vy + 2.5, s * sp + c * lat);
         w.visible = false; p.side = side; p.rollA = p.roll; p.rollRate = side * rr(3.5, 5.5);
         p.spin = side * rr(0.9, 1.4);
-        if (fx) { fx.explosion(p.x - s * side * 1.2, p.y, p.z + c * side * 1.2, 0.45); fx.sparks(p.x, p.y, p.z); }
+        if (fx) { fx.explosion(p.x - s * side * 1.2 * PK, p.y, p.z + c * side * 1.2 * PK, 0.45 * FXK); fx.sparks(p.x, p.y, p.z); }
         if (R() < 0.35 && p.y > 12) bail(p, rr(0.6, 1.4));
         return;
       }
       if (mode === 'comet') {
-        if (fx) { fx.explosion(p.x, p.y, p.z, 1.2); fx.fire(p.x, p.y, p.z); }
+        if (fx) { fx.explosion(p.x, p.y, p.z, 1.2 * FXK); fx.fire(p.x, p.y, p.z); }
         p.vy = Math.max(p.vy, 0.5); p.speed = Math.max(p.speed, 18); p.spin = (R() - 0.5) * 0.3; p.rollA = p.roll;
         if (R() < 0.12 && p.y > 14) bail(p, rr(0.2, 0.6));
         return;
@@ -96,6 +98,7 @@ window.WW = window.WW || {};
   // ---- per-step update of a dying plane ----
   function splashDown(p, size) {
     var fx = WW.fx;
+    size *= FXK;
     if (fx) { fx.splash(p.x, p.z, size); fx.explosion(p.x, 0.3, p.z, size * 0.35); }
     p.remove();
   }
@@ -126,7 +129,7 @@ window.WW = window.WW || {};
         p.fT = (p.fT || 0) - dt;
         if (fx && p.fT <= 0) { // fuel burning at the torn wing root
           p.fT = 0.07; var c = Math.cos(p.heading), s = Math.sin(p.heading);
-          fx.fire(p.x - s * p.side * 0.8, p.y, p.z + c * p.side * 0.8);
+          fx.fire(p.x - s * p.side * 0.8 * PK, p.y, p.z + c * p.side * 0.8 * PK);
         }
         if (p.y <= 0) splashDown(p, 1.8);
         return;
@@ -155,15 +158,15 @@ window.WW = window.WW || {};
     if (p.cT > 0) return;
     p.cT = 0.06 * ld;
     var c = Math.cos(p.heading), s = Math.sin(p.heading);
-    fx.trail(p.x - c * 1.6, p.y + 0.2, p.z - s * 1.6, true, rr(1.4, 1.9), 2.4);
-    fx.fire(p.x, p.y, p.z); fx.fire(p.x - c, p.y, p.z - s);
+    fx.trail(p.x - c * 1.6 * PK, p.y + 0.2 * PK, p.z - s * 1.6 * PK, true, rr(1.4, 1.9) * FXK, 2.4);
+    fx.fire(p.x, p.y, p.z); fx.fire(p.x - c * PK, p.y, p.z - s * PK);
   }
   function cometSplash(p) {
     var fx = WW.fx, c = Math.cos(p.heading), s = Math.sin(p.heading);
     if (fx) {
-      fx.splash(p.x, p.z, 3.2); fx.splash(p.x + c * 2.5, p.z + s * 2.5, 2.2);
-      fx.explosion(p.x, 0.4, p.z, 1.2); fx.oilSlick(p.x, p.z, 3);
-      for (var i = 0; i < 3; i++) fx.smoke(p.x + rr(-1, 1), 0.6, p.z + rr(-1, 1), true, 1.1);
+      fx.splash(p.x, p.z, 3.2 * FXK); fx.splash(p.x + c * 2.5 * PK, p.z + s * 2.5 * PK, 2.2 * FXK);
+      fx.explosion(p.x, 0.4, p.z, 1.2 * FXK); fx.oilSlick(p.x, p.z, 3 * FXK);
+      for (var i = 0; i < 3; i++) fx.smoke(p.x + rr(-1, 1) * PK, 0.6, p.z + rr(-1, 1) * PK, true, 1.1 * FXK);
     }
     p.remove();
   }
@@ -200,7 +203,7 @@ window.WW = window.WW || {};
     p.trail(dt, false); p.integrate(dt, true);
     p.group.rotation.z = flare ? 0.12 : Math.atan2(p.vy, Math.max(1, p.speed)) * 0.6;
     if (p.y <= 0.35) {
-      if (WW.fx) { WW.fx.splash(p.x, p.z, 1.3); WW.fx.wake(p.x, p.z, p.heading, 1.5); }
+      if (WW.fx) { WW.fx.splash(p.x, p.z, 1.3 * FXK); WW.fx.wake(p.x, p.z, p.heading, 1.5 * FXK); }
       startFloat(p, rr(20, 30), true);
     }
   }
@@ -215,20 +218,20 @@ window.WW = window.WW || {};
     if (p.speed > 0) {
       p.speed = Math.max(0, p.speed - 9 * dt);
       p.x += c * p.speed * dt; p.z += s * p.speed * dt;
-      p.wkT -= dt; if (fx && p.speed > 2 && p.wkT <= 0) { p.wkT = 0.15; fx.wake(p.x, p.z, p.heading, 0.9); }
+      p.wkT -= dt; if (fx && p.speed > 2 && p.wkT <= 0) { p.wkT = 0.15; fx.wake(p.x, p.z, p.heading, 0.9 * FXK); }
     }
     if (p.raftDelay != null && p.fT >= p.raftDelay && P()) {   // crew climbs out beside the wreck
       p.raftDelay = null;
-      P().raft(p.x - s * p.raftSide * 2.4, p.z + c * p.raftSide * 2.4, p.raftLife, true);
+      P().raft(p.x - s * p.raftSide * (0.4 + 2 * PK), p.z + c * p.raftSide * (0.4 + 2 * PK), p.raftLife, true);
     }
     var left = p.floatLife - p.fT, sink = left < 6 ? (6 - left) / 6 : 0;
     var settle = Math.min(1, p.fT / 3);
     var pitch = -(0.12 + 0.3 * settle + 0.9 * sink * sink);         // nose under, tail rising
-    var y = -0.15 - 0.35 * settle - 3.5 * sink * sink + Math.sin(p.fT * 1.6) * 0.04;
+    var y = (-0.15 - 0.35 * settle) * PK - 3.5 * sink * sink + Math.sin(p.fT * 1.6) * 0.04;
     g.position.set(p.x, y, p.z); g.rotation.y = -p.heading; g.rotation.z = pitch;
     g.rotation.x = Math.sin(p.fT * 1.2) * 0.05 + (p.rollA || 0) * (1 - settle);
     p.y = y;
-    if (sink > 0.2 && fx && R() < dt * 4) fx.splash(p.x + c * 1.5, p.z + s * 1.5, 0.25); // air bubbling out
+    if (sink > 0.2 && fx && R() < dt * 4) fx.splash(p.x + c * 1.5 * PK, p.z + s * 1.5 * PK, 0.25 * FXK); // air bubbling out
     if (left <= 0) p.remove();
   }
 
@@ -241,7 +244,7 @@ window.WW = window.WW || {};
       if (!c || p.removed || (p.deathMode && p.deathMode !== 'ditch')) return false;
       if (p.alive) { p.alive = false; WW.stats.planesLost++; }
       var ex = p.x - c.x, ez = p.z - c.z, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
-      p.slA = ex * ch + ez * sh; p.slL = WW.clamp(-ex * sh + ez * ch, -DECK_HALF, DECK_HALF);
+      p.slA = ex * ch + ez * sh; p.slL = WW.clamp(-ex * sh + ez * ch, -deckHalf(c), deckHalf(c));
       p.slSide = side ? Math.sign(side) : (p.slL >= 0 ? 1 : -1);
       p.slV = 0.4; p.slYaw = 0; p.slOn = true; p.rollA = 0; p.dT = 0;
       p.deathMode = 'slide'; p.state = 'slide'; p.speed = 0; p.vy = 0; p.turn = 0; count.slide++;
@@ -253,12 +256,12 @@ window.WW = window.WW || {};
     if (p.slOn) {
       var ch = Math.cos(c.heading), sh = Math.sin(c.heading);
       p.slV += 2.2 * dt; p.slL += p.slSide * p.slV * dt; p.slYaw += p.slSide * 0.25 * dt;
-      var over = Math.abs(p.slL) - (DECK_HALF - 0.9);                     // main wheels at the edge: tips over
+      var over = Math.abs(p.slL) - (deckHalf(c) - 0.9 * PK);                     // main wheels at the edge: tips over
       p.rollA = over > 0 ? p.slSide * Math.min(1.1, over * 0.9) : 0;
       p.x = c.x + ch * p.slA - sh * p.slL; p.z = c.z + sh * p.slA + ch * p.slL; p.y = deckY(c) + DECK_Y - Math.max(0, over) * 0.5;
       p.heading = c.heading + p.slYaw;
       g.position.set(p.x, p.y, p.z); g.rotation.y = -p.heading; g.rotation.z = 0; g.rotation.x = p.rollA;
-      if (Math.abs(p.slL) > DECK_HALF + 0.4) { // off the deck: keep the carrier's speed plus the sideways push
+      if (Math.abs(p.slL) > deckHalf(c) + 0.4 * PK) { // off the deck: keep the carrier's speed plus the sideways push
         p.slOn = false;
         p.vx = ch * c.speed - sh * p.slSide * p.slV; p.vz = sh * c.speed + ch * p.slSide * p.slV; p.vy = -0.5;
       }

@@ -16,7 +16,7 @@ window.WW = window.WW || {};
   const G = 9.8;                               // G matches combat_weapons.js bomb gravity
   // Tallest point of each ship type above the water (measured model bounds), for pull-out / pop-up clearance.
   const TOP = S.TOP || { carrier: 6.4, battleship: 7.2, cruiser: 5.2, destroyer: 3.7, submarine: 0.7, pt: 2.0 };
-  const CLEAR = 3.5;                           // plane half-extent at PLANE_SCALE 1.7 (~1) + 2.5 margin
+  const CLEAR = 1 * (WW.cfg.PLANE_K || 1) + 2.5; // plane half-extent (~1 at the 1.7 tuning scale, x PLANE_K) + 2.5 margin
   const DIVE_V0 = 18;                          // the dive starts at least this fast; the brakes then hold pt.brake
   const Q = 3.5, Q_MAX = 6;                    // pull-out pitch rate (rad/s); raised if the bottom would be low
   // Anvil spread: the n-th torpedo bomber on a side sets up AV[n] x AV_DA rad round from the 54-degree point (~28 u

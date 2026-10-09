@@ -9,7 +9,8 @@ window.WW = window.WW || {};
   const ROUND = 0.08;      // one round per wing every 0.08 s while the trigger is held
   const CONV = 15;         // wing-gun convergence distance
   const RANGE = 28;        // no firing beyond this (open fire inside ~2x convergence)
-  const WING = 1.25;       // wing-gun offset from the centre line (scaled model)
+  const PK = WW.cfg.PLANE_K || 1;           // plane size vs the 1.7 tuning scale (ship_classes.js)
+  const WING = 1.25 * PK;  // wing-gun offset from the centre line (scaled model)
   const DMG = 0.75;        // damage per hitting round (times the type's pt.gun)
   const BOMBER_K = 5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const FIGHTER_K = 2.2;   // fighter-on-fighter lethality (P5: 1-3 fighters lost per side per carrier round)
@@ -159,11 +160,12 @@ window.WW = window.WW || {};
     const cp = Math.cos(ph), nx = ch * cp, ny = Math.sin(ph), nz = sh * cp;
     const vmx = ch * p.speed, vmy = p.vy, vmz = sh * p.speed;
     const vfx = Math.cos(f.heading) * f.speed, vfy = f.vy || 0, vfz = Math.sin(f.heading) * f.speed;
-    const R = f.kind === 'fighter' ? 1.7 : 1.8, flash = s.flashT <= 0;
+    // hit radius: the burst's spread at convergence (~0.9, any plane size) + the airframe's half-size (x PLANE_K)
+    const R = 0.9 + (f.kind === 'fighter' ? 0.8 : 0.9) * PK, flash = s.flashT <= 0;
     if (flash) s.flashT = 0.07;
     for (let side = -1; side <= 1; side += 2) {
       // gun at the wing, stream toed in so both streams meet CONV ahead of the nose
-      const gx = p.x - sh * side * WING + nx * 0.5, gy = p.y - 0.25 + ny * 0.5, gz = p.z + ch * side * WING + nz * 0.5;
+      const gx = p.x - sh * side * WING + nx * 0.5, gy = p.y - 0.25 * PK + ny * 0.5, gz = p.z + ch * side * WING + nz * 0.5;
       let ux = nx + sh * side * WING / CONV, uy = ny, uz = nz - ch * side * WING / CONV;
       const ul = Math.hypot(ux, uy, uz); ux /= ul; uy /= ul; uz /= ul;
       let rx = f.x - gx, ry = f.y - gy, rz = f.z - gz;
