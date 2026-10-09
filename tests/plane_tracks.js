@@ -16,7 +16,6 @@ const NC = { U: '#1f5fbf', J: '#c0392b', USN: '#1f5fbf', IJN: '#c0392b' };
 const angCol = a => (a < 5 ? '#1e9e3a' : a < 10 ? '#e0b000' : a < 20 ? '#f07b00' : '#d01010');
 let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
 for (const r of rows) { x0 = Math.min(x0, r[5]); x1 = Math.max(x1, r[5]); z0 = Math.min(z0, r[6]); z1 = Math.max(z1, r[6]); }
-const tEnd = Math.max(...rows.map(r => r[0]));
 const byId = new Map(); for (const r of rows) { if (!byId.has(r[1])) byId.set(r[1], []); byId.get(r[1]).push(r); }
 const path = (L, S, ox, oz) => L.map((r, i) => (i && Math.hypot(r[5] - L[i - 1][5], r[6] - L[i - 1][6]) < 60 ? 'L' : 'M') + ((r[5] - ox) * S).toFixed(1) + ' ' + ((r[6] - oz) * S).toFixed(1)).join(' ');
 
