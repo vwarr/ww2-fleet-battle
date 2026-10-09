@@ -35,7 +35,7 @@ function install() {
   let R = null, acc = 0, D = new WeakSet();
   const bomber = p => p.kind === 'dive' || p.kind === 'torpedo';
   function reset() {
-    R = { waves: [], byW: new Map(), pl: new Map(), wing: {}, wingN: { USN: 0, IJN: 0 }, maxUp: { USN: 0, IJN: 0 }, orders: [], breaks: { USN: 0, IJN: 0 }, mauled: { USN: 0, IJN: 0 } };
+    R = { waves: [], byW: new Map(), pl: new Map(), wing: {}, wingN: { USN: 0, IJN: 0 }, maxUp: { USN: 0, IJN: 0 }, orders: [], plans: [], breaks: { USN: 0, IJN: 0 }, mauled: { USN: 0, IJN: 0 } };
   }
   function wingOf(cv) {
     if (R.wing[cv.id] !== undefined) return R.wing[cv.id];
@@ -58,10 +58,11 @@ function install() {
     const B = WW.islandBase && WW.islandBase.base, t = w.target;
     let nb = 0, ne = 0;
     for (const p of w.members) if (p.alive) { if (bomber(p)) nb++; else if (p.kind === 'fighter') ne++; }
-    const r = { nation: w.nation, base: !!w.carrier.isBase, t: +WW.game.roundTime.toFixed(0), tgt: t ? (t.isBase ? 'base' : t.type) : '-', nb, ne,
-      wing: w.carrier.isBase ? 0 : wingOf(w.carrier), cvId: w.carrier.id, exp: 0, baseT: 0, overBase: false, minBase: 1e9,
-      capArr: null, dropped: 0, killed: 0, jett: 0, mem: [], route: !!w.route, fuelOut: 0 };
+    const r = { capE: w.led && w.led.capE !== undefined ? w.led.capE : null, nation: w.nation, base: !!w.carrier.isBase, t: +WW.game.roundTime.toFixed(0), tgt: t ? (t.isBase ? 'base' : t.type) : '-', nb, ne,
+      wing: w.carrier.isBase ? 0 : wingOf(w.carrier), cvId: w.carrier.id, exp: 0, expK: 0, baseT: 0, overBase: false, minBase: 1e9,
+      capArr: null, dropped: 0, killed: 0, jett: 0, mem: [], route: !!w.route, lead: !!w.lead, fuelOut: 0 };
     r.enemyBase = !!(B && B.nation !== w.nation);
+    if (B && t) { r.tgtBaseD = Math.round(WW.dist(t.x, t.z, B.x, B.z)); r.cvBaseD = Math.round(WW.dist(w.x, w.z, B.x, B.z)); r.final0 = !!(w.route && w.route.final); r.via0 = !!(w.route && w.route.via); }
     for (const p of w.members) if (p.alive && bomber(p)) { r.mem.push(p); R.pl.set(p, r); }
     R.waves.push(r); R.byW.set(w, r);
     if (!w.carrier.isBase) R.orders.push(r);
@@ -76,6 +77,7 @@ function install() {
       const dT = WW.dist(w.x, w.z, t.x, t.z);
       if (dT > TGT_R && !w.lead) {
         r.exp += aaAt(w.nation, w.x, w.z, t) * dt;
+        if (WW.threat) r.expK += WW.threat.danger(w.nation, w.x, w.z, { air: true }) * dt;   // the AA the side knew of there
         if (B && B.nation !== w.nation && !t.isBase) { const db = WW.dist(w.x, w.z, B.x, B.z); r.minBase = Math.min(r.minBase, db); if (db < BASE_R) { r.baseT += dt; r.overBase = true; } }
       }
       if (r.capArr === null && dT < 200) {
@@ -89,11 +91,12 @@ function install() {
     for (const n in up) if (R.wingN[n]) R.maxUp[n] = Math.max(R.maxUp[n], up[n] / R.wingN[n]);
   }
   WW.on('roundStart', reset);
+  WW.on('airPlan', e => { if (R && e && e.lastN) R.plans.push({ nation: e.carrier.nation, ratio: e.nb / e.lastN, heavy: e.lastLoss >= 0.4 }); });
   WW.on('weaponDropped', e => { const p = e && e.plane, r = p && R && R.pl.get(p); if (r && !D.has(p)) { D.add(p); r.dropped++; } });
   WW.on('airOrder', e => {
     if (!R || !e) return;
     if (e.order === 'jettison' && e.plane) { const r = R.pl.get(e.plane); if (r) r.jett++; }
-    if (e.order === 'breakOff') R.breaks[e.carrier ? e.carrier.nation : 'USN']++;
+    if (e.order === 'breakOff') { R.breaks[e.carrier ? e.carrier.nation : 'USN']++; const r = e.wave && R.byW.get(e.wave); if (r) r.jett += e.n || 0; }
     if (e.order === 'mauled' && e.carrier) R.mauled[e.carrier.nation]++;
   });
   const u0 = WW.air.update;
@@ -108,7 +111,7 @@ function install() {
   window.__sp = {
     flush() {
       for (const r of R.waves) { for (const p of r.mem) if (!D.has(p) && p._downed) r.killed++; r.mem = null; if (r.minBase === 1e9) r.minBase = null; }
-      const o = { waves: R.waves, maxUp: R.maxUp, wingN: R.wingN, breaks: R.breaks, mauled: R.mauled, orders: R.orders.map(r => ({ cv: r.cvId, nation: r.nation, n: r.nb, t: r.t, loss: r.nb ? (r.killed + r.jett) / r.nb : 0 })) };
+      const o = { plans: R.plans, waves: R.waves, maxUp: R.maxUp, wingN: R.wingN, breaks: R.breaks, mauled: R.mauled, orders: R.orders.map(r => ({ cv: r.cvId, nation: r.nation, n: r.nb, t: r.t, loss: r.nb ? (r.killed + r.jett) / r.nb : 0 })) };
       for (const r of o.orders) { delete r.mem; }
       return JSON.parse(JSON.stringify(o));
     }
@@ -161,25 +164,31 @@ function report(rounds) {
       const eb = W.filter(w => w.enemyBase && w.tgt !== 'base');
       const bk = (lo, hi) => { const L = W.filter(w => w.capArr !== null && w.capArr >= lo && w.capArr < hi); const b = L.reduce((s, w) => s + w.nb, 0); return { n: L.length, esc: b ? L.reduce((s, w) => s + w.ne, 0) / b : null, killed: b ? L.reduce((s, w) => s + w.killed, 0) / b : null, drops: b ? L.reduce((s, w) => s + w.dropped, 0) / b : null }; };
       const B = { lo: bk(0, 5), mid: bk(5, 12), hi: bk(12, 1e9) };
+      const ek = (lo, hi) => { const L = W.filter(w => w.capE !== null && w.capE >= lo && w.capE < hi); const b = L.reduce((s, w) => s + w.nb, 0); return { n: L.length, esc: b ? L.reduce((s, w) => s + w.ne, 0) / b : null, nb: L.length ? b / L.length : null, killed: b ? L.reduce((s, w) => s + w.killed, 0) / b : null }; };
+      const E = { lo: ek(0, 3), mid: ek(3, 8), hi: ek(8, 1e9) };
       // the next strike of the same carrier after a heavy-loss strike
       const after = { heavy: [], light: [] };
-      for (const r of RS) { const O = r.sp.orders.filter(o => o.nation === n); for (let i = 1; i < O.length; i++) { const pv = O.filter((o, j) => j < i && o.cv === O[i].cv).pop(); if (pv) (pv.loss >= 0.4 ? after.heavy : after.light).push(O[i].n / Math.max(1, pv.n)); } }
+      for (const r of RS) {
+        if (r.sp.plans) { for (const q of r.sp.plans) if (q.nation === n) (q.heavy ? after.heavy : after.light).push(q.ratio); continue; }   // the staff's own record: bombers ordered / the last finished strike's
+        const O = r.sp.orders.filter(o => o.nation === n); for (let i = 1; i < O.length; i++) { const pv = O.filter((o, j) => j < i && o.cv === O[i].cv).pop(); if (pv) (pv.loss >= 0.4 ? after.heavy : after.light).push(O[i].n / Math.max(1, pv.n)); }
+      }
       const commit = W.filter(w => w.wing).map(w => (w.nb + w.ne) / w.wing);
       const S1 = S[n] = {
         waves: W.length, bombersPerWave: nb / W.length, escPerBomber: W.reduce((s, w) => s + w.ne, 0) / nb,
         killedBeforeDrop: killed / nb, dropsPerBomber: dropped / nb, jettPerBomber: jett / nb,
-        expTransit: mean(W.map(w => w.exp)), expP90: qs(W.map(w => w.exp), 0.9),
+        expTransit: mean(W.map(w => w.exp)), expKnown: mean(W.map(w => w.expK)), expP90: qs(W.map(w => w.exp), 0.9),
         baseTargeted: W.filter(w => w.tgt === 'base').length / W.length, overBase: eb.length ? eb.filter(w => w.overBase).length / eb.length : null,
         baseSec: eb.length ? mean(eb.map(w => w.baseT)) : null, minBaseP10: eb.length ? qs(eb.map(w => w.minBase).filter(v => v !== null), 0.1) : null,
-        cap: B, nextAfterHeavy: mean(after.heavy), nAfterHeavy: after.heavy.length, nextAfterLight: mean(after.light),
+        cap: B, capE: E, nextAfterHeavy: mean(after.heavy), nAfterHeavy: after.heavy.length, nextAfterLight: mean(after.light),
         commitP50: qs(commit, 0.5), commitP90: qs(commit, 0.9), commitMax: commit.length ? Math.max(...commit) : null,
         maxUpP50: qs(RS.map(r => r.sp.maxUp[n]), 0.5), maxUpMax: Math.max(...RS.map(r => r.sp.maxUp[n])),
         breaks: RS.reduce((s, r) => s + r.sp.breaks[n], 0) / RS.length, mauled: RS.reduce((s, r) => s + r.sp.mauled[n], 0) / RS.length,
         lostPerRound: mean(RS.map(r => r.lost[n])), cvTargeted: W.filter(w => w.tgt === 'carrier').length / W.length
       };
       console.log(`  ${n}: ${W.length} strikes, ${f(S1.bombersPerWave)} bombers / strike, escorts ${f(S1.escPerBomber)} per bomber; killed before drop ${pc(S1.killedBeforeDrop)}, drops ${pc(S1.dropsPerBomber)}, jettisoned ${pc(S1.jettPerBomber)}; on carriers ${pc(S1.cvTargeted)}; planes lost / round ${f(S1.lostPerRound)}`);
-      console.log(`     route: transit AA exposure mean ${f(S1.expTransit)} p90 ${f(S1.expP90)} dps-s; island base: targeted ${pc(S1.baseTargeted)}, over it ${pc(S1.overBase)} of ${eb.length} strikes passing, ${f(S1.baseSec)} s within 100, closest p10 ${f(S1.minBaseP10)}`);
+      console.log(`     route: transit AA exposure mean ${f(S1.expTransit)} p90 ${f(S1.expP90)} dps-s (known to the side: ${f(S1.expKnown)}); island base: targeted ${pc(S1.baseTargeted)}, over it ${pc(S1.overBase)} of ${eb.length} strikes passing, ${f(S1.baseSec)} s within 100, closest p10 ${f(S1.minBaseP10)}`);
       console.log(`     by CAP at the target (fighters within 150): ` + ['lo', 'mid', 'hi'].map(k => `${k === 'lo' ? '0-4' : k === 'mid' ? '5-11' : '12+'}: ${B[k].n} strikes, esc/b ${f(B[k].esc)}, killed ${pc(B[k].killed)}, drops ${pc(B[k].drops)}`).join('; '));
+      console.log(`     by the staff's expected CAP at the order: ` + ['lo', 'mid', 'hi'].map(k => `${k === 'lo' ? '0-2' : k === 'mid' ? '3-7' : '8+'}: ${E[k].n} strikes, ${f(E[k].nb)} bombers, esc/b ${f(E[k].esc)}, killed ${pc(E[k].killed)}`).join('; '));
       console.log(`     next strike size after >=40% loss x${f(S1.nextAfterHeavy)} (${after.heavy.length}), after lighter x${f(S1.nextAfterLight)}; commitment per strike p50 ${pc(S1.commitP50)} p90 ${pc(S1.commitP90)} max ${pc(S1.commitMax)}; strike planes airborne at once max p50 ${pc(S1.maxUpP50)} max ${pc(S1.maxUpMax)}; break-offs ${f(S1.breaks)} / round, mauled ${f(S1.mauled)} / round`);
     }
   }
@@ -193,6 +202,6 @@ function report(rounds) {
   const t0 = Date.now(), rounds = await runAll(list);
   const out = report(rounds);
   fs.mkdirSync(path.dirname(JSON_OUT), { recursive: true });
-  fs.writeFileSync(JSON_OUT, JSON.stringify({ out, rounds: rounds.map(r => ({ scen: r.scen, seed: r.seed, winner: r.winner, len: r.len })) }, null, 1));
+  fs.writeFileSync(JSON_OUT, JSON.stringify({ out, rounds: rounds.map(r => ({ scen: r.scen, seed: r.seed, winner: r.winner, len: r.len, over: r.sp.waves.filter(w => w.overBase).map(w => ({ n: w.nation, t: w.t, tgt: w.tgt, minBase: Math.round(w.minBase), tgtBaseD: w.tgtBaseD, cvBaseD: w.cvBaseD, final0: w.final0, via0: w.via0, route: w.route, lead: w.lead })) })) }, null, 1));
   console.log(`(${((Date.now() - t0) / 1000).toFixed(0)} s) -> ${JSON_OUT}`);
 })();

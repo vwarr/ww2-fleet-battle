@@ -53,6 +53,7 @@ window.WW = window.WW || {};
       if (w.cag && old) { ST.handovers++; emit({ carrier: w.carrier, squadron: w.cag.squadron, order: 'cag', plane: w.cag, leader: w.cag, target: w.target }); }
     }
     if (!w.away) { w.away = true; emit({ carrier: w.carrier, squadron: w.cag && w.cag.squadron, order: 'strikeAway', plane: w.cag, leader: w.cag, target: w.target, squadrons: sqNames(w) }); }
+    if (WW.staff && WW.staff.breakOff(w, 150)) return null;     // caught by overwhelming fighters short of the target (air_staff.js)
     let t = w.target;
     const seen = t && t.alive && !t.submerged && (!WW.intel || WW.intel.visible(w.nation, t, 4));
     // Redirect only once the strike has reached the plotted position and found nothing (planes see ships out to ~100,

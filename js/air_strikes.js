@@ -151,11 +151,14 @@ window.WW = window.WW || {};
     }
     let t = w.target;
     if (WW.cag) t = WW.cag.waveTick(w);                        // strike leader: redirect, handover (air_cag.js)
+    if (w.done) return;                                        // broke off (air_staff.js)
     if (!t || !t.alive || t.submerged) t = w.target = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: 200 }) : WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
     if (!t) { w.done = true; return; }
     const k = aimAt(w, t);                                     // where the side reckons it is now (intel.js)
     let want = Math.atan2(k.z - w.z, k.x - w.x);
-    if (WW.cag) want = WW.cag.detour(w, want, t);              // round the AA umbrella of escorts
+    const g = WW.staff ? WW.staff.steer(w, k, t) : null;       // the plotted route: dogleg, initial point (air_staff.js)
+    if (g) want = Math.atan2(g.z - w.z, g.x - w.x);
+    else if (WW.cag && !(w.route && w.route.tgt === t)) want = WW.cag.detour(w, want, t);   // round the AA umbrella of escorts
     w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
     w.x += Math.cos(w.h) * gv(w) * dt; w.z += Math.sin(w.h) * gv(w) * dt;
     w.dT = WW.dist(w.x, w.z, k.x, k.z);

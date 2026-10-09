@@ -177,7 +177,7 @@ window.WW = window.WW || {};
         s = ships[j];
         if (s.nation !== nation || !usableShip(s)) continue;
         if (s.submerged) continue;
-        r = R.SEE_PLANE[s.type] || 110;
+        r = (R.SEE_PLANE[s.type] || 110) * (WW.staff ? WW.staff.seeK(s, o) : 1);   // a low sun's glare, cloud (air_staff.js); radar is blind to neither
         var rn = R.SEE_PLANE_NATION[nation], rr = (rn && rn[s.type]) || r;   // radar fighter direction reaches farther
         d2 = WW.dist2(s.x, s.z, o.x, o.z);
         if (d2 < r * r) { sight(nation, S, o, s, 'visual', now); got = true; }
@@ -186,7 +186,8 @@ window.WW = window.WW || {};
       for (j = 0; j < planes.length && !got; j++) {
         p = planes[j];
         if (p.nation !== nation || !airborne(p)) continue;
-        if (WW.dist2(p.x, p.z, o.x, o.z) < R.PLANE_PLANE * R.PLANE_PLANE) { sight(nation, S, o, p, 'air', now); got = true; }
+        var rp = R.PLANE_PLANE * (WW.staff ? WW.staff.seeK(p, o) : 1);
+        if (WW.dist2(p.x, p.z, o.x, o.z) < rp * rp) { sight(nation, S, o, p, 'air', now); got = true; }
       }
     }
     // the island base: on the enemy's chart, and its owner's radar / lookout station (island_base.js)

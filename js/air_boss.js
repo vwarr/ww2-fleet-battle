@@ -184,6 +184,11 @@ window.WW = window.WW || {};
     const dc = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(cv.nation) : null;
     const ef = dc && typeof dc.escortFrac === 'number' ? dc.escortFrac : ESCORT_FRAC[cv.nation] || 0;
     esc = Math.max(esc, Math.min(hg.fighter, Math.round(ef * (nd + nt)), 12));
+    if (WW.staff) {   // the air staff (air_staff.js): sized to the target and its known CAP, the CAP held back, the commitment ceiling, the ledger
+      const z = WW.staff.size(cv, tgt, { nd, nt, esc });
+      if (!z) { a.strikeT = RETRY * 3; BS.waits++; return; }
+      nd = z.nd; nt = z.nt; esc = z.esc;
+    }
     if (nd + nt < MIN_B) BS.small++;
     for (let i = 0; i < esc; i++) a.queue.push({ kind: 'fighter', target: tgt });
     for (let i = 0; i < Math.max(nd, nt); i++) {
@@ -199,7 +204,7 @@ window.WW = window.WW || {};
   function departed(w) {
     const a = w.carrier.ai; if (!a) return;
     if (WW.strike.forming(w.carrier)) return;      // its squadron partner is still forming
-    a.strikeT = tempo(w.carrier);
+    a.strikeT = tempo(w.carrier) * (WW.staff ? WW.staff.tempoK(w.carrier) : 1);
   }
   // While a strike forms: a carrier sighted that it is not going for turns it round (members too).
   function formTarget(w) {
