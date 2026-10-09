@@ -44,7 +44,7 @@ window.WW = window.WW || {};
       var T = tasks(), best = null, bd = LG_R * LG_R;
       for (var i = 0; i < T.length; i++) {
         var q = T[i];
-        if (q.done || q.by || q.nation !== ship.nation || now - q.t0 < LG_WAIT) continue;
+        if (q.done || q.by || (q.air && q.air.alive) || q.nation !== ship.nation || now - q.t0 < LG_WAIT) continue; // (q.air: a Catalina has it)
         var d2 = WW.dist2(ship.x, ship.z, q.x, q.z);
         if (d2 >= bd || (WW.threat && WW.threat.danger(ship.nation, q.x, q.z) > LG_SAFE)) continue;
         bd = d2; best = q;

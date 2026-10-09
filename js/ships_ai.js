@@ -24,9 +24,13 @@ window.WW = window.WW || {};
 
   // Torpedo spread at t (lead-aimed). Holds fire (returns false, retry in 1.5 s) when an allied surface ship is
   // inside the fan out to the torpedoes' range: the friendly-fire check along the spread.
+  const AIM_ERR = 0.06; // rad of torpedo aim error (+-) per 100 units of range
   function fireSpread(ship, t, range) {
     const tp = ship.stats.torpedoes, n = tp.count;
-    const p = lead(ship, t, tp.speed || WW.TORPEDO.speed), b = Math.atan2(p.z - ship.z, p.x - ship.x);
+    // fire-control error grows with the range: a long shot is fired on an estimate of the target's course and speed
+    // that the target's own movements spoil (both navies: the Long Lance's reach is not a free hit)
+    const p = lead(ship, t, tp.speed || WW.TORPEDO.speed), d0 = WW.dist(ship.x, ship.z, t.x, t.z);
+    const b = Math.atan2(p.z - ship.z, p.x - ship.x) + (WW.rand() * 2 - 1) * AIM_ERR * d0 / 100;
     const spread = n > 2 ? 0.07 : 0.05, half = spread * (n - 1) / 2 + 0.08, R = range || tp.range;
     for (const o of WW.world.ships) {
       if (o === ship || !o.alive || o.nation !== ship.nation || o.submerged) continue;
