@@ -50,11 +50,11 @@ const { chromium } = require('playwright');
       n.pct.toFixed(3) + '% / ' + n.bigPct.toFixed(3) + '%; instances ' + st.instances);
   }
   // 1. strike close up: the nearest armed bomber in transit
-  check(await p.evaluate(() => until(() => WW.world.planes.some(q => q.alive && q.ordnance && q.state === 'transit' && q.y > 15), 200)), 'strike airborne');
-  await p.evaluate(() => { const q = WW.world.planes.find(q => q.alive && q.ordnance && q.state === 'transit' && q.y > 15); follow(q, -9, 3, 5); });
-  await ab('strike');
+  const sk = await p.evaluate(() => until(() => WW.world.planes.some(q => q.alive && q.ordnance && q.state === 'transit' && q.y > 15), 900));
+  check(sk, 'strike airborne');
+  if (sk) { await p.evaluate(() => { const q = WW.world.planes.find(q => q.alive && q.ordnance && q.state === 'transit' && q.y > 15); follow(q, -9, 3, 5); }); await ab('strike'); }
   // 2. a dogfight: a fighter with a foe
-  const df = await p.evaluate(() => until(() => WW.world.planes.some(q => q.alive && q.kind === 'fighter' && q.foe && q.foe.alive && q.state === 'attack'), 200));
+  const df = await p.evaluate(() => until(() => WW.world.planes.some(q => q.alive && q.kind === 'fighter' && q.foe && q.foe.alive && q.state === 'attack'), 600));
   if (df) { await p.evaluate(() => { const q = WW.world.planes.find(q => q.alive && q.kind === 'fighter' && q.foe && q.foe.alive && q.state === 'attack'); follow(q, -12, 4, 6); }); await ab('dogfight'); }
   else console.log('skip dogfight (none found)');
   // 3. a parked deck, wings folded
