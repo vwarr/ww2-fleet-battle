@@ -2,17 +2,17 @@
 //  - Builds the airfield models (models_base.js) whenever a base is built (round start, the setup screen).
 //  - Craters on the runways (a pooled disc each, from base.craters; repaired ones disappear), knocked-out facilities
 //    scorched and slumped, burning hangars and fuel tanks (big fires, dark smoke columns that drift downwind for a few
-//    minutes), guns that train on their targets, the owner's flag in the wind, and parked planes on the apron (one
-//    pooled model per plane the base holds: base.stock).
+//    minutes), guns that train on their targets, the owner's flag in the wind. The ground life (parked planes in
+//    their revetments, crews, trucks, warm-ups, wrecks, repair gangs) is base_ground_fx.js, driven from here.
 //  - Captions for the base events ('baseEvent', island_base.js / land_air.js): "Midway under air attack",
-//    "Runway cratered", "Coastal battery silenced", "Strike from the island inbound", ... (at most one every 12 s,
+//    "Runway cratered", "Scramble!", "Runway repaired: launches resume", "Planes caught on the ground", ... (at most one every 12 s,
 //    never over another caption), and director camera candidates (WW.camHooks): a raid on the island, a burning base,
 //    a land bomber taking off.
 window.WW = window.WW || {};
 (function () {
   'use strict';
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
-  let M = null, built = null, craterGeo = null, craterPool = [], parked = [], parkSig = '', lastT = 0, capT = -1e9, capQ = null;
+  let M = null, built = null, craterGeo = null, craterPool = [], lastT = 0, capT = -1e9, capQ = null;
   const fires = new Map(); // facility -> { t0, k }
 
   function craterMesh() {
@@ -40,8 +40,8 @@ window.WW = window.WW || {};
   function clear() {
     if (built) { WW.scene.remove(built.group); built.strips.geometry.dispose(); built = null; }
     for (const c of craterPool) c.visible = false;
-    for (const p of parked) WW.air._pool.release(p);
-    parked.length = 0; parkSig = ''; fires.clear();
+    if (WW.baseGroundFx) WW.baseGroundFx.clear();
+    fires.clear();
   }
   function onBuilt(e) {
     if (WW.simOnly || !WW.scene || !WW.baseModels) return;
@@ -82,7 +82,7 @@ window.WW = window.WW || {};
       if (part.flag && WW.wind) part.flag.rotation.y = -WW.wind.a + Math.sin(performance.now() / 700) * 0.15;
     }
     if (sdt > 0) burn(sdt, now);
-    parkedPlanes(b);
+    if (WW.baseGroundFx) WW.baseGroundFx.update(rdt, b);
   }
   function burn(dt, now) {
     const ld = WW.damage ? WW.damage.load() : 0;
@@ -96,25 +96,6 @@ window.WW = window.WW || {};
       if (WW.damage) WW.damage.want(big ? 2.6 * k : 0.9 * k);
     });
   }
-  // parked planes: one model per plane on the ground (stock), in the apron spots; the airborne ones are WW.Planes
-  function parkedPlanes(b) {
-    const sig = JSON.stringify(b.stock);
-    if (sig === parkSig) return;
-    parkSig = sig;
-    for (const p of parked) WW.air._pool.release(p);
-    parked.length = 0;
-    const V = WW.landAir.VAR, kinds = [];
-    for (const k in b.stock) for (let i = 0; i < b.stock[k]; i++) kinds.push(k);
-    kinds.forEach((v, i) => {
-      const sp = b.spots[(i * 5 + 3) % b.spots.length], m = WW.air._pool.get(V[v].model || V[v].kind, b.nation);
-      if (m.payload) m.payload.visible = true;
-      const gear = V[v].gear || WW.air._pool.deckY;
-      m.group.position.set(sp.x, b.site.padH + gear, sp.z); m.group.rotation.set(0, -sp.h, 0);
-      if (m.disc) { m.disc.visible = false; m.blades.visible = true; }
-      parked.push(m);
-    });
-  }
-
   // ---------- captions ----------
   const CV = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
   function line(e) {
@@ -122,7 +103,11 @@ window.WW = window.WW || {};
     switch (e.kind) {
       case 'airRaid': return [n + ' under air attack', usn ? 'Marine fighters scramble' : 'The Zeros scramble', 1];
       case 'runwayClosed': return ['Runway cratered', n + ': nothing can take off', 1];
-      case 'runwayOpen': return ['Runway repaired', usn ? 'The Seabees fill the craters' : 'Work crews fill the craters', 0];
+      case 'runwayOpen': return ['Runway repaired: launches resume', usn ? 'The Seabees filled the craters' : 'Work crews filled the craters', 1];
+      case 'scramble': return ['Scramble!', usn ? 'Wildcats roll for the runway' : 'Zeros roll for the runway', 1];
+      case 'planesHit': return [e.n > 1 ? e.n + ' planes caught on the ground' : 'A plane caught on the ground', n, 0];
+      case 'divert': return ['Field closed', 'Carrier planes divert to the fleet; the bombers must ditch', 1];
+      case 'crashLanding': return ['Crash landing', 'The crash truck races out', 0];
       case 'battery': return ['Coastal battery silenced', n, 0];
       case 'hangar': return ['Hangar ablaze', n, 0];
       case 'fuel': return ['Fuel farm burning', n, 0];
@@ -168,5 +153,5 @@ window.WW = window.WW || {};
   WW.on('baseEvent', caption);
   WW.on('roundStart', () => { for (const k in diaryT) delete diaryT[k]; if (!(WW.islandBase && WW.islandBase.base)) clear(); });
   WW.on('setupStart', () => { if (!(WW.islandBase && WW.islandBase.base)) clear(); });
-  WW.baseFx = { update(rdt) { if (WW.simOnly) return; try { update(rdt); retry(); } catch (e) { console.error('baseFx', e); } }, clear, _parked: () => parked };
+  WW.baseFx = { update(rdt) { if (WW.simOnly) return; try { update(rdt); retry(); } catch (e) { console.error('baseFx', e); } }, clear, _parked: () => (WW.baseGroundFx ? WW.baseGroundFx._parked() : []) };
 })();
