@@ -356,7 +356,7 @@ window.WW = window.WW || {};
     target() { return L; },
     current() { return { P, L }; },
     isOverview() { const st = WW.game && WW.game.state; return st === 'setup' || !st || cam.mode === 'map'; },
-    toggle() { cam.mode = cam.mode === 'director' ? 'map' : 'director'; snapNext = true; shot = null; return cam.mode === 'map' ? 'map' : 'cinematic'; },
+    toggle() { if (WW.game && WW.game.infinite) return 'cinematic'; cam.mode = cam.mode === 'director' ? 'map' : 'director'; snapNext = true; shot = null; return cam.mode === 'map' ? 'map' : 'cinematic'; },
     // test hook: film (x, z) with a slow orbit about `width` units across, for `hold` seconds
     focus(x, z, width, hold) {
       forced = true;
@@ -371,6 +371,7 @@ window.WW = window.WW || {};
     update(rdt) {
       if (!camera) return;
       const st = WW.game && WW.game.state;
+      if (WW.game && WW.game.infinite) cam.mode = 'director'; // infinite: the director films it all
       const fc = WW.freecam && WW.freecam.active();
       if (WW.camAction) WW.camAction.tick(rdt, st === 'battle' && cam.mode === 'director' && !fc); // slow motion only on director shots
       if (st === 'setup' || !st || cam.mode === 'map') {

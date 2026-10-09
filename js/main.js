@@ -150,7 +150,7 @@ window.WW = window.WW || {};
     // setup mode: fleets placed and waiting for Start (ships do not act in 'setup').
     // newMap: a fresh map (the composition is moved onto it); fresh: new random fleets for both sides.
     enterSetup(newMap, fresh) {
-      game.mode = 'setup'; game.state = 'setup'; game.winner = null;
+      game.mode = 'setup'; game.state = 'setup'; game.winner = null; game.infinite = false; // the ready screen waits for the user: never infinite
       if (newMap || !WW.terrain.seed) {
         game.seed = (Math.random() * 1e9) >>> 0; WW.terrain.generate(game.seed);
         if (!fresh && game.composition && game.composition.length) game.composition = repositionComposition(game.composition);
@@ -165,6 +165,10 @@ window.WW = window.WW || {};
     },
     // auto (screensaver): endless random battles on new maps
     enterAuto() { game.mode = 'auto'; game.composition = null; game.baseChoice = null; game.startRound(); }, // baseChoice: setup's Base button (island_base.js)
+    // infinite (?infinite, the corner \u221e): auto battles that never wait for the user. The director camera only
+    // (camera.js, freecam.js), no action report (aar_card.js), the chrome hides while idle (ui.js). Off: the battle runs on in auto mode.
+    infinite: false,
+    setInfinite(on) { game.infinite = !!on; if (on && (game.mode !== 'auto' || game.state === 'setup')) game.enterAuto(); return game.infinite; },
     randomComposition, minSpacing,
     spawnComposition,
     tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0) + (WW.islandBase ? WW.islandBase.tons(nation) : 0); }, // + an intact island base
@@ -343,7 +347,8 @@ window.WW = window.WW || {};
     startGame();
   }
   function startGame() {
-    if (/[?&]auto\b/.test(location.search)) game.enterAuto(); // screensaver / tests: start fighting at once
+    if (/[?&]infinite\b/.test(location.search)) game.setInfinite(true); // endless director-camera battles
+    else if (/[?&]auto\b/.test(location.search)) game.enterAuto(); // screensaver / tests: start fighting at once
     else game.enterSetup(true, true);                         // random fleets placed and waiting for Start
   }
 
