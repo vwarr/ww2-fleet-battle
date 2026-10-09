@@ -14,7 +14,7 @@ window.WW = window.WW || {};
   // figure height ~0.48 u x SCALE / 1.1: 1.1 at the old 1.7 plane scale; they shrink with the planes (x PLANE_K^0.27),
   // so at 0.82 a sailor is ~0.39 u (3.8 m): about a sixth of a fighter's length (real ~a fifth), still readable on ships
   var SCALE = 1.1 * Math.pow(WW.cfg.PLANE_K || 1, 0.27);
-  var MAX = 400, FAR = 115;              // instance capacity, LOD distance from the camera
+  var MAX = 640, FAR = 115;              // instance capacity (ships' sailors + the island base's people), LOD distance from the camera
   var COUNT = { carrier: 13, battleship: 10, cruiser: 7, destroyer: 5, pt: 3, submarine: 3 };
   // Per-class geometry: a ship's model key k (ship.mk, the class key; a type name means its first class). The
   // stations below were laid out on these reference hulls [L, B, top, bowLen, sternW, sheer] (the pre-class models);
@@ -373,7 +373,7 @@ window.WW = window.WW || {};
       }
     }
     if (WW.lifeboats && WW.lifeboats.figures) WW.lifeboats.figures();
-    for (i = 0; i < nFigs; i++) { var fg = figs[i]; if (cam.distanceToSquared(_v.setFromMatrixPosition(fg.m)) > FAR * FAR) continue; _m.copy(fg.m); if (put(n, fg.c, true)) n++; }
+    for (i = 0; i < nFigs; i++) { var fg = figs[i]; if (cam.distanceToSquared(_v.setFromMatrixPosition(fg.m)) > FAR * FAR) continue; _m.copy(fg.m); if (put(n, fg.c, true, fg.pose ? fg.p : null)) n++; }
     nFigs = 0;
     if (WW.crewProps) WW.crewProps.update(dt);   // hose streams and cargo nets (crew_props.js)
     meshes.forEach(function (m) { m.count = m === arms ? n * 2 : n; m.visible = n > 0; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
@@ -398,10 +398,13 @@ window.WW = window.WW || {};
     },
     update: function (rdt) { try { update(rdt); } catch (e) { if (!WW.crew._err) { WW.crew._err = e; console.error('crew', e); } } },
     clearAll: clear,
-    // one extra figure this frame (lifeboats.js): world matrix m (feet at the origin, facing +x), nation, role
-    addFigure: function (m, nation, role) {
-      var f = figs[nFigs] || (figs[nFigs] = { m: new THREE.Matrix4(), c: null });
-      f.m.copy(m); f.c = cols(nation, role || 'c'); nFigs++;
+    // one extra figure this frame (lifeboats.js, the island base): world matrix m (feet at the origin, facing +x),
+    // nation, role; pose (optional): the arms { aL, aR: forward swing, oL, oR: outward flare, radians }
+    addFigure: function (m, nation, role, pose) {
+      var f = figs[nFigs] || (figs[nFigs] = { m: new THREE.Matrix4(), c: null, p: { aL: 0, aR: 0, oL: null, oR: null }, pose: false });
+      f.m.copy(m); f.c = cols(nation, role || 'c'); f.pose = !!pose;
+      if (pose) { f.p.aL = pose.aL || 0; f.p.aR = pose.aR || 0; f.p.oL = pose.oL == null ? null : pose.oL; f.p.oR = pose.oR == null ? null : pose.oR; }
+      nFigs++;
     },
     // rescued sailors join a ship's crew at its spare stations
     adopt: function (ship, k) {
