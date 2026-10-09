@@ -28,13 +28,16 @@ window.WW = window.WW || {};
     try { return (WW.terrain && WW.terrain.depthAt) ? WW.terrain.depthAt(x, z) : 10; } catch (e) { return 10; }
   }
   function shipLen(s) { return (s.stats && s.stats.length) || 12; }
+  // hit-box length: the hull, but never under HIT_MIN_L (the PT length before true sizes, ship_classes.js): a true-size
+  // PT (2.1-2.5 u) would be half as hittable, a balance change left to the end-of-batch pass
+  var HIT_MIN_L = 5;
   function shipUsable(s) { return s && s.alive && !s.sinking; }
 
   // Oriented hull test. pad widens the box (splash radius etc.).
   function onHull(s, x, z, pad) {
     var h = s.heading || 0, c = Math.cos(h), sn = Math.sin(h);
     var dx = x - s.x, dz = z - s.z;
-    var L = shipLen(s);
+    var L = Math.max(HIT_MIN_L, shipLen(s));
     var along = dx * c + dz * sn, across = -dx * sn + dz * c;
     return Math.abs(along) < L / 2 + pad * 0.5 && Math.abs(across) < L * BEAM_FRAC + pad;
   }

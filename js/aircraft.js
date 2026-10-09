@@ -6,7 +6,7 @@ window.WW = window.WW || {};
   const tracers = [];         // pooled THREE.Line
   let tracerIdx = 0, v3 = null;
   const REARM = 10;
-  const PLANE_SCALE = 1.7;    // arcade scale: planes read clearly at the battle camera distance
+  const PLANE_SCALE = WW.cfg.PLANE_SCALE || 1.7; // arcade scale 1.7 (ship_classes.js; true scale ~0.41, ?planeScale=)
   const DECK_Y = 0.75;        // fuselage centre above the flight deck (scaled model)
 
   function getModel(kind, nation) {

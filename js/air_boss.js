@@ -17,19 +17,26 @@ window.WW = window.WW || {};
   // Air groups, 1942 (doctrine, not rolled): Yorktown class 27 F4F / 37 SBD / 15 TBD; Shokaku 18 A6M / 27 D3A / 27 B5N.
   // TUNE.wing blends from the toy group (core.js ship stats, 6 / 4 / 4) to the full group: 0 toy, 1 full.
   const FULL = { USN: { fighter: 27, dive: 37, torpedo: 15 }, IJN: { fighter: 18, dive: 27, torpedo: 27 } };
-  const TUNE = { wing: 0 };
+  const TUNE = { wing: 1 };     // full 1942 air groups by default (airperf instancing renders them); ?wing=0 for the toy group
   { const m = typeof location !== 'undefined' && /[?&]wing=([\d.]+)/.exec(location.search); if (m) TUNE.wing = +m[1]; } // ?wing=K (tests: env Q=wing=K)
   const BS = { strikes: 0, waits: 0, small: 0, cvFirst: 0, cvRetarget: 0, capBatches: 0, capHome: 0, diverts: 0 };
   const O = () => WW.airOps;
 
   function group(ship, base) {   // ships.js: the hangar a new carrier starts with
     const F = FULL[ship.nation], k = TUNE.wing;
-    if (base) ship.wingF = base.fighter;
+    if (base) { ship.wingF = base.fighter; ship.wingN = base.fighter + base.dive + base.torpedo; }
     if (!F || !base || ship.type !== 'carrier' || !(k > 0)) return base;
     const g = {};
     for (const kind of ['fighter', 'dive', 'torpedo']) g[kind] = Math.round(base[kind] + (F[kind] - base[kind]) * Math.min(1, k));
     ship.wingF = g.fighter;   // the CAP scales with it (ai_carrier.js capWanted)
+    ship.wingN = g.fighter + g.dive + g.torpedo;   // deck room for a divert (land_air.js deckRoom)
     return g;
+  }
+  // Planes in one carrier air group of this nation at the current TUNE.wing (land_ground.js sizes the island base by it).
+  function groupSize(nation) {
+    const B = (WW.SHIP_TYPES.carrier && WW.SHIP_TYPES.carrier.planes) || {}, F = FULL[nation] || FULL.USN, k = Math.min(1, Math.max(0, TUNE.wing));
+    let n = 0; for (const kind of ['fighter', 'dive', 'torpedo']) n += Math.round((B[kind] || 0) + (F[kind] - (B[kind] || 0)) * k);
+    return n;
   }
 
   // ---------- the reserve strike (Nagumo's dilemma) ----------
@@ -252,6 +259,6 @@ window.WW = window.WW || {};
 
   function reset() { RS.held = RS.launches = RS.rearmed = 0; RS.targets = {}; PS.held = PS.released = 0; PS.why = {}; for (const k in BS) BS[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airBoss = { plan, departed, formTarget, group, strikeBusy, cvContact, TUNE, FULL, stats: BS };
+  WW.airBoss = { plan, departed, formTarget, group, groupSize, strikeBusy, cvContact, TUNE, FULL, stats: BS };
   if (WW.airOps) Object.assign(WW.airOps, { plan, reserve: RS, pursuit: PS, beaten });
 })();

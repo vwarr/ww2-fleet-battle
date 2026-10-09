@@ -228,8 +228,8 @@ window.WW = window.WW || {};
   // DIVERT_R; any other type (land bombers can never land on a deck) flies to the nearest friendly ship and ditches
   // beside it (endgame.js / air_flyingboats.js send a rescue); with no friendly ship, it ditches off the reef.
   function deckRoom(cv) {
-    let cap = 0, n = 0; const P = cv.stats.planes || {};
-    for (const k in P) cap += P[k];
+    let cap = cv.wingN || 0, n = 0; const P = cv.stats.planes || {};   // the carrier's own air group (air_boss.js), else the ship stats
+    if (!cap) for (const k in P) cap += P[k];
     for (const k in cv.hangar) n += cv.hangar[k] || 0;
     n += (cv.rearm || []).length;
     for (const q of WW.world.planes) if (q.alive && q.carrier === cv) n++;
