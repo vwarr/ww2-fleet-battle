@@ -55,7 +55,7 @@ function install() {
   let S = null;
   function fresh() {
     S = { next: 0, k: 0, pairs: new Map(), wv: new Map(), peel: new Map(), sortie: new Map(), drops: { strike: 0, scout: 0, home: 0, other: 0 }, snoop: new Map(), stints: [],
-      g: { bursts: [], samples: 0, snapOpp: 0, snapIgn: 0, switches: 0, combatT: 0, noseLead: 0, noseTgt: 0, noseNone: 0 }, gs: new WeakMap(),
+      g: { bursts: [], samples: 0, snapOpp: 0, snapIgn: 0, snapIgnR: 0, switches: 0, combatT: 0, noseLead: 0, noseTgt: 0, noseNone: 0 }, gs: new WeakMap(),
       tr: R.trace ? { rows: [], bursts: [], waves: [], drops: [] } : null };
   }
   fresh();
@@ -121,10 +121,11 @@ function install() {
       let gs = S.gs.get(p); if (!gs) { gs = { t: -1, foe: null }; S.gs.set(p, gs); }
       const at = (s && s.gunAt && s.gunAt.alive ? s.gunAt : null) || p.foe || f;
       if (s && s.burst > 0 && !(b0 > 0) && at) {   // a burst starts
-        const a = noseAng(p, at.x, at.y, at.z), d = Math.hypot(at.x - p.x, at.y - p.y, at.z - p.z), ne = nearestEnemy(p);
-        const b = { a: +a.toFixed(3), d: +d.toFixed(1), foe: at === f, k: at.kind, na: ne ? +noseAng(p, ne.x, ne.y, ne.z).toFixed(3) : null, nd: ne ? +Math.hypot(ne.x - p.x, ne.y - p.y, ne.z - p.z).toFixed(1) : null, n: p.nation };
+        const a = noseAng(p, at.x, at.y, at.z), d = Math.hypot(at.x - p.x, at.y - p.y, at.z - p.z), ne = nearestEnemy(p), tof = d / 190;
+        const aL = noseAng(p, at.x + Math.cos(at.heading) * at.speed * tof, at.y + (at.vy || 0) * tof, at.z + Math.sin(at.heading) * at.speed * tof);
+        const b = { a: +a.toFixed(3), aL: +aL.toFixed(3), d: +d.toFixed(1), foe: at === f, k: at.kind, na: ne ? +noseAng(p, ne.x, ne.y, ne.z).toFixed(3) : null, nd: ne ? +Math.hypot(ne.x - p.x, ne.y - p.y, ne.z - p.z).toFixed(1) : null, n: p.nation };
         if (G.bursts.length < 20000) G.bursts.push(b);
-        if (S.tr) S.tr.bursts.push([+t.toFixed(2), id(p), p.nation, +p.x.toFixed(1), +p.z.toFixed(1), +p.y.toFixed(1), +(a * 57.3).toFixed(1), +d.toFixed(1), at.kind, id(at)]);
+        if (S.tr) S.tr.bursts.push([+t.toFixed(2), id(p), p.nation, +p.x.toFixed(1), +p.z.toFixed(1), +p.y.toFixed(1), +(a * 57.3).toFixed(1), +d.toFixed(1), at.kind, id(at), +p.heading.toFixed(3), +at.x.toFixed(1), +at.z.toFixed(1)]);
       }
       if (t - gs.t >= DT) {   // one combat sample per 0.25 s per fighter
         gs.t = t; G.samples++; G.combatT += DT;
@@ -133,7 +134,7 @@ function install() {
         const firing = s && s.burst > 0, c = inCone(p), fo = p.foe || f;
         if (c && c.q !== fo) {
           const fa = fo ? noseAng(p, fo.x, fo.y, fo.z) : 9, fd = fo ? Math.hypot(fo.x - p.x, fo.y - p.y, fo.z - p.z) : 1e9;
-          if (fa > CONE || fd > GUN_R || fd > c.d) { G.snapOpp++; if (!(firing && s.gunAt === c.q)) G.snapIgn++; }
+          if (fa > CONE || fd > GUN_R || fd > c.d) { G.snapOpp++; if (!(firing && s.gunAt === c.q)) { G.snapIgn++; if (!(s && s.cool > 0)) G.snapIgnR++; } }
         }
         if (fo && fo.alive) {
           const d = Math.hypot(fo.x - p.x, fo.y - p.y, fo.z - p.z), tof = d / 190;
@@ -207,13 +208,14 @@ function install() {
       else if (!inside && st.in) { st.in = false; S.stints.push({ n: p.nation, k: st.k, t: +(t - st.t0).toFixed(1), end: 'left' }); }
     }
     // trace rows
-    if (S.tr && half) {
+    if (S.tr) {
       for (const p of WW.world.planes) {
         if (!p.alive || p.removed || p.state === 'takeoff' || p.state === 'rollout') continue;
+        if (!half && !(p.foe || (p.df && p.df.from))) continue;   // every 0.25 s in a fight, else every 0.5 s
         const W = p.wave ? S.wv.get(p.wave) : null;
         S.tr.rows.push([+t.toFixed(1), id(p), p.nation === 'USN' ? 'U' : 'J', p.kind[0], p.state[0] + (p.search ? 's' : p.target ? 'x' : '') + (p.foe ? 'f' : ''), +p.x.toFixed(1), +p.z.toFixed(1), +p.y.toFixed(0), W ? W.id : 0, p.df && p.df.burst > 0 ? 1 : 0]);
       }
-      if (S.k % 8 === 1) for (const s of WW.world.ships) if (s.alive && !s.isBase) S.tr.rows.push([+t.toFixed(1), -id(s), s.nation === 'USN' ? 'U' : 'J', s.type, s.sinking ? 'sinking' : 'ok', +s.x.toFixed(1), +s.z.toFixed(1), 0, 0, 0]);
+      if (half && S.k % 8 === 1) for (const s of WW.world.ships) if (s.alive && !s.isBase) S.tr.rows.push([+t.toFixed(1), -id(s), s.nation === 'USN' ? 'U' : 'J', s.type, s.sinking ? 'sinking' : 'ok', +s.x.toFixed(1), +s.z.toFixed(1), 0, 0, 0]);
     }
   }
   R.flush = function () {
@@ -298,15 +300,15 @@ function report(rounds) {
     say(`4. ${k.padEnd(10)} stints inside 200 of an enemy fleet: n ${L.length}, length p50 ${f1(out.snoop[k].p50)} p90 ${f1(out.snoop[k].p90)} mean ${f1(out.snoop[k].mean)} s, ended shot down ${pc(out.snoop[k].shot)}`);
   }
   // 5
-  const G = { samples: 0, snapOpp: 0, snapIgn: 0, switches: 0, combatT: 0, noseLead: 0, noseTgt: 0, noseNone: 0 }, B = [];
+  const G = { samples: 0, snapOpp: 0, snapIgn: 0, snapIgnR: 0, switches: 0, combatT: 0, noseLead: 0, noseTgt: 0, noseNone: 0 }, B = [];
   for (const r of rounds) { for (const k in G) G[k] += r.rec.g[k]; for (const b of r.rec.g.bursts) B.push(b); }
-  const onT = B.filter(b => b.a <= 0.175 && b.d <= 28).length, nn = G.noseLead + G.noseTgt + G.noseNone;
+  const onT = B.filter(b => b.a <= 0.175 && b.d <= 28).length, onL = B.filter(b => Math.min(b.a, b.aL === undefined ? 9 : b.aL) <= 0.175 && b.d <= 28).length, nn = G.noseLead + G.noseTgt + G.noseNone;
   const nearBetter = B.filter(b => b.na !== null && b.nd < b.d - 3 && b.na < b.a).length;
-  out.guns = { bursts: B.length, onTarget: onT / Math.max(1, B.length), aP50: qs(B.map(b => b.a * 57.3), 0.5), aP90: qs(B.map(b => b.a * 57.3), 0.9), dP50: qs(B.map(b => b.d), 0.5), notFoe: B.filter(b => !b.foe).length / Math.max(1, B.length),
+  out.guns = { bursts: B.length, onTarget: onT / Math.max(1, B.length), onTgtOrLead: onL / Math.max(1, B.length), snapIgnReady: G.snapIgnR / Math.max(1, G.snapOpp), aP50: qs(B.map(b => b.a * 57.3), 0.5), aP90: qs(B.map(b => b.a * 57.3), 0.9), dP50: qs(B.map(b => b.d), 0.5), notFoe: B.filter(b => !b.foe).length / Math.max(1, B.length),
     nearerInFront: nearBetter / Math.max(1, B.length), snapOpp: G.snapOpp / Math.max(1, G.combatT), snapIgn: G.snapIgn / Math.max(1, G.combatT), snapIgnShare: G.snapIgn / Math.max(1, G.snapOpp),
     switchPerMin: G.switches / Math.max(1, G.combatT) * 60, noseTgt: G.noseTgt / Math.max(1, nn), noseLead: G.noseLead / Math.max(1, nn), combatT: G.combatT };
-  say(`5. guns: bursts ${B.length}; target inside 10 deg and gun range ${pc(out.guns.onTarget)}; angle off p50 ${f1(out.guns.aP50)} p90 ${f1(out.guns.aP90)} deg; range p50 ${f1(out.guns.dP50)}; at a plane other than the assigned foe ${pc(out.guns.notFoe)}; a nearer enemy squarer in front ${pc(out.guns.nearerInFront)}`);
-  say(`   per combat second (${Math.round(G.combatT)} fighter-s): snapshot chances ${out.guns.snapOpp.toFixed(3)}/s, ignored ${out.guns.snapIgn.toFixed(3)}/s (${pc(out.guns.snapIgnShare)} of chances); foe switches ${f1(out.guns.switchPerMin)}/min; within 60 of the foe: nose on target ${pc(out.guns.noseTgt)}, on the lead point only ${pc(out.guns.noseLead)}, neither ${pc(1 - out.guns.noseTgt - out.guns.noseLead)}`);
+  say(`5. guns: bursts ${B.length}; target inside 10 deg and gun range ${pc(out.guns.onTarget)} (target or its lead point ${pc(out.guns.onTgtOrLead)}); angle off p50 ${f1(out.guns.aP50)} p90 ${f1(out.guns.aP90)} deg; range p50 ${f1(out.guns.dP50)}; at a plane other than the assigned foe ${pc(out.guns.notFoe)}; a nearer enemy squarer in front ${pc(out.guns.nearerInFront)}`);
+  say(`   per combat second (${Math.round(G.combatT)} fighter-s): snapshot chances ${out.guns.snapOpp.toFixed(3)}/s, ignored ${out.guns.snapIgn.toFixed(3)}/s (${pc(out.guns.snapIgnShare)} of chances; with the guns ready ${pc(out.guns.snapIgnReady)}); foe switches ${f1(out.guns.switchPerMin)}/min; within 60 of the foe: nose on target ${pc(out.guns.noseTgt)}, on the lead point only ${pc(out.guns.noseLead)}, neither ${pc(1 - out.guns.noseTgt - out.guns.noseLead)}`);
   return out;
 }
 
