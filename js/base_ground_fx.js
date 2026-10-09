@@ -326,7 +326,9 @@ window.WW = window.WW || {};
     if (e.kind === 'crashLanding' && e.plane) { // the crash truck from the tower (or a hangar) to the plane on the runway
       const f = nearestFac('tower', e.x, e.z) || nearestFac('hangar', e.x, e.z); if (!f) return;
       const L = base.layout, q = L.toL(e.plane.x, e.plane.z), TU = L.TAXI_U, TV = L.TAXI_V, ee = f.u >= 0 ? 1 : -1, fs = f.v >= 0 ? 1 : -1;
-      const x = exitTo(f, ee); trip('crash', [...x.pts, [ee * TU, x.fs * TV], [ee * TU, x.fs * 6], [WW.clamp(q.u + 20 * Math.sign(-ee), -TU, TU), x.fs * 6], [q.u, x.fs * 4]], WW.time.now + 40, e.plane);
+      // along the verge (not the taxiway or its hold-short connector), then straight across to the runway beside the plane
+      const x = exitTo(f, ee), k = KL(), cu = WW.clamp(q.u + 20 * Math.sign(-ee), -TU + 4, TU - 4);
+      trip('crash', [...x.pts, [cu, x.fs * (TV + k)], [cu, x.fs * 6], [q.u, x.fs * 4]], WW.time.now + 40, e.plane);
     }
   }
 
