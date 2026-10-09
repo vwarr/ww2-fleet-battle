@@ -153,21 +153,29 @@ Each animation frame (`main.js`, `frame`):
 - `main.js bootSim()` makes a plain `THREE.Scene` and camera, but no `WebGLRenderer`. It initializes only `terrain`, `models`, `combat`, `ships` and `air`, starts the game as usual (`?auto` or setup), and never calls `requestAnimationFrame`. The test drives `__sim.fastForward`.
 - Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_dogfight.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
 - Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
-- The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page and a sim-only page; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
+- The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page, a sim-only page and the node runner; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
 - Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
 
 ### Running the tests
 
-Serve the folder (`python3 -m http.server PORT`, or `bash tests/run.sh <script> [args]` on port 8000), set `BASE_URL=http://localhost:PORT/` and `CHROMIUM=<headless shell>`. `tests/headless.js` holds the shared launch settings: sim-only by default, `--render` (or `RENDER=1`) for the full game on software GL (swiftshader).
+`tests/headless.js` holds the shared launch settings. The sim tests (`sim_behaviour.js`, `sim_rounds.js`, `determinism.js`, `ship_heel.js`, `air_probe.js`) take a mode switch:
+
+- `--node` (default): sim-only mode run natively in Node by the node runner (below). No Chrome, no web server.
+- `--browser`: a sim-only page in headless Chrome. Serve the folder (`python3 -m http.server PORT`), set `BASE_URL=http://localhost:PORT/` and `CHROMIUM=<headless shell>`.
+- `--render` (or `RENDER=1`): the full game in Chrome on software GL (swiftshader), as `--browser` otherwise.
+
+`--workers K` (alias `--pages K`) sets how many games run rounds in parallel: worker threads in node mode (default: cores − 2, capped by the `MAX_WORKERS` env var), pages in Chrome (default 6).
 
 ```
-node tests/sim_behaviour.js                          # behaviour suite, 14 scenarios x 8 seeds, 6 pages (~15 s)
-node tests/sim_behaviour.js --only balance --seeds 100   # balance gate (~25 s; --seeds 400 for tuning)
+node tests/sim_behaviour.js                          # behaviour suite, 15 scenarios x 8 seeds
+node tests/sim_behaviour.js --only balance --seeds 100   # balance gate (--seeds 400 for tuning)
 node tests/sim_behaviour.js --only fuzz --seeds 42       # composition fuzz: odd and lopsided fleets (tests/fuzz.js)
 node tests/oddfleets_shots.js search|spots|attack <seed> # render-mode shots of 3 carriers vs 10 PT boats
-node tests/sim_rounds.js [rounds=8] [firstSeed=1]    # per-round report, seeds across 6 pages (--pages K)
-node tests/determinism.js [seed] [seconds]           # same seed, same round: one page, after another seed, fresh page
-node tests/determinism.js --cross 1,2,3 300          # rendered page vs sim-only page (always launches both)
+node tests/sim_behaviour.js --only midway --base IJN --tune guns=0.5,air=0.6   # island base: owner and strength knobs (island_base.js TUNE)
+node tests/base_shots.js [seed]                      # render-mode island base shots (tests/shots/base/)
+node tests/sim_rounds.js [rounds=8] [firstSeed=1]    # per-round report, seeds across the workers
+node tests/determinism.js [seed] [seconds]           # same seed, same round: one game, after another seed, a fresh game
+node tests/determinism.js --cross 1,2,3 300          # full rendered page vs sim-only page vs node runner (--modes browser,node: skip the render)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
 node tests/sim_behaviour.js --only night,dusk,weather   # night and weather scenarios and metrics
 TOD=night WX=line node tests/determinism.js --cross 3,4 250   # force the time of day / the weather
@@ -178,7 +186,16 @@ node tests/doctrine.js [rounds=24] [seed0=1]         # doctrine metrics per nati
 node tests/doctrine_shots.js ring 3                  # render-mode doctrine screenshots (ring, vanguard, wake_usn, wake_ijn, dud, lifeguard)
 ```
 
-`--pages` (sim_behaviour, sim_rounds) defaults to 6, measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier), so 6 is the compromise. The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game.
+The browser `--pages` default of 6 was measured on an 8-core M1 Pro (6 performance cores): on the balance gate 5 and 6 pages tie (within run-to-run noise) and both beat 4 and 8; the 8-seed suite is slightly faster with 8 (its scenarios end in a barrier). The tests that take screenshots or film the camera (`final.js`, `peek.js`, `story_cam.js`, `air_shots.js`, `deaths.js`, `action_cam.js`, `clip.js`, `fps.js`, the audio tests and others) use the full game in Chrome (`bash tests/run.sh <script>` serves on port 8000).
+
+### The node runner (tests/node_env.js, tests/node_sim.js)
+
+- `node_env.js` boots what `index.html?sim` boots: it reads the `<script src>` list from `index.html` (so a new module needs no edit here) and runs each file in order with `vm.runInThisContext` in the current realm (classic-script semantics: top-level `const` / `let` share one global scope). A script that throws while loading fails the run with its name. The stub browser: `window` = `self` = the global, a minimal `document` (`createElement` gives an element whose canvas 2D context accepts every call, for the textures some modules draw at load), `location.search` = `?sim&…`, `requestAnimationFrame` a no-op, Node's `performance`. `console.error` from game code is reported as a page error. `DOMContentLoaded` / `load` listeners fire after the last script, and `main.js` then runs its usual `bootSim()`.
+- `node_sim.js` runs one game per `worker_threads` Worker (its own V8 isolate and global) and gives it the small part of the Playwright API the sim tests use (`newPage`, `goto` (the query string selects `?sim&auto` and so on), `evaluate(fn, arg)`, `waitForFunction`, `on('console' | 'pageerror')`, `close`). So a test is written once and runs in both: `evaluate` sends the function as source text, as Playwright does (it cannot close over Node variables), and returns a structured clone. `node tests/node_sim.js [seed] [secs]` is a one-round smoke run.
+- **Bit-identical results need the browser's `Math`.** Chrome 150+ (V8 15) computes `sin`, `cos`, `tan`, `atan`, `atan2`, `asin`, `acos`, `exp`, `log*`, `pow` and the rest with LLVM libc (correctly rounded); V8 14 and older (every stable Node up to 26.x) use fdlibm, which differs in the last bit for 5 to 10% of inputs, and a seeded round diverges within 5 sim seconds. So the runner needs a Node whose V8 is 15 or newer. `bash tests/get_node.sh` puts a verified nodejs.org v8-canary build in `~/.cache/fleet-battle/node`; when the running Node is older, the tests re-run themselves under that binary (or under `SIM_NODE=/path/to/node`), and fail with an explanation when there is none. `NODE_SIM_ANY_V8=1` runs on any Node (same statistics, not the same rounds). When a stable Node ships V8 15, it works directly. If Chrome changes its math library again, `determinism.js --cross` shows it.
+- Proof: `node tests/determinism.js --cross 1,2,3 300 --modes browser,node` gives the same trace hash in Chrome (headless shell 1243, Chrome 153) and in the runner, and the behaviour suite's per-round JSON (`JSON=… node tests/sim_behaviour.js` vs `… --browser`) is identical.
+- Limits: sim-only mode only (no renderer, so no screenshots, camera, audio or UI tests); game code must not touch browser APIs outside the stubs while loading or in the sim path (a new one fails loudly; add it to `node_env.js`); `waitForTimeout` is a no-op, since there is no render loop or network to wait for.
+- Speed (M1 Pro, measured with load average 20 to 30 from other jobs, so read the ratios, not the seconds): one game runs a round at the same speed as a Chrome page (seed 1, 300 sim s: about 1.05 s in both once warm), so wall time and CPU time tie at the same parallelism. Behaviour suite (8 seeds, 2 games): browser 28.4 s / 62 CPU s, node 29.5 s / 63 CPU s. Balance gate (100 rounds, 2 games): browser 59.7 s / 128 CPU s, node 59.1 s / 121 CPU s. The gains: about 2.4× less memory (2 games: 373 to 449 MB against 882 to 925 MB; 6 games: about 0.9 GB against 2.4 GB); no Chrome, `CHROMIUM` path, web server or port; a game boots in about 0.3 s; and a run can use more games for the same memory. The old Node (V8 12.9) also ran a round about 1.5× slower than Chrome. A V8 15 Node closes that gap.
 
 ## Data tables (core.js)
 

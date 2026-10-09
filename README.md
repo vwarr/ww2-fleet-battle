@@ -163,7 +163,7 @@ The game does not show health bars.
 | `js/war_diary.js` | The war diary (key `L`). |
 | `js/aar_card.js` | The action report after a battle. |
 | `js/main.js` | The renderer, the main loop and the rounds. |
-| `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. The simulation tests (`npm run test:ai`, `test:balance`, `test:determinism`) run the game in sim-only mode (`index.html?sim`: no rendering, the same results); add `--render` for the full game. Refer to `docs/ARCHITECTURE.md`, "Sim-only mode". |
+| `tests/` | Browser tests (Playwright). Run `npm install`, then `npm test`. The simulation tests (`npm run test:ai`, `test:balance`, `test:rounds`, `test:determinism`) run the game's sim-only mode (`index.html?sim`: no rendering, the same results) natively in Node worker threads, with no browser or server; they need a Node with V8 15 or newer (`npm run get-node` fetches one, the tests switch to it by themselves). Add `--browser` for headless Chrome, `--render` for the full game, `--workers K` for the parallelism. Refer to `docs/ARCHITECTURE.md`, "Sim-only mode". |
 
 ## Licence
 
