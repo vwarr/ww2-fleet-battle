@@ -168,7 +168,7 @@ window.WW = window.WW || {};
   function windZ() { return WW.wind ? WW.wind.z : 0; }
 
   // ---- effect recipes ----
-  var W = 0xf2ece2, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4, WAKE_F = 0x585858; // foam colours are peak alpha (grey level)
+  var W = 0xf2ece2, FOAM_A = 0xd0d0d0, WAKE_A = 0xc4c4c4, WAKE_F = 0x707070; // foam colours are peak alpha (grey level)
   function splash(x, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
     var sq = Math.sqrt(size), n = Math.min(14, 4 + Math.round(size * 2.5)), up = 2.6 * sq + 1.6;
