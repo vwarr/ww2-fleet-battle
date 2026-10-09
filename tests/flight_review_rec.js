@@ -271,7 +271,7 @@ function install(opts) {
       wr.members = Math.max(wr.members, w.members.filter(q => q.alive).length);
       if (!w.go || w.done) continue;
       if (wr.tArr === null && w.dT < 140) wr.tArr = +t.toFixed(1);
-      const F = w.members.filter(q => q.alive && q.sk === 'form' && (q.state === 'transit' || q.state === 'attack') && !q.phase);
+      const F = w.members.filter(q => q.alive && q.sk === 'form' && (q.state === 'transit' || q.state === 'attack') && !q.phase && !q.strafe); // a strafing escort is not in the formation
       if (F.length < 2) continue;
       let cx = 0, cz = 0; for (const q of F) { cx += q.x; cz += q.z; } cx /= F.length; cz /= F.length;
       const B = F.filter(q => q.kind !== 'fighter'); let bx = 0, bz = 0, by = 0; for (const q of B) { bx += q.x; bz += q.z; by += q.y; } if (B.length) { bx /= B.length; bz /= B.length; by /= B.length; }

@@ -148,7 +148,7 @@ window.WW = window.WW || {};
     IJN: { fighter: { hp: 11, speed: 42, cruise: 33, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' },
            dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.8 } },
     USN: { fighter: { hp: 28, speed: 39, cruise: 30, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' },
-           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.2, brake: 21 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
+           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.2, brake: 23 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
   };
   const _ptCache = {};
   WW.planeType = function (kind, nation) { // merged per-nation stats (cached; falls back to WW.PLANE_TYPES[kind])
