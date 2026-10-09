@@ -37,14 +37,14 @@ window.WW = window.WW || {};
       if (net || AL.onNetwork(L, u, v, 1.5)) vwall[k] = 1;   // the camp's trucks keep off the runways and taxiways (the planes' ground)
     }
     const site = (x, z) => L.toL(x, z);
-    for (const d of b.decor || []) { if (d.solid) stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.8); if (d.kind !== 'drill' && d.kind !== 'yard') stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.3); }
+    for (const d of b.decor || []) { if (d.solid) stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.55); if (d.kind !== 'drill' && d.kind !== 'yard') stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.3); }
     if (built) for (const part of built.parts) {
       if (part.decor || !part.mesh) continue;
       const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 4.0, 4.0, 1.0); continue; }
       const m = part.mesh, g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
       const bb = g.boundingBox, h = -m.rotation.y, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
       const q = site(m.position.x + Math.cos(h) * cx - Math.sin(h) * cz, m.position.z + Math.sin(h) * cx + Math.cos(h) * cz);
-      stamp(wall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 0.8);
+      stamp(wall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 0.55);
       stamp(vwall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 1.0);
     }
     for (const sp of L.spots) { // the hardstand (a plane parks there) and its berms
