@@ -44,7 +44,10 @@ window.WW = window.WW || {};
   //                has been seen, for the strike on the beaten fleet (air_ops.js; Hiryu's second strike, the 4 June
   //                afternoon strike on Hiryu, Mikuma on 6 June): released when the enemy breaks or is about to
   //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
-  //                ring (~80). USN 35: the 1942 circular screen, the AA umbrella over the carrier
+  //                ring (~80). USN 55 (~2 L): the 1942 circular screen, the AA umbrella over the carrier, far enough out that
+  //                each ship has sea room to manoeuvre on its own under an air attack (was 35: the ring bunched up)
+  //   cvSpread     the second (third) carrier's station across the axis from the first: USN 150 (~6 L: a task force
+  //                per carrier, each with its own ring, as TF 16 / TF 17), IJN 90 (a carrier division in one box)
   //   ringDD       destroyers per carrier in its ring (at least one); ringBB (flag): a side with two or more
   //                battleships gives one to the carrier's ring (USN: North Carolina with Enterprise, Eastern Solomons)
   //   vanguard     search / approach / engage: the carriers hold this x map width behind the main body, the surface force
@@ -68,7 +71,7 @@ window.WW = window.WW || {};
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, nightEye: 0.3, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
-      ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
+      ringR: 55, cvSpread: 150, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
       patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
       air: { cap: 'picket', press0: 0.35, pressT: 160, sweep: true },
@@ -76,13 +79,13 @@ window.WW = window.WW || {};
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, nightEye: 0.5, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
       jointStrike: true, followUp: 'deckload', reserveFrac: 0.4, pursuitReserve: 0.4,
-      ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
+      ringR: 0, cvSpread: 90, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
       patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
       air: { cap: 'overhead', press0: 1, pressT: 0, sweep: true },
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
-  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1, air: 1 }; // doctrine fields that are not rolled
+  var FIXED = { cvSpread: 1, jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1, air: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
@@ -191,8 +194,9 @@ window.WW = window.WW || {};
     G.carrier.members.forEach(function (q) {
       if (q.type === 'carrier') {
         // with no battle line to hide behind: a fixed home in its own fifth of the map (never trails the destroyers)
-        const p = G.main.members.length ? at(mg.x, mg.z, -back, (ci ? 60 : 0) * (ci % 2 ? -1 : 1))
-          : { x: ownX === 0 ? W * 0.2 : W * 0.8, z: WW.clamp(q.z, 150, H - 150) + (ci ? 80 : 0) };
+        const sp = B.doctrine.cvSpread || 60;   // separate task groups (USN) / one carrier division (IJN)
+        const p = G.main.members.length ? at(mg.x, mg.z, -back, (ci ? sp : 0) * (ci % 2 ? -1 : 1))
+          : { x: ownX === 0 ? W * 0.2 : W * 0.8, z: WW.clamp(q.z, 150, H - 150) + (ci ? sp * (ci % 2 ? 1 : -1) : 0) };
         ci++;
         // in its own band of the map (0.15-0.35 of the width from its own edge) and 150 off the north / south edges:
         // room to run in every direction
