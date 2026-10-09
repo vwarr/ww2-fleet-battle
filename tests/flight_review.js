@@ -135,7 +135,10 @@ function report(rounds) {
   say('carrier planes, circling time by category:location as a share of all airborne time: ' + Object.keys(circCat).sort((a, b) => circCat[b] - circCat[a]).slice(0, 10).map(c => `${c} ${pc(circCat[c] / airAll)}`).join(', '));
   const LW = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => s.b.landing || 0), LS = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => (s.b.landing || 0) / Math.max(1, s.air + (s.b.landing || 0)));
   out.budgets._landing = { n: LW.length, p50: med(LW), p90: qs(LW, 0.9), shareP50: med(LS) };
+  const LM = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => s.b.marshal || 0), LG = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => (s.b.landing || 0) - (s.b.marshal || 0));
+  out.budgets._landing.marshalP50 = med(LM); out.budgets._landing.marshalP90 = qs(LM, 0.9); out.budgets._landing.grooveP50 = med(LG); out.budgets._landing.grooveP90 = qs(LG, 0.9);
   say(`landing pattern time per recovered carrier sortie: p50 ${f1(med(LW))} s, p90 ${f1(qs(LW, 0.9))} s (n ${LW.length}); share of that sortie's flying time p50 ${pc(med(LS))}`);
+  say(`  of which holding in the marshal stack p50 ${f1(med(LM))} s, p90 ${f1(qs(LM, 0.9))} s; the rest (approach, groove, wave-offs) p50 ${f1(med(LG))} s, p90 ${f1(qs(LG, 0.9))} s`);
   const ends = {}; for (const s of S) if (s.o === 'cv') ends[s.end] = (ends[s.end] || 0) + 1;
   say('carrier sortie ends: ' + JSON.stringify(ends));
   for (const n of ['USN', 'IJN']) { const G = S.filter(s => s.o === 'cv' && s.n === n && s.wv), o = {}; for (const s of G) o[s.wv] = (o[s.wv] || 0) + 1; say(`${n} carrier bomber sorties: joined the wave while it formed / after it had left / never had a wave: ${pc((o.formed || 0) / G.length)} / ${pc((o.late || 0) / G.length)} / ${pc((o.none || 0) / G.length)} (n ${G.length})`); (out.budgets._wave = out.budgets._wave || {})[n] = o; }
@@ -161,6 +164,18 @@ function report(rounds) {
   const effN = Object.values(eff).map(a => a.length), second = Object.values(eff).filter(a => a.length > 1).map(a => { a.sort((x, y) => x - y); return a[1] - a[0]; });
   out.waves._effective = { perCarrierWithDrops: mean(effN), secondGapP50: med(second), carriersWithSecond: effN.filter(n => n > 1).length / Math.max(1, effN.length) };
   say(`waves that dropped, per carrier that struck at all: ${f1(mean(effN))}; carriers with a second effective strike ${pc(out.waves._effective.carriersWithSecond)}, first -> second strike's first drop p50 ${f1(med(second))} s`);
+  // real strikes: first drops of a carrier's waves at least 60 s apart count as separate strikes; waves that left formed
+  const real = Object.values(eff).map(a => { a.sort((x, y) => x - y); let n = 0, last = -1e9; for (const t of a) if (t - last >= 60) { n++; last = t; } return n; });
+  const cvRoundsN = cvRounds.reduce((s, r) => s + Object.entries(r.comp || {}).filter(([k]) => k.endsWith(':carrier')).reduce((a, [, v]) => a + v, 0), 0);
+  // no-drop waves cut short: the carrier was lost before the strike arrived, or the round ended before it could (left < 60 s before the end, or never left)
+  const lenOf = {}; for (const r of rounds) lenOf[r.scen + r.seed] = r.len;
+  const cut = w => !w.drops.length && ((w.cvLost !== undefined && (w.tArr === null || w.cvLost < w.tArr)) || (w.tArr === null && (w.tGo === null || lenOf[w.scen + w.seed] - w.tGo < 60)));
+  const fair = cvW.filter(w => !cut(w));
+  const gone = cvW.filter(w => w.tGo !== null && w.formed !== undefined && w.formed !== null), cvNo = cvW.filter(w => !w.drops.length).length / Math.max(1, cvW.length);
+  out.waves._real = { perStrikingCv: mean(real), perCv: real.reduce((s, x) => s + x, 0) / Math.max(1, cvRoundsN), threePlus: real.filter(x => x >= 3).length / Math.max(1, real.length), noDrop: cvNo, departedFormed: gone.filter(w => w.formed).length / Math.max(1, gone.length), departedN: gone.length };
+  say(`real strikes (first drops >= 60 s apart) per carrier that struck: ${f1(mean(real))} (per carrier in the round ${f1(out.waves._real.perCv)}; 3 or more ${pc(out.waves._real.threePlus)}); carrier waves with no drop ${pc(cvNo)} (n ${cvW.length}); waves that departed formed (not on the timer) ${pc(out.waves._real.departedFormed)} (n ${gone.length})`);
+  out.waves._real.noDropFair = fair.filter(w => !w.drops.length).length / Math.max(1, fair.length);
+  say(`  carrier waves with no drop, leaving out the ${cvW.length - fair.length} cut short (carrier lost before arrival, or the round ended first): ${pc(out.waves._real.noDropFair)} (n ${fair.length})`);
   say(`carrier waves per carrier-round: ${f1(cvW.length / Math.max(1, rounds.reduce((s, r) => s + Object.entries(r.comp || {}).filter(([k]) => k.endsWith(':carrier')).reduce((a, [, v]) => a + v, 0), 0)))}; ` +
     `waves per round with carriers: ${f1(cvW.length / Math.max(1, cvRounds.length))}; first order at median ${f1(med(rounds.map(r => r.rec && r.rec.first.order).filter(x => x !== undefined && x !== null)))} s`);
 

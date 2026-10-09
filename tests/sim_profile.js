@@ -14,7 +14,7 @@ const N = +(pos[0] || 4), SEED0 = +(pos[1] || 1), SECS = +(pos[2] || 300), TOP =
 const out = s => process.stdout.write(s + '\n');
 let errors = 0; const cpu = [], setup = []; // setup: terrain.generate + startRound (map and fleets), per round
 const ROOT = args.includes('--root') ? require('path').resolve(args[args.indexOf('--root') + 1]) : undefined;
-env.boot({ root: ROOT, consoleError: m => { errors++; if (errors < 5) out('console.error: ' + m); } });
+env.boot({ query: 'sim' + (process.env.Q ? '&' + process.env.Q : ''), root: ROOT, consoleError: m => { errors++; if (errors < 5) out('console.error: ' + m); } });
 const round = seed => {
   const G = WW.game; if (WW.aces) WW.aces.reset();
   const g0 = performance.now(); WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0;
