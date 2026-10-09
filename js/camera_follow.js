@@ -95,13 +95,13 @@ window.WW = window.WW || {};
         .map(p => ({ subj: p, label: nameOf(p) + ' in a dogfight' + (p.foe.kind !== 'fighter' ? ' with ' + (p.foe.squadron ? p.foe.squadron.short : 'bombers') : ''), etaReal: 0, eta: 0 }));
     } else if (which === 'danger') L = WW.camFinder.upcoming(['torps', 'danger']);
     else L = WW.camFinder.upcoming(['strike', 'push', 'anvil', 'bandits', 'torps']);
-    // one entry per strike wave (its earliest moment: the wave's strike / push / anvil items are one attack) and per ship
+    // one entry per strike wave (its earliest moment: the wave's strike / push / anvil items are one attack), per fighter element and per ship
     const seen = new Set();
-    L = L.filter(i => { if (!i.subj || i.subj.removed) return false; const k = i.subj.wave || i.subj; if (seen.has(k)) return false; seen.add(k); return true; });
+    L = L.filter(i => { if (!i.subj || i.subj.removed) return false; const k = i.subj.wave || i.subj.element || i.subj; if (seen.has(k)) return false; seen.add(k); return true; });
     if (!L.length) return which === 'dogfight' ? 'No dogfight right now' : which === 'danger' ? 'No ship in danger right now' : 'No attacks on the way yet';
     const f0 = following() || (cur && cur.subj);
     let i = L.findIndex(it => it.subj === f0);
-    if (i < 0) i = L.findIndex(it => f0 && f0.wave && it.subj.wave === f0.wave);
+    if (i < 0) i = L.findIndex(it => f0 && ((f0.wave && it.subj.wave === f0.wave) || (f0.element && it.subj.element === f0.element)));
     i = i < 0 ? (dir > 0 ? 0 : L.length - 1) : (i + dir + L.length) % L.length;
     jump(L[i]);
     return (i + 1) + '/' + L.length + ' · ' + say(L[i]);

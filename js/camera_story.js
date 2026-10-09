@@ -209,7 +209,7 @@ window.WW = window.WW || {};
   }
   // the ship a story's transit cuts to: the strike's target, else the carrier the plane flies from (afloat ships only)
   function shipFor(p) {
-    const live = s => s && s.stats && s.alive && !s.removed && !s.submerged ? s : null;
+    const live = s => s && s.alive && !s.removed && !s.submerged && WW.world.ships.indexOf(s) >= 0 ? s : null; // a ship, not the island base or a flying boat's home
     return live(p.target) || live(p.wave && p.wave.target) || live(p.carrier) || null;
   }
   function successor() {
@@ -260,7 +260,7 @@ window.WW = window.WW || {};
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
     // a long, empty transit: every other shot cuts to the ships it is about (the target, else the carrier it guards)
     // at toy's-eye level, so the story's minutes over open sea also show the ships big
-    if ((S.phase === 'transit' || S.phase === 'home') && S.shots >= 2 && S.last !== 'ships' && !(S.user && S.shots < 3)) {
+    if ((S.phase === 'transit' || S.phase === 'form' || S.phase === 'home') && S.shots >= 2 && S.last !== 'ships' && !(S.user && S.shots < 3)) {
       const it = WW.camFinder && WW.camFinder.about(L), sh = shipFor(L);
       if (sh && (!it || it.etaReal > 40)) {
         S.last = 'ships'; S.shots++;
