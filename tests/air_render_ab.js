@@ -72,7 +72,7 @@ const { chromium } = require('playwright');
   if (db) await ab('brakes');
   // 6. a land-based bomber (models_landplanes.js: extra propellers through the body's onBeforeRender), posed airborne
   const lp = await p.evaluate(() => { const c = WW.world.ships.find(s => s.alive && s.type === 'carrier' && !s.isBase); if (!c) return false;
-    const q = new WW.Plane('b17', 'USN', c, null, WW.air._pool.get('b17', 'USN')); q.state = 'stress'; q.hp = q.maxHp = 1e9;
+    const q = new WW.Plane('dive', 'USN', c, null, WW.air._pool.get('b17', 'USN')); q.state = 'stress'; q.hp = q.maxHp = 1e9;
     q.x = c.x + 30; q.z = c.z + 20; q.y = 25; q.heading = 0.6; q.speed = 20; q.update = function (dt) { this.sync(dt); };
     WW.world.planes.push(q); __sim.fastForward(0.1); follow(q, -10, 3, 8); return true; });
   check(lp, 'land bomber spawned');

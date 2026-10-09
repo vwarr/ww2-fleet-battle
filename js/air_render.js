@@ -7,7 +7,8 @@
 // the same shared geometry and the same toon material, so a plane looks exactly as it did, at any distance; only the
 // draw calls change: about 8 per plane per pass (main + shadow) before, about 8 per plane TYPE now.
 //   acquire(m) / release(m): a model enters / leaves the instanced set (aircraft.js getModel / release do this).
-//   hero(m, on): draw this model's own meshes instead (for a future per-plane material effect); off by default.
+//   hero(m, on): draw this model's own meshes instead; off by default and unused: instancing is lossless (fold, brakes,
+//   deaths, land planes' extra props all pass tests/air_render_ab.js), so close-ups need no separate hero model.
 //   enabled: false draws every model natively (A/B tests: tests/air_stress.js --off).
 //   sync(): fills the instances; runs by itself from scene.onBeforeRender (after the scene's matrix update).
 // A mesh is drawn when it and all its ancestors are visible and the group is in the scene: anything a game module
