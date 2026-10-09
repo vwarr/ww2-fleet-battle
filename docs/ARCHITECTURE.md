@@ -300,7 +300,7 @@ User: "the ships also seem to come far closer together than they should and not 
 - The chase ratio (actual ÷ a replayed pure pursuit that turns at the ship's rate) is ~1.15 before and after: chases are short (p50 17 s) and the ghost does not avoid danger or keep station; against the ideal straight-line intercept the free chases are 1.3.
 - Coherence in the first 90 s is lower than before (the fleets spawn abreast and form a column: main 0.88 p10 0.50).
 
-Gates (100 rounds, seeds 1-100 / 1001-1100): before USN 46 / 43; after GATE1 / GATE1001. Behaviour suite 0 FAIL (before: 1, the mirror rescue "stuck"). `determinism.js 1 200` and `--cross 1 200` pass.
+Gates (100 rounds, seeds 1-100 / 1001-1100): before USN 46 / 43; after 45 / 50. Rounds are also faster (100 rounds 160 s vs 352 s wall: fewer ships pressed into each other). Behaviour suite 0 FAIL (before: 1, the mirror rescue "stuck"; the planes branch's standard / mirror seed 1 "stuck" escort destroyer at (1214, 429) is the same case, a USN rescue pickup at throttle 0.03). `determinism.js 1 200` and `--cross 1 200` pass.
 
 Track plots (`tests/shots/ships/`, before / after on the same seeds): `tracks_cruise_*` (surface seed 2, USN, 120-300 s: the column on its guide vs ships chasing their own stations), `tracks_surface_*` (the same round 280-400 s, following the USN flagship: the deployment and the broadside duel vs the lines passing through each other), `tracks_air_*` (standard seed 3, USN carrier group under air attack), `tracks_air_ijn_*` (midway seed 1, IJN carrier division), `tracks_overview_*` (standard seed 3, the whole round).
 
