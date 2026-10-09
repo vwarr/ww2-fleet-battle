@@ -5,12 +5,12 @@
 // bloom (post.js setNight).
 // Keyframes on the sun's elevation E (degrees): 70 high noon (bright, clear, white light), 45, 22 the golden
 // afternoon (the game's original look), 10 golden, 3 the sun on the horizon (a strong orange / pink sky, a big glowing
-// disc, gold-to-orange glitter, clouds lit warm from below), -1 afterglow, -5 the blue hour, -12 a moonlit night.
+// disc, gold-to-orange glitter, clouds lit warm from below), -1 afterglow, -5 the blue hour, -10 a moonlit night.
 // Before noon the low-sun keys use a cooler dawn palette (pink, peach and lavender), blended by WW.dayNight.morning().
 // Rain darkens and greys it all.
 window.WW = window.WW || {};
 (function (WW) {
-  const KEYS = [-12, -5, -1, 3, 10, 22, 45, 70];
+  const KEYS = [-10, -5, -1, 3, 10, 22, 45, 70];
   const C = h => (WW.pastel ? WW.pastel(h, 0.1) : new THREE.Color(h));
   const pal = (...hex) => hex.map(C);
   //              night     blue hr   afterglow sun on hz golden    afternoon bright    noon
@@ -46,8 +46,8 @@ window.WW = window.WW || {};
     hemiI:  [0.66, 0.56, 0.56, 0.62, 0.68, 0.72, 0.74, 0.75],
     lightI: [0.62, 0.14, 0.55, 0.95, 1.1, 1.15, 1.14, 1.12],
     halo:   [0.4, 0.5, 0.95, 0.95, 0.7, 0.55, 0.42, 0.36],
-    disc:   [0, 0.2, 0.85, 0.95, 0.6, 0.45, 0.4, 0.35],
-    discCos:[0.9997, 0.9997, 0.9992, 0.9993, 0.9996, 0.99975, 0.9998, 0.9998],   // the disc looks bigger near the horizon
+    disc:   [0, 0.2, 1.3, 1.5, 0.75, 0.45, 0.4, 0.35],
+    discCos:[0.9997, 0.9997, 0.9991, 0.9992, 0.9996, 0.99975, 0.9998, 0.9998],   // the disc looks bigger near the horizon
     spread: [3, 3, 2, 2.2, 3.2, 5, 6, 7],
     tint:   [[0.36, 0.44, 0.68], [0.5, 0.52, 0.74], [0.88, 0.7, 0.76], [1, 0.84, 0.78], [1, 0.95, 0.92], [1, 1, 1], [1, 1.01, 1.02], [0.99, 1.01, 1.03]]
   };
