@@ -1,7 +1,8 @@
 // Plane rendering stress test (air_render.js): force-spawns N airborne planes in formations (both nations, all
 // three carrier types) plus P extra parked on the carrier decks (default 0: air_deck.js already spots one deck load), then measures fps, draw calls (main + shadow pass) and
 // triangles per frame, and takes screenshots.
-// Usage: node tests/air_stress.js [--n 200] [--parked 0] [--secs 8] [--view far|mid|close|game] [--headless] [--off]
+// Usage: node tests/air_stress.js [--n 200] [--parked 0] [--secs 8] [--view far,mid,close,deck|all] [--headless] [--off] [--vsync]
+//   --game [--wing 1] [--step 45] [--until 900]: no stress planes; a real carrier round with full air wings (?wing=), fps vs airborne count.
 //   real GPU by default (system Chrome, a visible window, like fps.js); --headless: CHROMIUM + SwiftShader (shots only).
 //   --off: WW.planeRender disabled (every plane drawn as its own meshes, the pre-instancing path) for A/B runs.
 //   BASE_URL (default http://localhost:8000/). Shots in tests/shots/stress_<view>[_off].png.
@@ -10,7 +11,7 @@ const path = require('path');
 require('fs').mkdirSync(path.join(__dirname, 'shots'), { recursive: true }); process.chdir(__dirname);
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i < 0 ? d : process.argv[i + 1]; };
 const flag = k => process.argv.includes('--' + k);
-const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VIEW = arg('view', 'mid'), OFF = flag('off');
+const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VIEW = arg('view', 'mid'), OFF = flag('off'), GAME = flag('game'), STEP = +arg('step', 45);
 (async () => {
   const headless = flag('headless');
   const b = await chromium.launch(headless
@@ -18,8 +19,26 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
     : { channel: 'chrome', headless: false, args: flag('vsync') ? [] : ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); else if (/^tris per/.test(m.text())) console.log(m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (GAME ? '&wing=' + arg('wing', 1) : '') + '&v=' + Date.now());
   await p.waitForTimeout(3000);
+  if (GAME) {   // the real game: a carrier round, director camera; every STEP sim s, fps over SECS with the airborne count
+    await p.evaluate(OFF => { if (OFF && WW.planeRender) WW.planeRender.enabled = false; const hasCv = () => ['USN', 'IJN'].every(n => WW.world.ships.some(s => s.alive && s.nation === n && s.type === 'carrier' && !s.isBase));
+      for (let k = 0; k < 30 && !hasCv(); k++) WW.game.startRound(); }, OFF);
+    let worst = 1e9, peak = { air: 0 };
+    for (let t = 0; t < +arg('until', 900); t += STEP) {
+      const r = await p.evaluate(([step, secs]) => { __sim.fastForward(step); return new Promise(res => { let n = 0; const t0 = performance.now();
+        (function f() { n++; if (performance.now() - t0 < secs * 1000) requestAnimationFrame(f);
+          else res({ fps: n / ((performance.now() - t0) / 1000), air: WW.world.planes.filter(q => q.alive && !q.removed && q.y > 3).length,
+            all: WW.world.planes.filter(q => !q.removed).length, over: WW.game.state !== 'battle' }); })(); }); }, [STEP, SECS]);
+      console.log('t', t + STEP, 'fps', r.fps.toFixed(1), 'airborne', r.air, 'planes', r.all);
+      if (r.air >= 20) worst = Math.min(worst, r.fps);
+      if (r.air > peak.air) peak = { air: r.air, fps: r.fps, t: t + STEP };
+      if (r.over) break;
+      if (r.air === peak.air && r.air > 0) await p.screenshot({ path: 'shots/stress_game.png' });
+    }
+    console.log('game: peak airborne', peak.air, 'at t', peak.t, 'fps', (peak.fps || 0).toFixed(1), '; worst fps with >= 20 airborne', worst.toFixed(1));
+    console.log('errors', errs.slice(0, 5)); await b.close(); return;
+  }
   const info = await p.evaluate(([N, PARKED, OFF]) => {
     if (OFF && WW.planeRender) WW.planeRender.enabled = false;
     // a round with a carrier on each side
