@@ -9,7 +9,8 @@
 //    has two or more, then up to doctrine.ringDD destroyers (always one DD; the rest go to the screen / flotilla).
 //  - Vanguard (doctrine.vanguard, IJN): in search, approach and engage the carriers hang back vanguard x the map width
 //    behind the main body (BB / CA, the screen and flotilla DDs ahead of it), so the surface force runs ahead as
-//    pickets and bait (Midway, Santa Cruz). fleet_groups.js stations() reads vanguardBack().
+//    pickets and bait (Midway, Santa Cruz). fleet_groups.js stations() reads vanguardBack() (the carriers stay
+//    in their station band, fleet_groups.js CV_LO..CV_HI; the line's lead grows by 35 in search / approach).
 //  - Zigzag: with an enemy sub known within ZIG_R of the formation (contact up to ZIG_AGE s old), or a sub's
 //    torpedo seen or felt in the last ZIG_HIT s (suspected), the side's formation steers a shared zigzag plan off
 //    its base course: ZIG offsets, LEG s each, from the sim clock (every ship of the side on the same leg). Not

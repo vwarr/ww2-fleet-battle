@@ -123,7 +123,11 @@ window.WW = window.WW || {};
     var all = 0, fitT = 0, crip = WW.fleetGroups.CRIP;
     B.foeSeen.forEach(function (u) { all += u.stats.tons; if (u.alive && !u.sinking && !u.escaped && u.hp >= crip * u.maxHp) fitT += u.stats.tons; });
     B.foeTons = all; B.foeFit = fitT;
-    if (!WW.game || WW.game.roundTime <= 60 || !cs.length) return false;
+    if (!WW.game || WW.game.roundTime <= 60) return false;
+    // latched: once pursuing, a side keeps at it with no contact while the enemy still has a seen gun ship or a known
+    // carrier afloat (the strike range, the escape-route search and the run for the enemy's edge stay on)
+    if (B.pursueAt && !cs.length) { var any = false; B.foeSeen.forEach(function (u) { if (u.alive && !u.escaped) any = true; }); return any || foeCarrier(B); }
+    if (!cs.length) return false;
     if (all === 0) { // an enemy with no gun ships at all (carriers only): its carriers are unescorted, fit gun ships hunt them
       if (!B.fit) return false;
       for (var k = 0; k < cs.length; k++) if (cs[k].unit && cs[k].unit.type === 'carrier' && cs[k].unit.alive) return true;
@@ -131,6 +135,7 @@ window.WW = window.WW || {};
     }
     return fitT < BREAK * all;
   }
+  function foeCarrier(B) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].type === 'carrier' && S[i].nation !== B.nation && WW.intel && WW.intel.known(B.nation, S[i])) return true; return false; }
   // Carrier defence: each own carrier's nearest known enemy gun ship inside DEFEND_R (seen in the last 30 s).
   function defend(B, cs, now) {
     B.defend.length = 0;
