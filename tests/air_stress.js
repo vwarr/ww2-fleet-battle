@@ -15,7 +15,7 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
   const headless = flag('headless');
   const b = await chromium.launch(headless
     ? { executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }
-    : { channel: 'chrome', headless: false });
+    : { channel: 'chrome', headless: false, args: flag('vsync') ? [] : ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); else if (/^tris per/.test(m.text())) console.log(m.text()); });
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
