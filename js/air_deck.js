@@ -19,7 +19,7 @@ window.WW = window.WW || {};
     const dx = x - c.x, dz = z - c.z, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
     return [dx * ch + dz * sh, -dx * sh + dz * ch];
   }
-  function lenOf(kind) { return ({ fighter: 2.66, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * P().scale; }
+  function lenOf(kind) { return ({ fighter: 2.66, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * ((WW.cfg && WW.cfg.PLANE_SCALE) || P().scale); } // the plane scale at run time
   // Wing fold: wingL / wingR pivot at the wing root (Corsair: at the gull knee, outer panels fold up over the top); rotation.x lifts the tip (side from the pivot's z).
   function setFold(m, f) {
     if (!m.wingL || !m.wingR) return;
@@ -292,19 +292,19 @@ window.WW = window.WW || {};
           else if (!spotBusy(D, p)) p.deckPh = 'rise'; // nothing suitable spotted: up on the elevator at the launch point
           break;
         }
-        case 'rise': p.yoff = Math.min(0, p.yoff + 3 * dt); if (p.yoff > -0.4) p.fold = Math.max(0, p.fold - 1.5 * dt); if (p.yoff >= 0) p.deckPh = 'hold'; break;
+        case 'rise': p.yoff = Math.min(0, p.yoff + 4 * dt); if (p.yoff > -0.4) p.fold = Math.max(0, p.fold - 1.5 * dt); if (p.yoff >= 0) p.deckPh = 'hold'; break;
         case 'taxi': { // forward along its column (folded, clear of the island), hold short while the launch spot is taken, then onto the runway
           const stop = spotBusy(D, p) ? LAUNCH_X - 3.4 : LAUNCH_X;
-          if (p.lx < stop) { p.lx = Math.min(stop, p.lx + TAXI * 1.5 * dt); if (stop - p.lx < 3) p.fold = Math.max(0.35, p.fold - 1.2 * dt); }
+          if (p.lx < stop) { p.lx = Math.min(stop, p.lx + TAXI * 2.2 * dt); if (stop - p.lx < 3) p.fold = Math.max(0.35, p.fold - 1.2 * dt); }
           else if (stop < LAUNCH_X) p.fold = Math.max(0.35, p.fold - 1.2 * dt);   // spreading the wings while it waits
           else if (Math.abs(p.lz - D.run) > 1e-3) p.lz += WW.clamp(D.run - p.lz, -3 * dt, 3 * dt);
           else p.deckPh = 'hold';
           break;
         }
         case 'hold': { // spread the wings; go when the ship is into the wind (or has tried long enough) and the deck ahead is clear
-          p.fold = Math.max(0, p.fold - 1.5 * dt);
+          p.fold = Math.max(0, p.fold - 2.5 * dt);
           const h = intoWind();
-          if (D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < LAUNCH_X + 5.5)) break;
+          if (D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < LAUNCH_X + 4)) break;
           if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 5)) { p.deckPh = 'run'; p.rel = 0; }
           break;
         }
