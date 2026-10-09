@@ -12,20 +12,23 @@ window.WW = window.WW || {};
 (function () {
   const SMALL = { pt: 1, submarine: 1, destroyer: 1 };
   const CAP_N = 2, CAP_R = 170, SET_R = 70, SET_ALT = 20, RUN_ALT = 5, FIRE_R = 42, P_HIT = 0.55, BURST = 6, BURST_T = 0.35, EXT_T = 2.5;
-  const ST = { passes: 0, bursts: 0, hits: 0, dmg: 0, cap: 0, escort: 0 };
+  const ST = { passes: 0, bursts: 0, hits: 0, dmg: 0, cap: 0, escort: 0, home: 0 };
 
   const small = u => u && u.alive && !u.sinking && SMALL[u.type] && !u.submerged && (u.type !== 'destroyer' || u.hp < u.maxHp * 0.5);
   const fresh = (n, u, age) => { const c = WW.intel && WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= age ? c : null; };
 
   function stop(pl) {
+    const home = pl.sf && pl.sf.home;
     if (pl.sf && pl.sf.cap) pl.target = null; // back to CAP
     pl.strafe = null; pl.sf = null;
+    if (home) pl.state = 'return';            // on its way home: carry on home
   }
   function pass(pl, dt) {
     const u = pl.strafe, n = pl.nation, c = small(u) ? fresh(n, u, 5) : null;
     if (!c) { stop(pl); return false; }
     const S = pl.sf || (pl.sf = { ph: 'setup', t: 0, b: Math.atan2(pl.z - c.z, pl.x - c.x), fT: 0 });
     S.t += dt; S.fT -= dt;
+    if (S.home && WW.time.now > S.until) { stop(pl); return false; }
     pl.state = 'attack';
     const lt = 1.2, px = c.x + Math.cos(c.heading) * u.speed * lt, pz = c.z + Math.sin(c.heading) * u.speed * lt;
     const d = WW.dist(pl.x, pl.z, px, pz);
@@ -69,13 +72,32 @@ window.WW = window.WW || {};
     }
   }
 
+  // On the way home: a fighter with fuel to spare and not badly hit strafes a PT boat, surfaced sub or crippled
+  // destroyer it passes (in sight within HOME_R) for up to HOME_T s, once a sortie (the guns still had rounds).
+  const HOME_R = 110, HOME_FUEL = 45, HOME_T = 20;
+  function homeCheck(pl) {
+    if (!WW.intel || pl.search || pl.strafed || pl.hp < pl.maxHp * 0.6 || pl.fuel < HOME_FUEL || (pl.carrier && pl.carrier.isBase)) return false;
+    let best = null, bd = HOME_R;
+    for (const c of WW.intel.enemyShips(pl.nation, { fresh: 3 })) { const d = WW.dist(pl.x, pl.z, c.x, c.z); if (d < bd && small(c.unit)) { bd = d; best = c.unit; } }
+    if (!best) return false;
+    pl.strafed = true; pl.strafe = best; pl.target = best; pl.state = 'transit'; pl.foe = null;
+    pl.sf = { ph: 'setup', t: 0, b: Math.atan2(pl.z - best.z, pl.x - best.x), fT: 0, cap: true, home: true, until: WW.time.now + HOME_T };
+    ST.home++;
+    if (WW.emit) WW.emit('airOrder', { carrier: pl.carrier, order: 'strafe', plane: pl, squadron: pl.squadron || null, target: best });
+    return true;
+  }
   if (WW.Plane) {
-    const P = WW.Plane.prototype, f0 = P.fighter;
+    const P = WW.Plane.prototype, f0 = P.fighter, g0 = P.goHome;
+    P.goHome = function (dt) {
+      if (this.kind === 'fighter' && !this.strafed && dt > 0 && (this.sfChk = (this.sfChk || 0) - dt) <= 0) { this.sfChk = 1; if (homeCheck(this)) return; }
+      return g0.apply(this, arguments);
+    };
     P.fighter = function (dt) {
       if (this.strafe) {
         if (this.foe && this.foe.alive) stop(this);           // a fight comes first
         else if (this.fuel < 25) { stop(this); this.state = 'return'; return; }
         else if (pass(this, dt)) return;
+        if (this.state === 'return') return;   // a strafe on the way home is over: on home
       }
       // an escort over a small-craft target: strafe it
       const t = this.target;

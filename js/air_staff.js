@@ -9,6 +9,10 @@
 //    cruisers), out of a low sun and through cloud where the weather gives it, then a dogleg round the strongpoints on
 //    the way: the AA field (WW.threat), the enemy island base (its pits and its fighters) when it is not the target,
 //    and remembered CAP concentrations, within the fuel. Replanned every REPLAN s on the side's latest picture.
+//    Enemy raids the side has seen (armed bombers, RAID_MEM s) are run on along their course: a route that would meet
+//    one on the way costs more, so opposing strikes pass apart rather than through each other (air_cag.js detour does
+//    the same in the last minute, on what is in sight). The stack keeps the heights apart (torpedo planes ~30, dive
+//    bombers ~54, escorts ~70).
 //  - Sizing (size): a deck load sized to the target and to its known defences: the escort follows the expected CAP
 //    (doctrine air.escortK, learned up after a mauled strike: the USN's fighter-heavy strikes after Midway), the bombers
 //    stay within air.bpe per escort fighter against a strong CAP, the CAP keeps air.capHold of the fighters at home,
@@ -26,6 +30,7 @@ window.WW = window.WW || {};
   const MEM_T = 180, MEM_FULL = 60, PRIOR = { carrier: 8, base: 4 }, EST_R = 170;
   const IP_D = 230, IP_N = 12, REPLAN = 25, SAMPLE = 20, LEN_K = 0.2, EXTRA_MAX = 0.5, FINAL_IN = 70;
   const BASE_R = 140, BASE_K = 0.3, FTR_R = 110, FTR_K = 0.05, SUN_K = 15, CLOUD_K = 15, KEEP_B = 12;
+  const RAID_MEM = 60, RAID_RUN = 90, RAID_R = 150, RAID_K = 0.4;   // a seen raid: kept, run on its course for at most, avoided by, cost per unit at its centre
   const SIZE_K = { carrier: 1, battleship: 1, base: 0.8, cruiser: 0.7, destroyer: 0.4, pt: 0.3, submarine: 0.3 };
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
@@ -33,9 +38,9 @@ window.WW = window.WW || {};
   const ESC_WAIT = 45;   // s a strike waits for fighters to come back before it goes against a strong CAP without them
   // A/B switches (tests: env Q=staff=route:0,size:0): route (plotted routes), size (sizing, CAP hold, commitment, ledger),
   // brk (break-off), sun (sun / cloud sighting), base (the escort test for a raid on the island)
-  const TUNE = { route: 1, size: 1, brk: 1, sun: 1, base: 1, ipb: 1, ftr: 1, bpen: 1 };
+  const TUNE = { route: 1, size: 1, brk: 1, sun: 1, base: 1, ipb: 1, ftr: 1, bpen: 1, raid: 1 };
   { const m = typeof location !== 'undefined' && /[?&]staff=([^&]*)/.exec(location.search); if (m) decodeURIComponent(m[1]).split(',').forEach(kv => { const q = kv.split(':'); if (q.length === 2) TUNE[q[0]] = +q[1]; }); }
-  let mem = {}, side = {}, acc = 0;
+  let mem = {}, side = {}, acc = 0, raidMem = {};
 
   const doc = n => { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null, a = d && d.air; return Object.assign({}, DOC[n] || DOC.USN, a || {}); };
   const sideOf = n => side[n] || (side[n] = { escK: 1, defensive: false });
@@ -55,7 +60,27 @@ window.WW = window.WW || {};
         if ((b && WW.dist2(b.x, b.z, c.x, c.z) < 220 * 220) || S.some(s => WW.dist2(s.x, s.z, c.x, c.z) < 220 * 220)) M.set(u, { x: c.x, z: c.z, t: now });
       }
       M.forEach((e, u) => { if (now - e.t > MEM_T || (!u.alive && now - e.t < 6)) M.delete(u); });   // a fighter seen going down is off the plot
+      // the raid picture: enemy bombers on their way out, where and on what course they were last seen
+      const RM = raidMem[n] || (raidMem[n] = new Map());
+      for (const c of WW.intel.enemyPlanes(n)) {
+        const u = c.unit; if (!u || !u.alive || !u.ordnance || (u.kind !== 'dive' && u.kind !== 'torpedo') || u.state !== 'transit') continue;
+        const w = u.wave, h = w && w.go ? w.h : u.heading, v = w && w.go ? (w.v || 22) : u.speed;
+        RM.set(u, { x: c.x, z: c.z, h, v, t: now });
+      }
+      RM.forEach((e, u) => { if (now - e.t > RAID_MEM || !u.alive || !u.ordnance) RM.delete(u); });
     }
+  }
+  // where the side's seen raids will be tau s from now (run on along their last course, at most RAID_RUN s): an array
+  // of { x, z, n } per raid (bombers seen within 60 of each other count as one raid)
+  function raidsAt(n, tau) {
+    const RM = raidMem[n], out = []; if (!RM || !RM.size) return out;
+    const now = WW.time.now;
+    RM.forEach(e => {
+      const T = Math.min(RAID_RUN, now - e.t + tau), x = e.x + Math.cos(e.h) * e.v * T, z = e.z + Math.sin(e.h) * e.v * T;
+      for (const r of out) if (WW.dist2(r.x, r.z, x, z) < 3600) { r.x = (r.x * r.n + x) / (r.n + 1); r.z = (r.z * r.n + z) / (r.n + 1); r.n++; return; }
+      out.push({ x, z, n: 1 });
+    });
+    return out;
   }
   const wAge = age => age < MEM_FULL ? 1 : Math.max(0, 1 - (age - MEM_FULL) / (MEM_T - MEM_FULL));
   // the enemy fighters the side expects within R of (x, z)
@@ -78,8 +103,8 @@ window.WW = window.WW || {};
 
   // ---------- routes ----------
   // cost of flying a leg (dps-seconds of known AA, the base and remembered CAP as penalties per unit), sampled every SAMPLE
-  function legCost(n, ax, az, bx, bz, T, v, base) {
-    const L = Math.hypot(bx - ax, bz - az), k = Math.max(1, Math.ceil(L / SAMPLE)), ds = L / k;
+  function legCost(n, ax, az, bx, bz, T, v, base, s0) {
+    const L = Math.hypot(bx - ax, bz - az), k = Math.max(1, Math.ceil(L / SAMPLE)), ds = L / k, RM = raidMem[n], raid = RM && RM.size && TUNE.raid;
     let c = 0;
     for (let i = 0; i < k; i++) {
       const f = (i + 0.5) / k, x = ax + (bx - ax) * f, z = az + (bz - az) * f;
@@ -88,6 +113,7 @@ window.WW = window.WW || {};
       d = d * ds / v;
       if (base) { const db = WW.dist(x, z, base.x, base.z); if (db < BASE_R) d += ds * BASE_K * TUNE.bpen * (1 - 0.5 * db / BASE_R) * (1 + base.ftr / 4); }
       if (TUNE.ftr) d += ds * FTR_K * TUNE.ftr * fighterDensity(n, x, z, T);
+      if (raid) for (const r of raidsAt(n, ((s0 || 0) + f * L) / v)) { const dr = WW.dist(x, z, r.x, r.z); if (dr < RAID_R) d += ds * RAID_K * TUNE.raid * (1 - dr / RAID_R) * Math.min(1, r.n / 4); }   // meeting a raid on the way
       c += d;
     }
     return c;
@@ -117,8 +143,8 @@ window.WW = window.WW || {};
     let best = null, bc = 1e18;
     for (let i = 0; i < IP_N; i++) {
       const b = i / IP_N * Math.PI * 2, ip = clampMap(k.x + Math.cos(b) * IP_D, k.z + Math.sin(b) * IP_D);
-      const fin = legCost(n, ip.x, ip.z, k.x, k.z, k, v, base), bon = ipBonus(b, k, ip);
       const L1 = WW.dist(x0, z0, ip.x, ip.z), Lf = WW.dist(ip.x, ip.z, k.x, k.z);
+      const fin = legCost(n, ip.x, ip.z, k.x, k.z, k, v, base, L1), bon = ipBonus(b, k, ip);
       const keep = old && old.b !== null && Math.abs(WW.angleDiff(old.b, b)) < 0.3 ? 15 : 0;   // hysteresis: hold the plotted IP
       const L = L1 + Lf, ways = [null];
       const px = -(ip.z - z0) / (L1 || 1), pz = (ip.x - x0) / (L1 || 1);
@@ -126,7 +152,7 @@ window.WW = window.WW || {};
       for (const vp of ways) {
         const len = vp ? WW.dist(x0, z0, vp.x, vp.z) + WW.dist(vp.x, vp.z, ip.x, ip.z) + Lf : L;
         if (len > maxLen && (vp || L > maxLen)) continue;
-        const c = (vp ? legCost(n, x0, z0, vp.x, vp.z, k, v, base) + legCost(n, vp.x, vp.z, ip.x, ip.z, k, v, base) : legCost(n, x0, z0, ip.x, ip.z, k, v, base))
+        const c = (vp ? legCost(n, x0, z0, vp.x, vp.z, k, v, base, 0) + legCost(n, vp.x, vp.z, ip.x, ip.z, k, v, base, WW.dist(x0, z0, vp.x, vp.z)) : legCost(n, x0, z0, ip.x, ip.z, k, v, base, 0))
           + fin + (len - direct) * LEN_K - bon.s * TUNE.ipb - keep;
         if (c < bc) { bc = c; best = { b, vp, bon }; }
       }
@@ -142,7 +168,8 @@ window.WW = window.WW || {};
   function steer(w, k, t) {
     if (!TUNE.route) return null;
     const R = w.route, now = WW.time.now;
-    if (!R || R.tgt !== t || (!R.final && now - R.t > REPLAN)) plan(w, k, t);
+    const rn = raidMem[w.nation] && TUNE.raid ? raidMem[w.nation].size : 0;
+    if (!R || R.tgt !== t || (!R.final && (now - R.t > REPLAN || (rn && !R.rn)))) { plan(w, k, t); w.route.rn = rn; }   // a raid newly on the plot: replot now
     const r = w.route;
     if (r.final) return null;
     if (r.via) {
@@ -289,10 +316,10 @@ window.WW = window.WW || {};
     return k;
   }
 
-  function reset() { mem = {}; side = {}; acc = 0; for (const k in ST) ST[k] = 0; }
+  function reset() { mem = {}; side = {}; acc = 0; raidMem = {}; for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
   WW.on('waveGo', e => { try { waveGo(e); } catch (er) { console.error('staff', er); } });
   if (WW.air) { const u0 = WW.air.update; WW.air.update = function (dt) { const r = u0.apply(this, arguments); try { remember(dt); } catch (e) { console.error('staff', e); } return r; }; }
-  WW.staff = { TUNE, capEst, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
+  WW.staff = { TUNE, capEst, raidsAt, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
 })();

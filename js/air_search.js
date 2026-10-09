@@ -19,7 +19,7 @@ window.WW = window.WW || {};
   const WANT = 3, PER_CV = 2, START_T = 20, SEARCH_AGE = 45, CV_GAP = 6, PU_AGE = 45, GO_T = 2; // GO_T: a new strike target -> the strike order in this many s
   const SHADOW_T = { scout: 70, other: 55 }, STAND = { scout: 80, other: 90 }; // a scout shadows inside its gun-spotting range (intel SPOT 85), outside ships' AA (~70)
   const CAP_KEEP = 150, FTR_R = 85, SWEPT_R = 60, ALT = 30, LOW = 8;
-  const ST = { sorties: 0, shadows: 0, breaks: 0, lost: { out: 0, station: 0, home: 0 }, flown: 0, searched: { USN: new Set(), IJN: new Set() } };
+  const ST = { sorties: 0, shadows: 0, breaks: 0, pounces: 0, lost: { out: 0, station: 0, home: 0 }, flown: 0, searched: { USN: new Set(), IJN: new Set() } };
   const claims = new Map(); // who -> { nation, k }
 
   const side = n => (WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(n) : null);
@@ -144,10 +144,30 @@ window.WW = window.WW || {};
   function goHome(pl) { pl.state = 'return'; if (pl.srch) pl.srch.phase = 'home'; release(pl); }
 
   // ---------- carrier searchers ----------
+  // Armed search (doctrine air.armedScout; USN): a scouting SBD carried a 500 lb bomb, and one that found a carrier
+  // went for it (Santa Cruz: Strong and Irvine put a bomb into Zuiho's flight deck). It attacks a carrier it has in
+  // sight within POUNCE_R if it has the fuel for the dive and the way home, then goes home. IJN searchers fly unarmed.
+  const ARMED = { USN: 1, IJN: 0 }, POUNCE_R = 220, POUNCE_FUEL = 35;
+  const armedDoc = n => { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null; return d && d.air && d.air.armedScout !== undefined ? d.air.armedScout : ARMED[n] || 0; };
+  function pounce(pl) {
+    if (!pl.ordnance || pl.kind !== 'dive' || !WW.intel || pl.hp < pl.maxHp * 0.6) return false;
+    let best = null, bd = POUNCE_R;
+    for (const c of WW.intel.enemyShips(pl.nation, { fresh: 4 })) {
+      const u = c.unit; if (!u || !u.alive || u.sinking || u.isBase || WW.intel.typeOf(c) !== 'carrier') continue;
+      const d = WW.dist(pl.x, pl.z, c.x, c.z); if (d < bd) { bd = d; best = u; }
+    }
+    if (!best) return false;
+    const cv = pl.carrier, home = WW.dist(best.x, best.z, cv.x, cv.z) / pl.pt.speed;
+    if (pl.fuel < bd / pl.pt.speed + home + POUNCE_FUEL) return false;
+    release(pl); pl.search = false; pl.legs = null; pl.target = best; pl.wave = null; pl.sk = null; pl.state = 'transit'; pl.opp = 'scout';
+    ST.pounces++;
+    if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'scoutAttack', plane: pl, leader: pl, squadron: pl.squadron || null, target: best });
+    return true;
+  }
   function begin(pl) {
     ST.sorties++;
     pl.search = true; pl.target = null; pl.srchDir = (pl.carrier.id + WW.world.planes.length) & 1 ? -1 : 1;
-    if (pl.ordnance) pl.dropped();                 // unarmed search (no raid alarm, no bomb on the deck)
+    if (pl.ordnance && !(pl.kind === 'dive' && armedDoc(pl.nation))) pl.dropped();   // unarmed search (no raid alarm, no bomb on the deck)
     const el = pl.element;                         // fly alone: leave the CAP element the launch put it in
     if (el) { el.members = el.members.filter(m => m !== pl); el.members.forEach((m, i) => { m.wing = i; m.leader = i ? el.members[0] : null; }); }
     pl.element = null; pl.leader = null; pl.wing = 0;
@@ -156,6 +176,7 @@ window.WW = window.WW || {};
     pl.state = 'transit';
     const cv = pl.carrier, back = WW.dist(pl.x, pl.z, cv.x, cv.z) / pl.pt.speed + 25;
     if (pl.fuel < back) { goHome(pl); return; }
+    if (pounce(pl)) return;
     if (step(pl, dt)) return;
     if (!pl.legs) { pl.legs = legs(pl); pl.leg = 0; if (!pl.legs.length) { goHome(pl); return; } }
     const w = pl.legs[pl.leg];
@@ -229,7 +250,7 @@ window.WW = window.WW || {};
       return g0.call(this, dt);
     };
   }
-  function reset() { claims.clear(); ST.sorties = ST.shadows = ST.breaks = ST.flown = 0; ST.lost = { out: 0, station: 0, home: 0 }; ST.searched = { USN: new Set(), IJN: new Set() }; }
+  function reset() { claims.clear(); ST.sorties = ST.shadows = ST.breaks = ST.flown = ST.pounces = 0; ST.lost = { out: 0, station: 0, home: 0 }; ST.searched = { USN: new Set(), IJN: new Set() }; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
   WW.search = { claim, release, legs, homeHeading, begin, plan, step, stats: ST };

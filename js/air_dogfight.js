@@ -1,6 +1,6 @@
 // air_dogfight.js — fighter-vs-plane combat (WW.dogfight): energy-based dogfight manoeuvres
 // (lead pursuit, overshoot / extend / zoom, boom-and-zoom, break / scissors / dive, Thach weave),
-// wing guns with per-round hit checks, and pooled glowing tracer rounds. Load after aircraft.js.
+// wing guns with per-round hit checks; the glowing tracer rounds are air_tracers.js. Load after aircraft.js and air_tracers.js.
 // Hooks in aircraft.js: Plane.fighter() target pick + `if (f)` branch, Plane.update() bomber jink,
 // WW.air.launch() nation stats, WW.air.update() tracer step.
 window.WW = window.WW || {};
@@ -15,88 +15,11 @@ window.WW = window.WW || {};
   const BOMBER_K = 5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const FIGHTER_K = 2.2;   // fighter-on-fighter lethality (P5: 1-3 fighters lost per side per carrier round)
   const LOCK = [5, 7];   // s a fighter stays committed to a new foe (through its passes)
-  const N = 240;           // tracer pool size (oldest round is reused)
+  const SWITCH_D = 50, SWITCH_BEHIND = 1.6, FRONT_R = 45, FRONT_CONE = 0.45;   // pick(): foe out of reach / behind; an enemy this close and this far off the nose instead
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
-  // ---------- tracer pool: one instanced soft streak quad per round, additive, camera-facing ----------
-  const T = { mesh: null, seg: [], idx: 0, dirty: false };
-  let m4, v3a, v3b, v3c, v3d, colTmp;
-  function streakTexture() { // hot yellow-white core inside a soft orange glow, fading along the tail
-    const c = document.createElement('canvas'); c.width = 128; c.height = 32;
-    const g = c.getContext('2d'), img = g.createImageData(128, 32);
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 128; x++) {
-      const v = Math.abs(y - 15.5) / 16, u = x / 127;                  // u: 0 tail .. 1 head
-      const along = Math.min(1, u * 1.3) * (u > 0.92 ? 1 - (u - 0.92) / 0.08 * 0.7 : 1);
-      const core = Math.max(0, 1 - v / 0.22), glow = Math.exp(-v * v * 9);
-      const i = (y * 128 + x) * 4, k = along;
-      img.data[i] = 255 * Math.min(1, (core + glow * 0.9) * k);
-      img.data[i + 1] = 255 * Math.min(1, (core * 0.95 + glow * 0.5) * k);
-      img.data[i + 2] = 255 * Math.min(1, (core * 0.6 + glow * 0.12) * k);
-      img.data[i + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
-    return new THREE.CanvasTexture(c);
-  }
-  function initTracers() {
-    if (T.mesh || !WW.scene || WW.simOnly) return !!T.mesh;
-    m4 = new THREE.Matrix4(); v3a = new THREE.Vector3(); v3b = new THREE.Vector3(); v3c = new THREE.Vector3(); v3d = new THREE.Vector3();
-    colTmp = new THREE.Color();
-    const geo = new THREE.PlaneGeometry(1, 1); // x along the round's path, y across, faces +z
-    const mat = new THREE.MeshBasicMaterial({ map: streakTexture(), transparent: true, blending: THREE.AdditiveBlending,
-                                              depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false });
-    T.mesh = new THREE.InstancedMesh(geo, mat, N);
-    T.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    T.mesh.frustumCulled = false; T.mesh.renderOrder = 6;
-    m4.makeScale(0, 0, 0);
-    for (let i = 0; i < N; i++) {
-      T.mesh.setMatrixAt(i, m4); T.mesh.setColorAt(i, colTmp.setRGB(0, 0, 0));
-      T.seg.push({ life: 0, life0: 1, age: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, heat: 1 });
-    }
-    WW.scene.add(T.mesh);
-    return true;
-  }
-  // One tracer round from (x,y,z) moving with world velocity v (visual only).
-  function spawnTracer(x, y, z, vx, vy, vz, life, flash) {
-    if (!initTracers()) return;
-    const s = T.seg[T.idx]; T.idx = (T.idx + 1) % N;
-    s.x = x; s.y = y; s.z = z; s.vx = vx; s.vy = vy; s.vz = vz; s.life = s.life0 = life; s.age = 0; s.flash = !!flash;
-    s.heat = flash ? 1.3 : 0.9 + Math.random() * 0.25;
-    T.dirty = true;
-  }
-  function updateTracers(dt) {
-    if (!T.mesh || !T.dirty) return;
-    const cam = WW.camera && WW.camera.position;
-    let any = false;
-    for (let i = 0; i < N; i++) {
-      const s = T.seg[i];
-      if (s.life <= 0) continue;
-      s.life -= dt; s.age += dt;
-      if (s.life <= 0 || !cam) { m4.makeScale(0, 0, 0); T.mesh.setMatrixAt(i, m4); continue; }
-      any = true;
-      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-      const sp = Math.hypot(s.vx, s.vy, s.vz) || 1;
-      v3a.set(s.vx / sp, s.vy / sp, s.vz / sp);                          // along the path
-      v3c.set(cam.x - s.x, cam.y - s.y, cam.z - s.z);                    // toward the camera
-      const k = Math.max(1, v3c.length() / 30);                          // keep a readable size on screen when far away
-      const L = (s.flash ? 1.1 + Math.random() * 0.5 : Math.min(5, sp * s.age * 0.9 + 0.8)) * Math.sqrt(k), W = s.flash ? 0.8 * Math.sqrt(k) : 0.9 * k;
-      v3b.crossVectors(v3c, v3a); if (v3b.lengthSq() < 1e-6) v3b.set(0, 1, 0); v3b.normalize(); // across, in view
-      v3c.crossVectors(v3a, v3b);
-      m4.makeBasis(v3d.copy(v3a).multiplyScalar(L), v3b.multiplyScalar(W), v3c);
-      m4.setPosition(s.x - v3a.x * L * 0.5, s.y - v3a.y * L * 0.5, s.z - v3a.z * L * 0.5); // the head leads
-      T.mesh.setMatrixAt(i, m4);
-      const f = Math.min(1, s.life / s.life0 * 2) * s.heat;
-      T.mesh.setColorAt(i, colTmp.setRGB(1.0 * f, 0.72 * f, 0.32 * f));
-    }
-    T.mesh.instanceMatrix.needsUpdate = true;
-    if (T.mesh.instanceColor) T.mesh.instanceColor.needsUpdate = true;
-    T.dirty = any;
-  }
-  function clearTracers() {
-    if (!T.mesh) return;
-    m4.makeScale(0, 0, 0);
-    for (let i = 0; i < N; i++) { T.seg[i].life = 0; T.mesh.setMatrixAt(i, m4); }
-    T.mesh.instanceMatrix.needsUpdate = true; T.dirty = false;
-  }
+  // the tracer pool (visual only) lives in air_tracers.js
+  const TR = WW.planeTracers, spawnTracer = TR.spawn;
 
   // ---------- helpers ----------
   const st = p => p.df || (p.df = { mode: 'pursue', foe: null, t: 0, mt: 0, def: null, defT: 0, defCool: 0, dir: 1, revT: 0,
@@ -143,11 +66,49 @@ window.WW = window.WW || {};
     p.vy += WW.clamp(tv - p.vy, -12 * dt, 12 * dt);
   }
 
+  // ---------- the gunsight ----------
+  // Angle between the nose (heading and flight-path pitch) and a point, in 3D.
+  function noseOff(p, x, y, z) {
+    const ph = Math.atan2(p.vy || 0, Math.max(1, p.speed)), c = Math.cos(ph);
+    const rx = x - p.x, ry = y - p.y, rz = z - p.z, rl = Math.hypot(rx, ry, rz) || 1;
+    return Math.acos(WW.clamp((Math.cos(p.heading) * c * rx + Math.sin(ph) * ry + Math.sin(p.heading) * c * rz) / rl, -1, 1));
+  }
+  const FLYING = { transit: 1, attack: 1, 'return': 1, landing: 1 };
+  const flying = q => q.alive && FLYING[q.state] && q.y > 3 && q.state !== 'rollout';
+  // The enemy plane most squarely ahead: inside `cone` of the nose and within R; a bomber before a fighter
+  // (a fighter scores `fk` rad worse). null if none.
+  function ahead(p, R, cone, fk) {
+    let best = null, bs = 1e9;
+    for (const q of WW.world.planes) {
+      if (q.nation === p.nation || !flying(q)) continue;
+      const dx = q.x - p.x, dy = q.y - p.y, dz = q.z - p.z;
+      if (dx * dx + dy * dy + dz * dz > R * R) continue;
+      const a = noseOff(p, q.x, q.y, q.z); if (a > cone) continue;
+      const sc = a + (q.kind === 'fighter' ? fk : 0);
+      if (sc < bs) { bs = sc; best = q; }
+    }
+    return best;
+  }
+  // Snapshot (1942 practice): an enemy in the gunsight cone within gun range gets a burst whoever the assigned foe
+  // is. Looked up every SNAP_DT s of sim time.
+  const SNAP_CONE = 0.2, SNAP_DT = 0.1;
+  function snapTarget(p, s) {
+    const now = WW.time.now;
+    if (s.snapT === undefined || now - s.snapT >= SNAP_DT || now < s.snapT) { s.snapT = now; s.snapQ = ahead(p, RANGE, SNAP_CONE, 0.06); }
+    return s.snapQ && s.snapQ.alive ? s.snapQ : null;
+  }
+
   // ---------- wing guns ----------
+  // can: the foe is on the gun line (open fire); keep: near enough to hold the trigger. With no shot at the foe, a
+  // plane in the gunsight cone is fired at instead (snapshot). s.gunAt: the plane being fired at (tests, visuals).
   function guns(p, f, s, dt, can, keep) {
     s.cool -= dt; s.flashT -= dt;
+    let snap = false;
+    if (!can) { const q = snapTarget(p, s); if (q) { snap = q !== f; f = q; can = keep = true; } }
+    if (!f) { s.burst = 0; s.gunAt = null; s.roundT = 0; return; }
     if (s.burst > 0) { s.burst -= dt; if (!keep) s.burst = 0; }
-    else if (can && s.cool <= 0) { s.burst = WW.randRange(0.4, 0.85); s.cool = s.burst + WW.randRange(0.5, 1.1); s.roundT = 0; }
+    else if (can && s.cool <= 0) { s.burst = WW.randRange(0.4, 0.85); s.cool = s.burst + WW.randRange(0.5, 1.1); s.roundT = 0; if (snap) DS.snaps = (DS.snaps || 0) + 1; }
+    s.gunAt = s.burst > 0 ? f : null;
     if (s.burst <= 0) { s.roundT = 0; return; }
     s.roundT -= dt;
     while (s.roundT <= 0) { s.roundT += ROUND; fireRound(p, f, s); }
@@ -249,6 +210,8 @@ window.WW = window.WW || {};
 
   // ---------- offence ----------
   function setMode(s, m) { s.mode = m; s.mt = 0; }
+  // the gun line's error in height: the climb angle to (x, y, z) against the flight path's
+  function elev(p, x, y, z) { return Math.abs(Math.atan2(y - p.y, Math.hypot(x - p.x, z - p.z) || 1) - Math.atan2(p.vy || 0, Math.max(1, p.speed))); }
   function offence(p, f, s, dt) {
     if (f.kind !== 'fighter' && WW.intercept && WW.intercept.attack(p, f, s, dt)) return; // gun passes on bombers (air_intercept.js)
     const pt = p.pt, dist = d3(p, f), dy = f.y - p.y, adv = -dy;
@@ -271,7 +234,8 @@ window.WW = window.WW || {};
         p.turnTo(Math.atan2(tz - p.z, tx - p.x), dt, rate(p, 1.1));
         climb(p, dist < 7 ? Math.max(ly, f.y + 3) : ly, dt); // never fly into the foe
         energy(p, dt, dist > 16 ? pt.speed * 1.12 : dist > 9 ? Math.max(pt.speed * 0.75, fs + 1) : Math.max(pt.speed * 0.6, fs - 4)); // throttle back in the saddle
-        can = dist < RANGE && Math.abs(ang) < 0.12 && Math.abs(dy) < dist * 0.3 + 2; keep = Math.abs(ang) < 0.3 && dist < RANGE;
+        const el = elev(p, lx, ly, lz);   // the pipper on the lead point in height too (fireRound pulls up to 0.1 rad)
+        can = dist < RANGE && Math.abs(ang) < 0.12 && el < 0.16; keep = Math.abs(ang) < 0.22 && el < 0.24 && dist < RANGE;
         s.pursT = can ? 0 : (s.pursT || 0) + dt;
         if (s.pursT > (slasher(p) ? 4 : 7) && !s.weave) { setMode(s, 'extend'); s.ext = WW.randRange(1.6, 2.4); s.side = ang >= 0 ? -1 : 1; s.pursT = 0; break; } // no shot: break off, extend, come back for another pass
         if ((dist < 7 && aspect > 0.8) || dist < 4.5) { setMode(s, 'extend'); s.ext = WW.randRange(1.5, 2.4); s.side = ang >= 0 ? -1 : 1; break; } // overshoot
@@ -285,7 +249,8 @@ window.WW = window.WW || {};
         const tv = WW.clamp((ly - p.y) / dh * p.speed, -pt.dive * 0.6, 3);
         p.vy += WW.clamp(tv - p.vy, -14 * dt, 14 * dt);
         energy(p, dt, pt.dive);
-        can = dist < RANGE && Math.abs(ang) < 0.14; keep = Math.abs(ang) < 0.3 && dist < RANGE;
+        const el = elev(p, lx, ly, lz);
+        can = dist < RANGE && Math.abs(ang) < 0.14 && el < 0.16; keep = Math.abs(ang) < 0.22 && el < 0.24 && dist < RANGE;
         if (dist < 6 || (dist < 20 && aspect > 1.2) || adv < 1) { setMode(s, slasher(p) || WW.rand() < 0.4 ? 'zoom' : 'pursue'); }
         break;
       }
@@ -307,7 +272,7 @@ window.WW = window.WW || {};
     fight(p, f, dt) {
       const s = st(p);
       s.lock -= dt; s.defCool -= dt; if (s.weave) s.weave = Math.max(0, s.weave - dt);
-      if (s.def && defend(p, s, dt)) { s.burst = 0; return; }
+      if (s.def && defend(p, s, dt)) { guns(p, null, s, dt, false, false); return; }   // breaking: only a snapshot at a plane that crosses the nose
       if (s.defCool <= 0) {
         const q = threat(p, 34);
         s.threatT = q ? s.threatT + dt : 0;
@@ -320,6 +285,12 @@ window.WW = window.WW || {};
     // fighter on the tail runs inside fight() without dropping the foe, so engagements do not flicker.
     pick(p, best) {
       const s = st(p), cur = p.foe;
+      // the foe behind or out of reach and another enemy in front, close: take the one in front (a bomber first)
+      const w = p.wave, onWay = w && p.target && w.go && !w.done && w.dT > 220;   // an escort in transit stays with its strike (snapshots only)
+      if (!onWay && cur && cur.alive && (d3(p, cur) > SWITCH_D || noseOff(p, cur.x, cur.y, cur.z) > SWITCH_BEHIND)) {
+        const q = ahead(p, FRONT_R, FRONT_CONE, 0.15);
+        if (q && q !== cur && d3(p, q) < d3(p, cur)) { s.lock = 0; DS.switches = (DS.switches || 0) + 1; return q; }
+      }
       if (s.lock > 0 && cur && cur.alive && d3(p, cur) < 190) return cur;   // the CAP tally is at 130 u (air_cap.js ENGAGE), plus the height
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;
@@ -353,9 +324,9 @@ window.WW = window.WW || {};
       if (!WW.planeType) return;
       p.pt = WW.planeType(p.kind, p.nation); p.hp = p.maxHp = p.pt.hp;
     },
-    update: updateTracers,
-    clearAll: clearTracers,
-    threat, _k: { guns, energy, rate, climb, BV, RANGE }, _tracers: T, stats: DS
+    update: TR.update,
+    clearAll: TR.clear,
+    threat, noseOff, ahead, _k: { guns, energy, rate, climb, BV, RANGE }, _tracers: TR.T, stats: DS
   };
   // A fighter on its way home (or in the landing circle) still fights back when an enemy fighter gets on its tail:
   // it breaks, weaves or turns on the attacker while the threat lasts, then carries on home (state stays 'return').
@@ -378,6 +349,6 @@ window.WW = window.WW || {};
       return home0.apply(this, arguments);
     };
   }
-  WW.on('roundStart', clearTracers);
-  WW.on('setupStart', clearTracers);
+  WW.on('roundStart', TR.clear);
+  WW.on('setupStart', TR.clear);
 })();
