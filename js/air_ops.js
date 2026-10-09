@@ -14,7 +14,7 @@ window.WW = window.WW || {};
   const WARN_R = 350;          // raid picture radius for the fighter director (radar / lookouts decide what is in it; USN radar 400)
   const RELIEF = 45;           // launch a relief when an on-station CAP fighter has less fuel than this (s)
   const VALUE = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };
-  const ST = { raids: 0, scrambles: 0, reliefs: 0, holds: 0, recalls: 0, jettisons: 0, leashDrops: 0 };
+  const ST = { raids: 0, scrambles: 0, reliefs: 0, holds: 0, recalls: 0, jettisons: 0, leashDrops: 0, homeAttacks: 0 };
 
   const armed = u => u && (u.kind === 'dive' || u.kind === 'torpedo') && u.ordnance && u.alive;
   const closing = (u, x, z, k) => Math.abs(WW.angleDiff(u.heading, Math.atan2(z - u.z, x - u.x))) < (k || 0.7);
@@ -195,6 +195,27 @@ window.WW = window.WW || {};
     pl.dropped(); if (WW.fx) WW.fx.splash(pl.x, pl.z, 0.8);
     pl.state = 'return'; pl.foe = null; pl.sk = null; ST.jettisons++;
     if (WW.emit) WW.emit('airOrder', { carrier: pl.carrier, order: 'jettison', plane: pl, squadron: pl.squadron || null });
+  }
+
+  // ---------- targets of opportunity on the way home ----------
+  // A bomber flying home with its bomb or torpedo still aboard (its strike found nothing, a cloud or a wave-off) attacks
+  // an enemy ship it passes, once a sortie: one in sight within OPP_R, with the fuel for the attack and the way home.
+  const OPP_R = 100, OPP_FUEL = 30;
+  function homeward(pl) {
+    if (!pl.ordnance || pl.oppDone || pl.search || pl.crippled || pl.phase || pl.hp < pl.maxHp * 0.5 || (pl.kind !== 'dive' && pl.kind !== 'torpedo')) return false;
+    const c = pl.carrier; if (!c || c.isBase || !WW.intel) return false;
+    const t = pickTarget(pl, { near: OPP_R }); if (!t || !WW.intel.visible(pl.nation, t, 3)) return false;
+    if (pl.fuel < WW.dist(pl.x, pl.z, t.x, t.z) / pl.pt.speed + WW.dist(t.x, t.z, c.x, c.z) / pl.pt.speed + OPP_FUEL) return false;
+    pl.oppDone = true; pl.opp = 'home'; pl.target = t; pl.wave = null; pl.sk = null; pl.state = 'transit'; ST.homeAttacks++;
+    if (WW.emit) WW.emit('airOrder', { carrier: c, order: 'attack', plane: pl, leader: pl, squadron: pl.squadron || null, target: t });
+    return true;
+  }
+  if (WW.Plane) {
+    const gh = WW.Plane.prototype.goHome;
+    WW.Plane.prototype.goHome = function (dt) {
+      if (this.ordnance && this.kind !== 'fighter' && !this.oppDone && dt > 0 && (this.oppChk = (this.oppChk || 0) - dt) <= 0) { this.oppChk = 1; if (homeward(this)) return; }
+      return gh.apply(this, arguments);
+    };
   }
 
   // scouts: search sectors, shadowing and the way home live in air_search.js (WW.search)

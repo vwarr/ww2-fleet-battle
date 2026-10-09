@@ -195,8 +195,14 @@ function install() {
       const k = id(p) + ':' + id(f.wave || f);
       if (!S.peel.has(k)) { S.peel.set(k, { n: p.nation, k: f.kind, t, cov: p.cover || null, d: Math.round(WW.dist(f.x, f.z, x.c.x, x.c.z)), ff: f.foe ? (f.foe.nation === p.nation ? (f.foe.kind === 'fighter' ? 'ourF' : 'ourB') : 'x') : null, dT: Math.round(x.w.dT), tail: !!(f.foe === p) }); x.W.peel++; }
     }
-    // 3. armed sorties that came home with the bomb
-    for (const [p, r] of S.sortie) if (!r.fate && p.alive && (p.state === 'landing' || p.state === 'rollout') && p.ordnance) r.fate = 'home';
+    // 3. armed sorties that came home with the bomb; why an armed bomber turned for home
+    for (const [p, r] of S.sortie) {
+      if (!r.fate && p.alive && (p.state === 'landing' || p.state === 'rollout') && p.ordnance) r.fate = 'home';
+      if (!r.why && p.alive && p.ordnance && p.state === 'return') {
+        let near = 1e9; if (WW.intel) for (const c of WW.intel.enemyShips(p.nation, { fresh: 10 })) near = Math.min(near, WW.dist(p.x, p.z, c.x, c.z));
+        r.why = p.fuel <= 1 ? 'fuel' : p.cloudT ? 'cloud' : !p.target ? 'noTarget' : 'other'; r.near = Math.round(near); r.fuel = Math.round(p.fuel); r.wv = !!p.wave;
+      }
+    }
     // 4. snoopers inside a fleet
     for (const p of WW.world.planes) {
       if (!p.alive || p.removed) continue;
@@ -225,7 +231,7 @@ function install() {
     const waves = []; for (const W of S.wv.values()) waves.push({ n: W.n, lost: W.lostT !== null && W.lostT < t - 60 ? W.lostT : null, alt: W.altT, esc0: W.esc0, escArr: W.escArr, peel: W.peel });
     const sorties = []; for (const r of S.sortie.values()) sorties.push(r);
     const out = { pairs: [...S.pairs.values()].map(P => ({ h: Math.round(P.h), d3: P.d3 < 1e9 ? Math.round(P.d3) : null })), peel: [...S.peel.values()], waves, sorties, drops: S.drops, stints: S.stints,
-      g: S.g, df: (() => { const a = dfs(), o = {}; for (const k in a) o[k] = a[k] - S.df0[k]; return o; })(), strafe: WW.strafe ? Object.assign({}, WW.strafe.stats) : null, opp: WW.cag && WW.cag.stats ? Object.assign({}, WW.cag.stats) : null, err: R.err, last: R.last || null };
+      g: S.g, df: (() => { const a = dfs(), o = {}; for (const k in a) o[k] = a[k] - S.df0[k]; return o; })(), strafe: WW.strafe ? Object.assign({}, WW.strafe.stats) : null, search: WW.search ? { sorties: WW.search.stats.sorties, pounces: WW.search.stats.pounces || 0 } : null, opp: WW.cag && WW.cag.stats ? Object.assign({}, WW.cag.stats) : null, err: R.err, last: R.last || null };
     if (S.tr) out.trace = S.tr;
     return out;
   };
@@ -293,6 +299,11 @@ function report(rounds) {
   out.strafe = sf;
   say(`3. waves that lost their target ${lost.length} (of ${wv.filter(w => w.esc0 !== null).length} that left); attacked another ${alt.length}: lost -> first drop p50 ${f1(out.opp.altP50)} s, p90 ${f1(out.opp.altP90)} s`);
   say(`   drops: strike ${dr.strike}, armed scouts ${dr.scout} (${f1(out.opp.scoutDrops)}/round), bombers on the way home ${dr.home} (${f1(out.opp.homeDrops)}/round), other ${dr.other}`);
+  const H = so.filter(s => s.fate === 'home'), wy = {}; for (const x of H) { const k = (x.why || '?') + (x.near < 150 ? ':ship<150' : x.near < 400 ? ':ship<400' : ':none'); wy[k] = (wy[k] || 0) + 1; }
+  out.homeWhy = wy;
+  const sr = { sorties: 0, pounces: 0 }; for (const r of rounds) if (r.rec.search) for (const k in sr) sr[k] += r.rec.search[k] || 0;
+  say(`   came home armed, why they turned for home (and the nearest enemy ship the side knew): ${JSON.stringify(wy)}; carrier search sorties ${sr.sorties}, armed scouts that attacked ${sr.pounces}`);
+  out.search = sr;
   say(`   armed carrier sorties ${so.length}: fates ${JSON.stringify(out.opp.fates)}; came home with the bomb ${pc(out.opp.homeArmed)} of all sorties`);
   say(`   strafing passes ${sf.passes} (CAP ${sf.cap}, escort ${sf.escort}, on the way home ${sf.home})`);
   // 4

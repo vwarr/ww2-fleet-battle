@@ -12,7 +12,10 @@
 // Events: 'airOrder' { carrier, squadron, order: 'strikeAway' | 'cag' | 'attack' | 'redirect', plane, leader, target, squadrons }.
 window.WW = window.WW || {};
 (function () {
-  const ARRIVE = 140, DETOUR_FAR = 120, VB_HOLD = 20, VT_HOLD = 15, SEARCH_R = 60, UNSEEN_T = 8, CV_NEAR = 250;
+  // UNSEEN_T: the target not in sight this long inside ARRIVE and the strike goes for the best ship it can see within
+  // its fuel (RT_R..RT_MAX), rather than circling the plotted point to search (Midway: Hornet's strike never found
+  // Kido Butai; Enterprise's turned north on the destroyer Arashi's wake)
+  const ARRIVE = 140, DETOUR_FAR = 120, VB_HOLD = 20, VT_HOLD = 15, SEARCH_R = 60, UNSEEN_T = 3, CV_NEAR = 250, RT_R = 120, RT_MAX = 320;
   const ST = { redirects: 0, handovers: 0, detours: 0, saves: 0, syncHolds: 0, peels: 0 };
   const bomber = p => p.alive && (p.kind === 'dive' || p.kind === 'torpedo');
   const emit = (o) => { if (WW.emit) WW.emit('airOrder', o); };
@@ -35,10 +38,21 @@ window.WW = window.WW || {};
     return s;
   }
 
-  // the nearest freshly seen enemy carrier within CV_NEAR of a strike, or null
-  function carrierNear(from) {
+  // How far from where it is the strike can still go for another ship: half of what the shortest-legged armed bomber
+  // has left after the way home and 25 s for the attack, RT_R..RT_MAX
+  function reach(w) {
+    let R = RT_MAX;
+    const c = w.carrier;
+    for (const p of w.members) if (bomber(p) && p.ordnance && p.state !== 'return') {
+      const home = c ? WW.dist(w.x, w.z, c.x, c.z) / p.pt.speed : 0;
+      R = Math.min(R, (p.fuel - home - 25) * p.pt.speed * 0.5);
+    }
+    return WW.clamp(R, RT_R, RT_MAX);
+  }
+  // the nearest freshly seen enemy carrier within R (CV_NEAR) of a strike, or null
+  function carrierNear(from, R) {
     if (!WW.intel) return null;
-    let best = null, bd = CV_NEAR;
+    let best = null, bd = Math.max(CV_NEAR, R || 0);
     for (const c of WW.intel.enemyShips(from.nation, { fresh: WW.intel.T.FRESH + 2 })) {
       const o = c.unit; if (!o || !o.alive || o.sinking || (WW.intel.typeOf ? WW.intel.typeOf(c) : o.type) !== 'carrier') continue;   // what the side believes it is
       const d = WW.dist(from.x, from.z, c.x, c.z); if (d < bd) { bd = d; best = o; }
@@ -62,8 +76,8 @@ window.WW = window.WW || {};
     if (seen || w.dT >= ARRIVE) w.unseen0 = null; else if (w.unseen0 == null) w.unseen0 = now;
     if (w.dT < ARRIVE && !seen && (w.dT < SEARCH_R || now - w.unseen0 > UNSEEN_T) && now - (w.rtT || -99) > 3) {
       w.rtT = now;
-      const from = { x: w.x, z: w.z, nation: w.nation };
-      const n = WW.airOps ? carrierNear(from) || WW.airOps.pickTarget(from, { near: 170 }) : null;
+      const from = { x: w.x, z: w.z, nation: w.nation }, R = reach(w);
+      const n = WW.airOps ? carrierNear(from, R) || WW.airOps.pickTarget(from, { near: R }) : null;
       if (n && n !== t) {
         w.target = t = n; ST.redirects++;
         for (const p of w.members) if (p.alive && p.target) p.target = n;
@@ -93,7 +107,8 @@ window.WW = window.WW || {};
     const w = pl.wave;
     if (w && w.target && w.target.alive && !w.target.submerged) return w.target;
     if (!WW.airOps) return WW.shipAI ? WW.shipAI.pickStrikeTarget(pl) : null;
-    return WW.airOps.pickTarget(pl, { near: 170 }) || WW.airOps.pickTarget(pl);
+    const home = WW.dist(pl.x, pl.z, pl.carrier.x, pl.carrier.z) / pl.pt.speed, R = WW.clamp((pl.fuel - home - 25) * pl.pt.speed * 0.5, RT_R, RT_MAX);
+    return WW.airOps.pickTarget(pl, { near: pl.ordnance ? R : 170 }) || WW.airOps.pickTarget(pl);
   }
 
   // ---------- VT / VB timing ----------
@@ -209,5 +224,5 @@ window.WW = window.WW || {};
 
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.cag = { stats: ST, waveTick, detour, retarget, diveOK, vtWait, escortPick, escort, cover };
+  WW.cag = { stats: ST, waveTick, detour, retarget, diveOK, vtWait, escortPick, escort, cover, reach };
 })();
