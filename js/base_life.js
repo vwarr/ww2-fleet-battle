@@ -68,7 +68,7 @@ window.WW = window.WW || {};
     if (w === undefined) { p.pend = [x, z, run, then, face, via]; p.path = null; p.act = run ? 'ready' : p.act; return; } // planned next frame
     p.pend = null;
     if (!w) { p.path = null; p.act = 'idle'; p.at = WW.time.now + 3; return; }   // no way there: stays put
-    p.path = (from === p ? [] : [{ x: from.x, z: from.z }]).concat(w, via ? [via] : [], [{ x, z }]); p.via = via || null; p.pi = 0; p.spd = run ? RUN * rr(0.9, 1.1) : WALK * rr(0.85, 1.15);
+    p.path = (from === p ? [] : [{ x: from.x, z: from.z }]).concat(w, via ? [via] : [], [{ x, z }]); p.via = via || null; p.goal = [x, z, run, then, face, via]; p.pi = 0; p.spd = run ? RUN * rr(0.9, 1.1) : WALK * rr(0.85, 1.15);
     p.next = then || 'idle'; p.goalFace = face; p.act = run ? 'run' : 'walk'; p.wait = 0;
   }
   function peace() { // the peacetime posts (re-used after the raid)
@@ -226,7 +226,9 @@ window.WW = window.WW || {};
       const t = p.path[p.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz);
       const spd = p.spd * (attack && p.act === 'run' ? 1.15 : 1), mv = Math.min(d, spd * dt);
       const nx = p.x + dx / (d || 1) * mv, nz = p.z + dz / (d || 1) * mv;
-      if (blocker(nx, nz, gp, vs, 0.3, false) || (blocker(nx, nz, gp, vs, 0.3, true) && !blocker(p.x, p.z, gp, vs, 0.3, true))) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
+      if (!W().stand(nx, nz, 0.12) && W().stand(p.x, p.z, 0.12) && p.goal && now > (p.replanT || 0)) { p.replanT = now + 2; const g = p.goal, n0 = p.next, f0 = p.goalFace; go(p, g[0], g[1], g[2], g[3], g[4], g[5]); if (p.next === undefined) { p.next = n0; p.goalFace = f0; } clearOf(p, gp, vs); return; } // about to brush a wall: plan again from here
+      if (!W().stand(nx, nz, 0.12) && W().stand(p.x, p.z, 0.12)) { p.wait += dt; }
+      else if (blocker(nx, nz, gp, vs, 0.3, false) || (blocker(nx, nz, gp, vs, 0.3, true) && !blocker(p.x, p.z, gp, vs, 0.3, true))) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
       else { p.x = nx; p.z = nz; p.face = Math.atan2(dz, dx); p.wait = 0; }
       if (d - mv < 0.05) { p.pi++; if (p.pi >= p.path.length) { p.path = null; arrive(p); } }
     }

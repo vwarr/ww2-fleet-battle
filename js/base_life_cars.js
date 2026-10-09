@@ -15,7 +15,7 @@ window.WW = window.WW || {};
   const K = () => WW.baseModels.VEH_K || 1;
 
   function reset(b, bl) {
-    base = b; cars = [];
+    base = b; cars = []; lastT = WW.time.now;
     for (const part of bl.parts) {
       const d = part.f;
       if (!part.decor || !part.mesh || !SPD[d.kind]) continue;
@@ -27,7 +27,7 @@ window.WW = window.WW || {};
   function send(c, x, z, job) {
     const H = c.home, P = WW.baseLifePaths, fromHome = !c.away, toHome = job === 'home';
     let out = null;   // out of the bay: ahead if that is clear, else backing out
-    for (const sg of [1, -1]) { const q = { x: H.x + Math.cos(H.h) * sg * 3.4 * K(), z: H.z + Math.sin(H.h) * sg * 3.4 * K() }; if (P.stand(q.x, q.z, 0.9, true) || sg < 0) { out = q; break; } }
+    for (const sg of [1, -1]) { const q = { x: H.x + Math.cos(H.h) * sg * 4.0 * K(), z: H.z + Math.sin(H.h) * sg * 4.0 * K() }; if (P.stand(q.x, q.z, 0.9, true) || sg < 0) { out = q; break; } }
     const a = fromHome ? out : c, b = toHome ? out : { x, z };
     const w = WW.baseLifePaths.path(a.x, a.z, b.x, b.z, true, true); if (!w) return false;
     c.path = (fromHome ? [out] : []).concat(w.slice(1), [b]);
@@ -37,8 +37,11 @@ window.WW = window.WW || {};
   }
   // a vehicle-open point beside a thing (radius r from its centre), toward p (the car)
   function beside(f, r, from) {
-    const a0 = Math.atan2(from.z - f.z, from.x - f.x);
-    for (let k = 0; k < 12; k++) { const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.45, x = f.x + Math.cos(a) * r, z = f.z + Math.sin(a) * r; if (WW.baseLifePaths.open(x, z, true)) return { x, z }; }
+    const a0 = Math.atan2(from.z - f.z, from.x - f.x), taken = cars.filter(c => c !== from && c.path && c.path.length).map(c => c.path[c.path.length - 1]);
+    for (let k = 0; k < 14; k++) {
+      const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.45, x = f.x + Math.cos(a) * r, z = f.z + Math.sin(a) * r;
+      if (WW.baseLifePaths.open(x, z, true) && WW.baseLifePaths.offNet(x, z) && !taken.some(q => Math.hypot(q.x - x, q.z - z) < 3.5 * K())) return { x, z };
+    }
     return null;
   }
   function alarm() {
@@ -76,15 +79,33 @@ window.WW = window.WW || {};
     for (const o of others) { if (o === c) continue; const d = Math.hypot(o.x - x, o.z - z); if (d < 2.6 * k + 0.4 && Math.hypot(o.x - c.x, o.z - c.z) > d) return true; }
     return false;
   }
-  function update(dt, gp, cam, people) {
+  // a moving plane on the ground coming at the car: the side to pull over to (+1 / -1 across the plane's track), or 0
+  function inPlaneWay(c, gp) {
+    for (const g of gp) {
+      if (!g[4]) continue;
+      const C = g[3], co = Math.cos(g[2]), si = Math.sin(g[2]), dx = c.x - g[0], dz = c.z - g[1], a = dx * co + dz * si, b = -dx * si + dz * co;
+      if (a > -C.len / 2 - 1.5 && a < C.len / 2 + 7 && Math.abs(b) < C.span / 2 + 1.6) return { s: b >= 0 ? 1 : -1, co, si };
+    }
+    return null;
+  }
+  // per frame, before the ground crews are drawn (base_fx.js): the cars move (sim time)
+  let lastT = 0;
+  function tick() {
     if (!base) return;
-    nS = 0; if (stretchers) stretchers.count = 0;
-    const now = WW.time.now, others = cars.concat((WW.baseGroundFx && WW.baseGroundFx._vehNow ? WW.baseGroundFx._vehNow() : []));
+    const now = WW.time.now, dt = Math.max(0, Math.min(0.5, now - lastT)); lastT = now;
+    const gp = WW.baseGroundFx && WW.baseGroundFx._ground ? WW.baseGroundFx._ground() : [];
+    const others = cars.concat((WW.baseGroundFx && WW.baseGroundFx._vehNow ? WW.baseGroundFx._vehNow() : []));
     fireTruck(now);
-    const T = WW.baseGroundFx && WW.baseGroundFx._traceRef ? WW.baseGroundFx._traceRef() : null;
     for (const c of cars) {
-      if (c.d.out) { if (T && c.away) T.veh.push({ kind: c.kind === 'fire' ? 'crash' : c.kind, x: c.x, z: c.z, h: c.h, parked: c.d }); continue; }
-      if (c.path && dt > 0) {
+      if (c.d.out || dt <= 0) continue;
+      const w = c.away ? inPlaneWay(c, gp) : null;
+      if (w) { // pull over, off the plane's track (then on with the trip)
+        const v = SPD[c.kind] * 0.6 * dt, nx = c.x - w.si * w.s * v, nz = c.z + w.co * w.s * v;
+        if (WW.baseLifePaths.stand(nx, nz, 0.9, true) && !others.some(o => o !== c && Math.hypot(o.x - nx, o.z - nz) < 2.6 * K() && Math.hypot(o.x - nx, o.z - nz) < Math.hypot(o.x - c.x, o.z - c.z))) { c.x = nx; c.z = nz; c.dodged = true; }
+        place(c); continue;
+      }
+      if (c.dodged && c.path) { c.dodged = false; const e = c.path[c.path.length - 1]; const job = c.job; if (c.path.some(q => q.rev)) send(c, c.home.x, c.home.z, 'home'); else { send(c, e.x, e.z, job); } }
+      if (c.path) {
         const t = c.path[c.pi], dx = t.x - c.x, dz = t.z - c.z, d = Math.hypot(dx, dz), want = t.rev ? Math.atan2(-dz, -dx) : Math.atan2(dz, dx);
         const turn = WW.angleDiff(c.h, want);
         c.h += WW.clamp(turn, -4 * dt, 4 * dt);                     // it steers onto the leg
@@ -94,10 +115,16 @@ window.WW = window.WW || {};
         else { c.x = nx; c.z = nz; c.wait = 0; }
         if (d < 0.35 || c.wait > 40) { c.pi++; if (c.pi >= c.path.length || c.wait > 40) { c.path = null; if (c.job === 'home') { c.x = c.home.x; c.z = c.home.z; c.h = c.home.h; c.away = false; c.job = null; } } }
       }
-      const m = c.part.mesh; m.position.x = c.x; m.position.z = c.z; m.position.y = Math.max(base.site.padH, -WW.terrain.depthAt(c.x, c.z)) - 0.03; m.rotation.y = -c.h;
-      if (T && c.away) T.veh.push({ kind: c.kind === 'fire' ? 'crash' : c.kind, x: c.x, z: c.z, h: c.h, parked: c.d });
-      if (c.path && c.kind === 'fire' && R() < 0.3) { /* the bell: nothing to draw */ }
+      place(c);
     }
+  }
+  function place(c) { const m = c.part.mesh; m.position.x = c.x; m.position.z = c.z; m.position.y = Math.max(base.site.padH, -WW.terrain.depthAt(c.x, c.z)) - 0.03; m.rotation.y = -c.h; }
+  // after the ground crews (base_life.js): this frame's stretchers start, the cars go into the clip trace
+  function update() {
+    if (!base) return;
+    nS = 0; if (stretchers) stretchers.count = 0;
+    const T = WW.baseGroundFx && WW.baseGroundFx._traceRef ? WW.baseGroundFx._traceRef() : null;
+    if (T) for (const c of cars) if (c.away) T.veh.push({ kind: c.kind === 'fire' ? 'crash' : c.kind, x: c.x, z: c.z, h: c.h, parked: c.d });
   }
   function now() { return cars.filter(c => c.away).map(c => ({ x: c.x, z: c.z, h: c.h, kind: c.kind })); }
   function stretcher(x, y, z, face) {
@@ -112,5 +139,5 @@ window.WW = window.WW || {};
   }
   WW.on('roundStart', () => { base = null; cars = []; if (stretchers) stretchers.count = 0; });
   WW.on('setupStart', () => { base = null; cars = []; if (stretchers) stretchers.count = 0; });
-  WW.baseLifeCars = { reset, alarm, standDown, update, now, stretcher, get cars() { return cars; } };
+  WW.baseLifeCars = { reset, alarm, standDown, update, tick, now, stretcher, get cars() { return cars; } };
 })();

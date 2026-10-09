@@ -129,8 +129,10 @@ window.WW = window.WW || {};
     const t = performance.now() / 1000, rw = base.runways[rp.runway] || base.runways[0], hx = Math.cos(rw.h), hz = Math.sin(rw.h);
     let busy = false;   // a plane rolling or taxiing close by: the gang steps well back off the runway
     for (const p of WW.world.planes) if (p.carrier === base && p.alive && WW.landGround.onGround(p) && Math.hypot(p.x - c.x, p.z - c.z) < c.r + 18) busy = true;
+    const gp = busy ? groundPlanes() : null;
     for (let i = 0; i < 6; i++) { // shovels: a bob in the figure's height is the work
-      const a = i / 6 * Math.PI * 2 + 0.4, r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
+      const a = i / 6 * Math.PI * 2 + 0.4; let r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
+      if (gp) for (let k = 0; k < 6 && inWay({ x: c.x + Math.cos(a) * r, z: c.z + Math.sin(a) * r }, gp); k++) r += 2;   // a plane coming through: well clear of it
       figure(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, a + Math.PI + Math.sin(t * 3 + i) * 0.3, base.nation, i === 0 ? 'o' : 'c', i % 2 === 0);
     }
     const sw = Math.sin(t * 0.5) * (c.r + 2.5), side = c.r * 1.25 + 0.6 + (busy ? 6 : 0) + 1.1; // the roller works to and fro beside the hole, outside the gang's ring
@@ -150,19 +152,22 @@ window.WW = window.WW || {};
   const fixed = {}; // vehicles placed directly this frame (the roller)
   const vehNow = []; // this frame's drawn vehicles { x, z, h, kind } (base_life.js keeps its people out of them)
   function vehSet(kind, list) { fixed[kind] = list; }
-  function drawVehicles(on) {
+  // this frame's trip positions, after giving way (to planes and to other trucks): { kind: [q, ...] }
+  function planTrips(on) {
     const per = {};
-    if (on) {
-      const gp = groundPlanes();
-      const placed = [];
-      for (const t of trips) {
-        let q = tripPos(t);
-        if (burnDt > 0 && !(q && inWay(q, gp, t.follow)) && inWay(tripPos(t, 0.8), gp, t.follow)) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // give way: wait short of a plane's path (already in it: drive on clear)
-        else if (burnDt > 0 && q && [0.15, 0.3, 0.45, 0.6, Math.max(0.6, burnDt * 1.5)].some(k => closing(q, tripPos(t, k), vehPre.filter(o => o.trip !== t).concat(placed, WW.baseLifeCars ? WW.baseLifeCars.now() : []), t))) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // and to another truck
-        if (q) { q.trip = t; placed.push(q); (per[t.kind] = per[t.kind] || []).push(q); }
-      }
-      for (const k in fixed) if (fixed[k]) (per[k] = per[k] || []).push(...fixed[k]);
+    if (!on) return per;
+    const gp = groundPlanes(), placed = [], cars = WW.baseLifeCars ? WW.baseLifeCars.now() : [];
+    const pre = trips.map(t => { const q = tripPos(t); if (q) q.trip = t; return q; }).filter(q => q);
+    for (const t of trips) {
+      let q = tripPos(t);
+      if (burnDt > 0 && !(q && inWay(q, gp, t.follow)) && inWay(tripPos(t, 0.8), gp, t.follow)) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // give way: wait short of a plane's path (already in it: drive on clear)
+      else if (burnDt > 0 && q && [0.15, 0.3, 0.45, 0.6, Math.max(0.6, burnDt * 1.5)].some(k => closing(q, tripPos(t, k), pre.filter(o => o.trip !== t).concat(placed, cars), t))) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // and to another truck
+      if (q) { q.trip = t; placed.push(q); (per[t.kind] = per[t.kind] || []).push(q); }
     }
+    return per;
+  }
+  function drawVehicles(on, per) {
+    if (on) for (const k in fixed) if (fixed[k]) (per[k] = per[k] || []).push(...fixed[k]);
     vehNow.length = 0;
     for (const kind in VCAP) {
       const list = per[kind] || [], vm = list.length || veh[kind + base.nation] ? vehMesh(kind) : null; if (!vm) continue;
@@ -361,9 +366,10 @@ window.WW = window.WW || {};
     const cam = WW.camera.position, near = (cam.x - b.x) ** 2 + (cam.z - b.z) ** 2 < FAR * FAR;
     fig = 0; if (trace) { trace.figs.length = 0; trace.veh.length = 0; }
     for (const k in fixed) fixed[k] = null;
-    vehPre = trips.map(t => { const q = tripPos(t); if (q) q.trip = t; return q; }).filter(q => q);
+    const per = planTrips(near);
+    vehPre = [].concat(...Object.values(per), WW.baseLifeCars ? WW.baseLifeCars.now() : []);
     if (near) { engines(rdt, sdt); crewsAt(cam, now); repairGang(cam, now); }
-    drawVehicles(near);
+    drawVehicles(near, per);
   }
   function clear() {
     for (const m of planes.values()) WW.air._pool.release(m);

@@ -87,6 +87,7 @@ window.WW = window.WW || {};
       if (part.flag && WW.wind) part.flag.rotation.y = -WW.wind.a + Math.sin(performance.now() / 700) * 0.15;
     }
     if (sdt > 0) burn(sdt, now);
+    if (WW.baseLifeCars) WW.baseLifeCars.tick();            // the camp's trucks move first: the ground crews keep out of them
     if (WW.baseGroundFx) WW.baseGroundFx.update(rdt, b);
     if (WW.baseLife) WW.baseLife.update(rdt, b, built);   // the camp's people and trucks (after the ground crews: one trace)
     if (WW.baseLifeFx) WW.baseLifeFx.update(rdt, b, built); // the gooney birds, the blackout and the searchlights

@@ -17,9 +17,9 @@ window.WW = window.WW || {};
   // hx, hz: half extents (item frame, +x along its yaw); hp; roof: top above the pad (island_base roofAt); solid:
   // people walk round it (pits, trenches, the laundry line and the drill ground are walked into)
   var K = {
-    hut: [2.1, 1.0, 120, 1.4, 1], sick: [2.1, 1.0, 120, 1.4, 1], tent: [0.8, 0.8, 50, 1.2, 1], mess: [3.0, 1.4, 160, 2.4, 1],
-    radio: [3.6, 0.9, 50, 8.6, 1], water: [1.2, 1.2, 60, 6.4, 1], cp: [1.6, 1.3, 120, 1.6, 1], flag: [0.35, 0.35, 400, 7, 1],
-    mg: [1.3, 1.3, 50, 0.9, 0], trench: [3.0, 0.8, 400, 0.3, 0], drums: [1.0, 0.8, 25, 1, 1], light: [0.6, 0.6, 40, 1.6, 1],
+    hut: [2.1, 1.0, 120, 1.4, 1], sick: [2.1, 1.0, 120, 1.4, 1], tent: [1.15, 1.15, 50, 1.2, 1], mess: [3.0, 1.4, 160, 2.4, 1],
+    radio: [3.7, 0.95, 50, 8.6, 1], water: [1.2, 1.2, 60, 6.4, 1], cp: [1.75, 1.45, 120, 1.6, 1], flag: [0.35, 0.35, 400, 7, 1],
+    mg: [1.3, 1.3, 50, 0.9, 0], trench: [3.0, 0.8, 400, 0.3, 0], drums: [1.0, 0.8, 25, 1, 1], light: [0.8, 0.8, 40, 1.6, 1],
     truck: [0.75, 0.36, 30, 1.0, 1], fire: [0.75, 0.36, 30, 1.0, 1], jeep: [0.55, 0.33, 20, 0.7, 1], laundry: [2.0, 0.3, 10, 1.5, 0], table: [0.35, 0.35, 10, 0.6, 1],
     drill: [3.6, 2.6, 1e9, 0, 0], yard: [3.8, 1.1, 1e9, 0, 0]   // yard: the motor pool's forecourt (kept clear)
   };
@@ -32,9 +32,9 @@ window.WW = window.WW || {};
       [['hut', -3.4, 0, H], ['hut', 0, 0, H], ['hut', 3.4, 0, H]]],
     ['huts', ['huts'], [['hut', -3.4, 0, H], ['hut', 0, 0, H], ['hut', 3.4, 0, H]]],
     ['mess', ['huts', [-66, -50], [66, 50]], [['mess', 0, 0, 0], ['sick', 7.8, 0.4, 0]]],
-    ['tents', ['huts', [74, 30], [-74, -30]], [['tent', -4.4, 0, H], ['tent', -2.2, 0, H], ['tent', 0, 0, H], ['tent', 2.2, 0, H], ['tent', 4.4, 0, H]]],
-    ['tents', ['tents', 'huts'], [['tent', -3.3, 0, H], ['tent', -1.1, 0, H], ['tent', 1.1, 0, H], ['tent', 3.3, 0, H], ['laundry', 0, -2.8, 0], ['table', 4.8, -2.8, 0]]],
-    ['cp', ['tower', 'huts'], [['cp', 0, 0, 0], ['flag', 3.0, 0, 0]]],
+    ['tents', ['huts', [74, 30], [-74, -30]], [['tent', -5.2, 0, H], ['tent', -2.6, 0, H], ['tent', 0, 0, H], ['tent', 2.6, 0, H], ['tent', 5.2, 0, H]]],
+    ['tents', ['tents', 'huts'], [['tent', -3.9, 0, H], ['tent', -1.3, 0, H], ['tent', 1.3, 0, H], ['tent', 3.9, 0, H], ['laundry', 0, -2.8, 0], ['table', 4.8, -2.8, 0]]],
+    ['cp', ['tower', 'huts'], [['cp', 0, 0, 0], ['flag', 0, 2.8, 0]]],
     ['motor', ['hangar', 'huts'], [['yard', 0.5, 2.6, 0], ['yard', 0.5, -2.6, 0], ['fire', -2.6, 0, H], ['truck', -1.3, 0, H], ['truck', 0, 0, H], ['truck', 1.3, 0, H], ['jeep', 2.5, 0, H], ['jeep', 3.6, 0, H]]],
     ['radio', [[-20, 74], [20, -74], [-40, -74], [40, 74], [-84, 20]], [['radio', 0, 0, 0]]],
     ['water', ['huts', 'mess'], [['water', 0, 0, 0]]],

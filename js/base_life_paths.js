@@ -33,13 +33,14 @@ window.WW = window.WW || {};
       if (d < -2.6) { vwall[k] = 1; cost[k] = 3; continue; }        // the hillside: people only
       const run = (Math.abs(u) < 47 && Math.abs(v) < AL.RUN_HALF_W + 1.5) || L.crossD(u, v) < AL.RUN_HALF_W + 1.5;
       const net = run || AL.onNetwork(L, u, v, 0);
-      cost[k] = run ? 6 : net ? 3 : 1; vcost[k] = run ? 4 : net ? 1 : 2;
+      cost[k] = run ? 6 : net ? 3 : 1; vcost[k] = 1;
+      if (net || AL.onNetwork(L, u, v, 1.5)) vwall[k] = 1;   // the camp's trucks keep off the runways and taxiways (the planes' ground)
     }
     const site = (x, z) => L.toL(x, z);
-    for (const d of b.decor || []) { if (d.solid) stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.8); if (d.kind !== 'drill' && d.kind !== 'yard') stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.0); }
+    for (const d of b.decor || []) { if (d.solid) stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.8); if (d.kind !== 'drill' && d.kind !== 'yard') stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.3); }
     if (built) for (const part of built.parts) {
       if (part.decor || !part.mesh) continue;
-      const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 3.5, 3.5, 0.5); continue; }
+      const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 4.0, 4.0, 1.0); continue; }
       const m = part.mesh, g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
       const bb = g.boundingBox, h = -m.rotation.y, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
       const q = site(m.position.x + Math.cos(h) * cx - Math.sin(h) * cz, m.position.z + Math.sin(h) * cx + Math.cos(h) * cz);
@@ -76,13 +77,15 @@ window.WW = window.WW || {};
         fine[j * NU * 2 + i] |= bit;
       }
     };
-    for (const r of rects) { if (r[5]) fstamp(r, 0.35, 1); fstamp(r, 1.0, 2); }
+    for (const r of rects) { if (r[5]) fstamp(r, 0.35, 1); fstamp(r, 1.3, 2); }
     G = { base: b, L, wall, vwall, cost, vcost, rects, fine, cache: new Map(), made: 0 };
     return G;
   }
   function cell(u, v) { const i = Math.round(u - U0), j = Math.round(v - V0); return i < 0 || j < 0 || i >= NU || j >= NV ? -1 : id(i, j); }
   function open(x, z, veh) { if (!G) return false; const q = G.L.toL(x, z), c = cell(q.u, q.v); return c >= 0 && !(veh ? G.vwall : G.wall)[c]; }
   // a place to stand (finer than the grid): on land and outside every solid footprint by pad (default 0.25)
+  // off the taxi network (where a truck may park)
+  function offNet(x, z) { if (!G) return false; const q = G.L.toL(x, z), c = cell(q.u, q.v); return c >= 0 && G.cost[c] === 1 && !WW.airfieldLayout.onNetwork(G.L, q.u, q.v, 2.5); }
   function stand(x, z, pad, veh) {
     if (!G || !(WW.terrain.depthAt(x, z) < -0.35)) return false;
     const q = G.L.toL(x, z), p = pad === undefined ? 0.25 : pad;
@@ -112,7 +115,7 @@ window.WW = window.WW || {};
   // a straight world leg clear of the footprints (people: pad 0.3; vehicles: wider)
   function legOK(x0, z0, x1, z1, veh) {
     const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.25);
-    for (let k = 0; k <= n; k++) if (!stand(x0 + (x1 - x0) * k / n, z0 + (z1 - z0) * k / n, veh ? 0.9 : 0.3, veh)) return false;
+    for (let k = 0; k <= n; k++) if (!stand(x0 + (x1 - x0) * k / n, z0 + (z1 - z0) * k / n, veh ? 1.3 : 0.3, veh)) return false;
     return true;
   }
   // binary heap of [cost, cell]
@@ -154,5 +157,5 @@ window.WW = window.WW || {};
     G.cache.set(key, out); G.made++; ST.ms += performance.now() - t0; ST.n++;
     return out;
   }
-  WW.baseLifePaths = { ST, build, path, open, stand, legOK, frame: () => { budget = 2; }, get grid() { return G; }, clear: () => { G = null; } };
+  WW.baseLifePaths = { ST, build, path, open, stand, offNet, legOK, frame: () => { budget = 2; }, get grid() { return G; }, clear: () => { G = null; } };
 })();
