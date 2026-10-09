@@ -5,7 +5,7 @@
 // sequences from a fixed or tracking camera), escorted strike in transit. Writes tests/shots/flight/*.png.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/flight_shots.js [seed=3] [scenes]
 //   scenes: comma list of opening,cap,circle,story,intercept,dogfight,dive,torp,escort (default all), and on request
-//   stack,picket,sweep,sbd,d3a,anvil (air tactics: stacked strike, picket CAP far out, sweep vs CAP, nation dives, anvil)
+//   stack,picket,sweep,sbd,d3a,anvil,anvilhit (air tactics: stacked strike, picket CAP far out, sweep vs CAP, nation dives, anvil; anvilhit: an aerial torpedo striking home)
 const path = require('path'), fs = require('fs');
 const OUT = path.join(__dirname, 'shots', 'flight');
 fs.mkdirSync(OUT, { recursive: true });
@@ -147,6 +147,12 @@ const SEED = +(process.argv[2] || 3), WHICH = (process.argv[3] || 'opening,cap,c
   for (const n of ['USN', 'IJN']) if (WHICH.includes(n === 'USN' ? 'sbd' : 'd3a')) await pairFind(n === 'USN' ? 'sbd_dive' : 'd3a_dive',
     new Function(`return () => { const q = WW.world.planes.find(d => d.alive && d.nation === '${n}' && d.kind === 'dive' && d.phase === 'roll' && d.push && d.diveTgt); if (!q) return null; const t = q.diveTgt; return { q, t, a: Math.atan2(t.z - q.z, t.x - q.x) + Math.PI / 2, desc: q.nation + ' push-over at y ' + q.y.toFixed(0) + ' on a ' + t.type }; }`)(),
     (s) => { const t = s.t, q = s.q, m = { x: q.x * 0.6 + t.x * 0.4, y: 32, z: q.z * 0.6 + t.z * 0.4 }; return eye(m, 75, s.a, 6); }, 6, 18, 300);
+  if (WHICH.includes('anvilhit')) { // an aerial torpedo about to strike home (a track inside 14 u of a hull, running at it): the hit, the column, the list
+    await p.evaluate(() => { window.__ahit = null; WW.on('weaponImpact', e => { if (e && e.kind === 'torpedo' && e.ship && !e.dud && e.proj && e.proj.src === 'Air') window.__ahit = e.ship; }); });
+    await pairFind('anvilhit',
+      () => { const act = WW.combat._i.active; for (const pr of act) { if (pr.kind !== 'torp' || pr.dead || pr.src !== 'Air') continue; for (const s of WW.world.ships) { if (!s.alive || s.nation === pr.nation) continue; const rx = s.x - pr.x, rz = s.z - pr.z, al = rx * Math.cos(pr.h) + rz * Math.sin(pr.h), pp = Math.abs(-rx * Math.sin(pr.h) + rz * Math.cos(pr.h)); if (al > 0 && al < 16 && pp < s.stats.length * 0.4) return { t: s, a: pr.h + Math.PI, desc: pr.nation + ' aerial torpedo ' + al.toFixed(0) + ' u from a ' + s.type }; } } return null; },
+      (s) => { const t = s.t; return eye({ x: t.x, y: 1, z: t.z }, 70, s.a + 0.5, 16); }, 6, 24, 400);
+  }
   if (WHICH.includes('anvil')) await pairFind('anvil',   // torpedo planes on both bows running in: across the ship's beam, the near side between camera and ship
     () => { const t = WW.world.ships.find(s => { if (!s.alive) return false; let a = 0, b = 0; for (const p of WW.world.planes) if (p.alive && p.kind === 'torpedo' && p.target === s && (p.phase === 'run' || (p.sk === 'anvil' && p.ready))) { if (p.side > 0) a++; else b++; } return a && b; }); return t ? { t, desc: 'anvil on a ' + t.type } : null; },
     (s) => { const t = s.t, a = t.heading + Math.PI / 2 * (WW.world.planes.some(p => p.alive && p.kind === 'torpedo' && p.target === t && p.side > 0) ? 1 : -1); return { x: t.x + Math.cos(a) * 115, y: 13, z: t.z + Math.sin(a) * 115, tx: t.x, ty: 2, tz: t.z }; }, 5, 30, 300);

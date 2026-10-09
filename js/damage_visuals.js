@@ -1,6 +1,7 @@
 // damage_visuals.js - WW.dmgVis: a battered ship tells its story at a glance (visual only, Math.random, real time).
 //  - Scorch and char decals on decks / roofs / hull sides at hit sites, shell holes along the hull near the
-//    waterline, torpedo holes at it, bomb craters on a carrier's flight deck (2 pooled InstancedMeshes, capped
+//    waterline, torpedo ruptures at it (a jagged dark gash straddling the waterline, its lower half seen through
+//    the water), bomb craters on a carrier's flight deck (2 pooled InstancedMeshes, capped
 //    per ship: further hits grow and darken the nearest mark). Hit sites come from damage.js ('dmgSite').
 //  - Knocked-out turrets (damage.js disableTurret): the gun mesh droops, the house turns askew, scorch on the roof.
 //  - Heavy damage near the superstructure topples a mast or bends a funnel: the vertices of that part of the
@@ -14,9 +15,9 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var R = Math.random, PI = Math.PI;
-  var NSC = 360, NHO = 220, NWR = 18, FAR = 260, CAP = { up: 12, side: 10 };
+  var NSC = 360, NHO = 220, NTP = 60, NWR = 18, FAR = 260, CAP = { up: 12, side: 10 };
   // masts / funnels: WW.models.parts(class, nation): [kind, x0, x1, yb (foot), z centre, z half range, height, pivot x] (models.js)
-  var sc = null, ho = null, wr = null, ready = false, list = [], wrecks = [], _m, _l, _t, _v, _q, _s, _e, _a, _n;
+  var sc = null, ho = null, tp = null, wr = null, ready = false, list = [], wrecks = [], _m, _l, _t, _v, _q, _s, _e, _a, _n;
 
   // ---- textures (canvas, made once) ----
   function canvas(fn) { var c = document.createElement('canvas'); c.width = c.height = 128; fn(c.getContext('2d')); var t = new THREE.CanvasTexture(c); t.anisotropy = 2; return t; }
@@ -41,11 +42,36 @@ window.WW = window.WW || {};
       x.fill();
     });
   }
+  // A torpedo rupture: the plating blown in over a tall ragged gash, bent edges catching the light, soot around it
+  // (wider than tall: the decal is stretched along the hull)
+  function ruptureTex() {
+    return canvas(function (x) {
+      x.save(); x.translate(64, 64); x.scale(1, 0.9);
+      blot(x, 0, 0, 62, '26,22,20', 0.6);                        // soot and scorched paint
+      blot(x, -10, 6, 40, '70,40,26', 0.35);                     // rust / heat
+      x.restore();
+      function ragged(r0, r1, n, col) {
+        x.fillStyle = col; x.beginPath();
+        for (var i = 0; i <= n; i++) { var a = i / n * PI * 2, r = (i % 2 ? r0 : r1) * (0.75 + R() * 0.5); x.lineTo(64 + Math.cos(a) * r * 1.08, 64 + Math.sin(a) * r * 0.95); }
+        x.fill();
+      }
+      ragged(30, 44, 22, 'rgba(58,54,50,0.97)');                 // the plating torn and bent inward
+      ragged(22, 30, 18, 'rgba(36,32,30,1)');
+      ragged(13, 24, 20, 'rgb(6,6,8)');                          // the hole into the flooded compartment
+      x.strokeStyle = 'rgba(128,118,106,0.85)'; x.lineCap = 'round'; // bent plate edges catching the light
+      for (var k = 0; k < 9; k++) {
+        var b = R() * PI * 2, r1 = 20 + R() * 8, r2 = r1 + 8 + R() * 12; x.lineWidth = 1.5 + R() * 2;
+        x.beginPath(); x.moveTo(64 + Math.cos(b) * r1 * 1.15, 64 + Math.sin(b) * r1 * 0.85); x.lineTo(64 + Math.cos(b + 0.2) * r2 * 1.15, 64 + Math.sin(b + 0.2) * r2 * 0.85); x.stroke();
+      }
+    });
+  }
+  // renderOrder 0: before the water (water.js, 1), so the water surface covers and tints the part of a mark below the
+  // waterline exactly as it does the hull (drawn after the water, a hole at the waterline showed through it untinted)
   function decalMesh(tex, n) {
     var m = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6, color: 0xffffff }), n);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3).fill(1), 3);
-    m.frustumCulled = false; m.count = 0; m.renderOrder = 1; WW.scene.add(m);
+    m.frustumCulled = false; m.count = 0; m.renderOrder = 0; WW.scene.add(m);
     return m;
   }
   // a burnt-out parked plane: fuselage, a wing broken at the root, the stub, the fin (merged by hand)
@@ -68,7 +94,7 @@ window.WW = window.WW || {};
     if (ready || !WW.scene || !WW.models || WW.simOnly) return;
     _m = new THREE.Matrix4(); _l = new THREE.Matrix4(); _t = new THREE.Matrix4(); _v = new THREE.Vector3(); _q = new THREE.Quaternion();
     _s = new THREE.Vector3(); _e = new THREE.Euler(); _a = new THREE.Vector3(); _n = new THREE.Vector3();
-    sc = decalMesh(scorchTex(), NSC); ho = decalMesh(holeTex(), NHO);
+    sc = decalMesh(scorchTex(), NSC); ho = decalMesh(holeTex(), NHO); tp = decalMesh(ruptureTex(), NTP);
     wr = new THREE.InstancedMesh(wreckGeo(), new THREE.MeshToonMaterial({ color: 0x3a3532, gradientMap: WW.models._grad(), vertexColors: true }), NWR);
     wr.instanceMatrix.setUsage(THREE.DynamicDrawUsage); wr.frustumCulled = false; wr.count = 0; wr.castShadow = true; WW.scene.add(wr);
     WW.on('roundStart', clear); WW.on('setupStart', clear);
@@ -91,18 +117,28 @@ window.WW = window.WW || {};
     if (y == null || y < 0.2) y = sh.model.deck ? sh.model.deck.position.y : WW.crew ? WW.crew.deckY(sh.mk || sh.type, lx) : 1;
     return y + 0.015;
   }
-  function decal(sh, kind, face, lx, ly, lz, size, tur) {
+  function decal(sh, kind, face, lx, ly, lz, size, tur, tilt, ar) {
     var d = dv(sh), arr = d[face], cap = CAP[face] + (sh.type === 'carrier' ? 4 : 0);
     if (arr.length >= cap) {                                 // full: the nearest mark of this kind grows darker and wider
       var best = null, bd = 1e9;
       arr.forEach(function (q) { var e = (q.lx - lx) * (q.lx - lx) + (q.lz - lz) * (q.lz - lz) + (q.k === kind ? 0 : 4) + (q.tur ? 1e6 : 0); if (e < bd) { bd = e; best = q; } });
       best.s = Math.min(best.s * 1.12 + 0.05, 2.6); best.c = Math.max(0.55, best.c * 0.92); return;
     }
-    arr.push({ k: kind, lx: lx, ly: ly, lz: lz, s: size, r: R() * PI * 2, c: 0.8 + R() * 0.2, tur: tur || null, sd: lz >= 0 ? 1 : -1 });
+    arr.push({ k: kind, lx: lx, ly: ly, lz: lz, s: size, r: kind === 2 ? (R() - 0.5) * 0.35 : R() * PI * 2, c: 0.8 + R() * 0.2, tur: tur || null, sd: lz >= 0 ? 1 : -1,
+      tilt: tilt || 0, ar: ar || (face === 'side' ? 0.8 : 1) });
   }
   function hullHole(sh, lx, y, side, size) {
     var z = WW.crewOps ? WW.crewOps.hullZ(sh.mk || sh.type, lx, y) : sh.model.group ? 1 : 1;
     decal(sh, 1, 'side', lx, y, side * (z + 0.012), size);
+  }
+  // A torpedo rupture straddling the waterline: centred a little above the resting waterline (a hurt ship settles 0.1 to
+  // 0.4 lower: then the upper half shows and the lower half is seen through the water), leaned in to follow the hull's tuck below the waterline, so it lies on the plating rather than standing off it
+  // (the hull loft's keel is at y -0.5: the gash stops short of it, half height at most TP_HMAX)
+  var TP_Y = 0.32, TP_H = 0.72, TP_HMAX = 0.6;
+  function rupture(sh, lx, side, size) {
+    var mk = sh.mk || sh.type, h = Math.min(size * TP_H * 0.5, TP_HMAX), z = WW.crewOps.hullZ(mk, lx, TP_Y);
+    var zt = WW.crewOps.hullZ(mk, lx, TP_Y + h), zb = WW.crewOps.hullZ(mk, lx, TP_Y - h);
+    decal(sh, 2, 'side', lx, TP_Y, side * (z + 0.02), size, null, Math.atan2(zt - zb, 2 * h), 2 * h / size);
   }
   function onSite(d) {
     var sh = d && d.ship; if (!ready || !sh || !sh.model || sh.type === 'submarine') return;
@@ -110,7 +146,7 @@ window.WW = window.WW || {};
     var dk = sh.model.deck ? sh.model.deck.position.y : WW.crew.deckY(sh.mk || sh.type, lx);
     D.trimW += (d.amount || 0) * (lx / (L * 0.5)) * (kind === 'torpedo' ? 1.6 : 1);
     if (kind === 'torpedo') {
-      hullHole(sh, lx, 0.14, side, 1.5 + R() * 0.4);
+      rupture(sh, lx, side, 1.6 + R() * 0.4);
       decal(sh, 0, 'side', lx + (R() - 0.5) * 0.4, Math.min(dk - 0.2, 0.55), side * (WW.crewOps.hullZ(sh.mk || sh.type, lx, 0.55) + 0.015), 1.7);
     } else if (kind === 'bomb' || kind === 'deck') {
       var jx = lx + (R() - 0.5) * 0.6, jz = lz * 0.6 + (R() - 0.5) * 0.6;
@@ -301,7 +337,7 @@ window.WW = window.WW || {};
   // decal matrices after the pose (and after the crew, so both follow the same posed hull)
   function draw(rdt) {
     if (!ready) return;
-    var cam = WW.camera.position, ns = 0, nh = 0, dt = Math.min(0.1, rdt || 0);
+    var cam = WW.camera.position, ns = 0, nh = 0, nt = 0, dt = Math.min(0.1, rdt || 0);
     for (var i = 0; i < list.length; i++) {
       var sh = list[i], D = sh._dv; if (!D || sh.removed) continue;
       var g = sh.group; if (cam.distanceToSquared(g.position) > FAR * FAR) continue;
@@ -309,21 +345,22 @@ window.WW = window.WW || {};
       for (var f = 0; f < 2; f++) {
         var arr = f ? D.side : D.up;
         for (var j = 0; j < arr.length; j++) {
-          var q = arr[j], mesh = q.k ? ho : sc, n = q.k ? nh : ns;
-          if (n >= (q.k ? NHO : NSC)) continue;
-          if (f) _q.setFromEuler(_e.set(0, q.sd > 0 ? 0 : PI, q.r, 'YXZ'));
+          var q = arr[j], mesh = q.k === 2 ? tp : q.k ? ho : sc, n = q.k === 2 ? nt : q.k ? nh : ns;
+          if (n >= (q.k === 2 ? NTP : q.k ? NHO : NSC)) continue;
+          if (f) _q.setFromEuler(_e.set(q.tilt || 0, q.sd > 0 ? 0 : PI, q.r, 'YXZ'));   // tilt: leaned in with the hull's tuck
           else _q.setFromEuler(_e.set(-PI / 2, 0, q.r, 'XYZ'));
-          _l.compose(_v.set(q.lx, q.ly, q.lz), _q, _s.set(q.s, q.s * (f ? 0.8 : 1), 1));
+          _l.compose(_v.set(q.lx, q.ly, q.lz), _q, _s.set(q.s, q.s * (q.ar || 1), 1));
           if (q.tur) { q.tur.updateMatrix(); _t.multiplyMatrices(q.tur.matrix, _l); _m.multiplyMatrices(g.matrix, _t); }
           else _m.multiplyMatrices(g.matrix, _l);
           _m.toArray(mesh.instanceMatrix.array, n * 16);
           mesh.instanceColor.array[n * 3] = mesh.instanceColor.array[n * 3 + 1] = mesh.instanceColor.array[n * 3 + 2] = q.c;
-          if (q.k) nh++; else ns++;
+          if (q.k === 2) nt++; else if (q.k) nh++; else ns++;
         }
       }
     }
-    sc.count = ns; ho.count = nh; sc.visible = ns > 0; ho.visible = nh > 0;
-    sc.instanceMatrix.needsUpdate = ho.instanceMatrix.needsUpdate = true; sc.instanceColor.needsUpdate = ho.instanceColor.needsUpdate = true;
+    sc.count = ns; ho.count = nh; tp.count = nt; sc.visible = ns > 0; ho.visible = nh > 0; tp.visible = nt > 0;
+    sc.instanceMatrix.needsUpdate = ho.instanceMatrix.needsUpdate = tp.instanceMatrix.needsUpdate = true;
+    sc.instanceColor.needsUpdate = ho.instanceColor.needsUpdate = tp.instanceColor.needsUpdate = true;
     drawWrecks(dt, cam);
   }
 

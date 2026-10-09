@@ -95,7 +95,13 @@ window.WW = window.WW || {};
 
   WW.SHELL = { mg: { dmg: 2, speed: 120, splash: 0.6 }, small: { dmg: 12, speed: 90, splash: 1.2 },
                med: { dmg: 35, speed: 80, splash: 2 }, big: { dmg: 110, speed: 70, splash: 3.5 } };
-  WW.TORPEDO = { dmg: 220, speed: 14 };
+  // vs: a torpedo hit's direct damage x this by the target type (combat_weapons.js updateTorp), on top of the flooding
+  // it lets in (ship_fires.js breaches): the torpedo was 1942's ship killer, because it opens the hull below the
+  // waterline where no armour deck helps. Set from the record of hits to sink (with the flooding): a carrier 3-4
+  // (Yorktown dead in the water after 2 at Midway, Hornet after 2-3, Shoho 7 with 13 bombs), a battleship 5-7 (Prince
+  // of Wales 6, Yamato 10+), a cruiser 2-3 (Northampton and Chicago: 2), a destroyer 1 (often broken in two), a
+  // submarine 1. Before (balance pass, Oct 2026) every type took the bare warhead: a carrier needed ~8 hits.
+  WW.TORPEDO = { dmg: 220, speed: 14, vs: { carrier: 1.7, battleship: 1.3, cruiser: 1.5, destroyer: 2.2, submarine: 2.5 } };
   // Torpedoes per nation and launcher (ship = destroyer / cruiser tubes): rangeK x the type's torpedo range, speed,
   // dud (share of hits that do not go off, rolled with WW.rand at launch), sight (x intel R.TORP: how close a ship
   // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;

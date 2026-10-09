@@ -209,6 +209,36 @@ window.WW = window.WW || {};
         rr(3.0, 4.2), 0.6 * f, rr(1.3, 1.8) * f, col(0x6a6560), col(0xd6d2cc), -0.1, 0.6, rr(-0.4, 0.4));
     sparks(x, y + 0.3, z);
   }
+  // A torpedo hit against a hull (damage.js): a pale flash and a bubble bloom under the water, then a tall white column
+  // bursting up the ship's side (thrown out along nx, nz, the hull's outward normal), spray falling back, and a foam
+  // slick that lingers on the water. No fireball: the warhead goes off below the waterline. size ~1 (a destroyer's
+  // side) .. 1.6 (a battleship's); big: x1.25 for a Long Lance.
+  function torpedoHit(x, z, nx, nz, size) {
+    if (!P) return; size = Math.max(0.6, size || 1);
+    var sq = Math.sqrt(size), cx = x + nx * 0.8 * size, cz = z + nz * 0.8 * size;
+    P.halo.spawn(cx, -0.25, cz, 0, 0.2, 0, 0.35, 2.4 * size, 5.5 * size, col(0x8aa69a), col(0x2a3a34), 0, 0, 0);   // flash under the water
+    P.halo.spawn(cx, 0.4, cz, 0, 0.5, 0, 0.25, 1.4 * size, 3.2 * size, col(0x9a8a70), col(0x3a2a1a), 0, 0, 0);
+    for (var b = 0; b < 10; b++) {                       // the bubble bloom: a ring of foam boiling outward from the hull
+      var a = R() * 6.28, o = rr(1.5, 3.5) * size;
+      P.flat.spawn(cx, 0.1, cz, Math.cos(a) * o + nx * 1.5 * size, 0, Math.sin(a) * o + nz * 1.5 * size, rr(2.5, 3.5), 1.2 * size, 4.5 * size, col(0xe0e0e0), col(0xe0e0e0), 0, 0.9, 0);
+    }
+    var n = 20, up = 6.5 * sq + 3;                       // the column: tall and narrow, thrown up and out along the side
+    for (var i = 0; i < n; i++) {
+      var f = i / n, r = R() * 0.4 * size, aa = R() * 6.28, out = rr(0.3, 1.1) * sq;
+      P.solid.spawn(cx + Math.cos(aa) * r, 0.2 + f * 0.8 * size, cz + Math.sin(aa) * r, nx * out + Math.cos(aa) * 0.3, up * (0.45 + 0.65 * f) * rr(0.9, 1.1), nz * out + Math.sin(aa) * 0.3,
+        rr(2.6, 3.4) * sq, (0.3 + 0.25 * (1 - f)) * size + 0.25, (0.75 + 0.5 * (1 - f)) * size + 0.3, col(W), col(0xdfe6e4), 3.6, 0.35, rr(-0.6, 0.6), true);
+    }
+    for (var d = 0; d < 8; d++) {                        // spray falling back
+      var e = R() * 6.28, v = rr(2, 4.5) * sq;
+      P.solid.spawn(cx, 1 + R() * 2 * size, cz, Math.cos(e) * v + nx * 2, up * rr(0.6, 1.0), Math.sin(e) * v + nz * 2, rr(1.2, 1.8), 0.35 * sq, 0.22 * sq,
+        col(W), col(0xdfe6e4), 9, 0.15, 0, true);
+    }
+    for (var k = 0; k < 6; k++) {                        // the slick: foam lying on the water for a while
+      var c = R() * 6.28, q = rr(0, 2.5) * size;
+      P.flat.spawn(cx + Math.cos(c) * q, 0.09, cz + Math.sin(c) * q, Math.cos(c) * 0.3, 0, Math.sin(c) * 0.3, rr(9, 13), 2.2 * size, 5 * size, col(0xb8b8b8), col(0xb8b8b8), 0, 0.5, 0);
+    }
+    P.smoke.spawn(cx, 1.5 * size, cz, windX() * 0.5, 1.2, windZ() * 0.5, 4, 0.8 * size, 2.2 * size, col(0x7a7570), col(0xd6d2cc), -0.1, 0.5, 0.2);   // a little dirty smoke from the hole
+  }
   function muzzleFlash(x, y, z) {
     if (!P) return;
     P.halo.spawn(x, y, z, 0, 0, 0, 0.14, 0.8, 1.4, col(0x9a6e48), col(0x6a3a20), 0, 0, 0);
@@ -292,7 +322,7 @@ window.WW = window.WW || {};
 
   WW.fx = {
     init: init, update: update, clearAll: clearAll,
-    splash: splash, explosion: explosion, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
+    splash: splash, explosion: explosion, torpedoHit: torpedoHit, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
     fire: fire, wake: wake, torpBubbles: torpBubbles, oilSlick: oilSlick, sparks: sparks, trail: trail,
     _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; }
   };
