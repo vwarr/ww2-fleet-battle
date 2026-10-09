@@ -219,7 +219,7 @@ window.WW = window.WW || {};
   function plan(cv, dt) {
     const a = cv.ai, A = O().picture(cv), attacked = O().underAttack(cv);
     a.capT -= dt;
-    if (a.capT <= 0) { a.capT = 1; capTick(cv, A); if (attacked) recall(cv); }
+    if (a.capT <= 0) { a.capT = 1; capTick(cv, A); if (attacked) recall(cv); if (WW.cap && WW.cap.join) WW.cap.join(cv); }
     if (WW.search) WW.search.plan(cv, dt); // search flights while nothing is known (air_search.js)
     reserveTick(cv); pursuitTick(cv);
     a.strikeT -= dt;

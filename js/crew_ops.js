@@ -129,7 +129,7 @@ window.WW = window.WW || {};
       var pl = WW.world.planes;
       for (i = 0; i < pl.length; i++) {
         var q = pl[i];
-        if (q && q.carrier === sh && q.state === 'rollout' && q !== o.chockP) { o.chockP = q; o.chock = { lx: (q.lx || 0) + 1.5, lz: q.lz || 0, ly: 2, t: now + 4.5 }; }
+        if (q && q.carrier === sh && q.state === 'rollout' && q !== o.chockP) { o.chockP = q; o.chock = { lx: (q.lx || 0) + 1.5 * (WW.cfg.PLANE_K || 1), lz: q.lz || 0, ly: 2, t: now + 4.5 }; }
       }
     }
   }

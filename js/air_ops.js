@@ -11,7 +11,7 @@ window.WW = window.WW || {};
 (function () {
   const CAP_R = 35, LEASH = CAP_R * 1.5, LEASH2 = CAP_R * 4.5; // CAP orbit radius, chase leash (sim_behaviour LEASH_K), armed raid closing
   const RAID_R = 120;          // armed enemy bomber this close to the carrier: under air attack
-  const WARN_R = 260;          // raid picture radius for the fighter director (radar / lookouts decide what is in it)
+  const WARN_R = 350;          // raid picture radius for the fighter director (radar / lookouts decide what is in it; USN radar 400)
   const RELIEF = 45;           // launch a relief when an on-station CAP fighter has less fuel than this (s)
   const VALUE = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };
   const ST = { raids: 0, scrambles: 0, reliefs: 0, holds: 0, recalls: 0, jettisons: 0, leashDrops: 0 };
@@ -150,6 +150,7 @@ window.WW = window.WW || {};
     }
     if (pl.foe && !esc && !leashed(pl, pl.foe)) { pl.foe = null; ST.leashDrops++; }
     if (pl.foe && esc && pl.recall) pl.foe = pl.foe.foe === pl ? pl.foe : null;   // recalled: only self-defence on the way
+    if (WW.cap && WW.cap.joinDone(pl)) { pl.joined = null; pl.foe = null; pl.state = 'return'; return; }   // joined in from the stack: the raid is gone (or the tanks are dry), back to the stack
     const f = pl.foe;
     if (f) { pl.state = 'attack'; pl.vec = null; WW.dogfight.fight(pl, f, dt); return; }
     pl.state = 'transit';
@@ -161,7 +162,7 @@ window.WW = window.WW || {};
       if (pl.t > 1) { pl.state = 'return'; return; }
     }
     // relieved: low on fuel and a fresh fighter is on station
-    if (pl.fuel < 20 || (pl.fuel < RELIEF * 0.6 && capState(c).on >= 2)) { pl.state = 'return'; return; }
+    if (!pl.joined && (pl.fuel < 20 || (pl.fuel < RELIEF * 0.6 && capState(c).on >= 2))) { pl.state = 'return'; return; }
     if (WW.squadrons && WW.squadrons.follow(pl, dt)) return;      // wingman: hold the slot on the section leader
     if (WW.cap && WW.cap.patrol(pl, dt)) return;                 // doctrine CAP: stations, vectors (air_cap.js)
     const A = picture(c);

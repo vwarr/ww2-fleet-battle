@@ -15,7 +15,8 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var TAXI_V = 16, HOLD_V = 11, TAXI_U = 44, LINEUP_U = 39, RUN_HALF_W = 4.5;
-  var CLS = { S: { len: 4.6, span: 5.3 }, M: { len: 6.4, span: 8.0 }, L: { len: 8.3, span: 11.8 } };
+  var PK = WW.cfg.PLANE_K || 1;   // the plane footprints below are at the 1.7 plane scale (ship_classes.js)
+  var CLS = { S: { len: 4.6 * PK, span: 5.3 * PK }, M: { len: 6.4 * PK, span: 8.0 * PK }, L: { len: 8.3 * PK, span: 11.8 * PK } };
   var COL_U = 38, ROW_U = 64, MAX_V = 66; // columns within |u| <= COL_U (their exits are on the runway); rows within |u| <= ROW_U and |v| <= MAX_V
 
   function make(S) {

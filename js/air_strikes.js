@@ -187,11 +187,13 @@ window.WW = window.WW || {};
   }
   // Slot of the i-th bomber of a kind (docs/PLANE_REVIEW.md P3): 3-plane vics (wingmen 10 abeam, 6 back, stepped up),
   // two vics to a division (the second echeloned right, 16 back, stepped down), divisions 34 apart in trail, stepped
-  // down. Returns [ahead, right, up] off the kind's group lead.
-  const SL = [0, 0, 0];
+  // down. Returns [ahead, right, up] off the kind's group lead. Written at the 1.7 plane scale: the wingmen's slots
+  // follow the plane size (x PLANE_K, about a span of wingtip gap), the vic and division spacing about half as much
+  // (x sqrt(PLANE_K)), so a deck load still reads as one strike, not a cloud.
+  const SL = [0, 0, 0], PKW = WW.cfg.PLANE_K || 1, PKV = Math.sqrt(PKW);
   function bomberSlot(i) {
     const k = Math.floor(i / 3), j = i % 3, d = Math.floor(k / 2), s2 = k % 2, wing = j === 1 ? -1 : j === 2 ? 1 : 0;
-    SL[0] = -d * 34 - s2 * 16 - Math.abs(wing) * 6; SL[1] = s2 * 22 + wing * 10; SL[2] = -d * 2.5 - s2 * 2 + Math.abs(wing) * (j === 2 ? 1.5 : 1);
+    SL[0] = (-d * 34 - s2 * 16) * PKV - Math.abs(wing) * 6 * PKW; SL[1] = s2 * 22 * PKV + wing * 10 * PKW; SL[2] = -d * 2.5 - s2 * 2 + Math.abs(wing) * (j === 2 ? 1.5 : 1) * PKW;
     return SL;
   }
   const SWEEP_D = 280;         // the sweep (top cover with doctrine air.sweep) runs ahead from this far out
@@ -214,7 +216,7 @@ window.WW = window.WW || {};
     const i = pl.fi || 0, nb = Math.max(w.nDive || 0, 1);
     if (pl.kind === 'fighter') { // escorts weave (S-turns): close cover just above the bombers, top cover higher and ahead
       const ph = WW.time.now * 0.8 + (pl.element ? pl.element.id : i) * 1.9, top = pl.cover === 'top', wg = pl.wing || 0;
-      const side = top ? 1 : -1, ws = wg === 2 ? -10 : wg ? 10 : 0, vb = WW.planeType ? WW.planeType('dive', pl.nation).alt : 54;
+      const side = top ? 1 : -1, ws = (wg === 2 ? -10 : wg ? 10 : 0) * PKW, vb = WW.planeType ? WW.planeType('dive', pl.nation).alt : 54;
       if (sweeping(pl, w)) { // the sweep: well ahead of the strike, high, to clear the CAP before the bombers arrive
         const cn = pl.coverN || 0;
         keep(pl, w, 95 - (wg ? 8 : 0) - (cn >> 1) * 14, ws * 1.4 + (cn % 2 ? -1 : 1) * (cn ? 18 + (cn >> 1) * 18 : 0), (pl.pt.alt || 66) + 4 + wg, dt);
@@ -227,7 +229,7 @@ window.WW = window.WW || {};
     } else {
       const sl = bomberSlot(i), alt = pl.pt.alt || (pl.kind === 'dive' ? 54 : 30);
       if (pl.kind === 'dive') keep(pl, w, sl[0], sl[1], alt + sl[2], dt);
-      else keep(pl, w, sl[0] - 6 - Math.min(2, Math.ceil(nb / 3) - 1) * 8, sl[1] - 6, alt + sl[2], dt);   // under the dive bombers
+      else keep(pl, w, sl[0] - (6 + Math.min(2, Math.ceil(nb / 3) - 1) * 8) * PKV, sl[1] - 6 * PKV, alt + sl[2], dt);   // under the dive bombers
     }
     return true;
   }

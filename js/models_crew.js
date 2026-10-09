@@ -11,7 +11,9 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var R = Math.random, PI = Math.PI;
-  var SCALE = 1.1;                       // figure height ~0.48 units (see report: readable at close shots)
+  // figure height ~0.48 u x SCALE / 1.1: 1.1 at the old 1.7 plane scale; they shrink with the planes (x PLANE_K^0.27),
+  // so at 0.82 a sailor is ~0.39 u (3.8 m): about a sixth of a fighter's length (real ~a fifth), still readable on ships
+  var SCALE = 1.1 * Math.pow(WW.cfg.PLANE_K || 1, 0.27);
   var MAX = 400, FAR = 115;              // instance capacity, LOD distance from the camera
   var COUNT = { carrier: 13, battleship: 10, cruiser: 7, destroyer: 5, pt: 3, submarine: 3 };
   // Per-class geometry: a ship's model key k (ship.mk, the class key; a type name means its first class). The

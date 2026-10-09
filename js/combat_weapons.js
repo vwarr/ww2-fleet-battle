@@ -87,6 +87,7 @@ window.WW = window.WW || {};
     var hs = Math.hypot(dv.x, dv.z) || 1e-6, sinG = Math.max(0.5, -dv.y / Math.hypot(hs, dv.y || 0));
     var slant = y / sinG, aim = plane.diveTgt || plane.target;
     var fk = 1 + Math.min(A.flakMax, A.flakK * (aim ? flakAt(plane.nation, aim.x, aim.z, A.flakR) : 0));
+    if (WW.intercept && WW.intercept.harried) fk *= 1 + WW.intercept.HARRY.aim * WW.intercept.harried(plane);   // a fighter on its tail / a shot-up plane (air_intercept.js)
     var sa = A.k * slant * fk, sl = sa / sinG, fx = dv.x / hs, fz = dv.z / hs, ea = gauss() * sa, el = gauss() * sl;
     return { x: fx * el - fz * ea, z: fz * el + fx * ea };
   }

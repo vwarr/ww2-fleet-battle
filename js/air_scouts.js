@@ -13,7 +13,7 @@ window.WW = window.WW || {};
   'use strict';
   var SPOT_R = WW.intel ? WW.intel.R.SPOT : 85, SPOT_HOLD = WW.intel ? WW.intel.T.SPOT_HOLD : 20, SEARCH_T = 130, ALT = 26, ARC_R = 90;   // SEARCH_T covers the ~35 s flight out on the big map
   var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, CAT_SLIDE = 0.35, DAWN = [0.5, 6];   // DAWN: first catapult launch (s into the round)
-  var SCALE_CAT = 0.55, SCALE_FLY = 1.5;   // small on the catapult, arcade size (like carrier planes) in flight
+  var SCALE_FLY = 1.5 * (WW.cfg.PLANE_K || 1), SCALE_CAT = Math.min(0.55, SCALE_FLY); // small on the catapult, the carrier planes' size in flight (1.5 at the 1.7 tuning scale)
   var SHIPS = { cruiser: 1, battleship: 1 };
   if (WW.PLANE_TYPES && !WW.PLANE_TYPES.scout) WW.PLANE_TYPES.scout = { hp: 16, speed: 22, range: 1000 };
   var pool = {};
