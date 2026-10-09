@@ -15,19 +15,21 @@ window.WW = window.WW || {};
   var HEAVY_SHARE = { battleship: 0.6, cruiser: 0.55, carrier: 0.55, destroyer: 0, submarine: 0, pt: 0 };
   var HEAVY = {
     interval: 1.1,     // s between salvos per ship
-    rangeK: 1.55,      // heavy reach = aa.range * rangeK (3D), so it reaches dive bombers at altitude
+    rangeK: 2.2,       // heavy reach = aa.range * rangeK (3D), so it reaches dive bombers at the push-over (balance pass: 1.55)
     minAlt: 10,        // fuses are not set for wave-top targets: low planes are light AA's job
     minRange: 9,       // horizontal: too close to train the heavy mounts
     shellSpeed: 70,    // units/s, for time of flight / lead
     perSalvo: 3,       // bursts per salvo, spread across the target's path
     radius: 6.5,       // damage radius of one burst
-    dmgK: 0.8,         // burst damage at the centre = heavy dps * interval * dmgK (falls off with distance^2)
+    dmgK: 2,           // burst damage at the centre = heavy dps * interval * dmgK (falls off with distance^2) (balance pass: 0.8)
     aimBase: 1.6,      // aim error (units) = aimBase + aimPerUnit * range
     aimPerUnit: 0.05,
     jinkRadius: 18,    // a bomber this close to a burst starts to jink
     maxPending: 72
   };
-  var LIGHT = { interval: 0.25, maxAlt: 24, hitK: 0.38, dmgK: 1.25 };
+  // light AA reach = aa.range * rangeK (3D): 20 / 25 mm, 1.1 in and 40 mm reach ~0.6-1 km, over the torpedo bombers' drop
+  // point (80-100 u out) (balance pass: 1, the run was out of reach until the drop)
+  var LIGHT = { interval: 0.25, maxAlt: 24, hitK: 0.38, dmgK: 1.25, rangeK: 2 };
   var JINK = { decay: 0.3, hitMul: 0.45, steadyMul: 1.35, turn: 0.4, climb: 3 };
   var TR_SPEED = 85, TR_LEN = 3.0, TR_W = 0.42;   // light-AA rounds: long, fat, additive so they read at battle distance
 
@@ -278,7 +280,7 @@ window.WW = window.WW || {};
       }
       if (tm.l <= 0) {
         tm.l += LIGHT.interval; if (tm.l <= 0) tm.l = LIGHT.interval * rnd();
-        var lt = null, bd = aa.range * aa.range;
+        var lr = aa.range * LIGHT.rangeK, lt = null, bd = lr * lr;
         for (var k = 0; k < planes.length; k++) {
           var p2 = planes[k];
           if (!p2 || !p2.alive || p2.nation === s.nation || (p2.y || 0) > LIGHT.maxAlt) continue;
@@ -288,7 +290,7 @@ window.WW = window.WW || {};
         if (!lt) continue;
         var lk = WW.supply ? WW.supply.aa(s, false) : 1;
         if (lk <= 0) continue;
-        var frac = Math.sqrt(bd) / aa.range;
+        var frac = Math.sqrt(bd) / lr;
         var hc = LIGHT.hitK * (1.4 - 0.8 * frac) * (lt.kind === 'fighter' ? 0.6 : 1) * exposure(lt);
         var hit = rnd() < hc * lk;
         if (hit) hitPlane(lt, aa.dps * (1 - hs) * LIGHT.interval * LIGHT.dmgK, s, 'lightKills');
