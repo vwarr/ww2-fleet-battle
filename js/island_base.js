@@ -28,8 +28,12 @@ window.WW = window.WW || {};
   const BATTERY = { cal: 'med', count: 2, range: 140, reload: 10 };      // a coastal battery (7-inch / 5-inch guns)
   const PIT_AA = { range: 42, dps: 4.5 };            // one AA pit (3-inch + .50s): heavy share in combat_aa HEAVY_SHARE.base
   const SEE_SHIP = 170, SEE_PLANE = { USN: 210, IJN: 160 }; // Midway's radar reached the raids; IJN lookouts less
-  const HP = { hangar: 380, fuel: 200, tower: 170, barracks: 120, aa: 150, battery: 230 };
-  const R = { hangar: 6, fuel: 3.5, tower: 3, barracks: 4, aa: 3, battery: 3.5 };
+  const HP = { hangar: 380, fuel: 200, tower: 170, barracks: 120, aa: 150, battery: 230, ammo: 160 };
+  const R = { hangar: 6, fuel: 3.5, tower: 3, barracks: 4, aa: 3, battery: 3.5, ammo: 3.5 };
+  // facility places (site-local u, v; the ring search in airfield_layout.js free() moves them onto free ground): the
+  // buildings stand beyond the runway ends and at the field's edges, clear of the runways, taxiways and dispersal rows
+  const PLACES = { hangar: [[63, 9], [63, -9]], tower: [[-58, 11]], fuel: [[-61, -6], [-66, 5]], ammo: [[66, 24], [66, -24]],
+    barracks: [[-64, -22], [64, 38], [-62, 34]], aa: [[68, -32], [-66, -38], [2, 66], [44, -62], [-44, 64]] };
   const NAMES = { USN: { atoll: 'Midway', volcanic: 'Henderson Field' }, IJN: { atoll: 'Wake', volcanic: 'Rabaul' } };
   // Base strength knobs (the balance pass; tests: sim_behaviour.js --tune k=v,...). tons: x BASE_TONS in the tiebreak;
   // guns: coastal battery rate of fire (0: silent); pits: x 3 AA pits; air: x the ROSTER (land_air.js); radar: x the
@@ -38,12 +42,14 @@ window.WW = window.WW || {};
   // Defaults from the first base-strength pass (40-round runs per owner; see AI_DESIGN.md section 10), then cut back
   // coarsely in the final pass (Oct 2026: an owned base decided battles; one air element per kind, batteries at a
   // quarter rate, 2 AA pits, 0.4 x radar, defence weight 1, half the tonnage bonus, 0.6 x its known power).
-  const TUNE = { tons: 0.5, guns: 0.25, pits: 0.67, air: 0.4, radar: 0.4, defend: 1, target: 0.4, chart: 1, power: 0.6 };
+  // group: the base air group in carrier air groups (planes = carrier group x group x air / 0.6, at least one per type:
+  // land_ground.js plan(); planes beyond the parking spots wait in the hangars and are towed out as spots free up)
+  const TUNE = { tons: 0.5, guns: 0.25, pits: 0.67, air: 0.4, radar: 0.4, defend: 1, target: 0.4, chart: 1, power: 0.6, group: 1 };
   let base = null, stats = null;
 
   function newStats() {
     return { owner: null, neutralizedAt: null, raids: 0, craters: 0, closures: 0, batteriesOut: 0, pitsOut: 0, hangarsOut: 0,
-      landStrikes: 0, landSorties: 0, landDrops: 0, landHits: 0, bombardRuns: 0, bombardShells: 0, impacts: 0, coastalShots: 0 };
+      reopened: 0, landStrikes: 0, landSorties: 0, landDrops: 0, landHits: 0, bombardRuns: 0, bombardShells: 0, impacts: 0, coastalShots: 0 };
   }
   // ---- layout: site-local (u along the main runway, v to its apron side) -> world ----
   function onLand(x, z) { return WW.terrain.depthAt(x, z) < -0.6; }
@@ -62,10 +68,11 @@ window.WW = window.WW || {};
     for (let i = 0; i < 24; i++) {
       const a = i / 24 * Math.PI * 2;
       let last = null;
-      for (let r = 10; r < 90; r += 2) { const x = S.x + Math.cos(a) * r, z = S.z + Math.sin(a) * r; if (!onLand(x, z)) break; last = { x, z }; }
+      for (let r = 10; r < 110; r += 2) { const x = S.x + Math.cos(a) * r, z = S.z + Math.sin(a) * r; if (!onLand(x, z)) break; last = { x, z }; }
       if (!last) continue;
       const bx = last.x - Math.cos(a) * 4, bz = last.z - Math.sin(a) * 4;
-      if (!onLand(bx, bz) || WW.terrain.padDist(bx, bz) < 4) continue;
+      const lq = base && base.layout ? base.layout.toL(bx, bz) : null;
+      if (!onLand(bx, bz) || (lq && (WW.airfieldLayout.onNetwork(base.layout, lq.u, lq.v, 4) || base.layout.facs.some(f => Math.hypot(f.u - lq.u, f.v - lq.v) < f.r + 6)))) continue;
       cand.push({ x: bx, z: bz, a, sc: Math.cos(WW.angleDiff(a, out)) });
     }
     cand.sort((p, q) => q.sc - p.sc);
@@ -94,26 +101,30 @@ window.WW = window.WW || {};
       craters: [], repairT: REPAIR_T, neutralized: false, raidT: -1e9,
       takeDamage(amount, x, z, kind, cal) { impact(WW.enemyOf(this.nation), x, z, amount, kind, cal); },
       toWorld(lx, lz) { const c = Math.cos(this.heading), s = Math.sin(this.heading); return [this.x + c * lx - s * lz, this.z + s * lx + c * lz]; } };
-    // apron side (+v): hangars, tower, fuel farm, barracks; AA pits round the field; batteries on the shore
-    fac('hangar', place(S, -24, 25, true)); fac('hangar', place(S, -6, 25, true));
-    fac('tower', place(S, 12, 19, true));
-    fac('fuel', place(S, 27, 29)); fac('fuel', place(S, 35, 25));
-    fac('barracks', place(S, -34, 34)); fac('barracks', place(S, -20, 39)); fac('barracks', place(S, 20, 38));
-    [[-44, -12], [42, -12], [-44, 30], [44, 34], [-2, -16]].slice(0, Math.round(3 * TUNE.pits)).forEach(p => {
-      const q = place(S, p[0], p[1]);
-      const f = fac('aa', q);
-      if (f) f.unit = { isBasePit: true, id: ID + 10 + base.facilities.length, type: 'base', nation: owner, alive: true, sinking: false, submerged: false,
+    // the ground plan (airfield_layout.js): runways, taxiways and columns first; then the facilities on free ground,
+    // the air group's plan, the dispersal rows sized for it, and the slots
+    const AL = WW.airfieldLayout, L = base.layout = AL.make(S);
+    AL.columns(L);
+    const pl = WW.landGround.plan(base);
+    AL.rows(L, pl.demand);                                  // the dispersal rows first, then the buildings on free ground
+    const put = (kind, list, n) => { let k = 0; for (const q of list) { if (k >= n) break; const pt = AL.free(L, q[0], q[1], R[kind] + 1, true); if (!pt) continue; AL.addFac(L, pt.u, pt.v, R[kind] + 1); const w = L.toW(pt.u, pt.v); const f = fac(kind, w); f.u = pt.u; f.v = pt.v; f.a = Math.atan2(-w.z + S.z, -w.x + S.x); k++; } };
+    put('hangar', PLACES.hangar, 2); put('tower', PLACES.tower, 1); put('fuel', PLACES.fuel, 2); put('ammo', PLACES.ammo, 1);
+    put('barracks', PLACES.barracks, 3); put('aa', PLACES.aa, Math.round(3 * TUNE.pits));
+    base.facilities.filter(f => f.kind === 'aa').forEach(f => {
+      f.unit = { isBasePit: true, id: ID + 10 + base.facilities.indexOf(f), type: 'base', nation: owner, alive: true, sinking: false, submerged: false,
         x: f.x, z: f.z, heading: S.h, speed: 0, stats: { aa: Object.assign({}, PIT_AA), length: 4, guns: [] }, fac: f };
     });
     shorePoints(S, TUNE.guns > 0 ? 2 : 0).forEach((p, i) => {
+      const q = L.toL(p.x, p.z); AL.addFac(L, q.u, q.v, R.battery + 1);
       const f = fac('battery', p, { a: p.a, reload: 2 + i * 1.7, aim: p.a });
       f.unit = { isBattery: true, id: ID + 30 + i, type: 'battery', nation: owner, alive: true, x: f.x, z: f.z, heading: p.a, speed: 0,
         stats: { guns: [BATTERY], length: 4, aa: null }, fac: f };
     });
+    WW.landGround.setup(base, pl);
     base.maxHp = base.facilities.reduce((s, f) => s + f.maxHp, 0); base.hp = base.maxHp; base.stats.hp = base.maxHp;
     refresh();
     WW.islandBase.base = base;
-    if (WW.landAir) WW.landAir.setup(base);
+    if (WW.landAir) WW.landAir.setup(base, pl.counts);
     WW.emit('baseBuilt', { base });
     return base;
   }
@@ -147,7 +158,7 @@ window.WW = window.WW || {};
       const c = { x, z, w: cw, r: key === 'bomb' ? 2.2 : key === 'big' ? 1.8 : 1, rw: r.i, at: WW.time.now };
       r.craters.push(c); base.craters.push(c); stats.craters++;
       const was = r.closed; r.closed = weight(r) >= CLOSE;
-      if (r.closed && !was) { stats.closures++; ev('runwayClosed', { runway: r.i, x, z }); } else ev('cratered', { runway: r.i, x, z });
+      if (r.closed && !was) { stats.closures++; ev(r.i === 0 ? 'runwayClosed' : 'crossClosed', { runway: r.i, x, z }); } else ev('cratered', { runway: r.i, x, z });
     }
     for (const f of base.facilities) {
       if (f.out) continue;
@@ -156,6 +167,7 @@ window.WW = window.WW || {};
       f.hp -= dmg * (d < f.r ? 1 : 1 - (d - f.r) / blast * 0.8);
       if (f.hp <= 0) knockOut(f);
     }
+    if (cw && WW.landGround) WW.landGround.groundHit(base, x, z, blast); // planes on the ground in the blast are wrecked
     refresh(); check();
     return true;
   }
@@ -186,10 +198,12 @@ window.WW = window.WW || {};
       base.repairT -= dt;
       if (base.repairT <= 0) {
         base.repairT = REPAIR_T * (fuelOut() ? 1.3 : 1);
-        let rw = null; for (const r of base.runways) if (r.craters.length && (!rw || weight(r) > weight(rw))) rw = r;
+        let rw = base.runways[0].craters.length ? base.runways[0] : null;                 // the main runway first
+        if (!rw) for (const r of base.runways) if (r.craters.length && (!rw || weight(r) > weight(rw))) rw = r;
+        base.repairing = { runway: rw.i, crater: rw.craters[0], at: now };
         const c = rw.craters[0]; c.w -= REPAIR_W;
         if (c.w <= 0) { rw.craters.shift(); base.craters.splice(base.craters.indexOf(c), 1); }
-        if (rw.closed && weight(rw) < CLOSE) { rw.closed = false; ev('runwayOpen', { runway: rw.i }); }
+        if (rw.closed && weight(rw) < CLOSE) { rw.closed = false; stats.reopened++; ev(rw.i === 0 ? 'runwayOpen' : 'crossOpen', { runway: rw.i }); }
         refresh();
       }
     } else base.repairT = REPAIR_T;
@@ -266,6 +280,7 @@ window.WW = window.WW || {};
   });
 
   WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, runwayOpen: () => runwayOpen(),
+    opsOpen: () => !!base && WW.landGround.opsOpen(base),   // main runway open, not fouled by a wreck, base not neutralized
     get stats() { return stats; }, TUNE, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };
   stats = newStats();
 })();
