@@ -308,7 +308,8 @@ function install(P) {
         const p = c.proj;
         if (!p || p.dead || p.kind !== 'torp' || p.nation === s.nation) continue;
         const dx = s.x - p.x, dz = s.z - p.z, along = dx * Math.cos(p.h) + dz * Math.sin(p.h), perp = Math.abs(-dx * Math.sin(p.h) + dz * Math.cos(p.h));
-        if (along > 0 && along < P.ATT_R && perp < s.stats.length) { att = p; tk = true; break; }
+        const par = Math.abs(Math.sin(WW.angleDiff(s.heading, p.h))) < 0.42;   // already combing (bow / stern on, < 25 deg): the right answer
+        if (along > 0 && along < P.ATT_R && perp < s.stats.length && !par) { att = p; tk = true; break; }
       }
       if (att) {
         const hq = R.hist.get(s), i0 = hq.findIndex(r => t - r[0] <= P.EVADE_T);

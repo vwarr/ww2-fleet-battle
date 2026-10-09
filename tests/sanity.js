@@ -52,7 +52,7 @@ const RULES = [
   ['S5', 2, 'formation', 'carrier with no BB / CA / DD within 150 u (~2 x the IJN loose ring, ~4 x the USN ring) while the side has some afloat (10 s)'],
   ['S6', 1, 'formation', 'a known gun ship within 500 u of a carrier, escorts within 200 u, none of them on the threat side (10 s)'],
   ['S7', 2, 'ships (ai_surface / ships_nav)', 'a bomber on its run / dive at the ship within 100 u, and < 20 deg of turn and < 15% speed change in the last 6 s (4 s)'],
-  ['S7t', 2, 'ships (ai_surface comb)', 'as S7 under a torpedo track the side has SEEN (intel.torpedoes) running at the ship within 100 u'],
+  ['S7t', 2, 'ships (ai_surface comb)', 'as S7 under a torpedo track the side has SEEN (intel.torpedoes) running at the ship within 100 u, the ship not already bow / stern on to it (within 25 deg: combed)'],
   ['S8', 2, 'ships', 'ship (not sub) below 10% speed for 20 s with a known enemy within 600 u (rescue alongside, ASW hold excluded)'],
   ['S8c', 1, 'ships', 'ship circling: > 6 L steamed with < 2 L net in 60 s, enemy known within 600 u'],
   ['S9', 2, 'ships (ai_surface / fleet_groups)', 'lone ship (no friend within 250 u, not PT / sub) at > 50% speed heading (40 deg) at a known enemy within 300 u whose group has > 3 x its hp (10 s)'],
