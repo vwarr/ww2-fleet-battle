@@ -7,7 +7,8 @@
 //   - Star shells (night_ops.js, sim): a hot flare sprite under its parachute, a smoke thread, a pale pool of light
 //     on the sea. Searchlights: pooled additive cones from the bridge to the lit ship, and a bright spot round it.
 //   - Burning ships glow on the water (an orange pool). Tracers burn brighter.
-//   - Camera: night candidates (WW.camHooks) for lit targets, searchlights and burning ships; a slow-motion beat when
+//   - Camera: at sunrise / sunset a big ship steaming into the sun (a silhouette shot); night candidates (WW.camHooks)
+//     for lit targets, searchlights and burning ships; a slow-motion beat when
 //     a star shell bursts over what the director is filming; air stories end at dusk (no flying after dark).
 window.WW = window.WW || {};
 (function (WW) {
@@ -150,6 +151,15 @@ window.WW = window.WW || {};
   }
   // Night camera candidates: lit targets first, then searchlights and burning ships.
   function camHook(add, dur) {
+    // The sun on the horizon (dawn or dusk, elevation -1.5 .. 8 deg): chase a big ship steaming toward it, so it rides
+    // in silhouette against the glowing sky and the gold path on the water.
+    const D = WW.dayNight;
+    if (D && D.sunElev > -1.5 && D.sunElev < 8) {
+      for (const s of WW.world.ships) {
+        if (!s.alive || s.sinking || !(s.type === 'battleship' || s.type === 'cruiser' || s.type === 'carrier')) continue;
+        if (Math.cos(s.heading - D.sunAz) > 0.75) add(8.8, 'chase', s, { dur: dur(14, 18) });
+      }
+    }
     if (n < 0.4) return;
     const NO = WW.nightOps;
     if (NO) {
