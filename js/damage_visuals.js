@@ -135,7 +135,7 @@ window.WW = window.WW || {};
     if (heavy && f < 0.6) D.parts.forEach(function (pt) {
       if (pt.done) return;
       var near = Math.abs(lx - pt.p[7]) < 3.2 || f < 0.3;
-      if (near && R() < (f < 0.3 ? 0.35 : 0.5)) topple(sh, D, pt);
+      if (near && R() < (f < 0.3 ? 0.25 : 0.35)) topple(sh, D, pt);
     });
   }
 
