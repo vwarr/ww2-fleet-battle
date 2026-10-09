@@ -12,7 +12,7 @@
 // Events: 'airOrder' { carrier, squadron, order: 'strikeAway' | 'cag' | 'attack' | 'redirect', plane, leader, target, squadrons }.
 window.WW = window.WW || {};
 (function () {
-  const ARRIVE = 140, DETOUR_FAR = 120, VB_HOLD = 20, VT_HOLD = 15;
+  const ARRIVE = 140, DETOUR_FAR = 120, VB_HOLD = 20, VT_HOLD = 15, SEARCH_R = 60, UNSEEN_T = 8, CV_NEAR = 250;
   const ST = { redirects: 0, handovers: 0, detours: 0, saves: 0, syncHolds: 0 };
   const bomber = p => p.alive && (p.kind === 'dive' || p.kind === 'torpedo');
   const emit = (o) => { if (WW.emit) WW.emit('airOrder', o); };
@@ -35,6 +35,16 @@ window.WW = window.WW || {};
     return s;
   }
 
+  // the nearest freshly seen enemy carrier within CV_NEAR of a strike, or null
+  function carrierNear(from) {
+    if (!WW.intel) return null;
+    let best = null, bd = CV_NEAR;
+    for (const c of WW.intel.enemyShips(from.nation, { fresh: WW.intel.T.FRESH + 2 })) {
+      const o = c.unit; if (!o || !o.alive || o.sinking || (WW.intel.typeOf ? WW.intel.typeOf(c) : o.type) !== 'carrier') continue;   // what the side believes it is
+      const d = WW.dist(from.x, from.z, c.x, c.z); if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  }
   // air_strikes.js tick() once the wave has left: CAG, redirect, timing state. Returns the target (may change).
   function waveTick(w) {
     const now = WW.time.now;
@@ -45,9 +55,14 @@ window.WW = window.WW || {};
     if (!w.away) { w.away = true; emit({ carrier: w.carrier, squadron: w.cag && w.cag.squadron, order: 'strikeAway', plane: w.cag, leader: w.cag, target: w.target, squadrons: sqNames(w) }); }
     let t = w.target;
     const seen = t && t.alive && !t.submerged && (!WW.intel || WW.intel.visible(w.nation, t, 4));
-    if (w.dT < ARRIVE && !seen && now - (w.rtT || -99) > 3) {
+    // Redirect only once the strike has reached the plotted position and found nothing (planes see ships out to ~100,
+    // so the screen comes into view before the carrier behind it), or the target stayed unseen for UNSEEN_T inside
+    // ARRIVE; a fresh carrier contact within CV_NEAR is taken before anything closer.
+    if (seen || w.dT >= ARRIVE) w.unseen0 = null; else if (w.unseen0 == null) w.unseen0 = now;
+    if (w.dT < ARRIVE && !seen && (w.dT < SEARCH_R || now - w.unseen0 > UNSEEN_T) && now - (w.rtT || -99) > 3) {
       w.rtT = now;
-      const n = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: 170 }) : null;
+      const from = { x: w.x, z: w.z, nation: w.nation };
+      const n = WW.airOps ? carrierNear(from) || WW.airOps.pickTarget(from, { near: 170 }) : null;
       if (n && n !== t) {
         w.target = t = n; ST.redirects++;
         for (const p of w.members) if (p.alive && p.target) p.target = n;
@@ -120,6 +135,7 @@ window.WW = window.WW || {};
     if (w === undefined) return 'close';   // not claimed a wave slot yet: decide once it has
     if (w && pl.element) { const seen = []; for (const p of w.members) if (p.kind === 'fighter' && p.element && seen.indexOf(p.element) < 0) seen.push(p.element); idx = Math.max(0, seen.indexOf(pl.element)); }
     else idx = (pl.wing || 0) % 2;
+    pl.coverN = idx >> 1;                  // the n-th element of this cover (a full air wing's strike carries several)
     return (pl.cover = idx % 2 ? 'top' : 'close');
   }
   function strikeBombers(pl) { const L = []; for (const p of WW.world.planes) if (bomber(p) && p.carrier === pl.carrier && (p.state === 'transit' || p.state === 'attack' || p.state === 'return') && WW.dist(p.x, p.z, pl.x, pl.z) < 220) L.push(p); return L; }

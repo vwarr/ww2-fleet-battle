@@ -213,10 +213,13 @@ window.WW = window.WW || {};
       const ph = WW.time.now * 0.8 + (pl.element ? pl.element.id : i) * 1.9, top = pl.cover === 'top', wg = pl.wing || 0;
       const side = top ? 1 : -1, ws = wg === 2 ? -10 : wg ? 10 : 0, vb = WW.planeType ? WW.planeType('dive', pl.nation).alt : 54;
       if (sweeping(pl, w)) { // the sweep: well ahead of the strike, high, to clear the CAP before the bombers arrive
-        keep(pl, w, 95 - (wg ? 8 : 0), ws * 1.4, (pl.pt.alt || 66) + 4 + wg, dt);
+        const cn = pl.coverN || 0;
+        keep(pl, w, 95 - (wg ? 8 : 0) - (cn >> 1) * 14, ws * 1.4 + (cn % 2 ? -1 : 1) * (cn ? 18 + (cn >> 1) * 18 : 0), (pl.pt.alt || 66) + 4 + wg, dt);
         return true;
       }
-      keep(pl, w, (top ? 14 : -12) - (wg ? 6 : 0) + Math.cos(ph) * 3, side * (top ? 26 : 18) + ws + Math.sin(ph) * 7,
+      // a further element of the same cover takes the mirror slot on the other side, then the next pair steps out and back
+      const cn = pl.coverN || 0, sd = side * (cn % 2 ? -1 : 1), out = (cn >> 1) * 24;
+      keep(pl, w, (top ? 14 : -12) - (wg ? 6 : 0) - (cn >> 1) * 12 + Math.cos(ph) * 3, sd * ((top ? 26 : 18) + out) + ws * (cn % 2 ? -1 : 1) + Math.sin(ph) * 7,
         (top ? (pl.pt.alt || 68) + 3 : Math.max(vb + 9, (pl.pt.alt || 68) - 1)) + wg, dt);   // close cover ~67, top cover ~71
     } else {
       const sl = bomberSlot(i), alt = pl.pt.alt || (pl.kind === 'dive' ? 54 : 30);
