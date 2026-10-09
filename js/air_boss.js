@@ -239,6 +239,7 @@ window.WW = window.WW || {};
     const a = cv.ai, D = cv._deck;
     a.launchT -= dt;
     if (!a.queue.length || a.launchT > 0) return;
+    if (WW.dayNight && !WW.dayNight.canFly()) return;   // dark: the queue waits for the light (daylight.js), nothing is lost
     let i = 0;
     if (a.queue[0].target) {
       if (a.lholdT > 0 && a.lholdT < HOLD_MAX) return;
