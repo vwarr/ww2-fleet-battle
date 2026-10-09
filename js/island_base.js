@@ -27,6 +27,7 @@ window.WW = window.WW || {};
   const BLAST = { bomb: 7, big: 5, med: 3, small: 1.5, mg: 0 };
   const BATTERY = { cal: 'med', count: 2, range: 140, reload: 10 };      // a coastal battery (7-inch / 5-inch guns)
   const PIT_AA = { range: 42, dps: 4.5 };            // one AA pit (3-inch + .50s): heavy share in combat_aa HEAVY_SHARE.base
+  const ALARM_DT = 0.5;                              // the alarm check's interval (s)
   const SEE_SHIP = 170, SEE_PLANE = { USN: 210, IJN: 160 }; // Midway's radar reached the raids; IJN lookouts less
   const HP = { hangar: 380, fuel: 200, tower: 170, barracks: 120, aa: 150, battery: 230, ammo: 160 };
   const R = { hangar: 6, fuel: 3.5, tower: 3, barracks: 4, aa: 3, battery: 3.5, ammo: 3.5 };
@@ -48,7 +49,7 @@ window.WW = window.WW || {};
   let base = null, stats = null;
 
   function newStats() {
-    return { owner: null, neutralizedAt: null, raids: 0, craters: 0, closures: 0, batteriesOut: 0, pitsOut: 0, hangarsOut: 0,
+    return { alarmAt: null, alarmKind: null, owner: null, neutralizedAt: null, raids: 0, craters: 0, closures: 0, batteriesOut: 0, pitsOut: 0, hangarsOut: 0,
       reopened: 0, landStrikes: 0, landSorties: 0, landDrops: 0, landHits: 0, bombardRuns: 0, bombardShells: 0, impacts: 0, coastalShots: 0 };
   }
   // ---- layout: site-local (u along the main runway, v to its apron side) -> world ----
@@ -171,6 +172,7 @@ window.WW = window.WW || {};
     }
     if (WW.baseLifeLayout) WW.baseLifeLayout.hit(base, x, z, dmg, blast);   // the camp's huts and tents (base.decor)
     base.hitT = WW.time.now; base.hitX = x; base.hitZ = z;                   // the ground life takes cover / runs to it
+    if (!base.alarm) raiseAlarm(kind === 'bomb' ? 'bombed' : 'shelled', x, z);
     if (cw && WW.landGround) WW.landGround.groundHit(base, x, z, blast); // planes on the ground in the blast are wrecked
     refresh(); check();
     return true;
@@ -212,13 +214,32 @@ window.WW = window.WW || {};
       }
     } else base.repairT = REPAIR_T;
     batteries(dt);
+    // the alarm: the first sighting of the enemy closing on the island (base_ai.js alarm(), every ALARM_DT s)
+    if (!base.alarm && now >= (base.alarmT || 0)) {
+      base.alarmT = now + ALARM_DT;
+      const a = WW.baseAI && WW.baseAI.alarm(base);
+      if (a) raiseAlarm(a.kind, a.x, a.z, a);
+    }
     // air raid: armed enemy bombers heading for the base
     if (now - base.raidT > 60) for (const p of WW.world.planes) {
       if (p.alive && p.nation !== base.nation && p.ordnance && p.target === base && WW.dist2(p.x, p.z, base.x, base.z) < 160 * 160) {
+        if (!base.alarm) raiseAlarm('raid', p.x, p.z, { unit: p, n: 1 });   // a raid nobody reported: the alarm goes late
         base.raidT = now; stats.raids++; ev('airRaid', { by: p }); break;
       }
     }
     if (WW.landAir) WW.landAir.update(base, dt);
+  }
+  // The alarm ("oh no" moment), once per round: base.alarm { t, kind, x, z (the threat), bearing (deg from the base) };
+  // a 'baseEvent' kind 'alarm' (caption, war diary) and 'baseAlarm' { x, z (the base), t, kind, tx, tz, bearing, base }
+  // for the cameras. kind: 'ship' (warships sighted), 'raid' / 'planes' (planes closing), 'shelled' / 'bombed' (hit
+  // before anyone reported them)
+  function raiseAlarm(kind, x, z, o) {
+    if (!base || base.alarm) return;
+    const brg = Math.round((Math.atan2(x - base.x, -(z - base.z)) * 180 / Math.PI + 360) % 360) % 360;
+    base.alarm = { t: WW.time.now, kind, x, z, bearing: brg, n: (o && o.n) || 0, what: (o && o.what) || null };
+    stats.alarmAt = WW.game ? WW.game.roundTime : WW.time.now; stats.alarmKind = kind;
+    ev('alarm', { alarm: base.alarm, x: base.x, z: base.z });
+    WW.emit('baseAlarm', { x: base.x, z: base.z, t: WW.time.now, kind, tx: x, tz: z, bearing: brg, base });
   }
   function fuelOut() { return base.facilities.some(f => f.kind === 'fuel' && f.out); }
   function batteries(dt) {

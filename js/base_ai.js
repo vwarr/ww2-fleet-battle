@@ -9,6 +9,9 @@
 //  - Carrier strikes (fleet_cmd.js strikes): strikeValue() is the base's worth as a strike target, against the
 //    ships' STRIKE_V (carrier 12, battleship 9): an enemy carrier in reach is the better target (the Midway dilemma:
 //    a strike on the island is a strike not kept for the carriers).
+//  - The alarm (island_base.js update, alarm()): the first time the base's side has a fresh sighting (WW.intel, any
+//    observer: the base's radar and lookouts, ships, scouts) of an enemy warship within ALARM_SHIP of the island, or of
+//    enemy planes within ALARM_PLANE closing on it (a lone plane within ALARM_NEAR). Deterministic (no dice, intel only).
 //  - Defence (fleet_cmd.js assignment): an enemy ship within DEF_R of the own base is worth x2 to own ships within
 //    DEF_HELP of the base (the fleet covers the island).
 window.WW = window.WW || {};
@@ -59,6 +62,30 @@ window.WW = window.WW || {};
   }
   function neutralized() { weights(false); }
 
+  var ALARM_SHIP = 320, ALARM_PLANE = 260, ALARM_NEAR = 110, CLOSING = 0.7;
+  // -> { kind: 'ship' | 'raid' | 'planes', x, z, unit, n } or null (n: enemy planes closing)
+  function alarm(b) {
+    var I = WW.intel; if (!I || !b) return null;
+    var best = null, bd = 1e18, i, c, u, d;
+    var cs = I.enemyShips(b.nation, { fresh: true });
+    for (i = 0; i < cs.length; i++) {
+      c = cs[i]; u = c.unit;
+      if (!u || u.isBase || !u.alive || u.submerged) continue;
+      d = WW.dist2(c.x, c.z, b.x, b.z);
+      if (d < ALARM_SHIP * ALARM_SHIP && d < bd) { bd = d; best = { kind: 'ship', x: c.x, z: c.z, unit: u, what: I.typeOf(c), n: 0 }; }
+    }
+    var ps = I.enemyPlanes(b.nation), n = 0, near = null, nd = 1e18;
+    for (i = 0; i < ps.length; i++) {
+      c = ps[i]; u = c.unit; if (!u || !u.alive) continue;
+      d = WW.dist(c.x, c.z, b.x, b.z); if (d > ALARM_PLANE) continue;
+      var closing = d < ALARM_NEAR || ((b.x - c.x) * Math.cos(c.heading) + (b.z - c.z) * Math.sin(c.heading)) / Math.max(1, d) > CLOSING;
+      if (!closing) continue;
+      n++; if (d < nd) { nd = d; near = c; }
+    }
+    if (near && (n >= 2 || nd < ALARM_NEAR)) return { kind: n >= 3 ? 'raid' : 'planes', x: near.x, z: near.z, unit: near.unit, n: n };
+    return best;
+  }
+
   // no torpedoes at an island (ai_surface.js torpedoes / PT and sub launches go through fireSpread)
   if (WW.shipAI && WW.shipAI.h) {
     var fs = WW.shipAI.h.fireSpread;
@@ -92,5 +119,6 @@ window.WW = window.WW || {};
   if (WW.strike && WW.strike.TOP) WW.strike.TOP.base = 3;                         // pull-out clearance over the field
   WW.on('baseBuilt', function (e) { if (e && e.base) weights(true); });
 
-  WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, W_BASE: W_BASE };
+  WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, alarm: alarm, W_BASE: W_BASE,
+    ALARM: { SHIP: ALARM_SHIP, PLANE: ALARM_PLANE, NEAR: ALARM_NEAR } };
 })();

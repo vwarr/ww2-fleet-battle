@@ -107,6 +107,13 @@ window.WW = window.WW || {};
   function line(e) {
     const b = e.base, n = b.name, usn = b.nation === 'USN';
     switch (e.kind) {
+      case 'alarm': { // the first sighting: the "oh no" moment (priority 2: never throttled)
+        const a = e.alarm, b3 = String(a.bearing).padStart(3, '0');
+        if (a.kind === 'raid') return [n + ': air raid!', 'Enemy planes bearing ' + b3 + (usn ? ', the siren wails: man the guns' : ', the alarm sounds: man the guns'), 2];
+        if (a.kind === 'planes') return [n + ': enemy planes!', 'Bearing ' + b3 + ', closing', 2];
+        if (a.kind === 'ship') return [n + ': enemy warships!', 'Enemy ' + (CV[a.what] || 'ships') + ' sighted bearing ' + b3 + ': general quarters', 2];
+        return [n + (a.kind === 'bombed' ? ': bombs falling!' : ': under fire!'), a.kind === 'bombed' ? 'The raid came in unseen: take cover' : 'Shells from the sea: take cover', 2];
+      }
       case 'airRaid': return [n + ' under air attack', usn ? 'Marine fighters scramble' : 'The Zeros scramble', 1];
       case 'runwayClosed': return ['Runway cratered', n + ': nothing can take off', 1];
       case 'runwayOpen': return ['Runway repaired: launches resume', usn ? 'The Seabees filled the craters' : 'Work crews filled the craters', 1];
