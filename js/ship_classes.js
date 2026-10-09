@@ -48,10 +48,10 @@ window.WW = window.WW || {};
       mod: { hp: 1.04, speed: 0.98, turn: 1.05 }, guns: [{ cal: 'big', count: 3 }, { cal: 'small', count: 2 }] }),
     C({ key: 'northampton', type: 'cruiser', nation: 'USN', name: 'Northampton class', lenM: 183, beamM: 20.1, tons: 12000,
       names: ['Northampton', 'Chester', 'Louisville', 'Chicago', 'Houston', 'Augusta'], hull: { top: 0.95, bowF: 0.23, sternW: 0.7, sheer: 0.4 },
-      guns: [{ cal: 'med', count: 3 }] }),
+      guns: [{ cal: 'med', count: 3 }], torpedoes: null }),
     C({ key: 'neworleans', type: 'cruiser', nation: 'USN', name: 'New Orleans class', lenM: 179, beamM: 18.8, tons: 12500,
       names: ['New Orleans', 'Astoria', 'Minneapolis', 'San Francisco', 'Quincy', 'Vincennes', 'Tuscaloosa'],
-      hull: { top: 0.9, bowF: 0.23, sternW: 0.7, sheer: 0.4 }, mod: { hp: 1.05, speed: 0.98 }, guns: [{ cal: 'med', count: 3 }] }),
+      hull: { top: 0.9, bowF: 0.23, sternW: 0.7, sheer: 0.4 }, mod: { hp: 1.05, speed: 0.98 }, guns: [{ cal: 'med', count: 3 }], torpedoes: null }),
     C({ key: 'atlanta', type: 'cruiser', nation: 'USN', name: 'Atlanta class (AA)', lenM: 165, beamM: 16.2, tons: 8300,
       names: ['Atlanta', 'Juneau', 'San Diego', 'San Juan'], hull: { top: 0.85, bowF: 0.24, sternW: 0.7, sheer: 0.4 },
       mod: { hp: 0.85, speed: 1.03, turn: 1.1, aa: 1.35 }, guns: [{ cal: 'med', count: 6 }], weight: 0.6 }),
@@ -168,6 +168,9 @@ window.WW = window.WW || {};
     st.hp = Math.round(base.hp * (md.hp || 1));
     st.speed = +(base.speed * WW.clamp(md.speed || 1, 1 - SPD_K, 1 + SPD_K)).toFixed(3);
     st.turn = +(base.turn * WW.clamp(md.turn || 1, 1 - TURN_K, 1 + TURN_K)).toFixed(4);
+    // torpedoes: null - a class without tubes (balance pass 2: the Northampton class landed theirs before the war and
+    // the New Orleans class was built without; the Atlanta class kept eight)
+    if (c.torpedoes === null) st.torpedoes = null;
     if (base.aa) st.aa = Object.assign({}, base.aa, { dps: base.aa.dps * (md.aa || 1) });
     if (c.guns) {
       st.guns = c.guns.map(function (g) {

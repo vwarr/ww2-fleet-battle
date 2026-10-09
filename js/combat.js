@@ -16,16 +16,6 @@ window.WW = window.WW || {};
   var AA_INTERVAL = 0.25;
   var BEAM_FRAC = 0.12;      // half-beam = length * BEAM_FRAC
   var SPOT_DISP = 0.85, SPOT_MIN = 60;  // target spotted by a scout floatplane (air_scouts.js): dispersion x0.85 beyond 60 units
-  // Battleship main batteries by class (balance pass 2): the type's fire rate is shared by every class (ship_classes.js),
-  // so the weight of a broadside sets the damage: guns x shell weight against the mean of the four classes (8,900 kg).
-  // North Carolina / South Dakota 9 x 16 in / 1,225 kg = 11,025 kg (1.24); Nagato 8 x 16 in / 1,020 kg (0.92); Kongo
-  // 8 x 14 in / 673 kg (0.61): Washington's 16 in wrecked Kirishima in seven minutes. Cruisers (9 x 8 in USN against
-  // 10 x 8 in IJN) and destroyers are near enough alike to keep the type's.
-  var SHELL_CLASS = WW.SHELL_CLASS = { on: 0, big: { northcarolina: 1.24, southdakota: 1.24, nagato: 0.92, kongo: 0.61 } };
-  function shellK(ship, cal) {
-    var t = SHELL_CLASS.on && SHELL_CLASS[cal], k = t && ship.stats && t[ship.stats.cls];
-    return k ? 1 + SHELL_CLASS.on * (k - 1) : 1;
-  }
 
   // ---------- helpers ----------
   function rnd() { return WW.rand ? WW.rand() : Math.random(); }
@@ -162,7 +152,7 @@ window.WW = window.WW || {};
       p.x0 = m.x; p.y0 = m.y; p.z0 = m.z; p.T = T; p.g = B.g;
       p.vx = (ax - m.x) / T; p.vz = (az - m.z) / T;
       p.vy0 = (0.5 * B.g * T * T - m.y) / T;  // lands at y=0 exactly at T
-      p.dmg = S.dmg * rr(0.8, 1.2) * shellK(ship, cal);
+      p.dmg = S.dmg * rr(0.8, 1.2);
       if (p.mesh) {
         var k = cal === 'big' ? 0.95 : cal === 'med' ? 0.7 : cal === 'small' ? 0.6 : 0.45;
         if (B.tracer) p.mesh.scale.set(B.len * k * 1.2, k * 0.6, k * 0.6); else p.mesh.scale.set(B.len * k, k, k);
