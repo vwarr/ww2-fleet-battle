@@ -89,7 +89,7 @@ window.WW = window.WW || {};
   }
   if (WW.combatAA && WW.combatAA.cfg) WW.combatAA.cfg.HEAVY_SHARE.base = 0.45;   // AA pits: 3-inch guns + .50s
   if (WW.strike && WW.strike.TOP) WW.strike.TOP.base = 3;                         // pull-out clearance over the field
-  WW.on('baseBuilt', function () { weights(true); });
+  WW.on('baseBuilt', function (e) { if (e && e.base) weights(true); });
 
   WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, W_BASE: W_BASE };
 })();

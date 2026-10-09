@@ -82,7 +82,7 @@ window.WW = window.WW || {};
     stats = newStats(); stats.owner = owner || null;
     base = null;
     const S = WW.terrain && WW.terrain.site;
-    if (!S || !owner || owner === 'none') { WW.islandBase.base = null; return null; }
+    if (!S || !owner || owner === 'none') { WW.islandBase.base = null; WW.emit('baseBuilt', { base: null }); return null; } // visuals clear the old airfield
     base = { isBase: true, id: ID, type: 'base', nation: owner, alive: true, sinking: false, removed: false, submerged: false,
       x: S.x, z: S.z, heading: S.h, speed: 0, kind: S.kind, name: NAMES[owner][S.kind] || 'the island', site: S,
       stats: { name: 'Airfield', type: 'base', hp: 0, speed: 0, turn: 0, length: 40, minDepth: 0, tons: BASE_TONS,

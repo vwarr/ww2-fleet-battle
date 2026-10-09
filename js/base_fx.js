@@ -46,6 +46,7 @@ window.WW = window.WW || {};
   function onBuilt(e) {
     if (WW.simOnly || !WW.scene || !WW.baseModels) return;
     clear();
+    if (!e || !e.base) return; // no base (the Base button's 'none'): the old airfield goes
     built = WW.baseModels.build(e.base); built.base = e.base;
     WW.scene.add(built.group);
     lastT = WW.time.now;

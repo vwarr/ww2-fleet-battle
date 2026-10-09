@@ -145,7 +145,7 @@ window.WW = window.WW || {};
       var cv = cvs[k], e = null, ed = DEFEND_R; if (cv.type !== 'carrier') continue;
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit;
-        if (!u || !u.alive || u.submerged || !u.stats.guns.length || u.type === 'carrier' || now - c.seenAt > 30) continue;
+        if (!u || !u.alive || u.submerged || !u.stats.guns.length || u.type === 'carrier' || u.isBase || now - c.seenAt > 30) continue; // an island cannot close on a carrier
         var d = WW.dist(cv.x, cv.z, c.x, c.z); if (d < ed) { ed = d; e = u; }
       }
       if (e) B.defend.push({ carrier: cv, enemy: e, d: ed });
