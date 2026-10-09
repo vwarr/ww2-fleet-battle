@@ -20,7 +20,7 @@ window.WW = window.WW || {};
   const R = Math.random, rr = (a, b) => a + (b - a) * R(), PI = Math.PI;
   const FAR = 420, DRAW = 135, MAXP = 110, WALK = 0.8, RUN = 2.4, CALM = 30;
   let base = null, built = null, P = [], S = null, phase = 'peace', lastT = 0, hitSeen = -1e9, calmT = 0, threatT = -1e9, afterT = 0, nextTeam = 0;
-  const FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73);
+  const FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73), G0 = { fail: 0 };
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _p = new THREE.Vector3(), _s = new THREE.Vector3(), pose = { aL: 0, aR: 0, oL: null, oR: null };
   const gy = (x, z) => Math.max(base.site.padH, -WW.terrain.depthAt(x, z));
   const dir = a => [Math.cos(a), Math.sin(a)];
@@ -67,7 +67,7 @@ window.WW = window.WW || {};
     const w = W().path(from.x, from.z, to.x, to.z);
     if (w === undefined) { p.pend = [x, z, run, then, face, via]; p.path = null; p.act = run ? 'ready' : p.act; return; } // planned next frame
     p.pend = null;
-    if (!w) { p.path = null; p.act = 'idle'; p.at = WW.time.now + 3; return; }   // no way there: stays put
+    if (!w) { p.path = null; p.act = run ? 'prone' : 'idle'; p.at = WW.time.now + 3; G0.fail++; return; }   // no way there: stays put (in a hurry: hits the dirt)
     p.path = (from === p ? [] : [{ x: from.x, z: from.z }]).concat(w, via ? [via] : [], [{ x, z }]); p.via = via || null; p.goal = [x, z, run, then, face, via]; p.pi = 0; p.spd = run ? RUN * rr(0.9, 1.1) : WALK * rr(0.85, 1.15);
     p.next = then || 'idle'; p.goalFace = face; p.act = run ? 'run' : 'walk'; p.wait = 0;
   }
@@ -101,13 +101,13 @@ window.WW = window.WW || {};
     for (const pit of S.pits) for (const sl of pit.slots) { // gun crews: the nearest men to each pit
       if (sl.who || pit.f.out) continue;
       const p = nearest(live.filter(q => !q.station && !q.fire), sl.x, sl.z); if (!p) break;
-      p.station = sl; sl.who = p; go(p, sl.x, sl.z, true, 'gun', Math.atan2(pit.f.z - sl.z, pit.f.x - sl.x) + PI); p.role = 'g';
+      p.station = sl; sl.who = p; go(p, sl.x, sl.z, true, 'gun', Math.atan2(pit.f.z - sl.z, pit.f.x - sl.x) + PI); p.role = 'g'; p.delay = WW.time.now + rr(0, 0.8);
     }
     for (const p of live) {
       if (p.station || p.fire) continue;
       if (p.act === 'sentry') { p.act = 'wave'; continue; }
       const t = trenchFor(p);
-      if (t) { p.station = t; t.who = p; go(p, t.x, t.z, true, 'trench', rr(0, 2 * PI)); } else { p.next = 'prone'; p.act = 'run'; }
+      if (t) { p.station = t; t.who = p; go(p, t.x, t.z, true, 'trench', rr(0, 2 * PI)); p.delay = WW.time.now + rr(0.2, 1.6); } else { p.act = 'prone'; proneFace(p); }   // a moment's stare at the sky, then the sprint
     }
     pilots();
   }
@@ -115,12 +115,14 @@ window.WW = window.WW || {};
   // pilots run from the huts to the parked fighters, to the wingtip in front of the wing, and climb in
   function pilots() {
     const V = WW.landAir.VAR, fs = base.slots.filter(s => s.spot && s.state === 'parked' && V[s.v] && V[s.v].kind === 'fighter').slice(0, 6);
+    let k = 0;
     for (const s of fs) {
-      const d = nearest(S.huts, s.x, s.z); if (!d) break;
+      const d = nearest(S.huts.filter(h => (h.n || 0) < 2), s.x, s.z); if (!d) break; d.n = (d.n || 0) + 1;   // two pilots at most from a hut door, one after the other
       const sp = s.spot, C = WW.airfieldLayout.CLS[V[s.v].cls || 'S'], c = dir(sp.h), sd = R() < 0.5 ? 1 : -1;
       const lane = WW.airfieldLayout && base.layout.toW(sp.u, sp.laneV), nose = { x: sp.x + c[0] * (C.len / 2 + 0.9), z: sp.z + c[1] * (C.len / 2 + 0.9) };
       const tip = { x: sp.x + c[0] * C.len * 0.27 - c[1] * sd * (C.span / 2 + 0.35), z: sp.z + c[1] * C.len * 0.27 + c[0] * sd * (C.span / 2 + 0.35) };
       const p = man(d.x, d.z, 'o', 'idle'); if (!p) break;
+      p.delay = WW.time.now + 0.4 + (d.n - 1) * 1.1 + k++ * 0.25;
       p.pilot = s; go(p, lane.x, lane.z, true, 'climb', sp.h + PI); if (p.pend) p.tail = [nose, tip]; else if (p.path) p.path.push(nose, tip); else p.gone = true;
     }
   }
@@ -222,7 +224,7 @@ window.WW = window.WW || {};
   function step(p, dt, now, gp, vs, attack) {
     if (p.pend) { const q = p.pend, tail = p.tail; go(p, q[0], q[1], q[2], q[3], q[4], q[5]); if (!p.pend && tail) { if (p.path) p.path.push(...tail); else if (p.pilot) p.gone = true; p.tail = null; } if (p.pend) { clearOf(p, gp, vs); return; } }
     if (p.walker && p.act === 'idle' && now > p.at && S.doors.length) { const d = S.doors[Math.floor(R() * S.doors.length)]; go(p, d.x, d.z, false, 'idle'); p.at = now + rr(4, 14); }
-    if (p.path && dt > 0) {
+    if (p.path && dt > 0 && !(p.delay > now)) {
       const t = p.path[p.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz);
       const spd = p.spd * (attack && p.act === 'run' ? 1.15 : 1), mv = Math.min(d, spd * dt);
       const nx = p.x + dx / (d || 1) * mv, nz = p.z + dz / (d || 1) * mv;
@@ -287,7 +289,7 @@ window.WW = window.WW || {};
     const t = performance.now() / 1000;
     for (const p of P) {
       if (p.hid || (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2 > DRAW * DRAW) continue;
-      const moving = !!p.path, run = moving && p.spd > 1.5, sw = moving ? Math.sin(t * (run ? 15 : 9) + p.ph) : 0;
+      const moving = !!p.path && !(p.delay > now), run = moving && p.spd > 1.5, sw = moving ? Math.sin(t * (run ? 15 : 9) + p.ph) : 0;
       let y = moving ? Math.abs(sw) * (run ? 0.06 : 0.025) : 0, lean = run ? 0.25 : 0, sy = 1, face = p.face;
       pose.aL = sw * (run ? 1.0 : 0.45); pose.aR = -pose.aL; pose.oL = pose.oR = null;
       const tr = { x: p.x, z: p.z, role: p.role, act: p.act };
@@ -329,5 +331,5 @@ window.WW = window.WW || {};
   const perf = { ms: 0, max: 0 };
   WW.baseLife = { update(rdt, b, bl) { const t0 = performance.now(); try { update(rdt, b, bl); } catch (e) { if (!WW.baseLife._err) { WW.baseLife._err = e; console.error('baseLife', e); } }
       const ms = performance.now() - t0; perf.ms = perf.ms * 0.95 + ms * 0.05; perf.max = Math.max(perf.max * 0.999, ms); },
-    get phase() { return phase; }, perf, get people() { return P; }, get sites() { return S; }, clear, FIG_K };
+    get phase() { return phase; }, perf, fails: G0, get people() { return P; }, get sites() { return S; }, clear, FIG_K };
 })();
