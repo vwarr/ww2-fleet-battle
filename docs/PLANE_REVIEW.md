@@ -86,7 +86,7 @@ Share of sortie time by category. Circling means the trailing 10 s of track has 
 | USN later, squadron | 85 | 384 | 11.5 | 0 | 15.5 | 41.8 | 0 | 85% | 0 to 1 |
 | IJN later, deckload | 144 | 498 | 8.3 | 2.3 | 22.7 | 55.7 | 4.2 | **88%** | **0** |
 
-- Form-up is always exactly 20.0 s, the `FORM_WAIT` cap. **First strikes never leave because they are formed; they always leave on the timer**, with planes still on deck.
+- Form-up of first strikes: 33 waves, p10 20.0 s, p50 20.0 s, p90 20.8 s, minimum 18 s. That is the `FORM_WAIT` cap: **in practice a first strike never leaves because it is formed; it leaves on the timer**, with planes still on deck.
 - About 20 waves are ordered per round with carriers, most of them empty. Waves that dropped, per carrier that struck: 1.8 (conf. 1.7). 62% of carriers make a second effective strike (conf. 52%), and it comes p50 27 s after the first, so it is the other squadron of a USN piecemeal launch, not a real second strike.
 - First strike order at a median 52 s; first enemy ship contact at a median 45.5 s (scouts, else the destroyer screens).
 
@@ -137,7 +137,7 @@ Share of sortie time by category. Circling means the trailing 10 s of track has 
 - Anvil: torpedo groups (two or more drops from the same wave on the same target) come in from both bows 71% of the time (n 14; conf. 78%, n 27). Their first to last drop is 14.6 s.
 - First bomb vs first torpedo of the same wave: p50 4.8 s (conf. 3.3 s), p90 27.6 s. VB and VT arrive together.
 - Level bombing (B-17, Betty, Kate on the island): 65 drops, release at 47.6 u, 9% hits.
-- **Losses: fighters 54, AA 4** (carrier and base planes, 15 rounds). Bombers are shot down mostly on the way home (return 15 of 20 IJN dive bombers, 15 of 26 IJN torpedo bombers). Almost none is shot down still armed: CAP breaks raids up by crippling bombers (they jettison, 17 to 22%), not by kills.
+- **Losses of carrier planes: 54 to fighters, 4 to AA** (15 rounds; with the base planes, 60 and 7). Bombers are shot down mostly on the way home (return 15 of 20 IJN dive bombers, 15 of 26 IJN torpedo bombers). Almost none is shot down still armed: CAP breaks raids up by crippling bombers (they jettison, 17 to 22%), not by kills.
 
 ### 2.7 Pacing (per sim minute, mean over the 15 rounds with flight ops)
 
@@ -206,7 +206,7 @@ In carrier_duel the carriers start 909 u apart. The destroyer screens close at a
 
 **Strike timelines:**
 
-- Midway, 4 June 1942. Kidō Butai launched its 108-plane Midway strike in about 15 min and struck about 2 h later at 240 nm. Enterprise and Hornet took about 45 to 60 min to get their deck loads up and away; their dive bombers hit about 2 h 15 min after the first launch, at about 150 to 175 nm. Yorktown launched at about 09:00 and hit Sōryū at about 10:25 (1.5 h at about 150 nm). Hiryū's strike took about 70 min to cover about 90 nm to Yorktown.
+- Midway, 4 June 1942. Kidō Butai launched its 108-plane Midway strike in about 15 min and struck about 2 h later at 240 nm. Enterprise began launching at about 07:06; McClusky's SBDs left without their VT and VF at about 07:45 to 07:52 after a long wait for the deck load, searched along the way, and struck at about 10:22: about 2.5 h after departure and over 3 h after the first launch (an unusually slow case). Yorktown launched at about 08:40 to 09:05 and hit Sōryū at about 10:25 (about 1.5 to 1.75 h at about 150 nm). Hiryū's strike took about 70 min to cover about 90 nm to Yorktown. **Typical: 1.5 to 2 h from launch to target at 100 to 175 nm.**
 - Santa Cruz: both first strikes took about 2 h at about 200 nm, and the strikes passed each other in the air.
 - In every case **the carrier forces never came within sight of each other**. Visual range ship to ship is about 15 to 20 nm, so strike range was about 8 to 12× visual range.
 
@@ -572,6 +572,8 @@ Ownership is by function where files are shared. `air_ops.js` and `air_strikes.j
 *Fixes:* P6, P10 (the rising curve), P11, and the camera half of P7.
 
 *Gate metrics:* the battle-shape, pacing and watchability rows.
+
+**Mapping to the overnight plan** (memory: agents a to d): Agent A is (a) air wing / flight ops; when it also takes the 70 to 90-plane air groups and instancing / LOD, give the deck and strike-scheduling fixes (P1 to P3) priority, because a bigger air group makes the recovery bottleneck worse. Agent B is (b). Agent C is (c), with PT scouting. Agent (d), true sizes and classes, changes L in u: every target here is in L, so the targets carry over. The plane scale parameter (default about 2× oversized) changes only the look of the turn radius in wingspans (about 7 to 8 spans at 2×), not the numbers. The basefix rules hold: land bombers never divert to a carrier.
 
 **Order:**
 
