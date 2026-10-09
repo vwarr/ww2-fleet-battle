@@ -42,7 +42,8 @@ const cols = 2, PW = W * S + 10, PH = H * S + 10, rowsN = Math.ceil(panels.lengt
 const legend = Object.entries({ 'CAP': 'cap', 'landing pattern': 'pattern', 'form-up': 'formup', 'transit': 'transit', 'fight': 'intercept', 'attack': 'dive', 'return': 'return', 'escort over target': 'escort_tgt', 'search': 'search' })
   .map(([k, v], i) => `<rect x="${10 + i * 105}" y="${rowsN * PH + 6}" width="12" height="4" fill="${COL[v]}"/><text x="${26 + i * 105}" y="${rowsN * PH + 12}" font-size="10" font-family="sans-serif">${k}</text>`).join('');
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cols * PW}" height="${rowsN * PH + 40}" style="background:#fff">`;
-panels.forEach((g, i) => { svg += `<g transform="translate(${(i % cols) * PW + 5},${Math.floor(i / cols) * PH + 5})">${g}</g>`; });
+svg += `<defs><clipPath id="pc"><rect x="0" y="0" width="${W * S}" height="${H * S}"/></clipPath></defs>`;
+panels.forEach((g, i) => { svg += `<g transform="translate(${(i % cols) * PW + 5},${Math.floor(i / cols) * PH + 5})"><g clip-path="url(#pc)">${g}</g></g>`; });
 svg += legend + `<text x="10" y="${rowsN * PH + 30}" font-size="10" font-family="sans-serif">${J.scen} seed ${J.seed}; USN blue ships, IJN red; squares = carriers</text></svg>`;
 (async () => {
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });

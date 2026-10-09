@@ -133,6 +133,9 @@ function report(rounds) {
   for (const s of S) if (s.o === 'cv') { airAll += s.air; for (const c in s.circ) circCat[c] = (circCat[c] || 0) + s.circ[c]; }
   out.budgets._circCat = {}; for (const c in circCat) out.budgets._circCat[c] = circCat[c] / airAll;
   say('carrier planes, circling time by category:location as a share of all airborne time: ' + Object.keys(circCat).sort((a, b) => circCat[b] - circCat[a]).slice(0, 10).map(c => `${c} ${pc(circCat[c] / airAll)}`).join(', '));
+  const LW = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => s.b.landing || 0), LS = S.filter(s => s.o === 'cv' && s.end === 'landed').map(s => (s.b.landing || 0) / Math.max(1, s.air + (s.b.landing || 0)));
+  out.budgets._landing = { n: LW.length, p50: med(LW), p90: qs(LW, 0.9), shareP50: med(LS) };
+  say(`landing pattern time per recovered carrier sortie: p50 ${f1(med(LW))} s, p90 ${f1(qs(LW, 0.9))} s (n ${LW.length}); share of that sortie's flying time p50 ${pc(med(LS))}`);
   const ends = {}; for (const s of S) if (s.o === 'cv') ends[s.end] = (ends[s.end] || 0) + 1;
   say('carrier sortie ends: ' + JSON.stringify(ends));
   for (const n of ['USN', 'IJN']) { const G = S.filter(s => s.o === 'cv' && s.n === n && s.wv), o = {}; for (const s of G) o[s.wv] = (o[s.wv] || 0) + 1; say(`${n} carrier bomber sorties: joined the wave while it formed / after it had left / never had a wave: ${pc((o.formed || 0) / G.length)} / ${pc((o.late || 0) / G.length)} / ${pc((o.none || 0) / G.length)} (n ${G.length})`); (out.budgets._wave = out.budgets._wave || {})[n] = o; }
@@ -154,6 +157,10 @@ function report(rounds) {
     say(pad(k, 24) + lp(row.n, 6) + lp(f1(row.dOrder), 7) + lp(f1(row.toUp), 6) + lp(f1(row.form), 6) + lp(f1(row.toArr), 7) + lp(f1(row.goDrop), 9) + lp(f1(row.ordDrop), 10) + lp(f1(row.span), 10) + lp(pc(row.noDrop), 7) + lp(f1(row.planes), 7));
   }
   const cvW = W.filter(w => !w.base);
+  const eff = {}; for (const w of cvW) if (w.drops.length) { const k = w.scen + w.seed + ':' + w.cv; (eff[k] = eff[k] || []).push(Math.min(...w.drops)); }
+  const effN = Object.values(eff).map(a => a.length), second = Object.values(eff).filter(a => a.length > 1).map(a => { a.sort((x, y) => x - y); return a[1] - a[0]; });
+  out.waves._effective = { perCarrierWithDrops: mean(effN), secondGapP50: med(second), carriersWithSecond: effN.filter(n => n > 1).length / Math.max(1, effN.length) };
+  say(`waves that dropped, per carrier that struck at all: ${f1(mean(effN))}; carriers with a second effective strike ${pc(out.waves._effective.carriersWithSecond)}, first -> second strike's first drop p50 ${f1(med(second))} s`);
   say(`carrier waves per carrier-round: ${f1(cvW.length / Math.max(1, rounds.reduce((s, r) => s + Object.entries(r.comp || {}).filter(([k]) => k.endsWith(':carrier')).reduce((a, [, v]) => a + v, 0), 0)))}; ` +
     `waves per round with carriers: ${f1(cvW.length / Math.max(1, cvRounds.length))}; first order at median ${f1(med(rounds.map(r => r.rec && r.rec.first.order).filter(x => x !== undefined && x !== null)))} s`);
 
@@ -250,6 +257,9 @@ function report(rounds) {
   const cvF = cvRounds.map(r => r.rec.first);
   out.pacing.airFirst = { rounds: cvF.length, dropBeforeGun: cvF.filter(F => F.drop !== undefined && (F.gun === undefined || F.drop < F.gun)).length / Math.max(1, cvF.length),
     dropP50: med(cvF.map(F => F.drop).filter(x => x !== undefined)), gunP50: med(cvF.map(F => F.gun).filter(x => x !== undefined)), leadP50: med(cvF.filter(F => F.drop !== undefined && F.gun !== undefined).map(F => F.gun - F.drop)) };
+  out.pacing.byScen = {};
+  for (const sc of [...new Set(cvRounds.map(r => r.scen))]) { const R = cvRounds.filter(r => r.scen === sc), F = R.map(r => r.rec.first); out.pacing.byScen[sc] = { rounds: R.length, airFirst: F.filter(F => F.drop !== undefined && (F.gun === undefined || F.drop < F.gun)).length, dropP50: med(F.map(F => F.drop).filter(x => x !== undefined)), gunP50: med(F.map(F => F.gun).filter(x => x !== undefined)), contactP50: med(R.map(ct).filter(x => x !== null)) };
+    const o = out.pacing.byScen[sc]; say(`  ${pad(sc, 14)} air drop before fleet gunfire in ${o.airFirst}/${o.rounds} rounds; contact p50 ${f1(o.contactP50)} s, first drop p50 ${f1(o.dropP50)} s, first fleet gunfire p50 ${f1(o.gunP50)} s`); }
   out.pacing.contactP50 = med(cvRounds.map(ct).filter(x => x !== null));
   say(`first enemy ship contact (either side) p50 ${f1(out.pacing.contactP50)} s`);
   say(`rounds with carriers: first air drop before the first surface gunfire in ${pc(out.pacing.airFirst.dropBeforeGun)}; first drop p50 ${f1(out.pacing.airFirst.dropP50)} s, first gunfire p50 ${f1(out.pacing.airFirst.gunP50)} s, lead p50 ${f1(out.pacing.airFirst.leadP50)} s`);
