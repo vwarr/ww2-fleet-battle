@@ -86,6 +86,8 @@ require('fs').mkdirSync(out, { recursive: true });
     list: async () => {
       await p.evaluate(() => { const s = __S.bb; for (const ax of [3, -2, 6]) { const w = s.toWorld(ax, 2); s.takeDamage(240, w[0], w[1], 'torpedo'); } window.__shot = [s, 26, 3.5, 0, 0, 1.5, 0]; });
       await p.waitForTimeout(5000); await p.screenshot({ path: `${out}/list.png` });
+      await p.evaluate(() => { (__S.bb.dmgSites || []).forEach(q => { q.smoke = 0; q.fire = 0; }); WW.fx.clearAll(); window.__shot = [__S.bb, 6, 2.2, 15, 0, 0.6, 0]; });   // the holed side, heeled over
+      await p.waitForTimeout(2500); await p.screenshot({ path: `${out}/list_side.png` });
     }
   };
   for (const name of Object.keys(scenes)) { if (only && !only.includes(name)) continue; await scenes[name](); }
