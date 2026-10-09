@@ -116,7 +116,7 @@ const WHICH = (process.argv[4] || 'deck,strike,dogfight,overview,base').split(',
       until(() => G().length >= 4 && G().some(p => p.rwPh === 'taxi'), 300);
       const ps = G(); if (!ps.length) return 'none';
       const h = ps.find(p => p.rwPh === 'taxi') || ps[0];
-      window.__lookFn = () => ({ x: h.x + 22, y: 14, z: h.z + 22, tx: h.x, ty: 0.5, tz: h.z });
+      const gy = (x, z) => Math.max(0, -WW.terrain.depthAt(x, z)); window.__lookFn = () => { const e = WW.islandBase.base.layout.toL(h.x, h.z), q = WW.islandBase.base.layout.toW(e.u - 12, e.v + Math.sign(e.v || 1) * 12); return { x: q.x, y: Math.max(gy(q.x, q.z), gy(h.x, h.z)) + 8, z: q.z, tx: h.x, ty: gy(h.x, h.z) + 0.5, tz: h.z }; };
       return ps.length + ' on the ground, t ' + WW.game.roundTime.toFixed(0);
     }));
     await frames(2); await snap('base_ground');

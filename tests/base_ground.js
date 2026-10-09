@@ -30,7 +30,7 @@ function install(P) {
       offNet: 0, offMax: 0, overlap: 0, liftClosed: 0, bomberDeck: 0, reopenedT: null, closedT: null, launchAfter: 0, queuedAtReopen: 0, samples: 0, maxQ: 0, maxTaxi: 0,
       slots: b.slots.length, spots: L.spots.length, cls: L.spots.reduce((o, s) => (o[s.cls] = (o[s.cls] || 0) + 1, o), {}) };
     const ph = new Map(), BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 };
-    let forced = false, lastLaunches = 0;
+    let forced = false, lastLaunches = 0, openPrev = true;
     WW.on('baseEvent', e => {
       if (e.base !== I.base) return;
       if (e.kind === 'runwayClosed' && R.closedT === null) R.closedT = G.roundTime;
@@ -39,19 +39,20 @@ function install(P) {
     const r = p => LG.rad(p.variant);
     while (G.state === 'battle' && G.roundTime < P.CAP) {
       __sim.fastForward(P.SAMPLE);
+      const open0 = LG.opsOpen(b);   // before this sample's forced bombs (a lift-off earlier in the step is legal)
       if (!forced && G.roundTime >= P.FORCE_T) { // two bombs on the main runway: a closure every round
         forced = true; const rw = b.runways[0], en = WW.enemyOf(b.nation);
         I.impact(en, rw.x + rw.c * 10, rw.z + rw.s * 10, 180, 'bomb'); I.impact(en, rw.x - rw.c * 12, rw.z - rw.s * 12, 180, 'bomb');
       }
       R.samples++;
-      const open = LG.opsOpen(b), bodies = [];
+      const open = LG.opsOpen(b), wasOpen = openPrev || open0, bodies = []; openPrev = open;
       for (const s of b.slots) if (s.state === 'parked' || s.state === 'rearm' || s.state === 'wreck') bodies.push({ x: s.x, z: s.z, r: s.r, k: 's' + s.i });
       for (const w of b.wrecks || []) bodies.push({ x: w.x, z: w.z, r: w.r, k: 'wreck' });
       for (const p of WW.world.planes) {
         if (p.variant && BIG[p.variant] && p.carrier && !p.carrier.isBase) R.bomberDeck++;
         if (p.carrier !== b) continue;
         const prev = ph.get(p), now = p.alive ? p.rwPh : null; ph.set(p, now);
-        if (now === 'climb' && prev !== 'climb' && !open) R.liftClosed++;
+        if (now === 'climb' && prev !== 'climb' && !open && !wasOpen) R.liftClosed++;   // closed all through the step
         if (!LG.onGround(p)) continue;
         bodies.push({ x: p.x, z: p.z, r: r(p), k: p.state + '/' + p.rwPh + ' pi' + p.pi + ' gid' + p.gid });
         if (p.rwPh === 'roll' || p.rwPh === 'stopped' || p.rwPh === 'land' || p.rwPh === 'towed') continue; // on a runway

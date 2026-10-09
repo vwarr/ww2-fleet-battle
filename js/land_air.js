@@ -182,6 +182,7 @@ window.WW = window.WW || {};
     if (p.leaving) return leave(p, b, dt);
     const R = landRunway(b);
     if (!R) { // nowhere to land: hold over the island, then divert (carrier types) or ditch by a friendly ship
+      const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
       p.rwPh = 'circuit'; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
       if (p.holdT > (b.neutralized ? LEAVE_T : HOLD_MAX)) { p.leaving = true; return; }
@@ -190,6 +191,7 @@ window.WW = window.WW || {};
     p.holdT = 0;
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
+      const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); } // the circuit clears the hills
       const clear = R.main ? o.mode === 'recover' && !o.occ && !o.hold : !o.crossOcc;
       if (i > 0 || !clear) { stack(p, b, i, dt); p.apOut = false; return; }
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
