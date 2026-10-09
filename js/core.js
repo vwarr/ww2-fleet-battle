@@ -101,15 +101,18 @@ window.WW = window.WW || {};
   // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;
   // Type 95 (sub) likewise; Type 91 (aerial) an ordinary air-driven wake. USN 1942 Mk 15 / Mk 14 / Mk 13: slower,
   // shorter, steam wakes easy to see, and the notorious exploder duds, worst in the Mk 14 (subs, 20%); the aerial
-  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds): 33.5 kn against the Type 91's 42 kn, on
-  // the same scale as the ship torpedoes (Type 93 48 kn = 16 u/s) 11 u/s against 14 (balance pass, Oct 2026). Balance levers (AI_DESIGN §4, §8): on
+  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds). Balance levers (AI_DESIGN §4, §8): on
   // the 200-round gate (Oct 2026) the USN entries were worth ~10 points together at 18-28% duds (duds ~6, the wake
   // ~4), so they sit lower; the Long Lance entries move it ~0-2.
+  // Aerial torpedoes (balance pass, Oct 2026; docs/ARCHITECTURE.md): the Type 91 ran ~42 kn and the Mk 13 ~33.5 kn,
+  // only 1.3x / 1.05x a carrier's 32 kn, so a ship that combed the track from the drop could outrun or dodge them;
+  // at 14 u/s (2.5x a carrier's 5.6) nearly every anvil hit. 10 / 8 u/s (1.8x / 1.4x) keep the drop at 80-100 u
+  // workable and the Mk 13 the slower; air torpedo hit rate 34 / 38% -> 20 / 24% (USN / IJN).
   WW.TORPEDO_NATION = {
     IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7 },
-           pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 14, dud: 0, sight: 1 } },
+           pt: { rangeK: 1, speed: 14, dud: 0, sight: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1 } },
     USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.1, sight: 1.1 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.2, sight: 1.1 },
-           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1 }, air: { rangeK: 1, speed: 11, dud: 0, sight: 1.1 } }
+           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
     const N = WW.TORPEDO_NATION[nation] || {};

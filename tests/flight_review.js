@@ -193,6 +193,12 @@ function report(rounds) {
       hitsOnCv: mean(hits), cvSunk: sunkCv.reduce((s, a) => s + a.length, 0) / Math.max(1, eCv), cvSunkAir: byAir.reduce((s, x) => s + x, 0) / Math.max(1, eCv),
       wipe: rounds.filter(r => r.rec && ['USN', 'IJN'].some(n => cvOf(r, n) && (r.rec.sunk || []).filter(s => s.n === n && s.type === 'carrier' && !s.base).length >= cvOf(r, n))).length / Math.max(1, rounds.filter(r => r.rec && (cvOf(r, 'USN') || cvOf(r, 'IJN'))).length) };
     const bs = rounds.reduce((o, r) => { const b = r.rec && r.rec.boss; if (b) for (const k in b) o[k] = (o[k] || 0) + b[k]; return o; }, {});
+    { // a side lost all its carriers: per scenario and per nation
+      const lost = (r, n) => cvOf(r, n) && (r.rec.sunk || []).filter(s => s.n === n && s.type === 'carrier' && !s.base).length >= cvOf(r, n);
+      const by = {}; for (const r of rounds) if (r.rec && (cvOf(r, 'USN') || cvOf(r, 'IJN'))) { const o = by[r.scen] || (by[r.scen] = { n: 0, w: 0, USN: 0, IJN: 0 }); o.n++; if (lost(r, 'USN') || lost(r, 'IJN')) o.w++; if (lost(r, 'USN')) o.USN++; if (lost(r, 'IJN')) o.IJN++; }
+      out.waves._wipe = by;
+      say('carrier wipeouts by scenario (rounds where a side lost all its carriers; USN / IJN lost all): ' + Object.keys(by).map(k => `${k} ${by[k].w}/${by[k].n} (${by[k].USN} / ${by[k].IJN})`).join(', '));
+    }
     const C = out.waves._cv;
     say(`carrier hunting, per side per round facing enemy carriers (n ${C.sides}): air drops at a carrier ${f1(C.dropsAtCv)} (${pc(C.shareAtCv)} of its air drops), hits on a carrier ${f1(C.hitsOnCv)}; ` +
       `enemy carriers sunk ${pc(C.cvSunk)} (by air ${pc(C.cvSunkAir)}); rounds where a side lost all its carriers ${pc(C.wipe)}; air boss: strikes turned to a carrier ${bs.cvFirst || 0} at the order, ${bs.cvRetarget || 0} while forming, of ${bs.strikes || 0}`);
