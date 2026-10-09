@@ -15,7 +15,7 @@ window.WW = window.WW || {};
   'use strict';
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
   const FAR = 420, NEAR_FIG = 170, FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73), // ground crews x the sailors' size: about a fifth of a fighter's length (2 at the 1.7 plane scale)
-    MAX_FIG = 110, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
+    MAX_FIG = 170, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
   let trace = null;   // tests/base_clip.js: this frame's figures and vehicles ({ figs, veh })
   let base = null, planes = new Map(), wrecks = new Map(), prev = new Map(), crews = new Map(), trips = [], veh = {}, scrT = -1e9, fig = 0;
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
@@ -73,7 +73,7 @@ window.WW = window.WW || {};
 
   // ---------- figures ----------
   function figure(x, z, face, nation, role, run) {
-    if (fig >= MAX_FIG || !WW.crew || !WW.crew.addFigure) return;
+    if (fig >= MAX_FIG || !WW.crew || !WW.crew.addFigure || inVeh(x, z)) return;
     const bob = run ? Math.abs(Math.sin(performance.now() / 70 + x)) * 0.05 : 0;
     if (trace) trace.figs.push({ x, z, role });
     _q.setFromEuler(_e.set(0, -face, 0)); _p.set(x, gy(x, z) + bob, z); _s.set(FIG_K, FIG_K, FIG_K);
@@ -128,13 +128,23 @@ window.WW = window.WW || {};
     if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > NEAR_FIG * NEAR_FIG) { vehSet('roller', null); return; }
     const t = performance.now() / 1000, rw = base.runways[rp.runway] || base.runways[0], hx = Math.cos(rw.h), hz = Math.sin(rw.h);
     let busy = false;   // a plane rolling or taxiing close by: the gang steps well back off the runway
-    for (const p of WW.world.planes) if (p.carrier === base && p.alive && WW.landGround.onGround(p) && Math.hypot(p.x - c.x, p.z - c.z) < c.r + 12) busy = true;
+    for (const p of WW.world.planes) if (p.carrier === base && p.alive && WW.landGround.onGround(p) && Math.hypot(p.x - c.x, p.z - c.z) < c.r + 18) busy = true;
+    const gp = busy ? groundPlanes() : null;
     for (let i = 0; i < 6; i++) { // shovels: a bob in the figure's height is the work
-      const a = i / 6 * Math.PI * 2 + 0.4, r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
+      const a = i / 6 * Math.PI * 2 + 0.4; let r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
+      if (gp) for (let k = 0; k < 6 && inWay({ x: c.x + Math.cos(a) * r, z: c.z + Math.sin(a) * r }, gp); k++) r += 2;   // a plane coming through: well clear of it
       figure(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, a + Math.PI + Math.sin(t * 3 + i) * 0.3, base.nation, i === 0 ? 'o' : 'c', i % 2 === 0);
     }
-    const sw = Math.sin(t * 0.5) * (c.r + 2.5); // the roller works to and fro beside the hole
-    const ro = { x: c.x + hx * (c.r + 3 + sw * 0.4) - hz * 2.2, z: c.z + hz * (c.r + 3 + sw * 0.4) + hx * 2.2, h: rw.h };
+    if (!busy) { // a chain of men with baskets of coral fill, to and fro between the spoil heap off the runway's edge and the hole
+      const ring = c.r * 1.25 + 0.6, pile = ring + 4.5;
+      for (let i = 0; i < 4; i++) {
+        const ph = (t * 0.22 + i / 4) % 1, f = ph < 0.5 ? ph * 2 : 2 - ph * 2, off = (i - 1.5) * 0.7;
+        const x = c.x + hz * (ring + (pile - ring) * f) + hx * off, z = c.z - hx * (ring + (pile - ring) * f) + hz * off;
+        figure(x, z, Math.atan2(-hx, hz) + (ph < 0.5 ? 0 : Math.PI), base.nation, 'c', false);
+      }
+    }
+    const sw = Math.sin(t * 0.5) * (c.r + 2.5), side = c.r * 1.25 + 0.6 + (busy ? 6 : 0) + 1.1; // the roller works to and fro beside the hole, outside the gang's ring
+    const ro = { x: c.x + hx * sw * 0.5 - hz * side, z: c.z + hz * sw * 0.5 + hx * side, h: rw.h };
     vehSet('roller', busy && inWay(ro, groundPlanes()) ? null : [ro]);   // a plane taxiing by: the roller is driven off
   }
 
@@ -148,28 +158,47 @@ window.WW = window.WW || {};
     return veh[k];
   }
   const fixed = {}; // vehicles placed directly this frame (the roller)
+  const vehNow = []; // this frame's drawn vehicles { x, z, h, kind } (base_life.js keeps its people out of them)
   function vehSet(kind, list) { fixed[kind] = list; }
-  function drawVehicles(on) {
+  // this frame's trip positions, after giving way (to planes and to other trucks): { kind: [q, ...] }
+  function planTrips(on) {
     const per = {};
-    if (on) {
-      const gp = groundPlanes();
-      for (const t of trips) {
-        let q = tripPos(t);
-        if (burnDt > 0 && !(q && inWay(q, gp, t.follow)) && inWay(tripPos(t, 0.8), gp, t.follow)) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // give way: wait short of a plane's path (already in it: drive on clear)
-        if (q) { q.trip = t; (per[t.kind] = per[t.kind] || []).push(q); }
-      }
-      for (const k in fixed) if (fixed[k]) (per[k] = per[k] || []).push(...fixed[k]);
+    if (!on) return per;
+    const gp = groundPlanes(), placed = [], cars = WW.baseLifeCars ? WW.baseLifeCars.now() : [];
+    const pre = trips.map(t => { const q = tripPos(t); if (q) q.trip = t; return q; }).filter(q => q);
+    for (const t of trips) {
+      let q = tripPos(t);
+      if (burnDt > 0 && !(q && inWay(q, gp, t.follow)) && inWay(tripPos(t, 0.8), gp, t.follow)) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // give way: wait short of a plane's path (already in it: drive on clear)
+      else if (burnDt > 0 && q && [0.15, 0.3, 0.45, 0.6, Math.max(0.6, burnDt * 1.5)].some(k => closing(q, tripPos(t, k), pre.filter(o => o.trip !== t).concat(placed, cars), t))) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // and to another truck
+      if (q) { q.trip = t; placed.push(q); (per[t.kind] = per[t.kind] || []).push(q); }
     }
+    return per;
+  }
+  function drawVehicles(on, per) {
+    if (on) for (const k in fixed) if (fixed[k]) (per[k] = per[k] || []).push(...fixed[k]);
+    vehNow.length = 0;
     for (const kind in VCAP) {
       const list = per[kind] || [], vm = list.length || veh[kind + base.nation] ? vehMesh(kind) : null; if (!vm) continue;
       const n = Math.min(list.length, VCAP[kind]);
       for (let i = 0; i < n; i++) {
-        const q = list[i]; if (trace) trace.veh.push({ kind, x: q.x, z: q.z, h: q.h, t: q.trip && { p0: q.trip.pts[0], n: q.trip.pts.length, out: (WW.time.now - q.trip.t0) * VSPD[kind], len: q.trip.len } });
+        const q = list[i]; vehNow.push({ x: q.x, z: q.z, h: q.h, kind }); if (trace) trace.veh.push({ kind, x: q.x, z: q.z, h: q.h, t: q.trip && { p0: q.trip.pts[0], n: q.trip.pts.length, out: (WW.time.now - q.trip.t0) * VSPD[kind], len: q.trip.len } });
         _q.setFromEuler(_e.set(0, -q.h, 0)); _p.set(q.x, gy(q.x, q.z) + 0.02, q.z); _s.setScalar(WW.baseModels.VEH_K || 1);
         vm.mesh.setMatrixAt(i, _m.compose(_p, _q, _s));
       }
       vm.mesh.count = n; vm.mesh.visible = n > 0; vm.mesh.instanceMatrix.needsUpdate = true;
     }
+  }
+  function closing(q, a, L, t) { // a step from q to a (ahead) comes within a truck's length of another truck, and nearer (or level with an older trip)
+    if (!a) return false; const d = 2.7 * (WW.baseModels.VEH_K || 1), ti = trips.indexOf(t);
+    for (const o of L) { const da = (o.x - a.x) ** 2 + (o.z - a.z) ** 2, dq = (o.x - q.x) ** 2 + (o.z - q.z) ** 2; if (da < d * d && (da < dq - 1e-6 || (da <= dq + 1e-6 && o.trip && trips.indexOf(o.trip) < ti))) return true; }
+    return false;
+  }
+  // a figure inside a vehicle's footprint (this frame's trips, before they are drawn): not drawn there
+  let vehPre = [];
+  function inVeh(x, z) {
+    const K = WW.baseModels.VEH_K || 1;
+    for (const q of vehPre) { const c = Math.cos(q.h), s = Math.sin(q.h), dx = x - q.x, dz = z - q.z; if (Math.abs(dx * c + dz * s) < 1.3 * K + 0.2 && Math.abs(-dx * s + dz * c) < 0.55 * K + 0.2) return true; }
+    return false;
   }
   // a trip: out along path (site-local points -> world), wait until t.until, back the same way
   function trip(kind, ptsL, until, follow, t0) {
@@ -250,14 +279,16 @@ window.WW = window.WW || {};
   function facR(f) {
     let k = facK.get(f);
     if (!k) {
-      const part = WW.baseFx._built && WW.baseFx._built() && WW.baseFx._built().parts.find(q => q.f === f), g = part && part.mesh.geometry;
+      const part = WW.baseFx._built && WW.baseFx._built() && WW.baseFx._built().parts.find(q => q.f === f), g = part && part.mesh && part.mesh.geometry;
       if (g && !g.boundingBox) g.computeBoundingBox();
       const q = base.layout.toL(f.x, f.z);
-      facK.set(f, k = [g ? Math.hypot(g.boundingBox.max.x - g.boundingBox.min.x, g.boundingBox.max.z - g.boundingBox.min.z) / 2 : (f.r || 3) + 0.5, q.u, q.v]);
+      const sc = part && part.mesh ? part.mesh.scale.x : 1;
+      facK.set(f, k = [g ? sc * Math.hypot(g.boundingBox.max.x - g.boundingBox.min.x, g.boundingBox.max.z - g.boundingBox.min.z) / 2 : (f.r || 3) + 0.5, q.u, q.v]);
     }
     return k[0];
   }
   function inFac(u, v, own, skipOwn) {
+    if (base.decor) for (const g of base.decor) { if (g.kind === 'drill' || g.kind === 'yard') continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + 0.6) return true; } // the camp too
     for (const g of base.facilities) { if (skipOwn && g === own) continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + (g === own ? 0.4 : 0.6)) return true; } // own: the door (+0.8) is just outside
     return false;
   }
@@ -343,8 +374,10 @@ window.WW = window.WW || {};
     const cam = WW.camera.position, near = (cam.x - b.x) ** 2 + (cam.z - b.z) ** 2 < FAR * FAR;
     fig = 0; if (trace) { trace.figs.length = 0; trace.veh.length = 0; }
     for (const k in fixed) fixed[k] = null;
-    if (near) { engines(rdt, sdt); crewsAt(cam, now); repairGang(cam, now); }
-    drawVehicles(near);
+    const per = planTrips(near);
+    vehPre = [].concat(...Object.values(per), WW.baseLifeCars ? WW.baseLifeCars.now() : []);
+    if (near) { engines(rdt, sdt); repairGang(cam, now); crewsAt(cam, now); }   // the repair gang first: the figure cap never drops it
+    drawVehicles(near, per);
   }
   function clear() {
     for (const m of planes.values()) WW.air._pool.release(m);
@@ -355,5 +388,6 @@ window.WW = window.WW || {};
   }
   WW.on('baseEvent', onEvent);
   WW.baseGroundFx = { update, clear, _parked: () => [...planes.values()], _trips: () => trips, _stats: () => ({ planes: planes.size, wrecks: wrecks.size, trips: trips.length, figures: fig }),
-    _trace: on => { trace = on ? { figs: [], veh: [] } : null; return trace; } };
+    _trace: on => { trace = on ? { figs: [], veh: [] } : null; return trace; }, _traceRef: () => trace,
+    _ground: () => (base ? groundPlanes() : []), _vehNow: () => vehNow, FIG_K };
 })();

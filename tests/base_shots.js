@@ -8,6 +8,13 @@
 //   reopened       the craters filled: the runway open again and the launches resumed
 //   crash_truck    a damaged plane's landing, the crash truck racing out
 //   burning        hangars and fuel tanks burning after a raid
+// The camp and its people (base life; the life is stepped with the sim, __ff):
+//   camp / camp_wide   the huts, tents, mess and sick bay, the motor pool, water tower, radio masts, trenches, pits
+//   peace / peace_drill  peacetime: chow line, PT drill, cards, laundry, men about the doors
+//   night_peace    after dark before any alarm: the windows lit
+//   alarm / alarm_pilots  the alarm: everyone sprints (gun crews, pilots to the fighters, the rest to the trenches)
+//   attack / after   bombs on the camp (fires, the fire truck and crews, stretchers) / the all-clear: work resumes
+//   night          an alarm after dark: the blackout and the searchlights
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/base_shots.js [seed=3] [owner=USN] [shot]
 const { chromium } = require('playwright');
 const path = require('path'), OUT = path.join(__dirname, 'shots', 'base');
@@ -15,7 +22,29 @@ require('fs').mkdirSync(OUT, { recursive: true });
 const SEED = +(process.argv[2] || 3), OWNER = process.argv[3] || 'USN', ONLY = process.argv[4] || null; // ONLY: one shot by name
 
 // each shot: [name, page-side setup returning the camera [x, y, z, tx, ty, tz] (or null: skip)]
+// the camp (base.decor): the centre of a group's items and a camera on the field side of it, low and close
+const CAMP = `(g, back, up, side) => { const L = B.layout, its = B.decor.filter(d => d.group === g); if (!its.length) return null;
+  const u = its.reduce((a, d) => a + d.u, 0) / its.length, v = its.reduce((a, d) => a + d.v, 0) / its.length, sv = v >= 0 ? -1 : 1;
+  const q = L.toW(u + (side || 0), v + sv * back), t = L.toW(u, v); const y0 = B.site.padH; return [q.x, y0 + up, q.z, t.x, y0 + 0.4, t.z]; }`;
 const SHOTS = [
+  ['camp', () => __camp('huts', 16, 7, 6)],
+  ['camp_wide', () => __camp('mess', 34, 20, 10)],
+  ['peace', () => { __ff(25); return __camp('huts', 13, 5, 4); }],
+  ['peace_drill', () => { __ff(25); return __camp('drill', 9, 4, 3); }],
+  ['alarm', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(3); return __camp('huts', 22, 9, 8); }],
+  ['alarm_pilots', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4);
+    const p = WW.baseLife.people.find(p => p.pilot && p.path); if (!p) return null; return [p.x + 6, B.site.padH + 3, p.z + 6, p.x, B.site.padH + 0.3, p.z]; }],
+  ['attack', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(10);
+    const en = WW.enemyOf(B.nation), hs = B.decor.filter(d => d.kind === 'hut' || d.kind === 'tent');
+    for (const d of hs.slice(0, 3)) WW.islandBase.impact(en, d.x + 1, d.z, 200, 'bomb');
+    __ff(6); return __camp('huts', 22, 10, 6); }],
+  ['after', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(10);
+    const en = WW.enemyOf(B.nation), rw = B.runways[0];
+    for (const d of B.decor.filter(d => d.kind === 'hut').slice(0, 2)) WW.islandBase.impact(en, d.x, d.z, 200, 'bomb');
+    for (const k of [-14, 9]) WW.islandBase.impact(en, rw.x + rw.c * k, rw.z + rw.s * k, 180, 'bomb');
+    __until(() => WW.baseLife.phase === 'after', 400); __ff(20); return __camp('huts', 26, 12, 8); }],
+  ['night_peace', () => { __ff(15); return __camp('huts', 30, 12, 8); }],
+  ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4); return __camp('huts', 40, 14, 10); }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {
     const r = B.layout.rows.find(r => r.spots.length >= 3) || B.layout.rows[0], sp = r.spots[Math.floor(r.spots.length / 2)];
@@ -83,32 +112,38 @@ const SHOTS = [
   await p.goto((process.env.BASE_URL || 'http://localhost:8776/') + 'index.html?v=' + Date.now());
   await p.waitForTimeout(2500);
   await p.addStyleTag({ content: '#hud, .panel, #film .caption { display: none !important; }' });
-  await p.evaluate(([seed, owner]) => {
+  await p.evaluate(([seed, owner, camp]) => {
     WW.terrain.generate(seed); WW.seedRandom(seed);
     window.__fresh = () => { // every shot from a fresh round on the same map (the same fleets, the same base)
       WW.seedRandom(seed * 7919 + 1); WW.time.scale = 1;
+      if (WW.dayNight) WW.dayNight.force = window.__night ? 'night' : null;
       WW.game.baseChoice = owner; WW.game.composition = window.__comp || null; WW.game.mode = 'auto'; WW.game.startRound({ keepMap: true });
       window.B = WW.islandBase.base; window.__ev = {};
       __sim.fastForward(3); WW.time.scale = 0.0001; // the render loop barely moves the sim: each shot is a still
     };
     WW.seedRandom(seed); window.__comp = WW.game.randomComposition();
     WW.on('baseEvent', e => { if (window.B && e.base === B && !__ev[e.kind]) __ev[e.kind] = e; });
-    window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __sim.fastForward(0.1); } return !!f(); };
-  }, [SEED, OWNER]);
+    window.__camp = eval(camp);
+    // sim time with the base's visual life stepped along (as frames would): the camera parked over the base
+    window.__ff = secs => { for (let t = 0; t < secs - 1e-6; t += 0.1) { __sim.fastForward(0.1); if (window.B) { WW.camera.position.set(B.x, 40, B.z); WW.baseFx.update(0.1); } } };
+    window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __ff(0.1); } return !!f(); };
+  }, [SEED, OWNER, CAMP]);
   const done = [];
   for (const [name, fn] of SHOTS) {
     if (ONLY && name !== ONLY) continue;
-    const cam = await p.evaluate(src => {
-      __fresh();
+    const cam = await p.evaluate(([src, night]) => {
+      window.__night = night; __fresh();
       const v = eval('(' + src + ')')();
       if (!v) return null;
       WW.cam.update = function () { WW.camera.position.set(v[0], v[1], v[2]); WW.camera.lookAt(v[3], v[4], v[5]); WW.camera.updateMatrixWorld(); };
       return v;
-    }, fn.toString());
+    }, [fn.toString(), name === 'night' || name === 'night_peace']);
     if (!cam) { console.log('skip', name); continue; }
+    await p.evaluate(() => { for (let i = 0; i < 3; i++) { // fill the per-frame figure buffers before the shot (a loaded machine renders few frames)
+      WW.cam.update(0.016); WW.crew.update(0.016); WW.baseFx.update(0.016); } });
     await p.waitForTimeout(1500);
-    await p.screenshot({ path: path.join(OUT, name + '.png') });
-    if (ONLY) console.log(name, JSON.stringify(await p.evaluate(() => ({ g: WW.baseGroundFx._stats(), crew: WW.crew.stats(), rp: B.repairing && { at: B.repairing.at, now: WW.time.now, inc: B.craters.includes(B.repairing.crater) } }))));
+    await p.screenshot({ path: path.join(OUT, name + '.png'), timeout: 180000 });
+    if (ONLY) console.log(name, JSON.stringify(await p.evaluate(() => ({ life: WW.baseLife && { phase: WW.baseLife.phase, people: WW.baseLife.people.length, acts: WW.baseLife.people.reduce((a, p) => (a[p.act] = (a[p.act] || 0) + 1, a), {}), err: String(WW.baseLife._err || ''), fxErr: String(WW.baseLifeFx._err || ''), birds: WW.baseLifeFx.birds.length, cars: WW.baseLifeCars.cars.length + '/' + WW.baseLifeCars.cars.filter(c => c.away).length, fails: WW.baseLife.fails.fail, trenchSlots: WW.baseLife.sites.trenches.length * 9, paths: WW.baseLifePaths.ST.n + '/' + WW.baseLifePaths.ST.ms.toFixed(0) + 'ms', ms: WW.baseLife.perf.ms.toFixed(2), max: WW.baseLife.perf.max.toFixed(1) }, g: WW.baseGroundFx._stats(), crew: WW.crew.stats(), rp: B.repairing && { at: B.repairing.at, now: WW.time.now, inc: B.craters.includes(B.repairing.crater) } }))));
     done.push(name);
   }
   const st = await p.evaluate(() => WW.baseGroundFx._stats());

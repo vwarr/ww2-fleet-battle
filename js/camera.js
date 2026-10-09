@@ -330,14 +330,14 @@ window.WW = window.WW || {};
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
       // the island base's alarm (base life: the siren, crews running to the guns and planes): cut to the base for a
       // low 6-10 s orbit, unless the camera is on a hand-off, an attack in a story, the user's camera or a test shot.
-      // No-op if the event never fires.
+      // No-op if the event never fires. e.fx / e.fz (island_base.js): the camp where the men run, when it has one.
       let alarmAt = -1e9;
       WW.on('baseAlarm', e => {
         if (!e || e.x === undefined || !camera || cam.mode !== 'director' || (WW.freecam && WW.freecam.active())) return;
         if (!(WW.game && WW.game.state === 'battle') || forced || performance.now() / 1000 - alarmAt < 60) return;
         if (shot && (shot.stage || shot.user || shot.pr >= 99 || (shot.story && WW.camStory && (WW.camStory._dbg() || {}).phase === 'attack'))) return;
         alarmAt = performance.now() / 1000;
-        startShot({ kind: 'orbit', subj: { x: e.x, z: e.z, y: 0, diorama: true }, r: 42, dur: dur(6, 10), w: 0.05, hgt: 0.12, pr: 9, alarm: true });
+        startShot({ kind: 'orbit', subj: { x: e.fx !== undefined ? e.fx : e.x, z: e.fz !== undefined ? e.fz : e.z, y: 0, diorama: true }, r: e.fx !== undefined ? 30 : 42, dur: dur(6, 10), w: 0.05, hgt: 0.12, pr: 9, alarm: true });
       });
       if (WW.camAction) WW.camAction.init();
       if (WW.camStory) WW.camStory.init();

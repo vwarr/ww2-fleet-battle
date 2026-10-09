@@ -1272,6 +1272,36 @@ WW.landAir = { setup(base), update(base, dt), launched(p), takeoff / goHome / la
 - **Tests**: `tests/sim_behaviour.js` scenario `midway` (a USN base and carrier group against an IJN carrier striking force), `--base USN|IJN|none` for any scenario, and the info metrics `base_neut` (share of base rounds neutralized), `base_t_neut` (median s), `base_cap_leash`, `base_raids`, `rw_closures`, `batteries_out`, `land_strikes`, `land_sorties`, `land_hits` (ship hits by base planes), `bombard_runs`, `bombard_shells`. The balance gate prints the wins by base owner. The carrier CAP leash check leaves the base fighters out.
 - **Tuning knobs** (the base's strength, for the balance pass): `WW.islandBase.TUNE` { tons, guns, pits, air, radar, defend, target, chart, power } (`tests/sim_behaviour.js --tune k=v,...`; defaults and the measurements in AI_DESIGN.md section 10), and below them `BASE_TONS`, `BATTERY`, `PIT_AA`, `CLOSE`, `REPAIR_T` / `REPAIR_W`, `HP` (island_base.js); `ROSTER`, the `VAR` stats, `REARM`, `STRIKE_R` (land_air.js); `W_BASE`, `VALUE`, `STRIKE_OPEN` / `STRIKE_SHUT` (base_ai.js); the owner roll (island_base.js `roundStart`).
 
+#### Base life: the camp, the alarm, the people (2026-10-09, branch baselife)
+- **The camp** (base_life_layout.js, sim geometry, no randomness): `base.decor`, placed by island_base.js `build()` after every
+  facility and battery (nothing the sim had moves). Groups (rows of Quonset huts / IJN wooden barracks, tent lines, the mess hall
+  and sick bay, the command post and flagpole, the motor pool with its forecourt, the radio shack and masts, a water tower, the drill
+  ground, slit trenches, machine-gun pits, searchlights, fuel drums) go to the free place nearest their preferred spot on a 1 u grid
+  of flat low land off the taxi network (+2 u), the climb-out lanes and the revetments. Not facilities: no AI / strike / bombardment
+  code reads it and `base.hp` ignores it; bombs and shells damage it (`impact()` -> `WW.baseLifeLayout.hit`, a direct hit flattens,
+  a near miss scorches) and `roofAt` includes its roofs. Models: models_base_life.js (baked per kind and nation).
+- **The alarm** (sim, deterministic): `base_ai.alarm(base)` every 0.5 s until it fires, once per round: the base's side (WW.intel,
+  any observer) has a fresh sighting of an enemy warship within 320 u of the island, or of enemy planes within 260 u closing on it
+  (a lone plane within 110 u); also a raid reaching the island unreported, or the first bomb / shell on it. `base.alarm = { t,
+  kind: 'ship' | 'raid' | 'planes' | 'bombed' | 'shelled', x, z (the threat), bearing }`. Events: `baseEvent` kind `alarm`
+  (caption "Midway: air raid! Enemy planes bearing 320 ...", war diary) and **`baseAlarm` { x, z (base centre), t, kind, tx, tz,
+  bearing, fx, fz (the camp, where the men run), base }** (camera.js cuts to a low orbit of fx / fz); audio_base.js plays the
+  `base.siren` patch (a no-op while muted). In 16 seeds the alarm fires 85-300 s in, before the first raid.
+- **The people** (base_life.js, visual only, sim time): peace - a chow line at the mess, PT drill, a card game, laundry, a sentry,
+  men at the hut doors and walking between them; ALARM - gun crews sprint to the AA and MG pits (the guns elevate and train on the
+  threat), pilots from the huts to the parked fighters (they climb in), everyone else into the slit trenches, an officer waving at
+  the CP, the trucks and jeeps race out (base_life_cars.js); under attack - whoever is in the open goes prone, stretcher teams carry
+  the wounded to the sick bay, fire crews and the fire truck go to whatever burns; after the raid (the sky over the island clear for
+  30 s) the trenches empty and the work resumes (drill and cards 2 min later), the gun crews stay. Ways: base_life_paths.js (A* on
+  a 1 u grid, string-pulled against a 0.5 u footprint grid; 2 new paths a frame, ~0.6 ms each). Everyone waits short of a taxiing
+  plane or a truck and steps clear if one comes at him; the trucks stay off the runways and taxiways and pull over for planes.
+- **Birds and night** (base_life_fx.js): a flock of gooney birds (Laysan albatross) bobbing on the grass, taking off clumsily and
+  circling over the reef, put up by taxiing planes and bombs; after dark the camp's windows glow until the alarm (the blackout),
+  then the searchlights sweep toward the threat bearing and hold an enemy plane that comes within 140 u.
+- Tests: tests/base_clip.js also checks figures inside solid buildings (`fig_fac`), figures in vehicles (`fig_veh`) and vehicles
+  overlapping (`veh_veh`): 0 on 16 seeds. tests/base_shots.js: camp, camp_wide, peace, peace_drill, alarm, alarm_pilots, attack,
+  after, night (shots step the base life with the sim).
+
 ### Admirals: admirals.js, admirals_flags.js
 
 Each round, each side is commanded by a named admiral whose personality bends the side's doctrine. He flies his flag in a flagship. When the flagship is lost, the side is confused until the flag passes to another ship. `admirals.js` is sim code: `WW.rand` only, and no visuals. `admirals_flags.js` is visual only: `Math.random` and the wall clock. It does nothing in sim-only mode.

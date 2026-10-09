@@ -48,6 +48,11 @@ window.WW = window.WW || {};
     clear();
     if (!e || !e.base) return; // no base (the Base button's 'none'): the old airfield goes
     built = WW.baseModels.build(e.base); built.base = e.base;
+    if (WW.baseLifeModels) { // the camp (base.decor): huts, tents, the mess, pits, trenches, masts, ... and the lit windows
+      const life = WW.baseLifeModels.build(e.base, built.strips.material);
+      for (const part of life.parts) { for (const o of [part.mesh, part.gun, part.head, part.flag]) if (o) built.group.add(o); built.parts.push(part); }
+      if (life.glow) built.group.add(built.glow = life.glow);
+    }
     WW.scene.add(built.group);
     lastT = WW.time.now;
   }
@@ -69,8 +74,8 @@ window.WW = window.WW || {};
     // facilities: wrecks, fires, guns
     for (const part of built.parts) {
       const f = part.f;
-      if (f.out && !part.wrecked) { WW.baseModels.wreck(part); fires.set(f, { t0: now }); }
-      if (part.gun && !f.out) {
+      if (f.out && !part.wrecked) { if (part.decor) WW.baseLifeModels.wreck(part, WW.baseModels._tpl().scorch); else WW.baseModels.wreck(part); fires.set(f, { t0: now }); }
+      if (part.gun && !f.out && !part.decor) {   // (the camp's machine guns and searchlights: base_life.js)
         let want = null;
         if (f.kind === 'battery') want = f.aim;
         else { // AA: the nearest enemy plane in reach
@@ -82,17 +87,21 @@ window.WW = window.WW || {};
       if (part.flag && WW.wind) part.flag.rotation.y = -WW.wind.a + Math.sin(performance.now() / 700) * 0.15;
     }
     if (sdt > 0) burn(sdt, now);
+    if (WW.baseLifeCars) WW.baseLifeCars.tick();            // the camp's trucks move first: the ground crews keep out of them
     if (WW.baseGroundFx) WW.baseGroundFx.update(rdt, b);
+    if (WW.baseLife) WW.baseLife.update(rdt, b, built);   // the camp's people and trucks (after the ground crews: one trace)
+    if (WW.baseLifeFx) WW.baseLifeFx.update(rdt, b, built); // the gooney birds, the blackout and the searchlights
   }
   function burn(dt, now) {
     const ld = WW.damage ? WW.damage.load() : 0;
     fires.forEach((st, f) => {
-      const age = now - st.t0, big = f.kind === 'fuel' || f.kind === 'hangar', life = big ? 180 : 60;
+      const age = now - st.t0, big = f.kind === 'fuel' || f.kind === 'hangar', mid = f.decor && (f.kind === 'mess' || f.kind === 'hut' || f.kind === 'sick' || f.kind === 'drums' || f.kind === 'truck' || f.kind === 'radio'), life = big ? 180 : mid ? 150 : 60;
       if (age > life) return;
       const k = (1 - age / life) * (ld > 0.9 ? 0.4 : 1), y = Math.max(WW.terrain.PAD_H, -WW.terrain.depthAt(f.x, f.z));
-      const rate = (f.kind === 'fuel' ? 9 : f.kind === 'hangar' ? 7 : 2.5) * k;
+      if (f.kind === 'trench' || f.kind === 'drill') return;
+      const rate = (f.kind === 'fuel' ? 9 : f.kind === 'hangar' ? 7 : mid ? 4 : 2.5) * k;
       for (let n = 0; n < 3; n++) if (R() < rate * dt) WW.fx.fire(f.x + rr(-f.r, f.r) * 0.7, y + rr(0.5, 2.5), f.z + rr(-f.r, f.r) * 0.7);
-      for (let n = 0; n < 2; n++) if (R() < (big ? 2.4 : 0.8) * k * dt) WW.fx.smoke(f.x + rr(-1.5, 1.5), y + (big ? rr(3, 9) : 2.5), f.z + rr(-1.5, 1.5), true, big ? rr(3, 4.6) : 1.6); // the smoke column
+      for (let n = 0; n < 2; n++) if (R() < (big ? 2.4 : mid ? 1.4 : 0.8) * k * dt) WW.fx.smoke(f.x + rr(-1.5, 1.5), y + (big ? rr(3, 9) : 2.5), f.z + rr(-1.5, 1.5), true, big ? rr(3, 4.6) : 1.6); // the smoke column
       if (WW.damage) WW.damage.want(big ? 2.6 * k : 0.9 * k);
     });
   }
@@ -101,6 +110,13 @@ window.WW = window.WW || {};
   function line(e) {
     const b = e.base, n = b.name, usn = b.nation === 'USN';
     switch (e.kind) {
+      case 'alarm': { // the first sighting: the "oh no" moment (priority 2: never throttled)
+        const a = e.alarm, b3 = String(a.bearing).padStart(3, '0');
+        if (a.kind === 'raid') return [n + ': air raid!', 'Enemy planes bearing ' + b3 + (usn ? ', the siren wails: man the guns' : ', the alarm sounds: man the guns'), 2];
+        if (a.kind === 'planes') return [n + ': enemy planes!', 'Bearing ' + b3 + ', closing', 2];
+        if (a.kind === 'ship') return [n + ': enemy warships!', 'Enemy ' + (CV[a.what] || 'ships') + ' sighted bearing ' + b3 + ': general quarters', 2];
+        return [n + (a.kind === 'bombed' ? ': bombs falling!' : ': under fire!'), a.kind === 'bombed' ? 'The raid came in unseen: take cover' : 'Shells from the sea: take cover', 2];
+      }
       case 'airRaid': return [n + ' under air attack', usn ? 'Marine fighters scramble' : 'The Zeros scramble', 1];
       case 'runwayClosed': return ['Runway cratered', n + ': nothing can take off', 1];
       case 'runwayOpen': return ['Runway repaired: launches resume', usn ? 'The Seabees filled the craters' : 'Work crews filled the craters', 1];
@@ -123,7 +139,7 @@ window.WW = window.WW || {};
     const now = WW.time.now;
     if (L[2] < 2 && now - (diaryT[e.kind] || -1e9) < 45) return;
     diaryT[e.kind] = now;
-    WW.diary.add(L[0] + (L[1] ? ': ' + L[1] : ''), L[2] >= 2 ? 3 : L[2] ? 2 : 1, e.base.nation, { kind: 'base' });
+    WW.diary.add(L[0] + (L[1] ? (/[!:]$/.test(L[0]) ? ' ' : ': ') + L[1] : ''), L[2] >= 2 ? 3 : L[2] ? 2 : 1, e.base.nation, { kind: 'base' });
   }
   function caption(e) {
     if (WW.simOnly || !e || !e.base) return;

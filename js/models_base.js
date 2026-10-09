@@ -221,6 +221,7 @@ window.WW = window.WW || {};
   function vehicle(kind, nation) {
     var k = kind + (nation || 'USN'); if (VEH[k]) return VEH[k];
     templates();
+    if (kind !== 'fuel' && kind !== 'bombs' && kind !== 'crash' && kind !== 'roller' && WW.baseLifeModels) return (VEH[k] = WW.baseLifeModels.vehicle(kind, nation));
     var g = new THREE.Group(), body = nation === 'IJN' ? C.ijnV : C.olive;
     if (kind === 'fuel') {        // tanker: cab + an elliptic tank with a red band
       M._box(g, body, 0.8, 0.95, 1.05, 0.95, 0.3, 0); M._bar(g, C.cab, 0.08, 0.35, 0.8, 1.36, 0.75, 0);
@@ -242,5 +243,6 @@ window.WW = window.WW || {};
     }
     VEH[k] = bake(g); return VEH[k];
   }
-  WW.baseModels = { build: build, wreck: wreck, vehicle: vehicle, revetWalls: revetWalls, VEH_K: VEH_K, C: C };
+  WW.baseModels = { build: build, wreck: wreck, vehicle: vehicle, revetWalls: revetWalls, VEH_K: VEH_K, C: C,
+    _bake: bake, _ring: ring, _arch: function () { archGeo(); return { arch: arch, end: archEnd }; }, _tpl: function () { return templates(); } };
 })();
