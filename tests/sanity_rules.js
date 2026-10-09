@@ -100,7 +100,9 @@ function install(P) {
     const home = f.carrier ? Math.hypot(px - f.carrier.x, pz - f.carrier.z) / (f.pt.cruise || v * 0.8) : 0;
     return { tI, ok: tI + P.REACH_PAD < th.tDrop && f.fuel > tI + home + P.FUEL_PAD && f.hp > 0.5 * f.maxHp && !f.crippled };
   }
-  const onIt = (f, u) => f.foe === u || f.vec === u || (f.df && f.df.foe === u);
+  // a wingman flies its section leader's vector (air_squadrons follow(): only the leader holds plane.vec)
+  const vecOf = f => f.vec || (f.leader && f.leader.alive && f.leader.vec) || null;
+  const onIt = (f, u) => f.foe === u || vecOf(f) === u || (f.df && f.df.foe === u);
   function planes(t) {
     const PL = WW.world.planes, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H;
     const thr = { USN: threats('USN'), IJN: threats('IJN') };
@@ -116,7 +118,7 @@ function install(P) {
         if (onCount(u) > 0) continue;
         let best = null, bt = 1e9, cnt = 0;
         for (const f of ftr) {
-          if (f.nation !== n || f.target || f.search || f.recall || armed(f.foe) || armed(f.vec)) continue;
+          if (f.nation !== n || f.target || f.search || f.recall || armed(f.foe) || armed(vecOf(f))) continue;
           const ok = capF(f) || (f.state === 'return' && !f.crippled) || (f.state === 'landing' && f.deckPh === 'marshal');
           if (!ok) continue;
           const r = reach(f, th); if (!r.ok) continue;
@@ -124,7 +126,7 @@ function install(P) {
         }
         if (!best) continue;
         const L = WW.cap ? WW.cap.doc(n) : { leash2: 1e9 }, lsh = best.carrier && dist(best.carrier, u) > L.leash2;
-        const why = () => `${lbl(u)} -> ${lbl(th.T)} drop in ${th.tDrop.toFixed(0)}s; ${cnt} able, best ${lbl(best)} ${best.state}${best.deckPh ? '/' + best.deckPh : ''} foe=${best.foe ? best.foe.kind : '-'} vec=${best.vec ? best.vec.kind : '-'} reach ${bt.toFixed(0)}s${lsh ? ' (bomber outside leash2)' : ''}`;
+        const why = () => `${lbl(u)} -> ${lbl(th.T)} drop in ${th.tDrop.toFixed(0)}s; ${cnt} able, best ${lbl(best)} ${best.state}${best.deckPh ? '/' + best.deckPh : ''} foe=${best.foe ? best.foe.kind : '-'} vec=${vecOf(best) ? vecOf(best).kind : '-'} reach ${bt.toFixed(0)}s${lsh ? ' (bomber outside leash2)' : ''}`;
         H(seen ? (lsh ? 'P1L' : 'P1') : 'P1u', [u, best], P.MIN.P1, why);
       }
     }
@@ -132,7 +134,7 @@ function install(P) {
       if (!capF(f) || f.fuel < P.FUEL_PAD * 2 || f.crippled) continue;
       const tl = thr[f.nation];
       // P2: idle CAP fighter (no foe, no vector) while a seen raider it can reach in time is under-covered
-      if (!f.foe && !f.vec) {
+      if (!f.foe && !vecOf(f)) {
         for (const th of tl) {
           if (th.tDrop < 2 || !vis(f.nation, th.u) || onCount(th.u) >= 2) continue;
           const L = WW.cap ? WW.cap.doc(f.nation) : { leash2: 1e9 };
@@ -230,7 +232,7 @@ function install(P) {
         }
       }
       // P10b: a CAP fighter far outside its long leash with no foe (wandered off)
-      if (capF(p) && !p.foe && !p.vec && WW.cap && dist(p, p.carrier) > WW.cap.doc(p.nation).leash2 + 100) H('P10b', [p], P.MIN.P10, () => `CAP ${lbl(p)} ${Math.round(dist(p, p.carrier))}u from its carrier, no foe / vector`);
+      if (capF(p) && !p.foe && !vecOf(p) && WW.cap && dist(p, p.carrier) > WW.cap.doc(p.nation).leash2 + 100) H('P10b', [p], P.MIN.P10, () => `CAP ${lbl(p)} ${Math.round(dist(p, p.carrier))}u from its carrier, no foe / vector`);
     }
   }
 
