@@ -6,14 +6,17 @@
 // side toward its own home, keeping the contact fresh for its fleet. It runs from fighters (low over the water,
 // toward home) and goes home when hurt or at the end of its time on station. Big and slow, they often died doing it.
 // The IJN Mavis shadows closer and longer (doctrine) and may bomb a lone ship once; it never rescues.
-// Frequency: one patrol per side early (the Catalina at Midway found the Kido Butai), then occasional ones.
+// Frequency: the DAWN PATROL - one boat per side already out on its search leg when the round opens (launched before
+// dawn hours earlier: the Catalina at Midway found the Kido Butai), placed DAWN_R from the enemy fleet on its own
+// side of it and headed across the enemy's track (it usually finds the enemy in 10-25 s, the first contact of the
+// battle, at ~8x a ship's visual range) - then occasional ones from the edge.
 window.WW = window.WW || {};
 (function () {
   'use strict';
   if (!WW.flyingBoats) { console.error('air_patrol.js must load after air_flyingboats.js'); return; }
   var FB = WW.flyingBoats;
   // per nation: the doctrine (fleet_groups.js patrolStandoff / patrolShadowT / patrolEvery / patrolBombs, rolled per round)
-  var FIRST = [15, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 3, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
+  var DAWN_R = [360, 560], DAWN_A = 0.9, DAWN_ERR = 110, RELIEF = [20, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 4, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
   var VAL = { carrier: 6, battleship: 5, cruiser: 3, destroyer: 1.5, pt: 0.3, submarine: 0.5 };
   var sched = {}, tick = 0, bombsOut = new Set();
 
@@ -159,13 +162,33 @@ window.WW = window.WW || {};
     tick -= dt; if (tick > 0) return; tick = 1;
     var now = WW.game.roundTime, end = WW.game.deadline ? WW.game.deadline() : WW.cfg.ROUND_TIMEOUT;
     ['USN', 'IJN'].forEach(function (n) {
-      var S = sched[n] || (sched[n] = { n: 0, at: WW.randRange(FIRST[0], FIRST[1]), up: null });
-      if (S.up && (S.up.removed || !S.up.alive)) { var ev = (WW.fleetCmd.doctrine(n) || {}).patrolEvery || 215; S.up = null; S.at = now + WW.randRange(ev * 0.8, ev * 1.2); }
+      var S = sched[n] || (sched[n] = { n: 0, at: 0, up: null, dawn: true });
+      if (S.up && (S.up.removed || !S.up.alive)) { var ev = (WW.fleetCmd.doctrine(n) || {}).patrolEvery || 215; S.up = null; S.at = Math.min(S.at > now ? S.at : 1e9, now + WW.randRange(ev * 0.8, ev * 1.2)); }
+      // relief on station: a shadower turning for home with the enemy still in its plot sends for the next boat at once
+      if (S.up && S.up.alive && S.up.state === 'return' && S.up.shadowT > 30 && !S.relief) { S.relief = true; S.at = now + WW.randRange(RELIEF[0], RELIEF[1]); }
+      if (S.up && S.up.state === 'return' && now >= S.at && S.n < MAX_ROUND) S.up = null; // the relief may launch while it heads home
       if (S.up || S.n >= MAX_ROUND || now < S.at || now > end - 90) return;
       if (WW.endgame && WW.endgame.broken && WW.endgame.broken(n)) return;   // a beaten side has other worries
-      if (FB.count(n) >= (n === 'USN' ? 2 : 1)) return;
-      S.up = FB.launch(n, 'patrol', WW.randRange(WW.cfg.MAP_H * 0.2, WW.cfg.MAP_H * 0.8)); S.n++;
+      if (FB.count(n) >= (n === 'USN' ? 3 : 2)) return; // a relief may be up while the shadower heads home
+      S.up = FB.launch(n, 'patrol', WW.randRange(WW.cfg.MAP_H * 0.2, WW.cfg.MAP_H * 0.8)); if (S.up) S.n++; // null: too dark yet (a dawn round)
+      if (S.up) S.relief = false;
+      if (S.up && S.dawn) { S.dawn = false; dawn(S.up); }
     });
+  }
+  // The dawn patrol: out on its search leg already, DAWN_R from the enemy's surface ships on its own side of them
+  // (within +-DAWN_A rad of the line home), its leg passing up to DAWN_ERR to one side of them, then a dogleg.
+  function dawn(p) {
+    var n = p.nation, S = WW.world.ships, x = 0, z = 0, k = 0;
+    for (var i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && s.nation !== n && !s.isBase && s.type !== 'submarine') { x += s.x; z += s.z; k++; } }
+    if (!k) return;
+    x /= k; z /= k;
+    var a = (n === 'USN' ? Math.PI : 0) + WW.randRange(-DAWN_A, DAWN_A), R = WW.randRange(DAWN_R[0], DAWN_R[1]), e = WW.randRange(-DAWN_ERR, DAWN_ERR);
+    var q = inMap(x + Math.cos(a) * R, z + Math.sin(a) * R), dx = x - q.x, dz = z - q.z, d = Math.hypot(dx, dz) || 1;
+    var t = inMap(x - dz / d * e, z + dx / d * e);                               // the search line, a little off the fleet
+    p.x = q.x; p.z = q.z; p.heading = Math.atan2(t.z - q.z, t.x - q.x); p.state = 'search'; p.stT = 0; p.dawn = true;
+    p.bombs = doc(p).bombs; p.ordnance = p.bombs > 0;
+    p.legs = [t, inMap(t.x + dx / d * 150, t.z + dz / d * 150 + (e < 0 ? -1 : 1) * 160)]; p.leg = 0;
+    if (FB.stats) FB.stats.dawn = (FB.stats.dawn || 0) + 1;
   }
   var ou = WW.air.update;
   WW.air.update = function (dt) {

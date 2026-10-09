@@ -13,11 +13,21 @@ window.WW = window.WW || {};
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
   var OUT_SHARE = 0.35, OUT_K = 0.4; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
-  var PURSUE_AGE = 120, PURSUE_STRIKE_R = 2000; // pursuit: strikes on contacts this old, anywhere on the map
+  var PURSUE_AGE = 120;  // pursuit: strikes on contacts this old, anywhere on the map (PURSUE_STRIKE_R below)
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship: engage, else approach
   var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
-  var STRIKE_AGE = 45, STRIKE_R = 650, STRIKE_FAR = 1150; // strike only on contacts this fresh and this close to the carrier
+  // strikes: on contacts this fresh and within STRIKE_R of the carrier (0.6 W, ~6x a big ship's visual range), else
+  // anything known out to STRIKE_FAR (the whole width: the 1942 strikes flew 8-12x visual range); DIST_K: the
+  // distance at which a target's score halves (it scales with the map so near and far keep the old balance)
+  var W0 = WW.cfg.MAP_W, STRIKE_AGE = 45, STRIKE_R = 0.6 * W0, STRIKE_FAR = 1.05 * W0, PURSUE_STRIKE_R = 1.3 * W0, DIST_K = 400 * W0 / WW.cfg.REF_W;
+  // The air-war hold (P6, docs/PLANE_REVIEW.md): a side with carriers that can fly keeps its battle line, screen and
+  // flotilla with the carriers (fleet_groups.js stations) and its gun ships off targets beyond HOLD_REACH x their reach
+  // (ships_ai.js) until CLOSE_AT x ROUND_TIMEOUT (x (1.15 - 0.3 x aggression): the IJN a little sooner), then the
+  // surface force closes for the gun fight. It ends early when the side's carriers are gone or crippled, when every
+  // enemy carrier it has seen is sunk (the air war is won), in the dark (no air war at night) or once it pursues /
+  // withdraws. A side without carriers closes from the start.
+  var CLOSE_AT = 0.3, FLY_AHEAD = 60;
   var RAID_R = 130;     // enemy bombers this close to an own carrier: air raid
   var TTK = 20;         // s: a target whose incoming fire kills it within TTK is saturated (no more shooters)
   var SECT_X = 6, SECT_Z = 4, LOOK_R = 110; // scout sectors; an own unit within LOOK_R of a sector centre has looked
@@ -29,7 +39,7 @@ window.WW = window.WW || {};
   function newSide(n) {
     var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
       strength: { own: 0, known: 0, ratio: 1 }, fit: 0, hadFit: false, brokenAt: 0, doctrine: WW.fleetGroups.rollDoctrine(n),
-      startTons: -1, fitTons: 0, foeSeen: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0,
+      startTons: -1, fitTons: 0, foeSeen: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0, airWar: false, closeAt: 0, foeCV: new Map(),
       axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
       groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
@@ -88,6 +98,7 @@ window.WW = window.WW || {};
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
     if (B.posture !== prev) B.postureAt = now;
+    B.airWar = airWar(B, cs, rt);
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
     var tgt = B.enemyCentre || B.searchPoint;
@@ -115,6 +126,20 @@ window.WW = window.WW || {};
         if (s.type === 'carrier' && WW.dist(s.x, s.z, pl[i].x, pl[i].z) < RAID_R) { B.airRaid = B.airRaid || { carrier: s, n: 0 }; B.airRaid.n++; }
       }
     }
+  }
+
+  // The air-war hold (see CLOSE_AT): true while the side keeps its surface force with its carriers.
+  function airWar(B, cs, rt) {
+    var i, u, cv = 0, d = B.doctrine;
+    if (!B.closeAt) B.closeAt = WW.cfg.ROUND_TIMEOUT * CLOSE_AT * (1.15 - 0.3 * d.aggression);
+    for (i = 0; i < cs.length; i++) { u = cs[i].unit; if (u && u.type === 'carrier' && !B.foeCV.has(u.id)) B.foeCV.set(u.id, u); }
+    var M = B.groups.carrier.members;
+    for (i = 0; i < M.length; i++) if (M[i].type === 'carrier' && M[i].hp >= WW.fleetGroups.CRIP * M[i].maxHp) cv++;
+    if (!cv || rt >= B.closeAt || B.posture === 'pursue' || B.posture === 'withdraw' || B.posture === 'press') return false;
+    var won = B.foeCV.size > 0; B.foeCV.forEach(function (q) { if (q.alive && !q.sinking) won = false; });
+    if (won) return false;
+    var D = WW.dayNight; // flying now, or within FLY_AHEAD s (a dawn round waits for the light)
+    return !D || D.canFly() || D.level(D.roundT() + FLY_AHEAD) >= D.FLY_MIN;
   }
 
   // Pursuit (fog of war): every enemy gun ship the side has seen this round is remembered; the enemy is judged
@@ -198,7 +223,7 @@ window.WW = window.WW || {};
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sv = u.isBase ? (WW.baseAI ? WW.baseAI.strikeValue(B, cv) : 0) : STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0; // the island base (base_ai.js)
         if (!sv) continue;
-        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? 1200 : 400)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
+        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? DIST_K * 3 : DIST_K)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
         if (pur) sc *= runaway(B, u, c);
         if (WW.admirals) sc *= WW.admirals.targetK(u);
         if (sc > bs) { bs = sc; best = u; bc = c; }
@@ -291,6 +316,7 @@ window.WW = window.WW || {};
       return (F.indexOf(target) >= 0 ? 1.35 : 1) * bf;
     },
     // the strike decision for a carrier: { target, contact, score, hold } or null (ai_carrier.js / air ops)
+    airWar: function (n) { var B = sides[n]; return !!(B && B.airWar); },
     strikeOrder: function (cv) { var B = sides[cv.nation]; return (B && B.strikes.get(cv.id)) || null; },
     // best search point for a scout / searching ship near (x, z): high priority, not too far
     scoutPoint: function (nation, x, z) {

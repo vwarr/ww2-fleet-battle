@@ -70,7 +70,7 @@ window.WW = window.WW || {};
   function vanguardBack(B, back) {
     var v = B.doctrine.vanguard || 0;
     if (!(v > 0) || (B.posture !== 'search' && B.posture !== 'approach' && B.posture !== 'engage')) return back;
-    return Math.max(back, v * WW.cfg.MAP_W);
+    return Math.max(back, v * WW.cfg.REF_W); // a tactical distance (~12 carrier lengths): the old map width, not the new one
   }
 
   // ---- zigzag ----

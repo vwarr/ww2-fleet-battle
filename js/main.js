@@ -137,7 +137,7 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.endReason = null; game.roundTime = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.lastHit = 0;
+      game.winner = null; game.endReason = null; game.roundTime = 0; clearT.USN = clearT.IJN = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.lastHit = 0;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
@@ -186,9 +186,29 @@ window.WW = window.WW || {};
   //    The way its last ship went decides the reason: over its home edge (a broken side running home, endgame.js):
   //    'retire'; sunk: 'kill' (the winner ran down the last of them; ships that got away earlier are counted in
   //    WW.endgame.stats.escaped). Both out at once: tonnage.
+  //  - a broken side that has got clear also retires (the big map's long run home is no battle): RETIRE_MIN s after
+  //    the break, once no enemy gun ship is within CLEAR_R of any of its ships and no armed enemy bomber is within
+  //    CLEAR_AIR of them, for CLEAR_T s running (the pursuit has lost touch). Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
-  const PURSUE_T = 150, EXT_MAX = 150;
+  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 45, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 30;
+  const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 };
+  // the broken side n is out of the enemy's reach (no gun ship within CLEAR_R, no armed bomber within CLEAR_AIR)
+  function clear(n) {
+    const S = WW.world.ships, P = WW.world.planes;
+    for (const s of S) {
+      if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
+      for (const e of S) if (e.alive && !e.sinking && e.nation !== n && GUNS[e.type] && WW.dist2(s.x, s.z, e.x, e.z) < CLEAR_R * CLEAR_R) return false;
+      for (const p of P) if (p.alive && p.nation !== n && p.ordnance && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(s.x, s.z, p.x, p.z) < CLEAR_AIR * CLEAR_AIR) return false;
+    }
+    return true;
+  }
+  function gotClear(n, dt) {
+    const B = WW.fleetCmd && WW.fleetCmd.side(n);
+    if (game.noRetire || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n)) { clearT[n] = 0; return false; }
+    clearT[n] += dt;
+    return clearT[n] >= CLEAR_T;
+  }
   const MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   const afloat = (n, major) => WW.world.ships.reduce((k, s) => k + (s.alive && s.nation === n && (!major || MAJOR[s.type]) ? 1 : 0), 0);
   function out(n) {
@@ -215,8 +235,9 @@ window.WW = window.WW || {};
       const subOnly = n => (call('ships', 'alive', n) || []).every(s => s.type === 'submarine');
       const stalled = (subOnly('USN') || subOnly('IJN')) && (game.contactT === null ? game.roundTime > SUB_SEARCH
         : game.roundTime - Math.max(game.lastSink, game.lastHit || 0, game.contactT + SUB_CLOSE) > SUB_STALL);
-      const oU = out('USN'), oJ = out('IJN');
-      if (oU || oJ) {
+      const oU = out('USN'), oJ = out('IJN'), gU = gotClear('USN', dt), gJ = gotClear('IJN', dt);
+      if (!oU && !oJ && (gU !== gJ)) { const loser = gU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), 'retire', loser); }
+      else if (oU || oJ) {
         if (oU && oJ) { const tu = game.tonnage('USN'), tj = game.tonnage('IJN'); game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'kill'); }
         else { const loser = oU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), lastEscaped(loser) ? 'retire' : 'kill', loser); }
       } else if (game.roundTime >= deadline() || stalled) {

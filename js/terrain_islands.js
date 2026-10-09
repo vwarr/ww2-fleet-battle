@@ -10,6 +10,9 @@ window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
+  // the big map (2400 x 1350) is ~5.6x the old 960 x 600 one: AREA_K more second islands, islets, bars and reefs,
+  // spread over it (each about as big as before), so there is still cover and line-of-sight breaks along the approach
+  const AREA_K = W * H / (960 * 600), NUM_K = Math.max(1, Math.round(Math.sqrt(AREA_K))), N_SECOND = Math.max(1, Math.round(AREA_K / 2.5));
   const PAD_H = 1.2;                 // airfield ground height above the sea
   const RUN1 = 86, RUN2 = 60, RUN_W = 4.5, X_ANG = 0.95; // main / cross runway lengths, half width, crossing angle
   // shelf: width (units) of the shallow ledge outside the coast; drop: width of the slope down to deep water
@@ -62,7 +65,7 @@ window.WW = window.WW || {};
     const a2 = a1 + Math.PI + K.rr(-0.6, 0.6), d2 = R * 0.42;
     add('low', cx + Math.cos(a2) * d2, cz + Math.sin(a2) * d2, R * K.rr(0.42, 0.5), R * K.rr(0.26, 0.32), a2 + Math.PI / 2 + K.rr(-0.4, 0.4), 2.4, true);
     if (K.rnd() < 0.55) add('islet', cx + Math.cos(a1 + 1.7) * R * 0.55, cz + Math.sin(a1 + 1.7) * R * 0.55, 6, 5, K.rr(0, 3), 1.6, true); // a sandy cay
-    second(220);
+    for (let i = 0; i < N_SECOND; i++) second(220);
   }
   function makeVolcanic() {
     const rx = K.rr(58, 70), rz = rx * K.rr(0.7, 0.85), rot = K.rr(0, Math.PI);
@@ -78,7 +81,7 @@ window.WW = window.WW || {};
       const b = a + Math.PI + K.rr(-1, 1), r = rx + K.rr(14, 24);
       add('reef', cx + Math.cos(b) * r, cz + Math.sin(b) * r, K.rr(8, 14), K.rr(4, 7), b + Math.PI / 2, K.rr(-2.2, -1.3), true);
     }
-    second(200);
+    for (let i = 0; i < N_SECOND; i++) second(200);
   }
   // a second, smaller volcanic island away from the first
   function second(gap) {
@@ -89,15 +92,15 @@ window.WW = window.WW || {};
   function make(k) {
     K = k; features = []; centres = []; pads = []; site = null;
     if (K.rnd() < 0.6) makeAtoll(); else makeVolcanic();
-    const nSmall = 3 + Math.floor(K.rnd() * 3);
+    const nSmall = (3 + Math.floor(K.rnd() * 3)) * NUM_K;
     for (let i = 0; i < nSmall; i++) { const [x, z] = spot(150, W - 150, 30, H - 30, 70); add('islet', x, z, K.rr(5, 9), K.rr(4, 8), K.rr(0, 3), K.rr(1.5, 3.5)); }
-    const nBar = 1 + Math.floor(K.rnd() * 3);
+    const nBar = (1 + Math.floor(K.rnd() * 3)) * NUM_K;
     for (let i = 0; i < nBar; i++) {
       const edge = K.rnd() < 0.35, top = K.rnd() < 0.5; // a bar may sit near the top/bottom edges anywhere
       const [cx, cz] = edge ? spot(40, W - 40, top ? 10 : H - 35, top ? 35 : H - 10, 50) : spot(140, W - 140, 30, H - 30, 50);
       add('bar', cx, cz, K.rr(8, 18), K.rr(1.5, 2.5), K.rr(0, Math.PI), K.rr(-0.4, 0.4));
     }
-    const nReef = 2 + Math.floor(K.rnd() * 3);
+    const nReef = (2 + Math.floor(K.rnd() * 3)) * NUM_K;
     for (let i = 0; i < nReef; i++) { const [x, z] = spot(130, W - 130, 20, H - 20, 50); add('reef', x, z, K.rr(5, 10), K.rr(3, 7), K.rr(0, 3), K.rr(-2.6, -1.4)); }
     return { features, site };
   }

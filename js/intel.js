@@ -12,7 +12,8 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  // Every detection range, in world units (sized for the 960 x 600 map; the biggest gun reaches 170).
+  // Every detection range, in world units (sized to the ships, not the map: the 2400 x 1350 map is ~10 x a big ship's
+  // visual range across; the biggest gun reaches 170).
   var R = {
     SEEN: { carrier: 240, battleship: 240, cruiser: 210, destroyer: 170, submarine: 70, pt: 75 }, // target size: seen this far by a tall lookout
     EYE: { carrier: 1, battleship: 1, cruiser: 0.95, destroyer: 0.85, submarine: 0.65, pt: 0.55 }, // observer height factor
@@ -28,7 +29,7 @@ window.WW = window.WW || {};
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
     TORP: 45                                           // a ship sees an enemy torpedo track this close (scanTorps)
   };
-  var T = { TICK: 0.5, FRESH: 3, SHIP_TTL: 90, PLANE_TTL: 10, REGAIN: 30, SPOT_HOLD: 20 };
+  var T = { TICK: 0.5, FRESH: 3, SHIP_TTL: 180, PLANE_TTL: 10, REGAIN: 30, SPOT_HOLD: 20 }; // SHIP_TTL 180 (was 90): the plot keeps a last-known position longer on the big map (the searches go back to it)
   var CAPITAL = { carrier: 1, battleship: 1 };
   var NATIONS = ['USN', 'IJN'];
   var side = {}, tickT = 0, losCache = new Map(), scratch = [];

@@ -69,6 +69,9 @@ window.WW = window.WW || {};
   const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6 };
   const VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };
   const STICKY = 1.3; // switch targets only for a score this much better
+  // The air-war hold (fleet_cmd.js airWar): a gun ship takes no target beyond HOLD_REACH x its reach. A contact the
+  // planes report far off is the carriers' business; the surface force keeps station with them until it closes.
+  const GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 }, HOLD_REACH = 1.5;
   function reach(st) { return st.guns[0] ? st.guns[0].range : st.torpedoes ? st.torpedoes.range : 60; }
   // c: the side's contact for o (position, quality); W: weight table row; R: the weapon's reach.
   // A destroyer goes for a carrier or battleship only as part of a flotilla attack (another own destroyer within
@@ -83,6 +86,7 @@ window.WW = window.WW || {};
     if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship) &&
       !(WW.endgameAI && WW.endgameAI.isCripple(o) && WW.fleetCmd && (WW.fleetCmd.side(ship.nation) || {}).posture === 'pursue')) return 0; // a slowed cripple in a pursuit: alone too
     const d = WW.dist(ship.x, ship.z, c.x, c.z);
+    if (GUNSHIP[ship.type] && d > R * HOLD_REACH && WW.fleetCmd && WW.fleetCmd.airWar(ship.nation)) return 0; // the air-war hold: no chase
     const pHit = (d <= R ? 1 - 0.5 * (d / R) * (d / R) : 0.5 * Math.max(0.1, 1 - (d - R) / (2 * R)))
       * (0.85 + 0.15 * Math.abs(Math.sin(o.heading - Math.atan2(o.z - ship.z, o.x - ship.x))))   // aspect: broadside is easier
       * (c.quality === 'visual' || c.quality === 'sonar' ? 1 : 0.8);                               // spotted by a plane / scout

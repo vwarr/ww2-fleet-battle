@@ -1,9 +1,12 @@
 // core.js (owner A): config, helpers, event bus, data tables. Matches CONTRACT.md.
 window.WW = window.WW || {};
 (function (WW) {
-  // 960 x 600: room for an approach phase between fleets (ships keep their size; the sea between them grows).
-  // ROUND_TIMEOUT 420 sim s = 14 min real at 1x (BASE_SPEED 0.5): it only caps stalemates.
-  WW.cfg = { MAP_W: 960, MAP_H: 600, CELL: 2, ROUND_TIMEOUT: 420 /* sim seconds */ };
+  // 2400 x 1350 (was 960 x 600): the carriers start ~2350 apart, about 10x a big ship's visual range (240), as in
+  // 1942 when the carrier forces never sighted each other: the battle opens with an air war while the fleets are out of
+  // sight, and the surface forces close later (fleet_cmd.js air-war hold). Ships keep their size; the sea grows.
+  // REF_W: the old width, for the few tactical distances that were written as a share of it (fleet_formation vanguard).
+  // ROUND_TIMEOUT sim s (x2 real at 1x, BASE_SPEED 0.5): see docs/ARCHITECTURE.md "Time" for how it was picked.
+  WW.cfg = { MAP_W: 2400, MAP_H: 1350, REF_W: 960, CELL: 2, ROUND_TIMEOUT: 780 /* sim seconds */ };
   // Sim-only mode (index.html?sim, headless tests): the full simulation with no rendering, no visuals and no
   // render loop (main.js boot). Results are bit-identical to normal mode (tests/determinism.js --cross).
   WW.simOnly = WW.cfg.SIM_ONLY = /[?&]sim(&|=|$)/.test(location.search);

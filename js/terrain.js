@@ -212,8 +212,9 @@ window.WW = window.WW || {};
     rs = (seed >>> 0) || 1;
     seedNoise();
     makeFeatures();
-    // tune the size of the free islands (not the atoll or the airfield island) so land covers ~4.5-7% of the map
-    const target = rr(0.045, 0.07);
+    // tune the size of the free islands (not the atoll or the airfield island) so land covers ~4.5-7% of the old
+    // 960 x 600 map, and on a bigger map that share / sqrt(area ratio): the open ocean grows faster than the land
+    const target = rr(0.045, 0.07) / Math.sqrt(Math.max(1, W * H / (960 * 600)));
     let lo = 0.5, hi = 3;
     for (let it = 0; it < 9; it++) {
       radScale = (lo + hi) / 2;

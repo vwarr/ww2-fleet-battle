@@ -16,7 +16,7 @@
 //   next strike goes as soon as the deck allows. Sim code: no randomness.
 window.WW = window.WW || {};
 (function () {
-  const WANT = 3, PER_CV = 2, START_T = 30, SEARCH_AGE = 45, CV_GAP = 6, PU_AGE = 45;
+  const WANT = 3, PER_CV = 2, START_T = 20, SEARCH_AGE = 45, CV_GAP = 6, PU_AGE = 45, GO_T = 2; // GO_T: a new strike target -> the strike order in this many s
   const SHADOW_T = { scout: 70, other: 55 }, STAND = { scout: 80, other: 90 }; // a scout shadows inside its gun-spotting range (intel SPOT 85), outside ships' AA (~70)
   const CAP_KEEP = 150, FTR_R = 85, SWEPT_R = 60, ALT = 30, LOW = 8;
   const ST = { sorties: 0, shadows: 0, breaks: 0, lost: { out: 0, station: 0, home: 0 }, flown: 0, searched: { USN: new Set(), IJN: new Set() } };
@@ -54,7 +54,7 @@ window.WW = window.WW || {};
     const B = side(pl.nation), sp = claim(pl.nation, pl, pl.x, pl.z); if (!sp || !B) return [];
     const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, gx = B.axis.x, gz = B.axis.z, b = Math.atan2(sp.z - gz, sp.x - gx);
     const cl = (x, z) => ({ x: WW.clamp(x, 25, W - 25), z: WW.clamp(z, 25, H - 25) });
-    const far = Math.min(WW.dist(gx, gz, sp.x, sp.z) + 220, 760), dog = (pl.id || pl.carrier.id || 0) & 1 ? 0.3 : -0.3;
+    const far = Math.min(WW.dist(gx, gz, sp.x, sp.z) + 220, 0.8 * W), dog = (pl.id || pl.carrier.id || 0) & 1 ? 0.3 : -0.3;
     return [cl(sp.x, sp.z), cl(gx + Math.cos(b) * far, gz + Math.sin(b) * far), cl(gx + Math.cos(b + dog) * far * 0.85, gz + Math.sin(b + dog) * far * 0.85)];
   }
   function noteSwept(pl) {
@@ -181,7 +181,9 @@ window.WW = window.WW || {};
     if (!B || !hg) return;
     a.srchT = (a.srchT || 0) - dt;
     const so = WW.fleetCmd.strikeOrder(cv);
-    if (a.srchWant && so && a.strikeT > 4) a.strikeT = 4;   // found: strike as soon as the deck allows
+    // found (by the search, a patrol, a picket): a carrier that had no strike target strikes as soon as the deck allows
+    if (so && so.target && !so.hold && !a.soPrev && a.strikeT > GO_T) a.strikeT = GO_T;
+    a.soPrev = !!(so && so.target);
     a.srchWant = rt > START_T && (B.posture === 'search' || B.searchFor > SEARCH_AGE) && !so;
     // pursuit (or the enemy about to break, air_ops.js beaten): the enemy's carrier lost (no contact in PU_AGE s): one searcher down its escape route (the sectors in
     // front of the enemy's home edge get the pursuit priority, fleet_cmd.js), a spare fighter before a bomber

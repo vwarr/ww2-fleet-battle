@@ -12,7 +12,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var SPOT_R = WW.intel ? WW.intel.R.SPOT : 85, SPOT_HOLD = WW.intel ? WW.intel.T.SPOT_HOLD : 20, SEARCH_T = 130, ALT = 26, ARC_R = 90;   // SEARCH_T covers the ~35 s flight out on the big map
-  var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, CAT_SLIDE = 0.35;
+  var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, CAT_SLIDE = 0.35, DAWN = [0.5, 6];   // DAWN: first catapult launch (s into the round)
   var SCALE_CAT = 0.55, SCALE_FLY = 1.5;   // small on the catapult, arcade size (like carrier planes) in flight
   var SHIPS = { cruiser: 1, battleship: 1 };
   if (WW.PLANE_TYPES && !WW.PLANE_TYPES.scout) WW.PLANE_TYPES.scout = { hp: 16, speed: 22, range: 1000 };
@@ -200,7 +200,7 @@ window.WW = window.WW || {};
     for (var i = 0; i < WW.world.ships.length; i++) {
       var s = WW.world.ships[i];
       if (!SHIPS[s.type] || !s.alive || s.sinking) continue;
-      var sc = s._scout || (s._scout = { sorties: 0, nextT: WW.randRange(5, 25), plane: null });
+      var sc = s._scout || (s._scout = { sorties: 0, nextT: WW.randRange(DAWN[0], DAWN[1]), plane: null }); // the dawn search: off the catapult at once
       // a pursuing side (fleet_cmd posture 'pursue') flies one more sortie to find the enemy's escape route
       var pur = WW.fleetCmd && WW.fleetCmd.side(s.nation) && WW.fleetCmd.side(s.nation).posture === 'pursue';
       if (sc.plane || sc.sorties >= MAX_SORTIES + (pur ? 1 : 0) || g.roundTime < sc.nextT) continue;

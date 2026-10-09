@@ -169,10 +169,14 @@ window.WW = window.WW || {};
     for (var k in G) if (k !== 'main' && !centroid(G[k].members, G[k].guide)) { G[k].guide.x = mg.x; G[k].guide.z = mg.z; }
     var cv = G.carrier.members.filter(function (q) { return q.type === 'carrier'; });
     var cvg = cv.length ? cv[0] : null, ownX = B.nation === 'USN' ? 0 : W, half = W / 2;
+    // the air-war hold (fleet_cmd.js airWar): the surface force keeps station HOLD_AHEAD in front of its carriers
+    // (the IJN vanguard further out) instead of advancing, and the carriers stay at the near edge of their band
+    var hold = B.airWar && cv.length ? holdAnchor(B, cv, c, s) : null, sg = hold || mg;
+    if (hold) lead = 0;
     var at = function (gx, gz, f, l) { return { x: WW.clamp(gx + c * f - s * l, 30, W - 30), z: WW.clamp(gz + s * f + c * l, 30, H - 30) }; };
     var set = function (q, p) { var o = B.orders.get(q.id); if (o) { o.sx = p.x; o.sz = p.z; } };
     // main body: line abreast across the axis, advancing by `lead`
-    G.main.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead, LINE[i % LINE.length])); });
+    G.main.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead, LINE[i % LINE.length])); });
     // carriers: cvStandoff behind the main body (never ahead of it); escorts in a ring around the first carrier
     var back = B.doctrine.cvStandoff * (B.posture === 'search' ? 0.8 : 1);
     if (WW.formation) back = WW.formation.vanguardBack(B, back); // IJN: the surface vanguard well ahead of the carriers
@@ -188,7 +192,7 @@ window.WW = window.WW || {};
         // a side that has broken off (withdraw) takes its carrier home, close to its own edge (main.js retire)
         // CV_LO..CV_HI of the width in from its own edge, withdrawing or not: a broken side's carrier then has a long
         // run home (ai_endgame.js), and a pursuer a real window to catch it (user, Oct 2026); the IJN vanguard (fleet_formation.js) keeps to this band too
-        var wd = B.posture === "withdraw", lo = CV_LO, hi = CV_HI; // withdrawing too: the run home starts at the break (ai_endgame.js)
+        var wd = B.posture === "withdraw", lo = CV_LO, hi = hold ? CV_LO : CV_HI; // withdrawing too: the run home starts at the break (ai_endgame.js)
         if (wd) p.z = q.z; // straight home, not across the front
         p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
         cvSafe(B, p, ownX === 0 ? W * CV_SAFE : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * (1 - CV_SAFE)); // safety may slide it home, not onto the edge
@@ -197,8 +201,8 @@ window.WW = window.WW || {};
       if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
     });
     if (WW.formation) { WW.formation.ringStations(B, set, at); WW.formation.zigzag(B); }
-    G.screen.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });
-    G.flotilla.members.forEach(function (q, i) { set(q, at(mg.x, mg.z, lead + 30, (i % 2 ? -1 : 1) * (110 + 25 * (i >> 1)))); });
+    G.screen.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead + B.doctrine.screenAhead, LINE[i % LINE.length] * 1.2)); });
+    G.flotilla.members.forEach(function (q, i) { set(q, at(sg.x, sg.z, lead + 30, (i % 2 ? -1 : 1) * (110 + 25 * (i >> 1)))); });
     // PT boats: own-side flanks, never past the midline; subs: out on the flank of the enemy's approach
     G.pt.members.forEach(function (q, i) {
       var p = at(mg.x, mg.z, 60, (i % 2 ? -1 : 1) * (150 + 30 * (i >> 1)));
@@ -209,12 +213,37 @@ window.WW = window.WW || {};
     var nsub = G.sub.members.length, ec = B.enemyCentre;
     var sf = B.doctrine.subLine && ec ? WW.clamp(0.55 * WW.dist(mg.x, mg.z, ec.x, ec.z), 160, 320) : 220;
     G.sub.members.forEach(function (q, i) { set(q, B.doctrine.subLine ? at(mg.x, mg.z, sf, (i - (nsub - 1) / 2) * 90) : at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
+    // closing with no battle line, screen or flotilla (a carrier task force on its own): the carriers' escorts sortie
+    // toward the enemy as a surface group, so the fleets still meet; one per carrier stays while there is another to go
+    if (!B.airWar && cv.length && !G.main.members.length && !G.screen.members.length && !G.flotilla.members.length &&
+      B.posture !== 'withdraw') sortie(B, G, cv.length);
     // withdrawing ships: behind their own carrier (or the main body)
     B.orders.forEach(function (o) {
       if (o.role !== 'withdraw' || o.ship.type === 'carrier') return; // a carrier keeps its own (safe) station
       var g = cvg && cvg !== o.ship ? cvg : mg, p = at(g.x, g.z, -70, 0);
       o.sx = p.x; o.sz = p.z;
     });
+  }
+
+  // The sortie: escorts past the first `keep` steam for the enemy's known centre (fleet_cmd.js: the axis target).
+  function sortie(B, G, ncv) {
+    var k = 0, t = B.enemyCentre || B.searchPoint, n = 0;
+    G.carrier.members.forEach(function (q) { var o = B.orders.get(q.id); if (q.type !== 'carrier' && o && o.role !== 'withdraw') n++; });
+    var keep = Math.min(ncv, n - 1);
+    G.carrier.members.forEach(function (q) {
+      var o = B.orders.get(q.id);
+      if (q.type === 'carrier' || !o || o.role === 'withdraw' || k++ < keep) return;
+      o.role = 'sortie'; o.sx = WW.clamp(t.x, 30, WW.cfg.MAP_W - 30); o.sz = WW.clamp(t.z, 30, WW.cfg.MAP_H - 30);
+    });
+  }
+  // Hold anchor: the carriers' centroid, HOLD_AHEAD (in carrier lengths) along the axis toward the enemy; the IJN
+  // vanguard (doctrine vanguard x the old map width, ~12 L) further out as pickets and bait.
+  var HOLD_AHEAD = 5; // x the carrier's hull length
+  function holdAnchor(B, cv, c, s) {
+    var x = 0, z = 0, L = WW.SHIP_TYPES.carrier.length;
+    for (var i = 0; i < cv.length; i++) { x += cv[i].x; z += cv[i].z; }
+    var f = Math.max(HOLD_AHEAD * L, (B.doctrine.vanguard || 0) * WW.cfg.REF_W);
+    return { x: x / cv.length + c * f, z: z / cv.length + s * f };
   }
 
   WW.fleetGroups = { BASE: BASE, CRIP: CRIP, rollDoctrine: rollDoctrine, assign: assign, stations: stations, centroid: centroid };
