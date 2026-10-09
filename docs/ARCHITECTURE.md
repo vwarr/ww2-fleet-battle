@@ -209,7 +209,7 @@ Measured with `node tests/torpedo_review.js --seeds 20` (80 rounds: standard, ca
 |---|---|---|---|
 | aerial hit rate USN / IJN | 41 / 36% | 19 / 25% | 28 / 26% |
 | anvils of >= 3 torpedoes that score, USN / IJN | 64 / 73% | 39 / 68% | 61 / 74% |
-| aerial torpedoes whose target combed | 89% | 91% | 61% |
+| aerial torpedoes whose target combed (approximate: any comb after the drop) | 89% | 91% | 61% |
 | direct hp per hit: CV / BB / CA / DD | 12 / 9 / 17 / 37% | 13 / 10 / 19 / 40% | 22 / 13 / 27 / 84% (+ flooding) |
 | carrier 20 s after its first hit: speed / hp | 0.71 / 0.72 | 0.52 / 0.44 | 0.48 / 0.34 |
 | list 5 s after the first hit (CV / CA) | 0.06 / 0.10 rad | 0.10 / 0.10 | 0.17 / 0.18 |
