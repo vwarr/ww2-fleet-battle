@@ -102,6 +102,10 @@ const WHICH = (process.argv[4] || 'deck,strike,dogfight,overview,base').split(',
     say('[overview] ' + await setup(SEED + 3, 'random'));
     say('  ' + await p.evaluate(() => { until(() => WW.world.planes.filter(q => q.alive).length > 30 && WW.game.roundTime > 120, 400); return 'planes ' + WW.world.planes.filter(q => q.alive).length + ', t ' + WW.game.roundTime.toFixed(0); }));
     await frames(90); await snap('overview_director');
+    await p.evaluate(() => WW.cam.film({ kind: 'wide', dur: 30 })); await frames(150); await snap('overview_wide');
+    await p.evaluate(() => { const f = WW.world.ships.filter(s => s.alive); const c = f[0]; WW.cam.film({ kind: 'orbit', subj: { x: c.x, z: c.z, y: 0, diorama: true }, r: 120, dur: 30, w: 0.022, hgt: 0.3 }); }); await frames(150); await snap('overview_diorama');
+    const ch = await p.evaluate(() => { const q = WW.world.planes.find(q => q.alive && q.state === 'transit' && q.ordnance && q.y > 10); if (!q) return 'none'; WW.cam.film({ kind: 'chase', subj: q, dur: 30 }); return q.kind; });
+    if (ch !== 'none') { await frames(90); await snap('director_chase_' + ch); }
     await p.evaluate(() => {
       const sh = WW.world.ships.filter(s => s.alive && s.nation === 'USN'); let x = 0, z = 0; sh.forEach(s => { x += s.x; z += s.z; }); x /= sh.length; z /= sh.length;
       window.__lookFn = () => ({ x: x - 60, y: 80, z: z + 110, tx: x, ty: 0, tz: z });
