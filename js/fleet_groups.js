@@ -40,6 +40,9 @@ window.WW = window.WW || {};
   //   followUp     later strikes: 'deckload' (each carrier's load goes once it is all up, no form-up orbit) or
   //                'squadron' (each squadron goes as soon as it is up: USN 1942, Midway-style, less coordinated)
   //   reserveFrac  share of the strike aircraft held back, armed for ships, until enemy carriers are found (Nagumo)
+  //   pursuitReserve share of the bombers a carrier keeps back from its follow-up strikes once the enemy battle line
+  //                has been seen, for the strike on the beaten fleet (air_ops.js; Hiryu's second strike, the 4 June
+  //                afternoon strike on Hiryu, Mikuma on 6 June): released when the enemy breaks or is about to
   //   ringR        AA ring radius of each carrier's escorts, on the threat axis (fleet_formation.js); 0: the old loose
   //                ring (~80). USN 35: the 1942 circular screen, the AA umbrella over the carrier
   //   ringDD       destroyers per carrier in its ring (at least one); ringBB (flag): a side with two or more
@@ -55,24 +58,24 @@ window.WW = window.WW || {};
   //   aaAmmo       AA ammunition factor (ship_supply.js; USN 1.25: deeper ready-use allowances); ddFuel: destroyer fuel
   //                factor (USN 1.1: longer legs); torpReloads: reload sets for destroyer / cruiser tubes (IJN 1, USN 0)
   // Torpedo performance per nation (range, speed, dud rate, wake sighting) is a stat table: core.js WW.TORPEDO_NATION.
-  //   (jointStrike, followUp, reserveFrac and patrolBombs are not rolled: they are doctrine, not tuning)
+  //   (jointStrike, followUp, reserveFrac, pursuitReserve and patrolBombs are not rolled: they are doctrine, not tuning)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, nightEye: 0.3, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
       pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
-      jointStrike: false, followUp: 'squadron', reserveFrac: 0.2,
+      jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
       ringR: 35, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
       patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, nightEye: 0.5, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
       pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
-      jointStrike: true, followUp: 'deckload', reserveFrac: 0.4,
+      jointStrike: true, followUp: 'deckload', reserveFrac: 0.4, pursuitReserve: 0.4,
       ringR: 0, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
       patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
   };
-  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1 }; // doctrine fields that are not rolled
+  var FIXED = { jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
@@ -83,10 +86,16 @@ window.WW = window.WW || {};
     d.ringBB = !!b.ringBB; d.subLine = !!b.subLine; d.subShadow = !!b.subShadow; d.lifeguard = !!b.lifeguard;
     d.pressRatio = Math.max(1.02, d.pressRatio); // only a stronger side presses
     d.aggression = WW.clamp(d.aggression, 0, 1); d.torpedo = WW.clamp(d.torpedo, 0, 1); d.carrier = WW.clamp(d.carrier, 0, 1); d.night = WW.clamp(d.night, 0, 1); d.searchlight = WW.clamp(d.searchlight, 0, 1); d.nightEye = WW.clamp(d.nightEye, 0.1, 1);
+    for (k in DSET) if (k.split('.')[0] === nation) d[k.split('.')[1]] = DSET[k];
     return d;
   }
+  // Test hook (balance A/B runs, Q=dset=USN.rangeFrac:0.9,IJN.torpReloads:0): a doctrine field set after the roll
+  var DSET = {}, mq = typeof location !== 'undefined' && /[?&]dset=([^&]*)/.exec(location.search);
+  if (mq) decodeURIComponent(mq[1]).split(',').forEach(function (kv) { var p = kv.split(':'); if (p.length === 2) DSET[p[0]] = +p[1]; });
 
   var CV_LO = 0.2, CV_HI = 0.33; // carrier station band, share of the width in from its own edge
+  var CV_SAFE = 0.14;            // cvSafe slides the station home no closer than this to the own edge (was 0.06: a carrier parked
+                                 // on its edge was off the map within seconds of a break, out of any pursuit's reach)
   var CRIP = 0.35; // below this hp share a ship withdraws (ships_ai.js reads WW.fleetGroups.CRIP too)
   // Groups: main (battle line), carrier (CV + escorts), screen (ASW, ahead of main), flotilla (torpedo DDs),
   // pt (ambush), sub (patrol). Roles: line, carrier, escort, asw, torpedo, ambush, patrol, withdraw.
@@ -182,7 +191,7 @@ window.WW = window.WW || {};
         var wd = B.posture === "withdraw", lo = CV_LO, hi = CV_HI; // withdrawing too: the run home starts at the break (ai_endgame.js)
         if (wd) p.z = q.z; // straight home, not across the front
         p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
-        cvSafe(B, p, ownX === 0 ? W * 0.06 : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * 0.94); // safety may slide it home
+        cvSafe(B, p, ownX === 0 ? W * CV_SAFE : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * (1 - CV_SAFE)); // safety may slide it home, not onto the edge
         set(q, p); return;
       }
       if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
