@@ -8,6 +8,13 @@
 //   reopened       the craters filled: the runway open again and the launches resumed
 //   crash_truck    a damaged plane's landing, the crash truck racing out
 //   burning        hangars and fuel tanks burning after a raid
+// The camp and its people (base life; the life is stepped with the sim, __ff):
+//   camp / camp_wide   the huts, tents, mess and sick bay, the motor pool, water tower, radio masts, trenches, pits
+//   peace / peace_drill  peacetime: chow line, PT drill, cards, laundry, men about the doors
+//   night_peace    after dark before any alarm: the windows lit
+//   alarm / alarm_pilots  the alarm: everyone sprints (gun crews, pilots to the fighters, the rest to the trenches)
+//   attack / after   bombs on the camp (fires, the fire truck and crews, stretchers) / the all-clear: work resumes
+//   night          an alarm after dark: the blackout and the searchlights
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/base_shots.js [seed=3] [owner=USN] [shot]
 const { chromium } = require('playwright');
 const path = require('path'), OUT = path.join(__dirname, 'shots', 'base');
@@ -23,7 +30,6 @@ const SHOTS = [
   ['camp', () => __camp('huts', 16, 7, 6)],
   ['camp_wide', () => __camp('mess', 34, 20, 10)],
   ['peace', () => { __ff(25); return __camp('huts', 13, 5, 4); }],
-  ['person', () => { WW.baseFx.update(0.016); __ff(25); WW.baseFx.update(0.016); WW.baseFx.update(0.016); const p = WW.baseLife.people.find(p => p.act === 'drill') || WW.baseLife.people[0], y0 = B.site.padH; return [p.x + 5, y0 + 2.2, p.z + 3, p.x, y0 + 0.4, p.z]; }],
   ['peace_drill', () => { __ff(25); return __camp('drill', 9, 4, 3); }],
   ['alarm', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(3); return __camp('huts', 22, 9, 8); }],
   ['alarm_pilots', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4);
@@ -37,6 +43,7 @@ const SHOTS = [
     for (const d of B.decor.filter(d => d.kind === 'hut').slice(0, 2)) WW.islandBase.impact(en, d.x, d.z, 200, 'bomb');
     for (const k of [-14, 9]) WW.islandBase.impact(en, rw.x + rw.c * k, rw.z + rw.s * k, 180, 'bomb');
     __until(() => WW.baseLife.phase === 'after', 400); __ff(20); return __camp('huts', 26, 12, 8); }],
+  ['night_peace', () => { __ff(15); return __camp('huts', 30, 12, 8); }],
   ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4); return __camp('huts', 40, 14, 10); }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {
@@ -130,7 +137,7 @@ const SHOTS = [
       if (!v) return null;
       WW.cam.update = function () { WW.camera.position.set(v[0], v[1], v[2]); WW.camera.lookAt(v[3], v[4], v[5]); WW.camera.updateMatrixWorld(); };
       return v;
-    }, [fn.toString(), name === 'night']);
+    }, [fn.toString(), name === 'night' || name === 'night_peace']);
     if (!cam) { console.log('skip', name); continue; }
     await p.evaluate(() => { for (let i = 0; i < 3; i++) { // fill the per-frame figure buffers before the shot (a loaded machine renders few frames)
       WW.cam.update(0.016); WW.crew.update(0.016); WW.baseFx.update(0.016); } });

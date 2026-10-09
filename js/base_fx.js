@@ -139,7 +139,7 @@ window.WW = window.WW || {};
     const now = WW.time.now;
     if (L[2] < 2 && now - (diaryT[e.kind] || -1e9) < 45) return;
     diaryT[e.kind] = now;
-    WW.diary.add(L[0] + (L[1] ? ': ' + L[1] : ''), L[2] >= 2 ? 3 : L[2] ? 2 : 1, e.base.nation, { kind: 'base' });
+    WW.diary.add(L[0] + (L[1] ? (/[!:]$/.test(L[0]) ? ' ' : ': ') + L[1] : ''), L[2] >= 2 ? 3 : L[2] ? 2 : 1, e.base.nation, { kind: 'base' });
   }
   function caption(e) {
     if (WW.simOnly || !e || !e.base) return;

@@ -72,7 +72,7 @@ function round(P) {
   const built = WW.baseFx._built(), facs = [];
   const SOFT = { aa: 1, battery: 1, mg: 1, trench: 1, laundry: 1, light: 1 };   // walked into (pits, trenches) or under (the line)
   if (built) for (const part of built.parts) {
-    const m = part.mesh; if (!m || (part.decor && WW.baseLifeCars && WW.baseLifeCars.cars.some(c => c.d === part.f))) continue;   // the drill ground: open grass; the camp's trucks are vehicles (below)
+    const m = part.mesh; if (!m || (part.decor && (part.f.kind === 'truck' || part.f.kind === 'jeep' || part.f.kind === 'fire'))) continue;   // the drill ground: open grass; the camp's trucks are vehicles (below)
     const g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
     const bb = g.boundingBox, h = -m.rotation.y, c = Math.cos(h), s = Math.sin(h), k = m.scale.x, cx = (bb.min.x + bb.max.x) / 2 * k, cz = (bb.min.z + bb.max.z) / 2 * k;
     facs.push({ k: part.f.kind, f: part.f, decor: !!part.decor, solid: !SOFT[part.f.kind], top: m.position.y + bb.max.y * m.scale.y,

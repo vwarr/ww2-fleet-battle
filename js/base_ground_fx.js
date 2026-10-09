@@ -15,7 +15,7 @@ window.WW = window.WW || {};
   'use strict';
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
   const FAR = 420, NEAR_FIG = 170, FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73), // ground crews x the sailors' size: about a fifth of a fighter's length (2 at the 1.7 plane scale)
-    MAX_FIG = 110, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
+    MAX_FIG = 170, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
   let trace = null;   // tests/base_clip.js: this frame's figures and vehicles ({ figs, veh })
   let base = null, planes = new Map(), wrecks = new Map(), prev = new Map(), crews = new Map(), trips = [], veh = {}, scrT = -1e9, fig = 0;
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
@@ -134,6 +134,14 @@ window.WW = window.WW || {};
       const a = i / 6 * Math.PI * 2 + 0.4; let r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
       if (gp) for (let k = 0; k < 6 && inWay({ x: c.x + Math.cos(a) * r, z: c.z + Math.sin(a) * r }, gp); k++) r += 2;   // a plane coming through: well clear of it
       figure(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, a + Math.PI + Math.sin(t * 3 + i) * 0.3, base.nation, i === 0 ? 'o' : 'c', i % 2 === 0);
+    }
+    if (!busy) { // a chain of men with baskets of coral fill, to and fro between the spoil heap off the runway's edge and the hole
+      const ring = c.r * 1.25 + 0.6, pile = ring + 4.5;
+      for (let i = 0; i < 4; i++) {
+        const ph = (t * 0.22 + i / 4) % 1, f = ph < 0.5 ? ph * 2 : 2 - ph * 2, off = (i - 1.5) * 0.7;
+        const x = c.x + hz * (ring + (pile - ring) * f) + hx * off, z = c.z - hx * (ring + (pile - ring) * f) + hz * off;
+        figure(x, z, Math.atan2(-hx, hz) + (ph < 0.5 ? 0 : Math.PI), base.nation, 'c', false);
+      }
     }
     const sw = Math.sin(t * 0.5) * (c.r + 2.5), side = c.r * 1.25 + 0.6 + (busy ? 6 : 0) + 1.1; // the roller works to and fro beside the hole, outside the gang's ring
     const ro = { x: c.x + hx * sw * 0.5 - hz * side, z: c.z + hz * sw * 0.5 + hx * side, h: rw.h };
@@ -368,7 +376,7 @@ window.WW = window.WW || {};
     for (const k in fixed) fixed[k] = null;
     const per = planTrips(near);
     vehPre = [].concat(...Object.values(per), WW.baseLifeCars ? WW.baseLifeCars.now() : []);
-    if (near) { engines(rdt, sdt); crewsAt(cam, now); repairGang(cam, now); }
+    if (near) { engines(rdt, sdt); repairGang(cam, now); crewsAt(cam, now); }   // the repair gang first: the figure cap never drops it
     drawVehicles(near, per);
   }
   function clear() {

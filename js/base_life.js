@@ -249,12 +249,12 @@ window.WW = window.WW || {};
   function clearOf(p, gp, vs) {
     p.hid = false;
     for (let it = 0; it < 3; it++) {
-      const bk = blocker(p.x, p.z, gp, vs, 0.15, false); if (!bk) return;
+      const bk = blocker(p.x, p.z, gp, vs, 0.2, false); if (!bk) return;
       const dx = p.x - bk[0], dz = p.z - bk[1], a = dx * bk[2] + dz * bk[3], b = -dx * bk[3] + dz * bk[2], E = 0.34;
       let best = null, bd = 1e9;
       for (const q of [[a, bk[5] + E], [a, -bk[5] - E], [bk[4] + E, b], [-bk[4] - E, b]]) {
         const x = bk[0] + q[0] * bk[2] - q[1] * bk[3], z = bk[1] + q[0] * bk[3] + q[1] * bk[2], d = (q[0] - a) ** 2 + (q[1] - b) ** 2;
-        if (d < bd && !blocker(x, z, gp, vs, 0.15, false) && W().stand(x, z, 0.3)) { bd = d; best = [x, z]; }
+        if (d < bd && !blocker(x, z, gp, vs, 0.2, false) && W().stand(x, z, 0.3)) { bd = d; best = [x, z]; }
       }
       if (!best) { p.hid = true; return; }
       p.x = best[0]; p.z = best[1];
@@ -313,7 +313,7 @@ window.WW = window.WW || {};
       if (p.act === 'prone') { fx -= Math.cos(face) * 0.2 * FIG_K / 1.17; fz -= Math.sin(face) * 0.2 * FIG_K / 1.17; }   // feet back: the body lies centred on his spot
       if (p.team) { // the bearers fore and aft must be clear too (else the team waits unseen behind it)
         const c = Math.cos(face), sn = Math.sin(face), k = 0.32 * FIG_K / 1.17;
-        const ok = q => !blocker(q[0], q[1], gp, vs, 0.12, false) && W().stand(q[0], q[1], 0.25);
+        const ok = q => !blocker(q[0], q[1], gp, vs, 0.22, false) && W().stand(q[0], q[1], 0.25);
         if (ok([p.x + c * k, p.z + sn * k]) && ok([p.x - c * k, p.z - sn * k])) carry(p, face, y, tr);
         continue;
       }

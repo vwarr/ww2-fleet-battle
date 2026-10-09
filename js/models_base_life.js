@@ -25,8 +25,8 @@ window.WW = window.WW || {};
   }
   function woodHut(g, len, w, h, roof) { // IJN: a wooden barracks with a low pitched roof
     M._box(g, C.wood, len, h * 0.62, w, 0, 0, 0);
-    var r1 = M._bar(g, roof, len + 0.3, 0.12, w * 0.62, 0, h * 0.62, -w * 0.24); r1.rotation.x = 0.42;
-    var r2 = M._bar(g, roof, len + 0.3, 0.12, w * 0.62, 0, h * 0.62, w * 0.24); r2.rotation.x = -0.42;
+    var r1 = M._bar(g, roof, len + 0.3, 0.12, w * 0.62, 0, h * 0.62, -w * 0.24); r1.rotation.x = -0.42;   // each slab rises to the ridge
+    var r2 = M._bar(g, roof, len + 0.3, 0.12, w * 0.62, 0, h * 0.62, w * 0.24); r2.rotation.x = 0.42;
     for (var i = -2; i <= 2; i++) M._bar(g, C.win, 0.42, 0.26, w + 0.04, i * len / 5.5, h * 0.3, 0);
   }
   function door(g, x, w, h) { M._bar(g, C.door, 0.06, h, w, x, 0, 0); }
