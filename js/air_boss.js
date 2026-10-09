@@ -12,6 +12,7 @@ window.WW = window.WW || {};
   const RETRY = 2;             // s between strike checks while nothing can go
   const CV_AGE = 120;          // a carrier contact this fresh draws the strike (Midway: the carriers first)
   const LOADS = 2;             // deck loads per strike (toy group): the spotted load, then one more up the elevators while it forms up
+  const ESCORT_FRAC = { IJN: 0.3, USN: 0.15 }; // escort floor per bomber (doctrine escortFrac overrides)
   const LOADS_FULL = 4;        // with the full air group (TUNE.wing 1): a 1942 deck-load strike of ~25 per carrier
   // Air groups, 1942 (doctrine, not rolled): Yorktown class 27 F4F / 37 SBD / 15 TBD; Shokaku 18 A6M / 27 D3A / 27 B5N.
   // TUNE.wing blends from the toy group (core.js ship stats, 6 / 4 / 4) to the full group: 0 toy, 1 full.
@@ -171,6 +172,11 @@ window.WW = window.WW || {};
     let esc = Math.min(Math.max(0, hg.fighter - keep), Math.max(2, Math.round(cap * 0.3)), 12);
     const nb = Math.min(nd + nt, Math.max(MIN_B, cap - esc));
     if (nb < nd + nt) { const fd = nd / (nd + nt); nd = Math.min(nd, Math.round(nb * fd)); nt = Math.min(nt, nb - nd); nd = nb - nt; }
+    // the escort floor (doctrine escortFrac of the bombers) comes before the CAP keeps its relief: the IJN escorted
+    // every strike (9 Zeros with Midway's), even when it left the fleet with a thin CAP
+    const dc = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(cv.nation) : null;
+    const ef = dc && typeof dc.escortFrac === 'number' ? dc.escortFrac : ESCORT_FRAC[cv.nation] || 0;
+    esc = Math.max(esc, Math.min(hg.fighter, Math.round(ef * (nd + nt)), 12));
     if (nd + nt < MIN_B) BS.small++;
     for (let i = 0; i < esc; i++) a.queue.push({ kind: 'fighter', target: tgt });
     for (let i = 0; i < Math.max(nd, nt); i++) {

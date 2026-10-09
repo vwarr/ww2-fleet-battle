@@ -64,6 +64,12 @@ function install(opts) {
     return m === 1e9 ? null : Math.round(m);
   }
   function cvSep() { let m = 1e9; const L = WW.world.ships.filter(s => s.alive && s.type === 'carrier'); for (const a of L) for (const b of L) if (a.nation === 'USN' && b.nation === 'IJN') m = Math.min(m, WW.dist(a.x, a.z, b.x, b.z)); return m === 1e9 ? null : Math.round(m); }
+  // the round's time of day: kind and the first sim s at which launches are allowed (daylight.js canFly), null: never
+  function todOf() {
+    const D = WW.dayNight; if (!D || !D.level) return null;
+    let flyT = null; for (let t = 0; t <= WW.cfg.ROUND_TIMEOUT * 1.5; t += 5) if (D.level(t) >= (D.FLY_MIN || 0.45)) { flyT = t; break; }
+    return { kind: D.kind, h0: +D.startHour.toFixed(2), flyT };
+  }
   function first(k, extra) { if (S.first[k] === undefined) { S.first[k] = +now().toFixed(1); S.first[k + 'Sep'] = sepNow(); if (extra) Object.assign(S.first, extra); } }
 
   function fresh() {
@@ -317,7 +323,7 @@ function install(opts) {
     const sorties = S.sorties.map(r => ({ n: r.nation, k: r.kind, v: r.v, o: r.o, role: r.role, t0: r.t0, t1: r.t1, end: r.end, b: r.b, circ: r.circ, air: +r.air.toFixed(1), kills: r.kills, wv: r.wv || null, out: r.armed0 ? (r.dropped ? 'dropped' : r.jett ? 'jettison' : r.end === 'roundEnd' ? 'armedAtEnd' : r.end === 'landed' ? 'landedArmed' : 'lostArmed') : null }));
     const ff = []; for (const v of S.foeFirst.values()) ff.push(v);
     const W = S.waves.map(w => Object.assign({}, w, { sepMin: w.sepMin === 1e9 ? null : +w.sepMin.toFixed(1) }));
-    const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, sunk: S.sunk, boss: WW.airBoss ? JSON.parse(JSON.stringify(WW.airBoss.stats)) : null, deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
+    const out = { H: S.H, sorties, eng: S.eng, drops: S.drops, deaths: S.deaths, waves: W, min: S.min, first: S.first, sunk: S.sunk, boss: WW.airBoss ? JSON.parse(JSON.stringify(WW.airBoss.stats)) : null, tod: todOf(), deckCycle: S.deckCycle, alone: S.alone, lead: S.lead,
       fdir: S.fdir, foeFirst: ff, hang: S.hang, cvL: S.cvL, cvT: S.cvT, escPos: S.escPos, push: S.push, trace: S.trace, err: R.err, lastErr: R.lastErr || null,
       cvSep0: S.cvSep0 || null, deck: S.deck, trapGap: S.trapGap, contact: S.contact, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost } };
     return out;

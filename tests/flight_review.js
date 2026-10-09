@@ -301,6 +301,13 @@ function report(rounds) {
     const o = out.pacing.byScen[sc]; say(`  ${pad(sc, 14)} air drop before fleet gunfire in ${o.airFirst}/${o.rounds} rounds; contact p50 ${f1(o.contactP50)} s, first drop p50 ${f1(o.dropP50)} s, first fleet gunfire p50 ${f1(o.gunP50)} s`); }
   out.pacing.contactP50 = med(cvRounds.map(ct).filter(x => x !== null));
   say(`first enemy ship contact (either side) p50 ${f1(out.pacing.contactP50)} s`);
+  { // early flight ops: the first launch (CAP, search, strike) within LAUNCH_BY s of the light allowing it (night rounds: never)
+    const LAUNCH_BY = 30, R = rounds.filter(r => r.rec && r.comp && (r.comp['USN:carrier'] || r.comp['IJN:carrier']));
+    const fly = R.filter(r => !r.rec.tod || (r.rec.tod.flyT !== null && r.rec.tod.flyT < r.len)), late = fly.filter(r => !(r.rec.first.launch <= (r.rec.tod ? r.rec.tod.flyT : 0) + LAUNCH_BY));
+    out.pacing.firstLaunch = { rounds: fly.length, late: late.length, p50: med(fly.map(r => r.rec.first.launch).filter(x => x !== undefined)), dark: R.length - fly.length };
+    say(`first launch (rounds with carriers that had flying light): p50 ${f1(out.pacing.firstLaunch.p50)} s; later than ${LAUNCH_BY} s after first light in ${late.length}/${fly.length}` +
+      `${late.length ? ' ' + late.map(r => r.scen + ':' + r.seed + '@' + r.rec.first.launch).join(' ') + '  <-- CHECK' : ' (ok)'}; ${out.pacing.firstLaunch.dark} night rounds with no flying light (by design)`);
+  }
   say(`rounds with carriers: first air drop before the first surface gunfire in ${pc(out.pacing.airFirst.dropBeforeGun)}; first drop p50 ${f1(out.pacing.airFirst.dropP50)} s, first gunfire p50 ${f1(out.pacing.airFirst.gunP50)} s, lead p50 ${f1(out.pacing.airFirst.leadP50)} s`);
   // rising action: drops + kills + gun damage events by thirds of the round
   const thirds = cvRounds.map(r => { const m = r.rec.min, n = m.length, t = [0, 0, 0]; m.forEach((x, i) => { t[Math.min(2, Math.floor(i * 3 / n))] += x.drops + x.aaK + x.ftrK + x.sunk * 5 + x.gunDmg / 200 + x.airDmg / 200; }); return t; });
