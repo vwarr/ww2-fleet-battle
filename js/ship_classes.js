@@ -6,7 +6,7 @@
 // Two deliberate exaggerations remain, both tied to the open plane-scale question (WW.cfg.PLANE_SCALE):
 //   - carrier flight decks are DECK_K x their real width (and the hull beam half that much) so that parked
 //     planes at the arcade plane scale still fit; DECK_K = 1 at true plane scale (see deckK below);
-//   - sailor figures (models_crew.js) are about 4.6 m tall (readable, not true scale).
+//   - sailor figures (models_crew.js) are about 3.8 m tall at the default plane scale (readable, not true scale).
 //
 // A class: { key, type, nation, name, lenM, beamM, tons, names[], hull{...}, mod{hp, speed, turn, aa}, guns[] }.
 //   hull: model loft parameters in fractions (top = deck height u, bowF = bow entry share of L, sternW, sheer u).

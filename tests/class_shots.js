@@ -119,7 +119,7 @@ const IJN = ['akagi', 'kaga', 'shokaku', 'soryu', 'hiryu', 'nagato', 'kongo', 't
       });
       const S = await p.evaluate(() => window.__stage);
       await cam(p, [S.x + 16, 17, S.z + 30], [S.x - 1, 2.5, S.z + 1], 34);
-      await p.evaluate(ps => { const d = document.createElement('div'); d.textContent = 'PLANE_SCALE ' + ps + (ps < 0.5 ? '  (true scale)' : ps < 1 ? '  (~2x)' : '  (current, ~4x)'); Object.assign(d.style, { position: 'fixed', left: '20px', top: '16px', font: 'bold 28px sans-serif', color: '#fff', textShadow: '0 1px 4px #000', zIndex: 99 }); document.body.appendChild(d); }, ps);
+      await p.evaluate(ps => { const d = document.createElement('div'); d.textContent = 'PLANE_SCALE ' + ps + (ps < 0.5 ? '  (true scale)' : ps < 1 ? '  (~2x, default)' : '  (old arcade, ~4x)'); Object.assign(d.style, { position: 'fixed', left: '20px', top: '16px', font: 'bold 28px sans-serif', color: '#fff', textShadow: '0 1px 4px #000', zIndex: 99 }); document.body.appendChild(d); }, ps);
       await p.screenshot({ path: `${out}/cls_planes_${ps}.png` });
       console.log('planes', ps, await p.evaluate(() => WW.airDeck.parkedCount()));
       await p.close();
