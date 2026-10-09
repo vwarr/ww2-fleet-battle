@@ -83,7 +83,7 @@ function install() {
       if (S && this.alive) {
         let nd = 1e9, ns = 1e9;
         for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation === this.nation && !s.isBase) { const d = WW.dist(this.x, this.z, s.x, s.z); if (d < ns) ns = d; if (s.type === 'destroyer' && d < nd) nd = d; }
-        const why = !this.carrier || !this.carrier.alive ? 'noDeck' : this.fuel <= 0 ? 'fuel' : this.hp < this.maxHp * 0.5 ? 'damage' : 'other';
+        const why = this.ditchTo ? 'by:' + this.ditchTo.why : !this.carrier || !this.carrier.alive ? 'noDeck' : this.fuel <= 0 ? 'fuel' : this.hp < this.maxHp * 0.5 ? 'damage' : 'other';
         S.ditch.push({ n: this.nation, k: this.kind, why, dd: Math.round(nd), ship: Math.round(ns), base: !!(this.carrier && this.carrier.isBase) });
         ev('ditch', { id: id(this), n: this.nation, why, x: +this.x.toFixed(0), z: +this.z.toFixed(0), dd: Math.round(nd) });
       }

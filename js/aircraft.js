@@ -131,7 +131,7 @@ window.WW = window.WW || {};
     speedTo(v, dt) { this.speed += WW.clamp(v - this.speed, -10 * dt, 8 * dt); }
     fly(px, pz, alt, dt, spd, rate) {
       const d = this.turnTo(Math.atan2(pz - this.z, px - this.x), dt, rate || 1.1);
-      this.climbTo(alt, dt); this.speedTo(spd || this.pt.speed, dt);
+      this.climbTo(alt, dt, alt > this.y && WW.airFlight ? WW.airFlight.climbV(this) : 7); this.speedTo(spd || this.pt.speed, dt);   // cruise climb (air_flight.js)
       return d;
     }
     dropped() { this.ordnance = false; if (this.payload) this.payload.visible = false; }
@@ -161,7 +161,7 @@ window.WW = window.WW || {};
         return;
       }
       const c = this.carrier;
-      if (!c.alive) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }
+      if (!c.alive && !(WW.airFlight && WW.airFlight.orphan(this))) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }   // else: divert / ditch by a ship (air_flight.js)
       if (this.state === 'transit' || this.state === 'attack') {
         // a CAP fighter on station with nothing to chase loiters at economical cruise (1942 CAP sorties ran 2-3 h)
         this.fuel -= this.kind === 'fighter' && !this.target && !this.foe && !this.vec && !this.joined && !this.search ? dt * LOITER : dt;
