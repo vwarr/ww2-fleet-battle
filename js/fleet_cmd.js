@@ -97,7 +97,11 @@ window.WW = window.WW || {};
     if (rt > 60 && B.brokenAt && !pursue) B.posture = 'withdraw';
     else if (pursue) B.posture = 'pursue';
     else if (!cs.length) B.posture = 'search';
-    else if (rt > 60 && B.strength.ratio < d.withdrawRatio) B.posture = 'withdraw';
+    // the strength picture alone turns a side away only once the fleets have met (main.js metT), as the outfought rule
+    // (beaten) does, or when it has no fit gun ship to fight with: before that the admiral's picture of the enemy
+    // surface force is a set of scout reports, and both navies' doctrine sought the decisive surface action (balance
+    // pass, Oct 2026: a side that lost its carrier ran for home at once and the fleets never met)
+    else if (rt > 60 && B.strength.ratio < d.withdrawRatio && (!fit || !WW.game || WW.game.metT !== null)) B.posture = 'withdraw';
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
     if (B.posture !== prev) B.postureAt = now;
@@ -212,8 +216,21 @@ window.WW = window.WW || {};
   // Strike orders: per carrier, the best detected / last-known target within STRIKE_R (value, freshness,
   // distance, AA around it). No contact in range: no order (a strike needs a reason).
   var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 1, pt: 0.5 }; // a surfaced sub is worth a strike
+  // Destroyers and PT boats are no target for a deck-load strike while the side knows of bigger game afloat (an enemy
+  // carrier, battleship or cruiser seen this round): 1942 strike doctrine went for the carriers, then the heavy ships
+  // (Midway, Santa Cruz); a destroyer still draws one in self-defence (closing on a carrier) and in the pursuit, and an
+  // enemy with nothing bigger is struck as before (balance pass, Oct 2026: 35-40% of all drops went on destroyers and
+  // PT pickets, and air strikes sank whole small surface forces before the fleets met).
+  var SMALL = { destroyer: 1, pt: 1 };
+  function bigFoe(B) {
+    var big = false;
+    B.foeCV.forEach(function (u) { if (u.alive && !u.sinking && !u.escaped) big = true; });
+    if (!big) B.foeSeen.forEach(function (u) { if ((u.type === 'battleship' || u.type === 'cruiser') && u.alive && !u.sinking && !u.escaped) big = true; });
+    return big;
+  }
   function strikes(B, cs, now) {
     B.strikes.clear();
+    var big = bigFoe(B);
     var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R * (B.doctrine.strikeRange || 1); // strikeRange: the admiral (admirals.js)
     for (var k = 0; k < cvs.length; k++) {
       var cv = cvs[k]; if (cv.type !== 'carrier') continue;
@@ -226,7 +243,7 @@ window.WW = window.WW || {};
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sv = u.isBase ? (WW.baseAI ? WW.baseAI.strikeValue(B, cv) : 0) : STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0; // the island base (base_ai.js)
-        if (!sv) continue;
+        if (!sv || (big && dfd === 1 && !pur && !u.isBase && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type])) continue; // as reported (intel misId)
         var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? DIST_K * 3 : DIST_K)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
         if (pur) sc *= runaway(B, u, c);
         if (WW.admirals) sc *= WW.admirals.targetK(u);
