@@ -16,14 +16,17 @@ window.WW = window.WW || {};
   // TUNE.wing blends from the toy group (core.js ship stats, 6 / 4 / 4) to the full group: 0 toy, 1 full.
   const FULL = { USN: { fighter: 27, dive: 37, torpedo: 15 }, IJN: { fighter: 18, dive: 27, torpedo: 27 } };
   const TUNE = { wing: 0 };
+  { const m = typeof location !== 'undefined' && /[?&]wing=([\d.]+)/.exec(location.search); if (m) TUNE.wing = +m[1]; } // ?wing=K (tests: env Q=wing=K)
   const BS = { strikes: 0, waits: 0, small: 0, cvFirst: 0, cvRetarget: 0, capBatches: 0, capHome: 0, diverts: 0 };
   const O = () => WW.airOps;
 
   function group(ship, base) {   // ships.js: the hangar a new carrier starts with
     const F = FULL[ship.nation], k = TUNE.wing;
+    if (base) ship.wingF = base.fighter;
     if (!F || !base || ship.type !== 'carrier' || !(k > 0)) return base;
     const g = {};
     for (const kind of ['fighter', 'dive', 'torpedo']) g[kind] = Math.round(base[kind] + (F[kind] - base[kind]) * Math.min(1, k));
+    ship.wingF = g.fighter;   // the CAP scales with it (ai_carrier.js capWanted)
     return g;
   }
 

@@ -192,7 +192,7 @@ window.WW = window.WW || {};
 
   // Is the launch spot (on the runway at the launch point) taken by another plane holding, rising or starting its run?
   function spotBusy(D, p) {
-    for (const q of D.launchers) if (q !== p && (q.deckPh === 'hold' || q.deckPh === 'rise' || (q.deckPh === 'taxi' && q.lx > p.lx) || (q.deckPh === 'run' && q.lx < LAUNCH_X + 4))) return true;
+    for (const q of D.launchers) if (q !== p && (q.deckPh === 'hold' || q.deckPh === 'rise' || (q.deckPh === 'taxi' && q.lx > p.lx) || (q.deckPh === 'run' && q.lx < LAUNCH_X + (p.deckPh === 'queued' ? 1 : 4)))) return true; // the elevator can start up as the run begins
     return false;
   }
   // Is everything parked behind the spot line (the runway ahead of the launch point clear)?
@@ -274,6 +274,7 @@ window.WW = window.WW || {};
       switch (p.deckPh) {
         case 'queued': { // in the hangar until the deck is in launch mode and it is this plane's turn (one taxiing at a time)
           if (D.mode !== 'launch' || D.launchers.some(q => q !== p && (q.deckPh === 'taxi' || q.deckPh === 'rise'))) break;
+          if (D.launchers.find(q => q.deckPh === 'queued') !== p) break; // first come, first up
           if (!spotClear(D)) break;
           let pick = null, pc = null;
           for (const col of D.cols) { const e = col.e[0]; if (e && e.kind === p.kind && e.ph === 'park' && WW.time.now >= e.readyAt && Math.abs(e.lx - e.tx) < 0.1) { pick = e; pc = col; break; } }
@@ -294,11 +295,11 @@ window.WW = window.WW || {};
           p.fold = Math.max(0, p.fold - 1.5 * dt);
           const h = intoWind();
           if (D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < LAUNCH_X + 5.5)) break;
-          if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 7)) { p.deckPh = 'run'; p.rel = 0; }
+          if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 5)) { p.deckPh = 'run'; p.rel = 0; }
           break;
         }
         case 'run':
-          p.rel += 18 * dt; p.lx += p.rel * dt;
+          p.rel += 21 * dt; p.lx += p.rel * dt;
           if (p.lx >= BOW) { p.deckPh = 'climb'; p.deckT = 0; p.vy = -1.8; p.speed = c.speed + p.rel; }
           break;
         case 'climb': // off the bow: settle a little, then climb away

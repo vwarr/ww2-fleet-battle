@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // Every wave leaves FORMED (all its planes up, >= FORMED_K of them on their slots) or, failing that, on a timeout
   // scaled to the load (the deck launches about one plane per LAUNCH_DT s). A live wave is never deleted: a new strike
   // waits until the last one has left (air_boss.js), so no plane is orphaned. Form-up time comes out of the fuel.
-  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.2, STALE = 60;
+  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.4, STALE = 60;
   const ST = { forms: [] }; // { nation, first, mode, formT, formed, n } per wave at departure
   function mk(carrier, target, mode, first) {
     return { carrier, target, nation: carrier.nation, pend: { fighter: 0, dive: 0, torpedo: 0 }, pendN: 0, n0: 0, mode, first,
@@ -84,7 +84,7 @@ window.WW = window.WW || {};
   }
   // Ready to leave the carrier: all up and formed, or the timeout for a load this size ran out.
   function ready(w, now) {
-    const up = w.t1 >= 0, wait = LAUNCH_DT * Math.max(4, w.n0) + 15;
+    const up = w.t1 >= 0, wait = LAUNCH_DT * Math.max(4, w.n0) + 22;
     if (up && w.pendN <= 0 && w.frac >= FORMED_K) { w.why = 'formed'; return true; }
     if ((up && now - w.t1 > wait) || now - w.t0 > wait + 25) { w.why = 'timer'; return true; }
     return false;
