@@ -27,7 +27,9 @@ window.WW = window.WW || {};
     SEE_PLANE_NATION: { USN: { carrier: 250 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE)
     PLANE_PLANE: 100,                                  // planes see planes
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
-    TORP: 45                                           // a ship sees an enemy torpedo track this close (scanTorps)
+    TORP: 45,                                          // a ship sees an enemy torpedo track this close (scanTorps)
+    DROP: 130                                          // ...and an aerial torpedo's drop this close (the plane on its run and the splash, watched by
+                                                       // the lookouts: the ship combs the tracks from the drop; balance pass, Oct 2026)
   };
   var T = { TICK: 0.5, FRESH: 3, SHIP_TTL: 180, PLANE_TTL: 10, REGAIN: 30, SPOT_HOLD: 20 }; // SHIP_TTL 180 (was 90): the plot keeps a last-known position longer on the big map (the searches go back to it)
   var CAPITAL = { carrier: 1, battleship: 1 };
@@ -222,7 +224,7 @@ window.WW = window.WW || {};
       for (j = 0; j < T.length; j++) if (T[j].proj === p) { e = T[j]; break; }
       if (!e) {
         // the track's wake: an oxygen torpedo (sight < 1, IJN) is seen only closer in (core.js WW.TORPEDO_NATION)
-        var rt = R.TORP * (p.sight || 1), r2 = rt * rt, seen = false, sd = 1e9;
+        var rt = p.src === 'Air' && p.run < 12 ? R.DROP : R.TORP * (p.sight || 1), r2 = rt * rt, seen = false, sd = 1e9;
         for (j = 0; j < ships.length; j++) { var s = ships[j]; if (s.nation === nation && usableShip(s)) { var q2 = WW.dist2(s.x, s.z, p.x, p.z); if (q2 < r2) { seen = true; if (q2 < sd) sd = q2; } } }
         if (!seen) continue;
         e = { proj: p, firstSeenAt: now }; T.push(e);
