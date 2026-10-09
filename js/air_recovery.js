@@ -2,11 +2,12 @@
 // divert to another friendly deck, the marshal stack, the groove, the trap and the taxi forward to the park.
 // - Return: a plane flies to its marshal stack. It diverts to another friendly carrier of the side (never the island
 //   base) when that deck is clearly sooner: nearer, a shorter queue, or its own carrier damaged / burning.
-// - Marshal: a racetrack MARSHAL_L hull lengths astern of the carrier, on the side away from the island, with
-//   straight legs; each plane holds its own level (stacked 5 u apart). The stack moves with the ship.
-// - Groove: in recovery mode the bottom plane of the stack is cleared to approach (straight in from astern) once the
-//   plane ahead is on final and close to the deck, so two planes are in the groove at a time and traps come about
-//   every 6-8 s. Final: the runway centreline (PD on the drift), wave-off when the deck is foul or the ship swings,
+// - Marshal: racetracks MARSHAL_L hull lengths astern of the carrier (TRACKS: a second and a third oval for a big
+//   returning strike), with long straight legs; each plane holds its own level (stacked 4 u apart, at most LEVELS on
+//   a track). Fighters queue ahead of the bombers. The stack moves with the ship.
+// - Groove: in recovery mode the first plane in the queue is cleared to approach (it turns up the wake from wherever
+//   it is on its track) once the plane ahead is near the gate, so two or three are in the groove at a time and traps
+//   come about every 2.5-4 s. Final: the runway centreline (PD on the drift), wave-off when the deck is foul or the ship swings,
 //   bolter past the wires; a wave-off goes back to the head of the stack. Trap: arrestor jolt, then the deck crew
 //   taxis it forward past the barrier, folds it and rearms it (cv.rearm, aircraft.js REARM).
 window.WW = window.WW || {};
@@ -14,8 +15,11 @@ window.WW = window.WW || {};
   if (!WW.airDeck) return;
   const K = WW.airDeck._k, PI = Math.PI;
   const { deckOf, toLocal, lenOf, colFor, newEntry, pack, clearAft, P } = K;
-  const MARSHAL_L = 4.0, LEG = 40, RT = 15, STACK0 = 15, STACK_DY = 5; // stack centre (hull lengths astern), leg length, turn radius, lowest level, spacing
-  const LEVELS = 8, RING = 14;  // levels per racetrack; a returning deck-load strike stacks on wider rings, RING u apart
+  const MARSHAL_L = 4.0, LEG = 56, RT = 15, STACK0 = 15, STACK_DY = 4; // stack centre (hull lengths astern), leg length, turn radius, lowest level, spacing
+  // Racetracks (TRACKS: along the wake in hull lengths astern, across in u, x the side away from the island), at most
+  // LEVELS planes stacked on each: a returning deck-load strike holds as two to five tidy ovals astern, not as a ring
+  // round the ship. A plane keeps its track (p.mTrack) until it is cleared to approach.
+  const LEVELS = 12, TRACKS = [[MARSHAL_L, 26], [MARSHAL_L, -66], [9.5, -20], [9.5, 72], [9.5, -112]];   // the ovals 60+ u apart
   const HOME_R = 110;           // distance at which a returning plane joins the stack (landing state)
   const GATE_L = 2.7, GROOVE = 60;           // the groove starts GATE_L hull lengths astern (carrier local); the whole stack lies behind it
   const gate = c => -(c.stats.length || 26) * GATE_L;
@@ -43,19 +47,27 @@ window.WW = window.WW || {};
     if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
   }
   // The marshal stack's centre in carrier-local coordinates.
-  function stackAt(c, D) { return [-(c.stats.length || 26) * MARSHAL_L, -D.s * 26]; }
+  function stackAt(c, D, k) { const T = TRACKS[k || 0]; return [-(c.stats.length || 26) * T[0], -D.s * T[1]]; }
+  // Into the stack: a track with room (else the emptiest); fighters ahead of the bombers (the CAP refuels first).
+  function enter(p, D) {
+    if (D.lq.indexOf(p) >= 0) return;
+    const n = TRACKS.map(() => 0); for (const q of D.lq) if (q.deckPh === 'marshal' && q.mTrack !== undefined) n[q.mTrack]++;
+    let k = n.findIndex(v => v < LEVELS); if (k < 0) k = n.indexOf(Math.min(...n));
+    p.mTrack = k;
+    let i = D.lq.length;
+    if (p.kind === 'fighter') { i = D.lq.findIndex(q => q.deckPh === 'marshal' && q.kind !== 'fighter'); if (i < 0) i = D.lq.length; }
+    D.lq.splice(i, 0, p);
+  }
   function goHome(p, dt) {
     p.foe = null;
     p.dvT = (p.dvT || 0) - dt;
     if (p.dvT <= 0) { p.dvT = 3; if (!p.diverted || p.diverted < 2) divert(p); }
     const c = p.carrier, D = deckOf(c), m = stackAt(c, D), w = c.toWorld(m[0], m[1]), d = WW.dist(p.x, p.z, w[0], w[1]);
     p.fly(w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt, p.pt.speed);
-    if (d < HOME_R) { p.state = 'landing'; p.deckPh = 'marshal'; p.phT = 0; p.lqT = WW.time.now; if (D.lq.indexOf(p) < 0) D.lq.push(p); RS.marshal++; }
+    if (d < HOME_R) { p.state = 'landing'; p.deckPh = 'marshal'; p.phT = 0; p.lqT = WW.time.now; enter(p, D); RS.marshal++; }
   }
 
   // ---------- marshal, groove, trap ----------
-  // Placed to start the approach: well astern of the gate, on the stack's inbound leg (heading up the wake).
-  function inbound(q, c) { return toLocal(c, q.x, q.z)[0] < gate(c) - 10 && Math.abs(WW.angleDiff(q.heading, c.heading)) < 1.0; }
   // Pure pursuit on the racetrack (stack-centred local coords u along the ship, v across): the far leg heads aft
   // (-u), the near leg forward (+u), the turns at each end.
   function trackPoint(u, v, la, rt) {
@@ -65,7 +77,7 @@ window.WW = window.WW || {};
   }
   function landing(p, dt) {
     const c = p.carrier, D = deckOf(c), ps = -D.s, L = toLocal(c, p.x, p.z), lx = L[0], lz = L[1];
-    if (D.lq.indexOf(p) < 0) { D.lq.push(p); if (p.lqT === undefined) p.lqT = WW.time.now; }
+    if (D.lq.indexOf(p) < 0) { enter(p, D); if (p.lqT === undefined) p.lqT = WW.time.now; }
     p.phT = (p.phT || 0) + dt;
     const to = (ax, az, alt, spd, rate) => { const w = c.toWorld(ax, az); return p.fly(w[0], w[1], alt, dt, spd, rate); };
     switch (p.deckPh) {
@@ -74,30 +86,32 @@ window.WW = window.WW || {};
         let lvl = 0, ahead = null, inApp = false, first = true;   // first: no plane below it in the stack is placed to go in
         for (const q of D.lq) {
           if (q === p) break;
-          if (q.deckPh === 'marshal') { lvl++; if (inbound(q, c)) first = false; }
+          if (q.deckPh === 'marshal') { if (toLocal(c, q.x, q.z)[0] < gate(c) - 10) first = false; if (q.mTrack === p.mTrack) lvl++; }   // the first in the queue placed astern goes first; levels per track
           else if (q.deckPh === 'app') inApp = true;
           else if (q.deckPh === 'final') ahead = q;
         }
-        for (const q of D.lq) if (q !== p && q.deckPh === 'app') inApp = true;
-        const ring = Math.floor(lvl / LEVELS), m = stackAt(c, D), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT + RING * ring); // a full stack: the next levels on a wider ring outside it
-        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * (lvl % LEVELS), p.pt.speed * 0.7, 1.5);
+        let nApp = 0;   // at most two on the approach leg, never two side by side
+        for (const q of D.lq) if (q !== p && q.deckPh === 'app') { nApp++; if (nApp >= 2 || WW.dist(q.x, q.z, p.x, p.z) < 35 || toLocal(c, q.x, q.z)[0] < gate(c) - 40) inApp = true; }
+        if (p.mTrack === undefined) p.mTrack = 0;
+        const m = stackAt(c, D, p.mTrack), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT);
+        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS + 3), p.pt.speed * 0.7, 1.5);
         const groove = !ahead || (D.k.tdX - toLocal(c, ahead.x, ahead.z)[0]) < GROOVE;   // the plane ahead is well into its final
         // the lowest plane placed to go in (a wave-off still up ahead lets the next one through first)
-        if (lvl < 3 && first && D.mode === 'recover' && !D.closing && !inApp && groove && inbound(p, c)) { p.deckPh = 'app'; p.phT = 0; }
+        if (first && D.mode === 'recover' && !D.closing && !inApp && groove && lx < gate(c) - 10) { p.deckPh = 'app'; p.phT = 0; }   // the app leg turns it up the wake from wherever it is on the racetrack
         break;
       }
       case 'app': // straight in from astern (the stack lies behind the gate) onto the centreline, descending to the groove
         if (D.mode !== 'recover') { p.deckPh = 'marshal'; p.phT = 0; break; }
         to(Math.min(lx + 30, D.k.tdX - 12), D.run, 7, p.pt.speed * (lx < gate(c) - 15 ? 1 : 0.85), 1.8);        // a point up the centreline ahead of it
-        if (lx > D.k.tdX - 15) { p.deckPh = 'marshal'; p.phT = 0; break; }          // overshot the groove: round again from the stack
-        if ((lx > gate(c) && lx < D.k.tdX - 15 && Math.abs(lz - D.run) < 6 && Math.abs(WW.angleDiff(p.heading, c.heading)) < 0.6) || p.phT > 25) { p.deckPh = 'final'; p.phT = 0; p._lz = undefined; }
+        if (lx > D.k.tdX - 15) { p.deckPh = 'marshal'; p.phT = 0; RS.why.overshoot = (RS.why.overshoot || 0) + 1; break; }          // overshot the groove: round again from the stack
+        if ((lx > gate(c) && lx < D.k.tdX - 15 && Math.abs(lz - D.run) < 6 && Math.abs(WW.angleDiff(p.heading, c.heading)) < 0.6) || p.phT > 25) { RS.appT = (RS.appT || 0) + p.phT; RS.appN = (RS.appN || 0) + 1; p.deckPh = 'final'; p.phT = 0; p._lz = undefined; }
         break;
       case 'final': {
         const vlz = dt > 0 && p._lz !== undefined ? (lz - p._lz) / dt : 0; p._lz = lz; // fly the runway centreline (PD on the drift)
         p.turnTo(c.heading - WW.clamp((lz - D.run) * 0.15 + vlz * 0.12, -0.8, 0.8), dt, 2.2);
         const togo = D.k.tdX - lx, ty = D.dy + P().deckY + WW.clamp(togo * 0.13, 0, 8);
         const slow = togo < 30 && togo > 8 && !clearAft(D);                                     // deck still foul: ease off, the LSO waits
-        p.speed += WW.clamp(c.speed + (slow ? 7 : WW.clamp(togo * 0.3, 10, 17)) - p.speed, -8 * dt, 8 * dt);
+        p.speed += WW.clamp(c.speed + (slow ? 7 : WW.clamp(togo * 0.35, 10, 19)) - p.speed, -8 * dt, 8 * dt);
         p.vy = WW.clamp((ty - p.y) * 2.5 - 0.13 * (p.speed - c.speed), -6, 4);
         const tw = c.toWorld(D.k.tdX, D.run), dh = WW.dist(p.x, p.z, tw[0], tw[1]), b = Math.atan2(tw[1] - p.z, tw[0] - p.x);
         let wave = false;
@@ -123,6 +137,7 @@ window.WW = window.WW || {};
   }
   function trap(p, D, lx, lz) {
     const c = p.carrier;
+    RS.finT = (RS.finT || 0) + p.phT; RS.finN = (RS.finN || 0) + 1;
     p.state = 'rollout'; p.deckPh = 'trap'; p.t = 0; p.lx = Math.min(lx, D.k.tdX + 1); p.lz = lz;
     p.rel = WW.clamp(p.speed - c.speed, 6, 16); p.vy = 0; p.turn = 0;
     D.lq.splice(D.lq.indexOf(p), 1); D.recN++;

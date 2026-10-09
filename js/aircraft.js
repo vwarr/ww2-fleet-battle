@@ -6,6 +6,7 @@ window.WW = window.WW || {};
   const tracers = [];         // pooled THREE.Line
   let tracerIdx = 0, v3 = null;
   const REARM = 10;
+  const LOITER = 0.6;         // fuel burn of a CAP fighter on station with no foe (economical cruise)
   const PLANE_SCALE = WW.cfg.PLANE_SCALE || 1.7; // arcade scale 1.7 (ship_classes.js; true scale ~0.41, ?planeScale=)
   const DECK_Y = 0.75;        // fuselage centre above the flight deck (scaled model)
 
@@ -162,7 +163,8 @@ window.WW = window.WW || {};
       const c = this.carrier;
       if (!c.alive) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }
       if (this.state === 'transit' || this.state === 'attack') {
-        this.fuel -= dt;
+        // a CAP fighter on station with nothing to chase loiters at economical cruise (1942 CAP sorties ran 2-3 h)
+        this.fuel -= this.kind === 'fighter' && !this.target && !this.foe && !this.vec && !this.joined && !this.search ? dt * LOITER : dt;
         if (this.fuel <= 0) this.state = 'return';
       }
       switch (this.state) {

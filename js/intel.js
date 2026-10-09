@@ -24,7 +24,7 @@ window.WW = window.WW || {};
     PATROL: 140,                                       // patrol flying boats (air_patrol.js): trained observers, high and steady
     CLOSE_ID: 45,                                      // an air observer this close identifies the type correctly
     SEE_PLANE: { carrier: 170, battleship: 130, cruiser: 130, destroyer: 110, submarine: 40, pt: 60 }, // ships see planes (AA directors, lookouts)
-    SEE_PLANE_NATION: { USN: { carrier: 250 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE)
+    SEE_PLANE_NATION: { USN: { carrier: 400 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE; CXAM saw big raids 4-5 x a lookout's range: 400 gives the director ~15 s to put the CAP out on the bearing)
     PLANE_PLANE: 100,                                  // planes see planes
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
     TORP: 45,                                          // a ship sees an enemy torpedo track this close (scanTorps)

@@ -14,6 +14,7 @@ window.WW = window.WW || {};
   const GAP = 0.2, TAXI = 4, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
   const WIND_FOE = 600, HOLD_FOE = 400;   // a known enemy gun ship this close on the wind bearing: launch and recover on the course held
   const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
+  const DEEP = 6, LQ_DEEP = 15, RW_DEEP = 12, LW_DEEP = 35;            // a deep stack: the launch window yields sooner, the recovery window runs longer
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
 
@@ -86,7 +87,7 @@ window.WW = window.WW || {};
         const e = a[i];
         if (e.ph === 'up') { e.yoff = Math.min(0, e.yoff + 1.4 * dt); if (e.yoff >= 0) e.ph = 'park'; }
         if (Math.abs(e.lz - col.z) > 1e-3) { e.lz += WW.clamp(col.z - e.lz, -2 * dt, 2 * dt); continue; } // taxi across first
-        const tv = e.ph === 'in' && e.lx < D.k.barrier + e.len ? TAXI * 1.6 : TAXI;   // clear of the wires under power, then the handlers push it
+        const tv = e.ph === 'in' && e.lx < D.k.barrier + e.len ? TAXI * 2.2 : TAXI;   // clear of the wires under power, then the handlers push it
         let nx = e.lx + WW.clamp(e.tx - e.lx, -tv * dt, tv * dt);
         if (nx > e.lx && i > 0) nx = Math.min(nx, Math.max(e.lx, a[i - 1].lx - (a[i - 1].len + e.len) / 2 - GAP * 0.6));
         if (nx < e.lx && i < a.length - 1) nx = Math.max(nx, Math.min(e.lx, a[i + 1].lx + (a[i + 1].len + e.len) / 2 + GAP * 0.6));
@@ -149,14 +150,14 @@ window.WW = window.WW || {};
     const launchAct = D.launchers.some(p => p.deckPh !== 'queued');
     const launchPend = D.launchers.length > 0;
     // A strike load or a scramble (raid near) may break into a recovery; a CAP relief waits for the stack to clear
-    const urgent = launchPend && (D.launchers.some(p => p.target) || (c._air && c._air.near > 0));
+    const urgent = !launchPend ? false : c._air && c._air.near > 0 && D.launchers.some(p => !p.target) ? 'scramble' : D.launchers.some(p => p.target) || (c._air && c._air.near > 0);
     let lqWait = 0; for (const p of D.lq) lqWait = Math.max(lqWait, now - (p.lqT === undefined ? now : p.lqT));
     D.waitT = launchPend && D.mode !== 'launch' ? D.waitT + dt : 0;
     // Windows: a launch window runs until the launch queue is empty (returning planes hold in the marshal stack),
     // unless planes have held LQ_MAX s; a recovery window takes up to RW_N traps while launches wait, then yields
     // (the plane in the groove lands first). Nothing waiting: recover if anyone is home, else idle (spotted for launch).
     const prev = D.mode;
-    if (D.mode === 'launch' && launchPend && !(recPend && lqWait > LQ_MAX && !launchAct && now - D.modeT > LW_MIN)) { /* keep the launch window */ }
+    if (D.mode === 'launch' && launchPend && !(recPend && lqWait > (D.lq.length >= DEEP && urgent !== 'scramble' ? LQ_DEEP : LQ_MAX) && !launchAct && now - D.modeT > LW_MIN)) { /* keep the launch window */ }
     else if (D.mode === 'recover' && (landAct || (recPend && !yieldRec(D, urgent)))) { /* keep */ }
     else D.mode = launchPend ? 'launch' : recPend ? 'recover' : 'idle';
     if (D.mode !== prev) { D.recN = 0; D.modeT = now; }
@@ -192,8 +193,11 @@ window.WW = window.WW || {};
   }
   // Does the recovery window give the deck to the launches waiting below? A strike or a scramble after RW_N traps
   // (or LW_MAX s); a CAP relief once the stack is down to one, or after LW_RELIEF s.
+  // A strike back in the stack (DEEP or more waiting) is landed before the next load is spotted (it is the next
+  // strike, and the fighters in it are the next CAP): RW_DEEP traps or LW_DEEP s; a scramble still goes after RW_N.
   function yieldRec(D, urgent) {
     if (!D.launchers.length) return false;
+    if (urgent && urgent !== 'scramble' && D.lq.length >= DEEP) return D.recN >= RW_DEEP || D.waitT > LW_DEEP;
     if (urgent) return D.recN >= RW_N || D.waitT > LW_MAX;
     return D.lq.length < 2 || D.waitT > LW_RELIEF;
   }
