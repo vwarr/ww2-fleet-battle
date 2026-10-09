@@ -18,6 +18,7 @@ window.WW = window.WW || {};
   var DREF = 20;          // danger that counts as "1" in bestHeading (about a battleship's broadside at mid range)
   var EDGE = 45;          // map-edge penalty band in bestHeading
   var OFFS = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1, 2.6, -2.6, Math.PI];
+  var COFFS = OFFS.map(Math.cos); // cos of each offset, once (bestHeading)
   var nx = 0, nz = 0, F = {}, stats = { builds: 0, ms: 0, lookups: 0 };
 
   function grid() { return { surf: new Float32Array(nx * nz), air: new Float32Array(nx * nz), max: 0, airMax: 0, t: -1e9, n: 0 }; }
@@ -80,7 +81,9 @@ window.WW = window.WW || {};
   function danger(nation, x, z, opts) {
     var f = F[nation]; if (!f || !nx) return 0;
     stats.lookups++;
-    var ch = opts && opts.air ? f.air : f.surf;
+    return sample(opts && opts.air ? f.air : f.surf, x, z);
+  }
+  function sample(ch, x, z) {
     var gx = WW.clamp(x / CELL, 0, nx - 1.001), gz = WW.clamp(z / CELL, 0, nz - 1.001), i = gx | 0, j = gz | 0, fx = gx - i, fz = gz - j, o = j * nx + i;
     return (ch[o] * (1 - fx) + ch[o + 1] * fx) * (1 - fz) + (ch[o + nx] * (1 - fx) + ch[o + nx + 1] * fx) * fz;
   }
@@ -95,11 +98,14 @@ window.WW = window.WW || {};
   function bestHeading(ship, want, risk, opts) {
     var look = (opts && opts.look) || WW.clamp(ship.stats.speed * 9, 30, 70), K = ((opts && opts.k) || 2) * (1 - WW.clamp(risk || 0, 0, 1)) / DREF;
     var best = want, bs = -1e9, n = ship.nation, av = opts && opts.avoid, cone = (opts && opts.cone) || 1.4;
+    // the danger channel once per call (danger() would look it up for each of the 32 samples; same values)
+    var f = F[n], ch = f && nx ? (opts && opts.air ? f.air : f.surf) : null, eb = opts && opts.edge;
+    if (ch) stats.lookups += 2 * OFFS.length;
     for (var i = 0; i < OFFS.length; i++) {
       var h = want + OFFS[i], c = Math.cos(h), s = Math.sin(h);
       var x1 = ship.x + c * look * 0.5, z1 = ship.z + s * look * 0.5, x2 = ship.x + c * look, z2 = ship.z + s * look;
-      var dg = Math.max(danger(n, x1, z1, opts), danger(n, x2, z2, opts));
-      var sc = Math.cos(OFFS[i]) - dg * K - edge(x2, z2, opts && opts.edge) - 0.15 * Math.abs(WW.angleDiff(ship.heading, h));
+      var dg = ch ? Math.max(sample(ch, x1, z1), sample(ch, x2, z2)) : 0;
+      var sc = COFFS[i] - dg * K - edge(x2, z2, eb) - 0.15 * Math.abs(WW.angleDiff(ship.heading, h));
       if (av) for (var j = 0; j < av.length; j++) { var off = Math.abs(WW.angleDiff(av[j], h)); if (off < cone) sc -= 3 - 1.5 * off / cone; }
       if (sc > bs) { bs = sc; best = h; }
     }

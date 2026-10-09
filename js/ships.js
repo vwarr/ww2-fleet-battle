@@ -6,6 +6,10 @@ window.WW = window.WW || {};
   let nextId = 1;
   const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
   const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
+  // the largest personal-space radius (SPACE or the default 20): with the hull term, an upper bound of the separation
+  // radius in Ship.move, for an early skip of far pairs (the other hull is taken as up to 100 units long: the longest
+  // ship is 26, an island airfield 40)
+  const SEP_SPACE = Math.max(20, ...Object.values(SPACE)), SEP_OTHER_L = 100;
   const HEEL = { carrier: 0.045, battleship: 0.04, cruiser: 0.08, destroyer: 0.12, pt: 0.14, submarine: 0.07 }; // rad at full speed + full turn
   const EDGE_BAND = 30; // soft edge-avoidance band (units from the map boundary)
   const BAND = 0.35, HELM = 0.4; // turn rate is proportional below BAND rad of heading error; HELM s to full rudder
@@ -87,10 +91,12 @@ window.WW = window.WW || {};
       this.heel += (hw - this.heel) * (1 - Math.exp(-dt / Math.max(0.6, st.length * 0.08)));
       // Wanted direction plus separation: each type keeps a personal space (the larger of the two applies).
       let dx = Math.cos(this.desiredHeading), dz = Math.sin(this.desiredHeading);
-      const list = WW.world.ships, rs = SPACE[this.type] || 20;
+      const list = WW.world.ships, rs = SPACE[this.type] || 20, sepR = Math.max(SEP_SPACE, (st.length + SEP_OTHER_L) * 0.6 + 4) + 1, sep2 = sepR * sepR;
       for (let i = 0; i < list.length; i++) {
         const o = list[i];
         if (o === this || o.removed || !(o.alive || o.sinking) || (o.submerged !== this.submerged)) continue; // steer clear of sinking hulls too
+        const qx = this.x - o.x, qz = this.z - o.z;
+        if (qx * qx + qz * qz >= sep2) continue; // beyond any separation radius: no push (same result, cheaper)
         const hull = (st.length + o.stats.length) * 0.6 + 4; // a carrier's AA-ring escort may come inside its personal space (fleet_formation.js)
         const r = this.ringCv === o || o.ringCv === this ? hull : Math.max(rs, SPACE[o.type] || 20, hull);
         const ex = this.x - o.x, ez = this.z - o.z, d2 = ex * ex + ez * ez;
@@ -165,11 +171,17 @@ window.WW = window.WW || {};
 
       // Step, with hard guarantees: the centre never ends on a non-navigable cell and no hull sample
       // (bow, stern, beams) ends on water shallower than shipNav.HARD — full turn, half turn, astern, straight.
-      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, N = WW.shipNav, m = N.EDGE, cur = N.hullMin(this, this.x, this.z, h0);
-      const fo = N.fixedOverlap(this, this.x, this.z, h0) + 1e-6; // never drive deeper into a wreck / sinking hull
+      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, N = WW.shipNav, m = N.EDGE, x0 = this.x, z0 = this.z;
+      // hull gate: clear of the shallows, or (already clipping) no worse than here. The current pose's hullMin is only
+      // needed when a probe is shallow, so it is computed then, once (pure: the pose is unchanged until a probe succeeds)
+      let cur;
+      const hullOK = (x, z, h) => { const mm = N.hullMin(this, x, z, h); if (mm >= N.HARD) return true; if (cur === undefined) cur = N.hullMin(this, x0, z0, h0); return cur < N.HARD && mm >= cur - 1e-6; };
+      // never drive deeper into a wreck / sinking hull: the overlap here (+1e-6, so > 0) is only needed when a probe overlaps
+      let fo;
+      const deeper = (x, z, h) => { const ov = N.fixedOverlap(this, x, z, h); if (!(ov > 0)) return false; if (fo === undefined) fo = N.fixedOverlap(this, x0, z0, h0) + 1e-6; return ov > fo; };
       const pose = (h, v) => {
         const nx = WW.clamp(this.x + Math.cos(h) * v, m, W - m), nz = WW.clamp(this.z + Math.sin(h) * v, m, H - m);
-        if (!nav(nx, nz, md) || !N.hullOK(this, nx, nz, h, cur) || N.fixedOverlap(this, nx, nz, h) > fo) return false;
+        if (!nav(nx, nz, md) || !hullOK(nx, nz, h) || deeper(nx, nz, h)) return false;
         this.x = nx; this.z = nz; this.heading = wrap(h); return true;
       };
       this.turnRate = 0;
@@ -219,7 +231,7 @@ window.WW = window.WW || {};
         for (let k = 0; k < 13; k++) {
           const a = out + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.35;
           const px = this.x + Math.cos(a) * ve, pz = this.z + Math.sin(a) * ve;
-          if (px > m && px < W - m && pz > m && pz < H - m && WW.terrain.isNavigable(px, pz, md) && N.hullOK(this, px, pz, h0, cur)) { this.x = px; this.z = pz; return; }
+          if (px > m && px < W - m && pz > m && pz < H - m && WW.terrain.isNavigable(px, pz, md) && hullOK(px, pz, h0)) { this.x = px; this.z = pz; return; }
         }
         return; // boxed in: hold position (still on valid terrain)
       }
@@ -247,9 +259,8 @@ window.WW = window.WW || {};
     syncGroup(t) {
       const g = this.group, amp = 0.35 / Math.sqrt(this.stats.length);
       g.position.set(this.x, this.depthY + Math.sin(t * 1.1 + this.bob) * amp * 0.5, this.z);
-      g.rotation.y = -this.heading;
-      g.rotation.x = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.heel + this.listRoll + this.cripList();
-      g.rotation.z = Math.sin(t * 0.9 + this.bob) * amp * 0.12;
+      // one Euler.set: the quaternion is rebuilt once per call, not once per axis (same final values)
+      g.rotation.set(Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.heel + this.listRoll + this.cripList(), -this.heading, Math.sin(t * 0.9 + this.bob) * amp * 0.12);
     }
 
     // A cripple lists heavier: flooding and lost buoyancy, on the side of its torpedo list (else its sinking side).
@@ -360,9 +371,8 @@ window.WW = window.WW || {};
       this.restY = flatY + L * 0.5 * sn;
       this.restTop = flatY + this.hullTop * Math.cos(roll) + L * sn;
       g.position.set(this.x, WW.lerp(this.startY, this.restY, k * k), this.z);
-      g.rotation.y = -this.heading;
-      g.rotation.x = WW.lerp(this.listRoll + this.heel, roll, Math.min(1, this.sinkT / 4)); // heel at the fatal hit eases out
-      g.rotation.z = WW.lerp(this.sinkPitch, th || this.sinkPitch, k) * k;
+      g.rotation.set(WW.lerp(this.listRoll + this.heel, roll, Math.min(1, this.sinkT / 4)), // heel at the fatal hit eases out
+        -this.heading, WW.lerp(this.sinkPitch, th || this.sinkPitch, k) * k);
       if (!wreckCol) wreckCol = new THREE.Color(0x7a5a44); // rust: stays visible under the water
       this.model.hullMats.forEach((m, i) => {
         if (m.color && this.baseColors[i]) m.color.copy(this.baseColors[i]).multiplyScalar(0.7).lerp(wreckCol, k * 0.75);
