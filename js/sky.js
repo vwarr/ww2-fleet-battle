@@ -35,7 +35,7 @@ window.WW = window.WW || {};
         '  vec3 d = normalize(vDir);',
         '  float h = clamp(d.y, 0.0, 1.0);',
         '  vec2 az = normalize(d.xz + 1e-5), sa = normalize(sunDir.xz);',
-        '  float toward = dot(az, sa) * 0.5 + 0.5;',                       // 1 = looking at the sun
+        '  float toward = clamp(dot(az, sa) * 0.5 + 0.5, 0.0, 1.0);',       // 1 = looking at the sun (clamped: rounding takes it a hair below 0 dead away from the sun, and pow() of a negative is NaN: a NaN column of sky that the bloom smeared into a 10%-wide grey-white bar)
         '  vec3 horizon = mix(away, sunSide, pow(toward, spread));',            // spread: a wide warm arc at sunset
         '  vec3 c = mix(horizon, zenith, pow(smoothstep(0.0, 0.5, h), 0.6));',
         '  float s = max(dot(d, sunDir), 0.0);',
