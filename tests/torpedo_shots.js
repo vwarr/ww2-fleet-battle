@@ -13,11 +13,12 @@ require('fs').mkdirSync(out, { recursive: true });
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.goto(process.env.BASE_URL + 'index.html?auto&v=' + Date.now());
-  await p.waitForFunction(() => window.__sim && window.WW && WW.game && WW.game.state === 'battle');
+  await p.goto(process.env.BASE_URL + 'index.html?auto&v=' + Date.now(), { timeout: 180000 });
+  await p.waitForFunction(() => window.__sim && window.WW && WW.game && WW.game.state === 'battle', null, { timeout: 180000 });
   await p.waitForTimeout(1500);
   await p.evaluate(() => {
     __sim.setScale(0.12);
+    Object.defineProperty(WW.time, 'warp', { get: () => 1, set: () => {} });   // no director slow motion on the hand-off
     WW.audio && WW.audio.setVolume && WW.audio.setVolume(0);
     window.__shot = null;
     WW.cam.update = function () {        // ship-relative fixed camera: [ship, ox, oy, oz, lx, ly, lz] (ship-local)
@@ -33,7 +34,7 @@ require('fs').mkdirSync(out, { recursive: true });
     const mk = (type, nation, x, z) => { const s = WW.ships.spawn(type, nation, x, z, 0); s.hp = s.maxHp; s.throttle = 0.4; return s; };
     window.__S = { cv: mk('carrier', 'USN', 120, 220), bb: mk('battleship', 'USN', 140, 420) };
     window.__imp = [];
-    WW.on('weaponImpact', e => { if (e && e.kind === 'torpedo' && e.ship) { window.__imp.push(WW.time.now); __sim.setScale(0.12); } });   // slow motion from the impact
+    WW.on('weaponImpact', e => { if (e && e.kind === 'torpedo') window.__ends = (window.__ends || []).concat([[+e.x.toFixed(1), +e.z.toFixed(1), e.ship ? e.ship.type : null, +(e.proj.run || 0).toFixed(1)]]); if (e && e.kind === 'torpedo' && e.ship) { window.__imp.push(WW.time.now); __sim.setScale(0.12); } });   // slow motion from the impact
     WW.game.state = 'victory'; WW.game.victoryTime = -1e4;   // no AI: the subjects sail on
     // fire a torpedo at ship s from distance d on its beam (side +1 starboard), aimed at local x = ax
     window.__fire = (s, side, d, ax, nation, launcher) => {
@@ -47,19 +48,22 @@ require('fs').mkdirSync(out, { recursive: true });
   const until = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await p.evaluate(fn)) return true; await p.waitForTimeout(100); } return false; };
   const shotsAfterImpact = async (name, times) => {
     const n0 = await p.evaluate(() => window.__imp.length);
-    if (!await until(new Function('return window.__imp.length > ' + n0), 60000)) { console.log(name, 'no impact'); return; }
+    if (!await until(new Function('return window.__imp.length > ' + n0), 180000)) { console.log(name, 'no impact', JSON.stringify(await p.evaluate(() => [window.__ends, __S.cv.x, __S.cv.z, __S.cv.heading, __S.cv.alive]))); return; }
     const t0 = Date.now();
     for (const t of times) { const w = t - (Date.now() - t0); if (w > 0) await p.waitForTimeout(w); await p.screenshot({ path: `${out}/${name}_${t}.png` }); }
     console.log(name, 'ok', JSON.stringify(await p.evaluate(() => WW.fx._stats())));
   };
+  // warm-up: the first frames compile the shaders (seconds each in software GL): wait until the sim runs
+  const tw = await p.evaluate(() => WW.time.now);
+  await until(new Function('return WW.time.now > ' + (tw + 0.5)), 240000);
   const scenes = {
     hit: async () => {
-      await p.evaluate(() => { const s = __S.cv; window.__shot = [s, -6, 7, 34, 0, 1.0, 0]; __fire(s, 1, 60, 2, 'IJN', 'destroyer'); });
-      await shotsAfterImpact('hit', [0, 400, 900, 1600, 3000, 6000]);
+      console.log('fired', JSON.stringify(await p.evaluate(() => { const s = __S.cv; window.__shot = [s, -6, 7, 34, 0, 1.0, 0]; const q = __fire(s, 1, 60, 2, 'IJN', 'destroyer'); return q ? [q.x, q.z, q.h, q.sp, q.range, q.dead] : null; })));
+      await shotsAfterImpact('hit', [0, 4000, 9000, 16000, 30000, 60000]);   // x0.06 sim time: up to ~3.6 sim s
     },
     low: async () => {
       await p.evaluate(() => { const s = __S.cv; window.__shot = [s, 14, 1.6, 22, -2, 1.5, 0]; __fire(s, 1, 60, -4, 'USN', null); });
-      await shotsAfterImpact('low', [0, 500, 1200, 2500]);
+      await shotsAfterImpact('low', [0, 6000, 14000, 30000]);
     },
     track: async () => {
       await p.evaluate(() => { const s = __S.bb; window.__shot = [s, 0, 14, 60, 0, 0, 30]; __fire(s, 1, 110, 4, 'USN', 'destroyer'); __fire(s, 1, 110, -6, 'IJN', 'destroyer'); });

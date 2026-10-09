@@ -62,8 +62,8 @@ window.WW = window.WW || {};
     var p = worldOf(ship, site), px = p.x, py = p.y, pz = p.z;
     if (fx) {
       if (kind === 'torpedo') {
-        fx.splash(px, pz, 3.5); fx.splash(px + rr(-1, 1), pz + rr(-1, 1), 2.2);
-        fx.explosion(px, 0.8, pz, 1.4);
+        if (fx.torpedoHit) fx.torpedoHit(px, pz, -sn * side, c * side, clamp(L / 16, 0.9, 1.6) * (amount > 300 ? 1.15 : 1)); // underwater flash, column, slick
+        else { fx.splash(px, pz, 3.5); fx.explosion(px, 0.8, pz, 1.4); }
       } else if (kind === 'dc') {
         // the depth charge already threw its water column
       } else if (under) {
