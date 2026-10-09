@@ -137,7 +137,7 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.endReason = null; game.roundTime = 0; clearT.USN = clearT.IJN = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.lastHit = 0;
+      game.winner = null; game.endReason = null; game.roundTime = 0; clearT.USN = clearT.IJN = 0; harmT.USN = harmT.IJN = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.lastHit = 0;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
@@ -187,21 +187,35 @@ window.WW = window.WW || {};
   //    'retire'; sunk: 'kill' (the winner ran down the last of them; ships that got away earlier are counted in
   //    WW.endgame.stats.escaped). Both out at once: tonnage.
   //  - a broken side that has got clear also retires (the big map's long run home is no battle): RETIRE_MIN s after
-  //    the break, once no enemy gun ship is within CLEAR_R of any of its ships and no armed enemy bomber is in the air,
-  //    for CLEAR_T s running (the pursuit has lost touch and no strike is on its way). Not with game.noRetire (tests).
+  //    the break, once no enemy gun ship is within CLEAR_R of any of its ships and no armed enemy bomber is within
+  //    CLEAR_AIR of them or sent against one of them, for CLEAR_T s running (the pursuit has lost touch and no strike
+  //    is on its way). A pursuit that is not biting counts as lost touch too: no hit on the broken side for STALE_T s
+  //    (a stern chase at equal speed out of gun reach is no battle; STALE_AIR while the pursuer has a carrier that can
+  //    fly: time to spot and launch a pursuit strike) and no strike bound for it. Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
-  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 60, CLEAR_R = 300, CLEAR_T = 30;
-  const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 };
-  // the broken side n is out of the enemy's reach: no enemy gun ship within CLEAR_R, no armed enemy bomber in the air
+  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 15, STALE_T = 30, STALE_AIR = 75;
+  const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 }, harmT = { USN: 0, IJN: 0 }, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
+  WW.on('shipHit', e => { if (e && e.ship && harmT[e.ship.nation] !== undefined) harmT[e.ship.nation] = game.roundTime; });
+  // the broken side n is out of the enemy's reach: no enemy gun ship within CLEAR_R, no armed enemy bomber within
+  // CLEAR_AIR or bound for one of its ships (its own target or its wave's)
   function clear(n) {
-    const S = WW.world.ships, P = WW.world.planes;
-    for (const p of P) if (p.alive && p.nation !== n && p.ordnance && (p.kind === 'dive' || p.kind === 'torpedo') && p.y > 2) return false;
+    const S = WW.world.ships, P = WW.world.planes, mine = q => q && q.nation === n && q.alive;
+    for (const p of P) if (p.alive && p.nation !== n && p.ordnance && OUT[p.state] && (p.kind === 'dive' || p.kind === 'torpedo') && (mine(p.target) || mine(p.wave && p.wave.target))) return false;
+    const B = WW.fleetCmd && WW.fleetCmd.side(n);
+    if (B && game.roundTime - Math.max(harmT[n], B.brokenAt) >= (canStrike(WW.enemyOf(n)) ? STALE_AIR : STALE_T)) return true; // the pursuit is not biting
     for (const s of S) {
       if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
       for (const e of S) if (e.alive && !e.sinking && e.nation !== n && GUNS[e.type] && WW.dist2(s.x, s.z, e.x, e.z) < CLEAR_R * CLEAR_R) return false;
+      for (const p of P) if (p.alive && p.nation !== n && p.ordnance && OUT[p.state] && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(s.x, s.z, p.x, p.z) < CLEAR_AIR * CLEAR_AIR) return false;
     }
     return true;
+  }
+  // side n has a fit carrier and the light to fly from it
+  function canStrike(n) {
+    const D = WW.dayNight;
+    if (D && !D.canFly()) return false;
+    return WW.world.ships.some(s => s.alive && !s.sinking && s.nation === n && s.type === 'carrier' && s.hp >= WW.fleetGroups.CRIP * s.maxHp);
   }
   function gotClear(n, dt) {
     const B = WW.fleetCmd && WW.fleetCmd.side(n);

@@ -215,7 +215,7 @@ window.WW = window.WW || {};
     G.sub.members.forEach(function (q, i) { set(q, B.doctrine.subLine ? at(mg.x, mg.z, sf, (i - (nsub - 1) / 2) * 90) : at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
     // closing with no battle line, screen or flotilla (a carrier task force on its own): the carriers' escorts sortie
     // toward the enemy as a surface group, so the fleets still meet; one per carrier stays while there is another to go
-    if (!B.airWar && cv.length && !G.main.members.length && !G.screen.members.length && !G.flotilla.members.length &&
+    if (!B.airWar && cv.length && !fitN(B, G.main) && !fitN(B, G.screen) && !fitN(B, G.flotilla) &&
       B.posture !== 'withdraw') sortie(B, G, cv.length);
     // withdrawing ships: behind their own carrier (or the main body)
     B.orders.forEach(function (o) {
@@ -225,9 +225,18 @@ window.WW = window.WW || {};
     });
   }
 
-  // The sortie: escorts past the first `keep` steam for the enemy's known centre (fleet_cmd.js: the axis target).
+  // members of group g not withdrawing (a crippled screen destroyer heading home is no surface force)
+  function fitN(B, g) { var n = 0; g.members.forEach(function (q) { var o = B.orders.get(q.id); if (!o || o.role !== 'withdraw') n++; }); return n; }
+  // the sortie's goal: the freshest known enemy surface ship (the one the planes are striking; a centre of old
+  // contacts may be empty sea by now), else the enemy's known centre, else the search point
+  function sortieGoal(B) {
+    var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], best = null, bt = -1e9;
+    for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && u.alive && !u.submerged && !u.isBase && cs[i].seenAt > bt) { bt = cs[i].seenAt; best = cs[i]; } }
+    return best || B.enemyCentre || B.searchPoint;
+  }
+  // The sortie: escorts past the first `keep` steam for the enemy (sortieGoal).
   function sortie(B, G, ncv) {
-    var k = 0, t = B.enemyCentre || B.searchPoint, n = 0;
+    var k = 0, t = sortieGoal(B), n = 0;
     G.carrier.members.forEach(function (q) { var o = B.orders.get(q.id); if (q.type !== 'carrier' && o && o.role !== 'withdraw') n++; });
     var keep = Math.min(ncv, n - 1);
     G.carrier.members.forEach(function (q) {

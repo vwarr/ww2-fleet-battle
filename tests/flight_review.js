@@ -77,7 +77,7 @@ async function runAll(list, withRec) {
       const out = await p.evaluate(spec => {
         const o = window.__beh.run(spec);
         const rec = window.__rec ? window.__rec.flush() : null;
-        return { winner: o.winner, len: o.len, end: o.end, comp: o.comp, stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost, shells: WW.stats.shellsFired, hits: WW.stats.hits, sunk: WW.stats.shipsSunk }, rec };
+        return { winner: o.winner, len: o.len, end: o.end, comp: o.comp, shape: ['USN', 'IJN'].map(n => { const B = WW.fleetCmd && WW.fleetCmd.side(n); return B ? { n, broken: B.brokenAt || null, pursue: B.pursueAt || null, hold: B.holdEnd || null, posture: B.posture } : null; }), stats: { launched: WW.stats.planesLaunched, landed: WW.stats.planesLanded, lost: WW.stats.planesLost, shells: WW.stats.shellsFired, hits: WW.stats.hits, sunk: WW.stats.shipsSunk }, rec };
       }, spec);
       res[i] = Object.assign({ scen: spec.scen, seed: spec.seed }, out);
       process.stdout.write('.');
@@ -327,6 +327,6 @@ function report(rounds) {
   const R = report(rounds);
   console.log(R.text);
   fs.mkdirSync(path.dirname(JSON_OUT), { recursive: true });
-  fs.writeFileSync(JSON_OUT, JSON.stringify({ when: new Date().toISOString(), args: argv, summary: R.out, rounds: rounds.map(r => ({ scen: r.scen, seed: r.seed, winner: r.winner, len: r.len, end: r.end, comp: r.comp, stats: r.stats, first: r.rec && r.rec.first, waves: r.rec && r.rec.waves, drops: r.rec && r.rec.drops, deaths: r.rec && r.rec.deaths, min: r.rec && r.rec.min, hang: r.rec && r.rec.hang, deck: r.rec && r.rec.deck, contact: r.rec && r.rec.contact })) }));
+  fs.writeFileSync(JSON_OUT, JSON.stringify({ when: new Date().toISOString(), args: argv, summary: R.out, rounds: rounds.map(r => ({ scen: r.scen, seed: r.seed, winner: r.winner, len: r.len, end: r.end, comp: r.comp, shape: r.shape, stats: r.stats, first: r.rec && r.rec.first, waves: r.rec && r.rec.waves, drops: r.rec && r.rec.drops, deaths: r.rec && r.rec.deaths, min: r.rec && r.rec.min, hang: r.rec && r.rec.hang, deck: r.rec && r.rec.deck, contact: r.rec && r.rec.contact })) }));
   console.log(`\njson: ${JSON_OUT}   (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 })().catch(e => { console.error(e); process.exit(1); });

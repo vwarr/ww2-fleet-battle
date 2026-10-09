@@ -23,11 +23,14 @@ window.WW = window.WW || {};
   var W0 = WW.cfg.MAP_W, STRIKE_AGE = 45, STRIKE_R = 0.6 * W0, STRIKE_FAR = 1.05 * W0, PURSUE_STRIKE_R = 1.3 * W0, DIST_K = 400 * W0 / WW.cfg.REF_W;
   // The air-war hold (P6, docs/PLANE_REVIEW.md): a side with carriers that can fly keeps its battle line, screen and
   // flotilla with the carriers (fleet_groups.js stations) and its gun ships off targets beyond HOLD_REACH x their reach
-  // (ships_ai.js) until CLOSE_AT x ROUND_TIMEOUT (x (1.15 - 0.3 x aggression): the IJN a little sooner), then the
-  // surface force closes for the gun fight. It ends early when the side's carriers are gone or crippled, when every
-  // enemy carrier it has seen is sunk (the air war is won), in the dark (no air war at night) or once it pursues /
-  // withdraws. A side without carriers closes from the start.
-  var CLOSE_AT = 0.3, FLY_AHEAD = 60;
+  // (ships_ai.js) until the first strikes have gone in: CLOSE_AFTER s after the first air drop of the round by either
+  // side's planes (the admiral has the strike results; never before CLOSE_MIN x ROUND_TIMEOUT), at the latest
+  // CLOSE_AT x ROUND_TIMEOUT; both times x (1.15 - 0.3 x aggression), the IJN a little sooner. Then the surface force
+  // closes for the gun fight while the second strikes fly, so the action keeps climbing (no lull after the opening
+  // strike). It ends early when the side's carriers are gone or crippled, when every enemy carrier it has seen is
+  // sunk (the air war is won), in the dark (no air war at night) or once it pursues / withdraws. A side without
+  // carriers closes from the start.
+  var CLOSE_AT = 0.3, CLOSE_MIN = 0.12, CLOSE_AFTER = 25, FLY_AHEAD = 60, firstDrop = 0;
   var RAID_R = 130;     // enemy bombers this close to an own carrier: air raid
   var TTK = 20;         // s: a target whose incoming fire kills it within TTK is saturated (no more shooters)
   var SECT_X = 6, SECT_Z = 4, LOOK_R = 110; // scout sectors; an own unit within LOOK_R of a sector centre has looked
@@ -39,7 +42,7 @@ window.WW = window.WW || {};
   function newSide(n) {
     var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
       strength: { own: 0, known: 0, ratio: 1 }, fit: 0, hadFit: false, brokenAt: 0, doctrine: WW.fleetGroups.rollDoctrine(n),
-      startTons: -1, fitTons: 0, foeSeen: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0, airWar: false, closeAt: 0, foeCV: new Map(),
+      startTons: -1, fitTons: 0, foeSeen: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0, airWar: false, closeAt: 0, holdEnd: 0, foeCV: new Map(),
       axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
       groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
@@ -98,7 +101,7 @@ window.WW = window.WW || {};
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
     if (B.posture !== prev) B.postureAt = now;
-    B.airWar = airWar(B, cs, rt);
+    var aw = airWar(B, cs, rt); if (B.airWar && !aw) B.holdEnd = rt; B.airWar = aw; // holdEnd: when the surface force was let go (tests)
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
     var tgt = B.enemyCentre || B.searchPoint;
@@ -131,7 +134,8 @@ window.WW = window.WW || {};
   // The air-war hold (see CLOSE_AT): true while the side keeps its surface force with its carriers.
   function airWar(B, cs, rt) {
     var i, u, cv = 0, d = B.doctrine;
-    if (!B.closeAt) B.closeAt = WW.cfg.ROUND_TIMEOUT * CLOSE_AT * (1.15 - 0.3 * d.aggression);
+    var T = WW.cfg.ROUND_TIMEOUT, k = 1.15 - 0.3 * d.aggression;
+    B.closeAt = firstDrop ? Math.min(T * CLOSE_AT * k, Math.max(T * CLOSE_MIN * k, firstDrop + CLOSE_AFTER * k)) : T * CLOSE_AT * k;
     for (i = 0; i < cs.length; i++) { u = cs[i].unit; if (u && u.type === 'carrier' && !B.foeCV.has(u.id)) B.foeCV.set(u.id, u); }
     var M = B.groups.carrier.members;
     for (i = 0; i < M.length; i++) if (M[i].type === 'carrier' && M[i].hp >= WW.fleetGroups.CRIP * M[i].maxHp) cv++;
@@ -288,6 +292,8 @@ window.WW = window.WW || {};
   }
 
   reset();
+  WW.on('roundStart', function () { firstDrop = 0; });
+  WW.on('weaponDropped', function (e) { if (!firstDrop && e && e.plane && WW.game) firstDrop = Math.max(1, WW.game.roundTime); }); // ships' torpedoes have no plane
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
 
