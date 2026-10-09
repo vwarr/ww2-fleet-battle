@@ -44,15 +44,20 @@ window.WW = window.WW || {};
     }
     return null;
   }
+  // the alarm: each truck races to a gun pit, a hangar or the radio shack it can reach (the nearest free one), the jeeps
+  // to the command post / the tower; the trucks stay off the planes' ground, so a place across the field is skipped
   function alarm() {
-    const hang = base.facilities.filter(f => f.kind === 'hangar' && !f.out), pits = base.facilities.filter(f => f.kind === 'aa' && !f.out);
-    const tw = base.facilities.find(f => f.kind === 'tower'), cp = (base.decor || []).find(d => d.kind === 'cp');
-    let ti = 0;
+    const D = base.decor || [], F = base.facilities;
+    const tgts = F.filter(f => (f.kind === 'aa' || f.kind === 'hangar') && !f.out).concat(D.filter(d => (d.kind === 'mg' || d.kind === 'radio' || d.kind === 'water') && !d.out));
+    const jeepT = D.filter(d => d.kind === 'cp').concat(F.filter(f => f.kind === 'tower'), D.filter(d => d.kind === 'radio' || d.kind === 'mess'));
+    const used = new Set();
     for (const c of cars) {
       if (c.kind === 'fire' || c.d.out) continue;
-      const tgt = c.kind === 'jeep' ? (ti++ === 0 ? cp || tw : tw) : [...hang, ...pits][ti++ % Math.max(1, hang.length + pits.length)];
-      if (!tgt) continue;
-      const q = beside(tgt, (tgt.hx ? Math.hypot(tgt.hx, tgt.hz) : tgt.r) + 2.6 + R() * 1.5, c); if (q) send(c, q.x, q.z, 'alarm');
+      const L = (c.kind === 'jeep' ? jeepT : tgts).filter(t => !used.has(t)).sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z));
+      for (const t of L.slice(0, 5)) {
+        const q = beside(t, (t.hx ? Math.hypot(t.hx, t.hz) : t.r) + 2.6 + R() * 1.5, c);
+        if (q && send(c, q.x, q.z, 'alarm')) { used.add(t); break; }
+      }
     }
   }
   function standDown() { for (const c of cars) if (c.kind !== 'fire' && c.away && !c.d.out) send(c, c.home.x, c.home.z, 'home'); }
