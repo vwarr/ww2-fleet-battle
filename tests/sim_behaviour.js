@@ -343,7 +343,8 @@ function install(P) {
     for (const s of L) {
       if (!isFinite(s.x) || !isFinite(s.z)) R.nan++;
       const m = R.moved[s.id] || (R.moved[s.id] = { x: s.x, z: s.z, t });
-      if (WW.dist(m.x, m.z, s.x, s.z) > 3) { m.x = s.x; m.z = s.z; m.t = t; } else if (t - m.t > 30 && !m.flag) { m.flag = true; R.stuck++; R.stuckWho.push(s.nation + ':' + s.type + '@' + Math.round(s.x) + ',' + Math.round(s.z)); }
+      const lurk = s.type === 'submarine' && s.submerged && enemies(s).some(o => !o.submerged && WW.dist(s.x, s.z, o.x, o.z) < 120); // a sub holding its ambush submerged, a target close: waiting, not stuck
+      if (WW.dist(m.x, m.z, s.x, s.z) > 3 || lurk) { m.x = s.x; m.z = s.z; m.t = t; } else if (t - m.t > 30 && !m.flag) { m.flag = true; R.stuck++; R.stuckWho.push(s.nation + ':' + s.type + '@' + Math.round(s.x) + ',' + Math.round(s.z)); }
       if (R.firstContact === null && s.type !== 'submarine' && s.stats.guns[0])
         for (const o of enemies(s)) if (!o.submerged && WW.dist(s.x, s.z, o.x, o.z) <= s.stats.guns[0].range) { R.firstContact = t; break; }
       if (B.sees && R.firstSight === null) for (const o of enemies(s)) { try { if (B.sees(s.nation, o)) { R.firstSight = t; break; } } catch (e) { /* */ } }
