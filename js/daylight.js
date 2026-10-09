@@ -1,51 +1,78 @@
-// daylight.js - WW.dayNight: the round's clock and WW.daylight (1 = day, 0 = night). Sim code: the start time is
-// rolled with WW.rand on roundStart and WW.daylight is stepped from main.js step(), so it is the same in a rendered
-// page and in sim-only mode. Most battles are fought by day (golden hour, as before); some start late in the
-// afternoon so dusk falls mid-battle; a few are night actions from the start.
-// Flight ops: no launches after dusk (WW.air.launch returns null), planes airborne at dusk are recalled, and a
-// night landing is risky (air_deck.js trap reads landRisk()). Visual code reads WW.daylight (sky, water, post, night_fx).
-// The clock: hourAt(t) = startHour + t / 120 (1 sim s = 0.5 game minute). Daylight falls from 1 at DUSK_H (17:45)
-// to 0 at DUSK_H + DUSK_LEN / 120 (19:00).
+// daylight.js - WW.dayNight: the round's clock, the sun and WW.daylight (1 = day, 0 = night). Sim code: the start
+// time is rolled with WW.rand on roundStart and the clock is stepped from main.js step(), so it is the same in a
+// rendered page and in sim-only mode. EVERY battle passes time: the round spans CFG.SPAN_H game hours over the
+// expected round length (WW.cfg.ROUND_TIMEOUT), so the sun visibly moves. Kinds (CFG.MIX): dawn (pre-dawn twilight
+// into morning light), day (the sun climbs or sinks through bright day), dusk (a sunset in the middle of the fight,
+// at CFG.SUNSET_AT of the round: golden light, the sun on the horizon, the blue hour, night; the fight builds as the
+// light goes) and night (a night action under the moon).
+// The sun: elevation elevAt(h) = NOON_ELEV x sin(pi (h - SUNRISE) / (SUNSET - SUNRISE)) (negative at night); its
+// azimuth runs east (+x) at sunrise, south (+z) at noon, west (-x) at sunset. Daylight (what the AI sees by, and
+// whether carriers fly) is smoothstep(DARK_E, LIGHT_E, elevation): 1 above +4 deg, 0 below -9 deg (nautical dusk).
+// Flight ops: no launches below FLY_MIN (WW.air.launch returns null), airborne planes recalled below RECALL, a night
+// landing is risky (air_deck.js trap reads landRisk()). Visual code reads D.sunElev / D.hour / D.morning() and
+// WW.daylight (sky_time.js, water.js, post.js, night_fx.js).
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var DUSK_H = 17.75, DUSK_LEN = 150, PER_H = 120;    // sim s per game hour
-  var P = { NIGHT: 0.07, DUSK: 0.12 };               // share of night / dusk starts (the rest: day)
+  var CFG = {
+    SPAN_H: 4,                          // game hours per WW.cfg.ROUND_TIMEOUT (sim s): the clock adapts to the round length
+    SUNRISE: 6, SUNSET: 18, NOON_ELEV: 70,
+    LIGHT_E: 4, DARK_E: -9,             // daylight 1 above LIGHT_E deg of sun elevation, 0 below DARK_E
+    MIX: { dawn: 0.13, day: 0.35, dusk: 0.45, night: 0.07 },   // shares of rounds (rolled in this order)
+    DAWN_START: [5.25, 5.9],            // dawn rounds: start hour (twilight, then sunrise early in the round)
+    DAY_START: [7.5, 12],               // day rounds: start hour (light all round, even a pursuit-stretched one)
+    SUNSET_AT: [0.4, 0.75],             // dusk rounds: the sun sets at this fraction of ROUND_TIMEOUT
+    NIGHT_START: [20, 22]               // night rounds: start hour
+  };
   var FLY_MIN = 0.45,                                // no launches below this daylight
       RECALL = 0.5,                                  // airborne planes recalled below this
       LAND_RISK = 0.14;                              // a landing in full dark: chance of a crash / ditch
-  var stats = { rounds: 0, kinds: { day: 0, dusk: 0, night: 0 }, launchesDark: 0, blocked: 0, recalls: 0,
+  var stats = { rounds: 0, kinds: { dawn: 0, day: 0, dusk: 0, night: 0 }, launchesDark: 0, blocked: 0, recalls: 0,
                 nightLandings: 0, nightLandingLoss: 0, nightTorps: { USN: 0, IJN: 0 } };
   var D = {
-    kind: 'day', pin: null, startHour: 13, duskAt: 1e9, t0: 0, force: null, stats: stats, FLY_MIN: FLY_MIN,
-    DUSK_LEN: DUSK_LEN, PER_H: PER_H,
-    hourAt: function (t) { return D.startHour + t / PER_H; },
-    level: function (t) { var x = (t - D.duskAt) / DUSK_LEN; x = x < 0 ? 0 : x > 1 ? 1 : x; return 1 - x * x * (3 - 2 * x); },
+    kind: 'day', pin: null, pinHour: null, startHour: 13, t0: 0, force: null, stats: stats, CFG: CFG, FLY_MIN: FLY_MIN,
+    hour: 13, sunElev: 50, sunAz: Math.PI / 2,
+    perH: function () { return WW.cfg.ROUND_TIMEOUT / CFG.SPAN_H; },          // sim s per game hour
+    hourAt: function (t) { return D.startHour + t / D.perH(); },
+    elevAt: function (h) { var x = ((h - CFG.SUNRISE) % 24 + 24) % 24; return CFG.NOON_ELEV * Math.sin(Math.PI * x / (CFG.SUNSET - CFG.SUNRISE)); },
+    // azimuth angle in the x-z plane: 0 = +x (east) at sunrise, pi/2 = +z at noon, pi = -x (west) at sunset
+    azAt: function (h) { return Math.PI * (h - CFG.SUNRISE) / (CFG.SUNSET - CFG.SUNRISE); },
+    lightAt: function (e) { var x = (e - CFG.DARK_E) / (CFG.LIGHT_E - CFG.DARK_E); x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); },
+    level: function (t) { return D.lightAt(D.elevAt(D.hourAt(t))); },
+    morning: function () { var h = ((D.hour % 24) + 24) % 24; return h < 11 ? 1 : h < 13 ? (13 - h) / 2 : 0; }, // 1 before 11:00, 0 after 13:00
     roundT: function () { return WW.time.now - D.t0; },
     dark: function () { return 1 - WW.daylight; },
     canFly: function () { return WW.daylight >= FLY_MIN; },
     landRisk: function () { var k = (RECALL - WW.daylight) / (RECALL - 0.1); return k <= 0 ? 0 : LAND_RISK * Math.min(1, k); },
-    update: update, roll: roll
+    update: update, roll: roll, setClock: setClock
   };
   WW.daylight = 1;
   WW.dayNight = D;
+  function setClock(h) {
+    D.hour = h; D.sunElev = D.elevAt(h); D.sunAz = D.azAt(h);
+    WW.daylight = D.pin != null ? D.pin : D.lightAt(D.sunElev);
+  }
+  function span(a, j) { return a[0] + (a[1] - a[0]) * j; }
 
-  // kind: 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
+  // kind: 'dawn' | 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
+  // force: a kind, or a number n: a dusk round whose sun sets n s in (tests).
   function roll() {
-    var r = WW.rand(), j = WW.rand(), f = D.force;
-    var kind = f === 'day' || f === 'dusk' || f === 'night' ? f : r < P.NIGHT ? 'night' : r < P.NIGHT + P.DUSK ? 'dusk' : 'day';
-    if (kind === 'night') D.startHour = 20.5 + 1.5 * j;
-    else if (kind === 'dusk') D.startHour = DUSK_H - (90 + 110 * j) / PER_H;    // dusk begins 90-200 s in
-    else D.startHour = 11 + 2 * j;                                            // 11:00-13:00: light all round (a pursuit can run 570 s)
-    if (typeof f === 'number') { kind = 'dusk'; D.startHour = DUSK_H - f / PER_H; } // test hook: dusk begins f s in
+    var r = WW.rand(), j = WW.rand(), f = D.force, M = CFG.MIX, kind;
+    if (f === 'dawn' || f === 'day' || f === 'dusk' || f === 'night') kind = f;
+    else if (typeof f === 'number') kind = 'dusk';
+    else kind = r < M.dawn ? 'dawn' : r < M.dawn + M.day ? 'day' : r < M.dawn + M.day + M.dusk ? 'dusk' : 'night';
+    var L = WW.cfg.ROUND_TIMEOUT, ph = D.perH();
+    if (kind === 'dawn') D.startHour = span(CFG.DAWN_START, j);
+    else if (kind === 'day') D.startHour = span(CFG.DAY_START, j);
+    else if (kind === 'night') D.startHour = span(CFG.NIGHT_START, j);
+    else D.startHour = CFG.SUNSET - (typeof f === 'number' ? f : span(CFG.SUNSET_AT, j) * L) / ph;
     D.kind = kind;
-    D.duskAt = (DUSK_H - D.startHour) * PER_H;
     D.t0 = WW.time.now; D.recalled = false; D._fly = true; D.lastLaunched = WW.stats.planesLaunched;
-    WW.daylight = D.level(0);
+    setClock(D.pinHour != null ? D.pinHour : D.startHour);
     stats.rounds++; stats.kinds[kind]++;
   }
   WW.on('roundStart', roll);
-  WW.on('setupStart', function () { D.kind = 'day'; D.startHour = 13; D.duskAt = 1e9; WW.daylight = 1; });
+  WW.on('setupStart', function () { D.kind = 'day'; D.startHour = 15.5; setClock(15.5); }); // setup: the golden afternoon
 
   // No launches after dusk: wrap WW.air.launch once (aircraft.js loads later). Callers already handle null.
   function wrapLaunch() {
@@ -72,7 +99,7 @@ window.WW = window.WW || {};
   function update() {
     if (!WW.game || WW.game.state === 'setup') return;
     wrapLaunch();
-    WW.daylight = D.pin != null ? D.pin : D.level(D.roundT());   // pin: test hook (screenshots)
+    setClock(D.pinHour != null ? D.pinHour : D.hourAt(D.roundT()));   // pin / pinHour: test hooks (screenshots)
     if (WW.game.state !== 'battle') return;
     var wasFly = D._fly !== false; D._fly = D.canFly(); // a launch in the step before the light failed was still a daylight launch
     if (WW.stats.planesLaunched > D.lastLaunched && !D._fly && !wasFly) { // metric: ship-borne launches after dusk (carrier planes, catapult

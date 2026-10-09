@@ -25,20 +25,22 @@ window.WW = window.WW || {};
     const mat = new THREE.ShaderMaterial({
       uniforms: { zenith: { value: C(ZENITH) }, sunSide: { value: C(SUN_SIDE) }, away: { value: C(AWAY) },
                   glow: { value: C(SUN_GLOW) }, sunDir: { value: SUN_DIR.clone() },   // the dome's sun sets at dusk (sky_time.js)
-                  moonDir: { value: new THREE.Vector3(0.82, 0.26, -0.5).normalize() }, night: { value: 0 }, time: { value: 0 } },
+                  moonDir: { value: new THREE.Vector3(0.82, 0.26, -0.5).normalize() }, night: { value: 0 }, time: { value: 0 },
+                  halo: { value: 0.55 }, disc: { value: 0.6 }, discCos: { value: 0.99975 }, spread: { value: 5 } },   // the sun's look (sky_time.js)
       vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: [
-        'uniform vec3 zenith; uniform vec3 sunSide; uniform vec3 away; uniform vec3 glow; uniform vec3 sunDir; uniform vec3 moonDir; uniform float night, time; varying vec3 vDir;',
+        'uniform vec3 zenith; uniform vec3 sunSide; uniform vec3 away; uniform vec3 glow; uniform vec3 sunDir; uniform vec3 moonDir; uniform float night, time, halo, disc, discCos, spread; varying vec3 vDir;',
         'float hash3(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }',
         'void main(){',
         '  vec3 d = normalize(vDir);',
         '  float h = clamp(d.y, 0.0, 1.0);',
         '  vec2 az = normalize(d.xz + 1e-5), sa = normalize(sunDir.xz);',
         '  float toward = dot(az, sa) * 0.5 + 0.5;',                       // 1 = looking at the sun
-        '  vec3 horizon = mix(away, sunSide, pow(toward, 5.0));',
+        '  vec3 horizon = mix(away, sunSide, pow(toward, spread));',            // spread: a wide warm arc at sunset
         '  vec3 c = mix(horizon, zenith, pow(smoothstep(0.0, 0.5, h), 0.6));',
         '  float s = max(dot(d, sunDir), 0.0);',
-        '  c = mix(c, glow, pow(s, 10.0) * 0.55 + pow(s, 300.0) * 0.6);',   // soft halo + soft sun disc
+        '  c = mix(c, glow, min(1.0, pow(s, 10.0) * halo + pow(s, 300.0) * 0.6));',   // soft halo + soft sun disc
+        '  c += glow * (smoothstep(discCos, discCos + 0.00012, s) * disc + pow(s, 140.0) * disc * 0.25);',   // a glowing disc (HDR: blooms)
         '  if (d.y < 0.0) c = horizon;',
         '  if (night > 0.01) {',                                              // stars and a moon (sky_time.js sets night)
         '    vec3 g = d * 170.0, f = fract(g) - 0.5; float hs = hash3(floor(g));',
