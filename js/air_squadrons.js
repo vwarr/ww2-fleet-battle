@@ -114,9 +114,9 @@ window.WW = window.WW || {};
     const c = Math.cos(L.heading), s = Math.sin(L.heading);
     const sx = L.x + c * sl[0] - s * sl[1], sz = L.z + s * sl[0] + c * sl[1];
     const ex = sx - pl.x, ez = sz - pl.z, d = Math.hypot(ex, ez), ea = ex * c + ez * s;
-    const la = d > 25 ? Math.min(50, d) : 8 + Math.max(0, -ea);
+    const la = d > 25 ? Math.min(50, d) : 16 + Math.max(0, -ea);   // a long look-ahead: shallow, smooth corrections
     const v = d > 25 ? pl.pt.speed * 1.15 : WW.clamp(L.speed + ea * 0.8, L.speed * 0.7, pl.pt.speed * 1.2);
-    pl.fly(sx + c * la, sz + s * la, L.y + sl[2], dt, v, d > 25 || L.foe ? 1.7 : 1.1);
+    pl.fly(sx + c * la, sz + s * la, L.y + sl[2], dt, v, L.foe ? 1.7 : d > 25 ? 1.4 : 1.0);
     return true;
   }
   // "Lt. Cmdr. Thach" style name for a plane's pilot (captions)

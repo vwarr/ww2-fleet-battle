@@ -87,7 +87,7 @@ window.WW = window.WW || {};
     const d = WW.dist(pl.x, pl.z, u.x, u.z), cl = Math.max(20, pl.pt.speed + (u.speed || 20) * 0.5), tg = Math.min(6, d / cl);
     const px = u.x + Math.cos(u.heading) * (u.speed || 0) * tg, pz = u.z + Math.sin(u.heading) * (u.speed || 0) * tg;
     const alt = band === 'high' ? Math.max(u.y + 10, 40) : Math.max(u.y + 6, 16);
-    pl.fly(px, pz, alt, dt, pl.pt.speed, 0.8);
+    pl.fly(px, pz, alt, dt, pl.pt.speed, 0.5);
   }
 
   // ---------- stations ----------

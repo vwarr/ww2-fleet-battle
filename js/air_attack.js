@@ -163,6 +163,8 @@ window.WW = window.WW || {};
   // planes of the attack on t on this bow (setting up, running in, or just past the ship after the drop)
   // (w: only this wave's planes)
   function sideCount(t, side, w) { let n = 0; for (const p of WW.world.planes) if (p.alive && p.kind === 'torpedo' && p.side === side && (w === undefined || p.wave === w) && (p.target === t || p.outTgt === t) && (p.sk === 'anvil' || p.phase === 'run' || p.phase === 'out')) n++; return n; }
+  // this strike's weight on a bow of t: its planes there plus the torpedoes it already dropped from that bow
+  function bowLoad(t, side, w) { return sideCount(t, side, w) + (w && w.bow && w.bowT === t ? w.bow[side] || 0 : 0); }
   function clearOf(pl) { // { x, z } 20 u away from the nearest same-side bomber inside 10 u, else null
     let n = null, bd = 100;
     for (const p of WW.world.planes) {
@@ -194,7 +196,7 @@ window.WW = window.WW || {};
       pl.fly(t.x, t.z, dh > SET_R + 80 ? (pl.pt.alt || 30) : 14, dt, pl.pt.speed);
       if (dh < SET_R + 30) { // alternate the bows, and even them out if one side lost planes
         // the bow with fewer of this strike's planes on it (then fewer of anyone's), else alternate
-        const wa = sideCount(t, -1, pl.wave), wb = sideCount(t, 1, pl.wave), a = sideCount(t, -1), b = sideCount(t, 1);
+        const wa = bowLoad(t, -1, pl.wave), wb = bowLoad(t, 1, pl.wave), a = sideCount(t, -1), b = sideCount(t, 1);
         pl.side = wa !== wb ? (wa < wb ? -1 : 1) : a !== b ? (a < b ? -1 : 1) : g.side++ % 2 ? 1 : -1;
         pl.av = freeAV(pl, t); pl.anT = now; pl.avOff = 0;
         pl.sk = 'anvil';
@@ -217,7 +219,7 @@ window.WW = window.WW || {};
     }
     if (!pl.ready && now > (pl.balT || 0)) { // a bow lost planes (shot down, redirected): the strike evens the anvil out
       pl.balT = now + 1;
-      if (sideCount(t, pl.side, pl.wave) - sideCount(t, -pl.side, pl.wave) >= 2) { pl.side = -pl.side; pl.av = freeAV(pl, t); pl.avOff = 0; ST.rebal++; }
+      if (bowLoad(t, pl.side, pl.wave) - bowLoad(t, -pl.side, pl.wave) >= 2) { pl.side = -pl.side; pl.av = freeAV(pl, t); pl.avOff = 0; ST.rebal++; }
     }
     pl.ready = Math.abs(da) < 0.5 && ds < 18;
     const sep = clearOf(pl), hy = Math.abs(pl.av || 0) * 1.5;   // sidestep a squadron mate closer than 10; stepped heights
@@ -242,7 +244,12 @@ window.WW = window.WW || {};
   function run(pl, t, dh, dt) {
     pl.state = 'attack';
     const tv = WW.torpSpec ? WW.torpSpec(pl.nation, 'air').speed : WW.TORPEDO.speed;
-    const tt = dh / tv, px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
+    const tt = dh / tv;
+    let px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
+    // the ship turned and put us on its other bow: swing out to keep our own bow (the anvil holds whichever way it turns)
+    if (pl.side && dh > (pl.dropR || DROP_FAR) + 8 && Math.sign(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x))) !== pl.side) {
+      const a = t.heading + pl.side * 1.2; px += Math.cos(a) * 45; pz += Math.sin(a) * 45;
+    }
     const d = pl.turnTo(Math.atan2(pz - pl.z, px - pl.x), dt, 1.0), alt = overLand(pl, 5, 1.8); // wave height, hop any land
     pl.speedTo(pl.pt.speed * (pl.pt.runK || 0.8), dt);    // slowed for the drop (Mk 13 / Type 91 limits)
     pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, -7, 9) - pl.vy, -14 * dt, 14 * dt);
@@ -255,6 +262,7 @@ window.WW = window.WW || {};
     const drop = dh < dropR && pl.y < 3 && Math.abs(d) < 0.3 && off > 0.35 && off < 2.8 && wet(pl.x + c, pl.z + s, WW.lerp(pl.x, px, 0.8), WW.lerp(pl.z, pz, 0.8));
     if (drop) {
       WW.combat.fireTorpedo(pl, pl.x + c, pl.z + s, pl.heading, pl.nation, TORP_RANGE);
+      const w = pl.wave; if (w) { if (w.bowT !== t) { w.bowT = t; w.bow = {}; } const sd = WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)) < 0 ? -1 : 1; w.bow[sd] = (w.bow[sd] || 0) + 1; }
       if (WW.fx) WW.fx.splash(pl.x + c * 3, pl.z + s * 3, 0.9);
       pl.dropped();
     }
