@@ -439,7 +439,12 @@ function install(P) {
       if (!p.alive || p.kind !== 'fighter' || p.target || p.search || !p.carrier || (!p.carrier.isBase && !live(p.carrier)) || (p.state !== 'transit' && p.state !== 'attack') || p.deckPh) continue;
       if (WW.dayNight && !WW.dayNight.canFly()) continue; // after dusk the CAP is recalled (daylight.js): no leash to keep
       if (p.carrier.isBase) { R.ftr.bt = (R.ftr.bt || 0) + dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= P.CAP_R * P.LEASH_K) R.ftr.bin = (R.ftr.bin || 0) + dt; continue; } // island base CAP: info only
-      R.ftr.t += dt; if (WW.dist(p.x, p.z, p.carrier.x, p.carrier.z) <= (WW.cap ? WW.cap.doc(p.nation)[p.foe || p.vec ? 'leash2' : 'leash'] : P.CAP_R * P.LEASH_K)) R.ftr.inLeash += dt; // doctrine CAP (air_cap.js): stations / loops 3-6 L out inside leash, raids met out to the long leash
+      R.ftr.t += dt;
+      // doctrine CAP (air_cap.js): stations / loops 3-6 L out inside the leash; raids met out to the long leash, and a
+      // fighter coming back in from such a chase is still on its leash
+      const dC = WW.dist(p.x, p.z, p.carrier.x, p.carrier.z), Dl = WW.cap ? WW.cap.doc(p.nation) : null;
+      const back = Dl && Math.abs(WW.angleDiff(p.heading, Math.atan2(p.carrier.z - p.z, p.carrier.x - p.x))) < 0.9;
+      if (dC <= (Dl ? (p.foe || p.vec || back ? Dl.leash2 : Dl.leash) : P.CAP_R * P.LEASH_K)) R.ftr.inLeash += dt;
     }
     // ---- air ops: CAP relief gaps, escorts with their strike, element cohesion, armed bombers lost / jettisoned ----
     const PL = WW.world.planes, up = p => p.alive && (p.state === 'transit' || p.state === 'attack') && !p.deckPh;
