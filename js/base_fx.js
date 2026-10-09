@@ -165,6 +165,27 @@ window.WW = window.WW || {};
     else if (b.facilities.some(f => f.out && WW.time.now - f.outAt < 90)) add(5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 70, dur: dur(13, 17), w: 0.04, hgt: 0.3 });
   });
 
+  // ---------- the bombardment on screen: heavy shells throw up earth, the fuel farm goes up in a fireball ----------
+  const gY = (x, z) => Math.max(WW.terrain.PAD_H, -WW.terrain.depthAt(x, z));
+  WW.on('baseImpact', e => {
+    if (WW.simOnly || !WW.fx || !e || (e.key !== 'big' && e.key !== 'med')) return;
+    const big = e.key === 'big', y = gY(e.x, e.z);
+    WW.fx.explosion(e.x, y + 0.3, e.z, big ? 4.2 : 2);
+    for (let n = 0; n < (big ? 5 : 2); n++) WW.fx.smoke(e.x + rr(-1.5, 1.5), y + rr(1, big ? 8 : 3), e.z + rr(-1.5, 1.5), true, big ? rr(3, 4.6) : rr(1.4, 2.2)); // the earth and smoke thrown up
+  });
+  WW.on('baseEvent', e => {
+    if (WW.simOnly || !WW.fx || !e || (e.kind !== 'fuel' && e.kind !== 'hangar')) return;
+    const y = gY(e.x, e.z), k = e.kind === 'fuel' ? 1 : 0.7;
+    WW.fx.explosion(e.x, y + 1, e.z, 5.5 * k);
+    for (let n = 0; n < 10 * k; n++) WW.fx.fire(e.x + rr(-3, 3), y + rr(0.5, 5), e.z + rr(-3, 3));
+    for (let n = 0; n < 4; n++) WW.fx.smoke(e.x + rr(-2, 2), y + rr(4, 10), e.z + rr(-2, 2), true, rr(3.5, 5));
+  });
+  // the director: an island under the guns (shells landing in the last few seconds) beats a burning base
+  (WW.camHooks = WW.camHooks || []).push((add, dur) => {
+    const b = WW.islandBase && WW.islandBase.base;
+    if (b && WW.time.now - (b.shelledT || -1e9) < 6) add(8, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 75, dur: dur(14, 18), w: 0.04, hgt: 0.3 });
+  });
+
   WW.on('baseBuilt', onBuilt);
   WW.on('baseEvent', caption);
   WW.on('roundStart', () => { for (const k in diaryT) delete diaryT[k]; if (!(WW.islandBase && WW.islandBase.base)) clear(); });

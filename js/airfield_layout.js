@@ -51,9 +51,10 @@ window.WW = window.WW || {};
     return Math.hypot(u - g.u0 - du * t, v - g.v0 - dv * t);
   }
   // A free place for a facility of radius r near (u, v): on land, off the network, clear of the other facilities and
-  // of the dispersal rows; searched outward on a ring. Returns site-local { u, v } or null.
+  // of the dispersal rows; searched outward on a spiral (out to ~190 u: with a full air group's rows the near ground
+  // is taken, and at 40 steps / 62 u the hangars and the fuel farm were left off most fields). Returns { u, v } or null.
   function free(L, u, v, r, rowsToo) {
-    for (var k = 0; k < 40; k++) {
+    for (var k = 0; k < 120; k++) {
       var a = k * 2.4, d = k * 1.6, uu = u + Math.cos(a) * d, vv = v + Math.sin(a) * d;
       if (!L.landBox(uu, vv, r, r) || onNetwork(L, uu, vv, r) || climbOut(L, uu, vv, r)) continue;
       if (L.facs.some(function (f) { return Math.hypot(f.u - uu, f.v - vv) < f.r + r + 3; })) continue;
