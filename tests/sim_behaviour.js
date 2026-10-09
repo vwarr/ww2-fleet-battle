@@ -178,6 +178,7 @@ const BAL_MIN_ROUNDS = 100;
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const QUICK = argv.includes('--quick'), PAGES_DEFAULT = 6;
 const SEEDS = +arg('--seeds', QUICK ? 2 : 8), SEED0 = +arg('--seed0', 1);
+const TUNE_OPT = arg('--tune', null); // island base knobs: k=v,... into WW.islandBase.TUNE (tons, guns, pits, air, radar, defend)
 const BASE_OPT = arg('--base', null); // island base owner for every round: USN | IJN | none (default: the scenario's, else the round's roll)
 const ONLY = arg('--only', null), PAGES = Math.max(1, +arg('--pages', PAGES_DEFAULT));
 const scens = SCEN.filter(s => (ONLY ? ONLY.split(',').includes(s.name) : !s.optIn));
@@ -697,6 +698,7 @@ const fmtThr = c => (c.op === 'in' ? `${c.thr[0]}..${c.thr[1]}` : `${c.op} ${c.t
     // stop the render loop driving the sim (setScale clamps at 0.1; the director's slow-motion warp too): we drive it
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
     await p.evaluate(install, P);
+    if (TUNE_OPT) await p.evaluate(t => { for (const kv of t.split(',')) { const [k, v] = kv.split('='); WW.islandBase.TUNE[k] = +v; } }, TUNE_OPT);
     return p;
   }
   const pages = [];

@@ -25,12 +25,18 @@ window.WW = window.WW || {};
   const CRATER = { bomb: 1, big: 0.8, med: 0.35 };   // crater weight per hit (small shells only chip the surface)
   const CRATER_MAX = 3.5;                            // a runway holds at most this much crater weight (the repair backlog)
   const BLAST = { bomb: 7, big: 5, med: 3, small: 1.5, mg: 0 };
-  const BATTERY = { cal: 'med', count: 2, range: 140, reload: 7 };      // a coastal battery (7-inch / 5-inch guns)
+  const BATTERY = { cal: 'med', count: 2, range: 140, reload: 10 };      // a coastal battery (7-inch / 5-inch guns)
   const PIT_AA = { range: 42, dps: 4.5 };            // one AA pit (3-inch + .50s): heavy share in combat_aa HEAVY_SHARE.base
-  const SEE_SHIP = 230, SEE_PLANE = { USN: 260, IJN: 190 }; // Midway's radar reached the raids; IJN lookouts less
+  const SEE_SHIP = 170, SEE_PLANE = { USN: 210, IJN: 160 }; // Midway's radar reached the raids; IJN lookouts less
   const HP = { hangar: 380, fuel: 200, tower: 170, barracks: 120, aa: 150, battery: 230 };
   const R = { hangar: 6, fuel: 3.5, tower: 3, barracks: 4, aa: 3, battery: 3.5 };
   const NAMES = { USN: { atoll: 'Midway', volcanic: 'Henderson Field' }, IJN: { atoll: 'Wake', volcanic: 'Rabaul' } };
+  // Base strength knobs (the balance pass; tests: sim_behaviour.js --tune k=v,...). tons: x BASE_TONS in the tiebreak;
+  // guns: coastal battery rate of fire (0: silent); pits: x 3 AA pits; air: x the ROSTER (land_air.js); radar: x the
+  // radar / lookout ranges; defend: the defence weight (base_ai.js assign); target: x the attacker's bombardment weight
+  // and strike value (base_ai.js); chart: the enemy knows the base (0: never a contact); power: x its known strength.
+  // Defaults from the first base-strength pass (40-round runs per owner; see AI_DESIGN.md section 10).
+  const TUNE = { tons: 1, guns: 0.5, pits: 1, air: 0.6, radar: 0.8, defend: 1.2, target: 0.4, chart: 1, power: 1 };
   let base = null, stats = null;
 
   function newStats() {
@@ -91,13 +97,13 @@ window.WW = window.WW || {};
     fac('tower', place(S, 12, 19, true));
     fac('fuel', place(S, 27, 29)); fac('fuel', place(S, 35, 25));
     fac('barracks', place(S, -34, 34)); fac('barracks', place(S, -20, 39)); fac('barracks', place(S, 20, 38));
-    [[-44, -12], [42, -12], [-2, -16], [-44, 30], [44, 34]].forEach(p => {
+    [[-44, -12], [42, -12], [-44, 30], [44, 34], [-2, -16]].slice(0, Math.round(3 * TUNE.pits)).forEach(p => {
       const q = place(S, p[0], p[1]);
       const f = fac('aa', q);
       if (f) f.unit = { isBasePit: true, id: ID + 10 + base.facilities.length, type: 'base', nation: owner, alive: true, sinking: false, submerged: false,
         x: f.x, z: f.z, heading: S.h, speed: 0, stats: { aa: Object.assign({}, PIT_AA), length: 4, guns: [] }, fac: f };
     });
-    shorePoints(S, 3).forEach((p, i) => {
+    shorePoints(S, TUNE.guns > 0 ? 2 : 0).forEach((p, i) => {
       const f = fac('battery', p, { a: p.a, reload: 2 + i * 1.7, aim: p.a });
       f.unit = { isBattery: true, id: ID + 30 + i, type: 'battery', nation: owner, alive: true, x: f.x, z: f.z, heading: p.a, speed: 0,
         stats: { guns: [BATTERY], length: 4, aa: null }, fac: f };
@@ -117,10 +123,10 @@ window.WW = window.WW || {};
       if (!f.out) { if (f.kind === 'battery') bat++; if (f.kind === 'aa') aa += PIT_AA.dps; }
       hp += Math.max(0, f.hp);
     }
-    base.stats.guns = bat ? [Object.assign({}, BATTERY, { count: BATTERY.count * bat })] : [];
+    base.stats.guns = bat && TUNE.guns > 0 ? [Object.assign({}, BATTERY, { count: BATTERY.count * bat, reload: BATTERY.reload / TUNE.guns })] : [];
     base.stats.aa.dps = aa;
     base.hp = Math.max(1, hp);
-    base.power = base.neutralized ? 0.3 : 1 + bat * 0.6 + (runwayOpen() ? 1.2 : 0);
+    base.power = (base.neutralized ? 0.3 : 1 + bat * 0.6 + (runwayOpen() ? 1.2 : 0)) * TUNE.power;
   }
   function runwayOpen() { return !!base && base.runways.some(r => !r.closed); }
   const ev = (kind, o) => WW.emit('baseEvent', Object.assign({ kind, base, nation: base.nation, x: base.x, z: base.z }, o || {}));
@@ -211,16 +217,16 @@ window.WW = window.WW || {};
       if (!best) { f.reload = 1; continue; }
       f.aim = Math.atan2(best.z - f.z, best.x - f.x);
       for (let k = 0; k < BATTERY.count; k++) if (WW.combat.fireShell(f.unit, null, best, BATTERY.cal)) stats.coastalShots++;
-      f.reload = BATTERY.reload * WW.randRange(0.9, 1.15);
+      f.reload = BATTERY.reload / Math.max(0.05, TUNE.guns) * WW.randRange(0.9, 1.15);
     }
   }
 
   // ---- intel.js scan hook: the chart (enemy) and the base's radar and lookouts (owner) ----
   function scan(nation, sight) {
     if (!base) return;
-    if (nation !== base.nation) { sight(base, base, 'visual'); return; }
+    if (nation !== base.nation) { if (TUNE.chart) sight(base, base, 'visual'); return; }
     const tower = base.facilities.find(f => f.kind === 'tower'), k = tower && tower.out ? 0.7 : 1;
-    const rs = SEE_SHIP * k, rp = (SEE_PLANE[base.nation] || 200) * k;
+    const rs = SEE_SHIP * k * TUNE.radar, rp = (SEE_PLANE[base.nation] || 200) * k * TUNE.radar;
     for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation !== nation && !s.submerged && WW.dist2(s.x, s.z, base.x, base.z) < rs * rs) sight(s, base, 'visual');
     for (const p of WW.world.planes) if (p.alive && !p.removed && p.nation !== nation && WW.dist2(p.x, p.z, base.x, base.z) < rp * rp) sight(p, base, 'radar');
   }
@@ -233,7 +239,7 @@ window.WW = window.WW || {};
     for (const f of base.facilities) if (f.unit && f.kind === 'aa' && !f.out) shooterArr.push(f.unit);
     return shooterArr;
   }
-  function tons(nation) { return base && base.nation === nation && !base.neutralized ? BASE_TONS : 0; }
+  function tons(nation) { return base && base.nation === nation && !base.neutralized ? BASE_TONS * TUNE.tons : 0; }
 
   WW.on('shellFired', e => {
     const p = e && e.proj;
@@ -258,6 +264,6 @@ window.WW = window.WW || {};
   });
 
   WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, runwayOpen: () => runwayOpen(),
-    get stats() { return stats; }, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };
+    get stats() { return stats; }, TUNE, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };
   stats = newStats();
 })();

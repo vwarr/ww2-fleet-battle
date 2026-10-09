@@ -29,7 +29,7 @@ window.WW = window.WW || {};
     g4m:  { kind: 'torpedo', model: 'g4m', sq: 'Misawa Kokutai', st: { hp: 34, speed: 30, turn: 0.85, climb: 4, range: 1500 }, gear: 1.0 },
     g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: 48, bombs: 2 } }
   };
-  const ROSTER = { USN: { f4f: 5, sbd: 4, b26: 2, b17: 3 }, IJN: { a6m: 5, g4m: 4, g4mL: 3 } };
+  const ROSTER = { USN: { f4f: 3, sbd: 2, b26: 2, b17: 2 }, IJN: { a6m: 3, g4m: 3, g4mL: 2 } };
   const KATE = { alt: 40, bombs: 1 };
   const ST = { launches: 0, landings: 0, ditched: 0, strikes: 0, levelDrops: 0, holds: 0 };
 
@@ -38,7 +38,7 @@ window.WW = window.WW || {};
   function stockSync(b) { const h = b.hangar; h.fighter = h.dive = h.torpedo = 0; for (const k in b.stock) h[VAR[k].kind] += b.stock[k]; }
 
   function setup(b) {
-    b.stock = Object.assign({}, ROSTER[b.nation]);
+    b.stock = {}; for (const k in ROSTER[b.nation]) b.stock[k] = Math.round(ROSTER[b.nation][k] * WW.islandBase.TUNE.air);
     b.ai = { queue: [], capT: 1, strikeT: 25, launchT: 0, lq: [], rollT: -1e9, finalT: -1e9, aimN: 0 };
     stockSync(b);
     const sq = {};

@@ -17,11 +17,14 @@ window.WW = window.WW || {};
   var W_BASE = { battleship: 1, cruiser: 0.8, destroyer: 0, carrier: 0, submarine: 0, pt: 0 }; // ROLE_W[shooter].base
   var VALUE = 7;              // WW.shipAI.VALUE.base (a battleship is 9)
   var DEF_R = 230, DEF_HELP = 420;
-  var STRIKE_OPEN = 8, STRIKE_SHUT = 4.5; // strike value with a runway open / all closed (guns still up)
+  var STRIKE_OPEN = 6, STRIKE_SHUT = 3.5; // strike value with a runway open / all closed (guns still up)
+  var SEARCH_T = 150, NEAR_CV = 350;      // no strike on the island before SEARCH_T s (find the enemy fleet first) unless it is this close to the carrier
+  var FLEET_AGE = 60, FLEET_K = 0.3;      // the enemy fleet known (a carrier / gun ship seen in the last FLEET_AGE s): the
+                                          // island waits (bombardment weight and strike value x FLEET_K): the fleet first
 
-  function weights(on) {
+  function weights(on, k0) {
     var RW = WW.shipAI && WW.shipAI.ROLE_W; if (!RW) return;
-    for (var k in RW) RW[k].base = on ? W_BASE[k] || 0 : 0;
+    for (var k in RW) RW[k].base = on ? (W_BASE[k] || 0) * WW.islandBase.TUNE.target * (k0 === undefined ? 1 : k0) : 0;
     WW.shipAI.VALUE.base = VALUE;
   }
   function base() { return WW.islandBase && WW.islandBase.base; }
@@ -31,16 +34,27 @@ window.WW = window.WW || {};
     var o = B.objective && B.objective.base === b ? B.objective : { base: b, at: WW.time.now };
     o.kind = b.nation === B.nation ? 'defend' : 'neutralize'; o.x = b.x; o.z = b.z;
     o.state = b.neutralized ? 'neutralized' : WW.islandBase.runwayOpen() ? 'intact' : 'runway closed';
+    if (o.kind === 'neutralize') { // the enemy fleet in sight comes first; the island when the sea is clear
+      o.fleetFirst = false;
+      var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], now = WW.time.now;
+      for (var i = 0; i < cs.length; i++) {
+        var u = cs[i].unit;
+        if (u && !u.isBase && u.alive && (u.type === 'carrier' || u.type === 'battleship' || u.type === 'cruiser') && now - cs[i].seenAt < FLEET_AGE) { o.fleetFirst = true; break; }
+      }
+      weights(!b.neutralized, o.fleetFirst ? FLEET_K : 1);
+    }
     return o;
   }
   function strikeValue(B, cv) {
     var b = base(); if (!b || b.neutralized || b.nation === B.nation) return 0;
-    return WW.islandBase.runwayOpen() ? STRIKE_OPEN : b.stats.guns.length ? STRIKE_SHUT : 2;
+    var k = B.objective && B.objective.base === b && B.objective.fleetFirst ? FLEET_K : 1;
+    if ((WW.game ? WW.game.roundTime : 0) < SEARCH_T && (!cv || WW.dist2(cv.x, cv.z, b.x, b.z) > NEAR_CV * NEAR_CV)) return 0;
+    return (WW.islandBase.runwayOpen() ? STRIKE_OPEN : b.stats.guns.length ? STRIKE_SHUT : 2) * WW.islandBase.TUNE.target * k;
   }
   function assign(ship, target) {
     var b = base(); if (!b || b.nation !== ship.nation || !target || target.isBase) return 0;
     if (WW.dist2(target.x, target.z, b.x, b.z) > DEF_R * DEF_R || WW.dist2(ship.x, ship.z, b.x, b.z) > DEF_HELP * DEF_HELP) return 0;
-    return 2;
+    return WW.islandBase.TUNE.defend;
   }
   function neutralized() { weights(false); }
 
