@@ -240,7 +240,7 @@ User feedback: "100+ aircraft flying above a carrier and they let through torped
 - Side balance (left to the balance pass, as briefed): the 100-round gates are USN 44 and 40 (seeds 1-100 and 1001-1100), against 55 for scalebase alone (seeds 1-100). The IJN CAP now meets the USN raids too: USN strike planes shot down per 15 rounds rose from 108 to 267. The Zeros take the vectored, scrambled and joined-in share of that, as they did with the unescorted TBDs at Midway. Behaviour suite: 0 FAIL. `determinism.js 1 200` and `--cross 1 200` pass.
 - The swarms that are left (18% of seconds) are the strikes' form-up and attack (about half of the > 12 seconds), which is the attacker's side (strikeplan), and two carriers' stacks overlapping.
 
-![a USN strike met by Zeros 200 from its target carrier](air_defense/raid_met_far_out.jpg) ![the marshal stack: ovals astern of a USN carrier](air_defense/marshal_stack.jpg)
+![a USN strike met by Zeros 200 from its target carrier](air_defense/raid_met_far_out.jpg) ![the marshal stack: ovals astern of a USN carrier](air_defense/marshal_stack.jpg) ![a Zero on a Devastator setting up its anvil](air_defense/cap_on_torpedo_planes.jpg) ![an IJN carrier division under a USN attack, its ships well apart](air_defense/task_group_under_attack.jpg)
 
 ## Main loop
 
