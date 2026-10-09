@@ -108,6 +108,11 @@ window.WW = window.WW || {};
     for (var cx = -1; cx <= 1; cx++) for (var cz = -1; cz <= 0; cz++) M._box(g, C.crate, 1.1, 0.8 + (cx + cz + 2) % 2 * 0.5, 0.9, cx * 1.3, 0, cz * 1.1 - 0.2);
     for (var bi = -2; bi <= 2; bi++) M._xc(g, C.bomb, 0.28, 1.4, bi * 0.7, 0.3, 1.4);
     TPL.ammo = bake(g);
+    // seaplane apron (seaplane_base.js): a concrete hardstand with bollards and a beaching-gear dolly (+x: toward the water)
+    g = new THREE.Group(); M._box(g, C.apron, 10, 0.12, 9, 0, 0, 0);
+    for (var bz = -1; bz <= 1; bz += 2) M._box(g, C.tyre, 0.3, 0.6, 0.3, 4.4, 0.1, bz * 3.8);
+    M._box(g, C.olive, 1.6, 0.4, 2.4, -3.2, 0.1, 2.6); M._box(g, C.tyre, 0.5, 0.5, 0.25, -3.2, 0, 3.8); M._box(g, C.tyre, 0.5, 0.5, 0.25, -3.2, 0, 1.4);
+    TPL.ramp = bake(g);
     TPL.scorch = M._mat(0x5d5249);
     return TPL;
   }
@@ -146,7 +151,7 @@ window.WW = window.WW || {};
     });
     return new THREE.Mesh(bake(g), M._mat(0xffffff));
   }
-  var KIND = { hangar: 'hangar', tower: 'tower', fuel: 'fuel', ammo: 'ammo', barracks: 'barracks', aa: 'pit', battery: 'emp' };
+  var KIND = { hangar: 'hangar', tower: 'tower', fuel: 'fuel', ammo: 'ammo', barracks: 'barracks', aa: 'pit', battery: 'emp', ramp: 'ramp' };
   function build(base) {
     var T = templates(), mat = M._mat(0xffffff), S = base.site, root = new THREE.Group(), parts = [];
     root.name = 'airfield';
@@ -156,7 +161,7 @@ window.WW = window.WW || {};
       var m = new THREE.Mesh(T[KIND[f.kind]], mat), y = gy(f.x, f.z);
       m.position.set(f.x, y, f.z);
       // buildings face the field (f.a: toward the site centre; a hangar's doors are its +x end), batteries and pits stand alone
-      m.rotation.y = f.a !== undefined ? -f.a + (f.kind === 'hangar' ? 0 : PI / 2) : -S.h;
+      m.rotation.y = f.a !== undefined ? -f.a + (f.kind === 'hangar' ? 0 : f.kind === 'ramp' ? PI : PI / 2) : -S.h;   // the ramp's apron: +x to the water
       m.castShadow = true; m.receiveShadow = true; root.add(m);
       var part = { f: f, mesh: m, gun: null, y: y };
       if (f.kind === 'aa' || f.kind === 'battery') {
@@ -169,6 +174,14 @@ window.WW = window.WW || {};
       }
       parts.push(part);
     });
+    // the slipway: a concrete strip from the apron's edge down into the lagoon to the ramp foot
+    var SP = base.seaplane;
+    if (SP) {
+      var ex = SP.ax - Math.cos(SP.h) * 4, ez = SP.az - Math.sin(SP.h) * 4, y0 = gy(ex, ez) + 0.05, y1 = -0.5, len = Math.hypot(SP.wx - ex, SP.wz - ez);
+      var sl = new THREE.Mesh(new THREE.BoxGeometry(len + 1, 0.16, 4.2), M._mat(C.apron));
+      sl.position.set((ex + SP.wx) / 2, (y0 + y1) / 2, (ez + SP.wz) / 2); sl.rotation.order = 'YZX';
+      sl.rotation.set(0, -Math.atan2(SP.wz - ez, SP.wx - ex), Math.atan2(y1 - y0, len)); sl.receiveShadow = true; root.add(sl);
+    }
     // a revetment round every spot, open toward the lane (the plane's nose): one InstancedMesh per plane class
     var spots = base.layout ? base.layout.spots : [], rv = [];
     ['S', 'M', 'L'].forEach(function (k) {

@@ -126,6 +126,7 @@ window.WW = window.WW || {};
       f.unit = { isBattery: true, id: ID + 30 + i, type: 'battery', nation: owner, alive: true, x: f.x, z: f.z, heading: p.a, speed: 0,
         stats: { guns: [BATTERY], length: 4, aa: null }, fac: f };
     });
+    if (WW.seaplaneBase) WW.seaplaneBase.place(base);      // the seaplane ramp in the lagoon (a facility: the camp keeps off it)
     if (WW.baseLifeLayout) WW.baseLifeLayout.place(base);   // the camp (huts, mess, trenches, ...) last: nothing above moves
     WW.landGround.setup(base, pl);
     base.maxHp = base.facilities.reduce((s, f) => s + f.maxHp, 0); base.hp = base.maxHp; base.stats.hp = base.maxHp;
