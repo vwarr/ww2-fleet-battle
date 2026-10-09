@@ -16,12 +16,12 @@ window.WW = window.WW || {};
   const ENGAGE = 110;                    // a vectored fighter takes the raider as its foe inside this range
   // Per doctrine: leash (CAP stays inside), long leash (armed raid inbound, fighters escorting it), vector range.
   const DOC = {
-    picket:   { leash: 175, leash2: 300, vecR: 300, spd: 0.85 },
-    overhead: { leash: 135, leash2: 205, vecR: 200, spd: 0.8 }
+    picket:   { leash: 190, leash2: 300, vecR: 300, spd: 0.85 },   // the racetrack ends reach ~185 (140 out, 90 across, the turns)
+    overhead: { leash: 160, leash2: 205, vecR: 200, spd: 0.8 }   // the loops reach ~155 (115 + 12% + 25 toward the threat)
   };
   // USN stations by section index: distance out, angle off the threat bearing, altitude band, inner (kept back)
   const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 66 }, { d: 60, a: 0, y: 30, inner: true }];
-  const LEG = 90, TURN = 0.55;           // racetrack half-leg (u) and turn rate (rad/s)
+  const LEG = 90, TURN = 0.42;           // racetrack half-leg (u) and turn rate (rad/s)
   const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 45, dir: -1 }, { r: 80, y: 36, dir: 1 }]; // IJN loops round the fleet
   const ST = { vectors: 0, contacts: 0 };
 
@@ -51,7 +51,7 @@ window.WW = window.WW || {};
       want = cvB !== null ? cvB : anyB;
     }
     if (want === null) want = cv.x < WW.cfg.MAP_W / 2 ? 0 : Math.PI;   // nothing known: the enemy's side of the map
-    C.b = C.b === null ? want : C.b + WW.clamp(WW.angleDiff(C.b, want), -0.25 * dt, 0.25 * dt);
+    C.b = C.b === null ? want : WW.angleDiff(0, C.b + WW.clamp(WW.angleDiff(C.b, want), -0.25 * dt, 0.25 * dt));   // kept in -pi..pi
     return C.b;
   }
 
@@ -107,6 +107,7 @@ window.WW = window.WW || {};
     const c = pl.carrier, D = doc(pl.nation), b = bearing(c), sty = style(pl.nation), i = sectionIndex(pl);
     if (sty === 'picket') {
       const S = PICKET[i % PICKET.length], band = S.y > 45 ? 'high' : 'low';
+      pl.capBand = band;                  // capPick: the high band takes the dive bombers, the low band the torpedo planes
       const u = raidFor(pl, band, S.inner, D);
       if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, band, dt); return true; }
       pl.vec = null;
@@ -116,6 +117,7 @@ window.WW = window.WW || {};
     }
     // overhead: loops round the fleet, shifted a little toward the threat; all react to a seen raid
     const L = LOOP[i % LOOP.length], u = raidFor(pl, L.y < 35 ? 'low' : 'high', false, D);
+    pl.capBand = null;                    // the Zeros all go for whatever is lowest and nearest (drawn to the torpedo planes)
     if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, L.y < 35 ? 'low' : 'high', dt); return true; }
     pl.vec = null;
     const cx = c.x + Math.cos(b) * 25, cz = c.z + Math.sin(b) * 25;
@@ -128,7 +130,10 @@ window.WW = window.WW || {};
   // The CAP's foe at visual range: the nearest raider of note within ENGAGE of this fighter (capPick scores it).
   function inReach(pl, u) { return WW.dist(pl.x, pl.z, u.x, u.z) < ENGAGE || u === pl.vec && WW.dist(pl.x, pl.z, u.x, u.z) < ENGAGE * 1.3; }
 
+  // the height band a CAP fighter flies in (its section leader's): 'high' | 'low' | null
+  function band(pl) { return pl.capBand || (pl.leader && pl.leader.capBand) || null; }
+
   function reset() { ST.vectors = ST.contacts = 0; }
   WW.on('roundStart', reset);
-  WW.cap = { patrol, bearing, doc, style, inReach, sectionIndex, ENGAGE, DOC, stats: ST };
+  WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, ENGAGE, DOC, stats: ST };
 })();

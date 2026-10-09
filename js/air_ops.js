@@ -101,7 +101,7 @@ window.WW = window.WW || {};
   // how many other fighters of ours are already on u (the director spreads the CAP over the raid)
   function claimed(u, pl) { let n = 0; for (const q of WW.world.planes) if (q !== pl && q.foe === u && q.alive && q.nation === pl.nation && q !== pl.leader && q.leader !== pl) n++; return n; }
   function capPick(pl) {
-    const c = pl.carrier, Lh = leashOf(pl);
+    const c = pl.carrier, Lh = leashOf(pl), bd = WW.cap ? WW.cap.band(pl) : null;
     if (!WW.intel) return null;
     let best = null, bs = -1e9;
     for (const ct of WW.intel.enemyPlanes(pl.nation)) {
@@ -118,6 +118,7 @@ window.WW = window.WW || {};
       else if (u.kind === 'flyingboat') pr = 200;   // a snooper shadowing the fleet: shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
+      if (arm && bd) pr += u.kind === (bd === 'high' ? 'dive' : 'torpedo') ? 140 : -150;   // USN height bands: each band its own raiders
       const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4 - claimed(u, pl) * 70;   // spread out: one section per raider
       if (s > bs) { bs = s; best = u; }
     }

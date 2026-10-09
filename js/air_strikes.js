@@ -196,7 +196,7 @@ window.WW = window.WW || {};
         return true;
       }
       keep(pl, w, (top ? 14 : -12) - (wg ? 6 : 0) + Math.cos(ph) * 3, side * (top ? 26 : 18) + ws + Math.sin(ph) * 7,
-        (top ? (pl.pt.alt || 66) + 2 : vb + 7) + wg, dt);
+        (top ? (pl.pt.alt || 68) + 2 : Math.max(vb + 9, (pl.pt.alt || 68) - 4)) + wg, dt);   // close cover ~64, top cover ~70
     } else {
       const sl = bomberSlot(i), alt = pl.pt.alt || (pl.kind === 'dive' ? 54 : 30);
       if (pl.kind === 'dive') keep(pl, w, sl[0], sl[1], alt + sl[2], dt);

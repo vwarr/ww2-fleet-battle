@@ -139,7 +139,7 @@ window.WW = window.WW || {};
   // so WW.PLANE_TYPES[kind] keeps working; WW.PLANE_NATION overrides per nation (Zero: nimble, fragile, light guns; Corsair: tough, dives, six .50s); gun = damage per hitting round.
   // alt: transit altitude in a strike (VT ~1,500-2,000 m, VB 3,000-4,500 m, escorts above); dive bombers: push (push-over
   // altitude), ang (dive angle, rad), brake (dive speed held by the dive brakes); torpedo bombers: runK (run speed x cruise).
-  const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52, alt: 64 }, dive: { turn: 1.1, climb: 5, dive: 44, alt: 54, push: 60, ang: 1.2, brake: 22 },
+  const PLANE_FLIGHT = { fighter: { turn: 1.7, climb: 7, dive: 52, alt: 68 }, dive: { turn: 1.1, climb: 5, dive: 44, alt: 54, push: 60, ang: 1.2, brake: 22 },
                          torpedo: { turn: 1.0, climb: 4.5, dive: 38, alt: 32, runK: 0.78 } };
   for (const k in PLANE_FLIGHT) for (const f in PLANE_FLIGHT[k]) if (WW.PLANE_TYPES[k][f] === undefined) WW.PLANE_TYPES[k][f] = PLANE_FLIGHT[k][f];
   // SBD-3 Dauntless: 70 deg from ~4,500 m (58-70 u), split flaps hold ~240 kt; D3A1 Val: 55-60 deg from ~3,000-3,500 m (45-55 u).
@@ -148,7 +148,7 @@ window.WW = window.WW || {};
     IJN: { fighter: { hp: 11, speed: 42, cruise: 33, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' },
            dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.8 } },
     USN: { fighter: { hp: 28, speed: 39, cruise: 30, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' },
-           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.22, brake: 21 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
+           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.2, brake: 21 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
   };
   const _ptCache = {};
   WW.planeType = function (kind, nation) { // merged per-nation stats (cached; falls back to WW.PLANE_TYPES[kind])
