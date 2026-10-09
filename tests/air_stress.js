@@ -17,7 +17,7 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
     ? { executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }
     : { channel: 'chrome', headless: false });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
-  const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); else if (/^tris per/.test(m.text())) console.log(m.text()); });
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
   await p.waitForTimeout(3000);
   const info = await p.evaluate(([N, PARKED, OFF]) => {
@@ -69,14 +69,23 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
     // per-frame counters: draw calls and triangles over all passes (shadow maps, post)
     const r = WW.renderer; r.info.autoReset = false;
     const P = WW.post, rend = P ? P.render : null;
-    window.__ri = { n: 0, calls: 0, tris: 0, cpu: 0 };
+    window.__ri = { n: 0, calls: 0, tris: 0, cpu: 0, prof: {} };
+    // CPU per module per frame (ms): wrap the update functions main.js calls
+    const prof = (obj, name, fn) => { if (!obj || typeof obj[fn] !== 'function') return; const f = obj[fn];
+      obj[fn] = function () { const t0 = performance.now(); const r = f.apply(this, arguments); __ri.prof[name] = (__ri.prof[name] || 0) + performance.now() - t0; return r; }; };
+    prof(WW.air, 'air', 'update'); prof(WW.airFx, 'airFx', 'update'); prof(WW.combat, 'combat', 'update'); prof(WW.fx, 'fx', 'update');
+    prof(WW.ships, 'ships', 'update'); prof(WW.intel, 'intel', 'update'); prof(WW.water, 'water', 'update'); prof(WW.crew, 'crew', 'update');
+    prof(WW.dogfight, 'dogfight', 'update'); prof(WW.airDeck, 'airDeck', 'update'); prof(WW.lifeboats, 'lifeboats', 'update'); prof(WW.dmgVis, 'dmgVis', 'draw');
+    const tpl = {}; for (const q of WW.world.planes) { const k = q.kind + q.nation; if (tpl[k]) continue; let t = 0;
+      q.group.traverse(o => { if (o.isMesh) t += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; }); tpl[k] = Math.round(t); }
+    console.log('tris per plane model', JSON.stringify(tpl));
     const wrap = function (orig, self) { return function () { r.info.reset(); const t0 = performance.now(); orig.apply(self, arguments);
       __ri.cpu += performance.now() - t0; __ri.n++; __ri.calls += r.info.render.calls; __ri.tris += r.info.render.triangles; }; };
     if (P) P.render = wrap(rend, P); else r.render = wrap(r.render, r);
     return { carriers: [cv.USN.x | 0, cv.USN.z | 0, cv.IJN.x | 0, cv.IJN.z | 0], centre: [cx | 0, cz | 0], planes: WW.world.planes.length, parked };
   }, [N, PARKED, OFF]);
   console.log('setup', JSON.stringify(info));
-  const views = VIEW === 'all' ? ['far', 'mid', 'close', 'deck'] : [VIEW];
+  const views = VIEW === 'all' ? ['far', 'mid', 'close', 'deck'] : VIEW.split(',');
   for (const v of views) {
     await p.evaluate(v => {
       const S = __stress;
@@ -89,14 +98,16 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
       window.__view = cam => { cam.position.set(S.cx - d, hgt, S.cz - d * 0.4); cam.lookAt(S.cx, 30, S.cz); };
     }, v);
     await p.waitForTimeout(1500);
-    const r = await p.evaluate(secs => new Promise(res => { __ri.n = __ri.calls = __ri.tris = __ri.cpu = 0; let n = 0, worst = 0, lt = performance.now(); const t0 = lt;
+    // --hide: plane instances not drawn (the cost of everything else); --noshadow: plane instances cast no shadow
+    if (flag('hide') || flag('noshadow')) await p.evaluate(([h, ns]) => WW.scene.children.forEach(o => { if (o.name === 'planeRender') { if (h) o.visible = false; if (ns) o.castShadow = false; } }), [flag('hide'), flag('noshadow')]);
+    const r = await p.evaluate(secs => new Promise(res => { __ri.n = __ri.calls = __ri.tris = __ri.cpu = 0; __ri.prof = {}; let n = 0, worst = 0, lt = performance.now(); const t0 = lt;
       (function f() { const t = performance.now(); worst = Math.max(worst, t - lt); lt = t; n++;
         if (t - t0 < secs * 1000) requestAnimationFrame(f);
         else res({ fps: n / ((t - t0) / 1000), worst, calls: __ri.calls / Math.max(1, __ri.n), tris: __ri.tris / Math.max(1, __ri.n), cpuRender: __ri.cpu / Math.max(1, __ri.n),
-          planes: WW.world.planes.filter(q => !q.removed).length, inst: WW.planeRender && WW.planeRender.stats ? WW.planeRender.stats() : null }); })(); }), SECS);
+          planes: WW.world.planes.filter(q => !q.removed).length, prof: Object.entries(__ri.prof).map(([k, v]) => k + ' ' + (v / Math.max(1, __ri.n)).toFixed(2)).join(', '), inst: WW.planeRender && WW.planeRender.stats ? WW.planeRender.stats() : null }); })(); }), SECS);
     await p.screenshot({ path: 'shots/stress_' + v + (OFF ? '_off' : '') + '.png' });
     console.log(v + (OFF ? ' (off)' : ''), 'fps', r.fps.toFixed(1), 'worst ms', r.worst.toFixed(1), 'draw calls', r.calls.toFixed(0), 'tris', (r.tris / 1e6).toFixed(2) + 'M',
-      'render() cpu ms', r.cpuRender.toFixed(2), 'planes', r.planes, r.inst ? 'inst ' + JSON.stringify(r.inst) : '');
+      'render() cpu ms', r.cpuRender.toFixed(2), 'planes', r.planes, '\n   cpu ms/frame:', r.prof, r.inst ? 'inst ' + JSON.stringify(r.inst) : '');
   }
   console.log('errors', errs.slice(0, 5));
   await b.close();
