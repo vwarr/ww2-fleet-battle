@@ -85,15 +85,15 @@ const SEED = +(process.argv[2] || 2), WHICH = (process.argv[3] || 'deck,forming,
     say('[marshal] ' + await p.evaluate(() => {
       const r = until(() => WW.world.ships.find(s => s.alive && s._deck && s._deck.lq.length >= 4 && s._deck.lq.some(q => q.deckPh === 'final' || q.deckPh === 'app')), 300);
       if (!r) return 'none';
-      window.__cv = r; const m = -(r.stats.length || 26) * WW.airDeck.MARSHAL_L; window.__lookFn = () => rel(r, m + 60, -150 * r._deck.s, 110, m + 5, 0, 22);
+      window.__cv = r; const m = -(r.stats.length || 26) * WW.airDeck.MARSHAL_L, sd = r._deck.s; window.__lookFn = () => rel(r, m + 60, -150 * sd, 110, m + 5, 0, 22);
       return r.nation + ' carrier: ' + r._deck.lq.length + ' in the pattern (' + r._deck.lq.map(q => q.deckPh).join(',') + '), t ' + WW.game.roundTime.toFixed(0);
     }));
     await frames(2); await snap('marshal_stack_astern');
   }
   if (WHICH.includes('park')) { // the recovery park: trapped planes taxied forward of the barrier, wings folded
     say('[park] ' + await p.evaluate(() => {
-      const r = until(() => WW.world.ships.find(s => s.alive && s._deck && s._deck.mode === 'recover' && s._deck.cols.reduce((n, c) => n + c.e.filter(e => e.ph === 'park' || e.ph === 'in').length, 0) >= 5), 300);
-      if (!r) return 'none';
+      const r = until(() => WW.world.ships.find(s => s.alive && s._deck && s._deck.mode === 'recover' && s._deck.cols.reduce((n, c) => n + c.e.filter(e => e.ph === 'park' || e.ph === 'in').length, 0) >= Math.min(5, WW.airDeck.spotCap(s))), 300);
+      if (!r) { window.__lookFn = null; return 'none'; }
       window.__cv = r; window.__lookFn = () => rel(r, 34, -28, 22, 4, 0, 2);
       return r.nation + ' carrier deck ' + r._deck.mode + ', parked ' + r._deck.cols.reduce((n, c) => n + c.e.length, 0) + ', t ' + WW.game.roundTime.toFixed(0);
     }));

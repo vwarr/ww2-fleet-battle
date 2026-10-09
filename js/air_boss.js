@@ -13,7 +13,7 @@ window.WW = window.WW || {};
   const CV_AGE = 120;          // a carrier contact this fresh draws the strike (Midway: the carriers first)
   const LOADS = 2;             // deck loads per strike (toy group): the spotted load, then one more up the elevators while it forms up
   const ESCORT_FRAC = { IJN: 0.3, USN: 0.15 }; // escort floor per bomber (doctrine escortFrac overrides)
-  const LOADS_FULL = 4;        // with the full air group (TUNE.wing 1): a 1942 deck-load strike of ~25 per carrier
+  const STRIKE_N = [12, 24];   // planes per strike, toy group / full group (TUNE.wing 1: a 1942 deck-load strike of ~25), in as many deck loads as it takes
   // Air groups, 1942 (doctrine, not rolled): Yorktown class 27 F4F / 37 SBD / 15 TBD; Shokaku 18 A6M / 27 D3A / 27 B5N.
   // TUNE.wing blends from the toy group (core.js ship stats, 6 / 4 / 4) to the full group: 0 toy, 1 full.
   const FULL = { USN: { fighter: 27, dive: 37, torpedo: 15 }, IJN: { fighter: 18, dive: 27, torpedo: 27 } };
@@ -174,7 +174,7 @@ window.WW = window.WW || {};
     }
     if (nd + nt <= 0) { a.strikeT = RETRY; return; }
     // the deck spot (air_deck.js) and the next load spotted from the hangar while the first forms up, escorts first
-    const cap = WW.airDeck && WW.airDeck.spotCap ? WW.airDeck.spotCap(cv) * Math.round(LOADS + (LOADS_FULL - LOADS) * Math.min(1, TUNE.wing)) : 99;
+    const cap = WW.airDeck && WW.airDeck.spotCap ? Math.max(WW.airDeck.spotCap(cv) * LOADS, Math.round(STRIKE_N[0] + (STRIKE_N[1] - STRIKE_N[0]) * Math.min(1, TUNE.wing))) : 99;
     const cs = O().capState(cv), keep = Math.max(0, O().capWanted(cv) - cs.on - cs.coming) + elem(cv); // a relief element stays back
     let esc = Math.min(Math.max(0, hg.fighter - keep), Math.max(2, Math.round(cap * 0.3)), 12);
     const nb = Math.min(nd + nt, Math.max(MIN_B, cap - esc));
