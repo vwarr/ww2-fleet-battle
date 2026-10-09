@@ -25,7 +25,7 @@ window.WW = window.WW || {};
   'use strict';
   const MEM_T = 180, MEM_FULL = 60, PRIOR = { carrier: 8, base: 4 }, EST_R = 170;
   const IP_D = 230, IP_N = 12, REPLAN = 25, SAMPLE = 20, LEN_K = 0.2, EXTRA_MAX = 0.5, FINAL_IN = 70;
-  const BASE_R = 140, BASE_K = 0.6, FTR_R = 110, FTR_K = 0.05, SUN_K = 30, CLOUD_K = 25, KEEP_B = 12;
+  const BASE_R = 140, BASE_K = 0.3, FTR_R = 110, FTR_K = 0.05, SUN_K = 30, CLOUD_K = 25, KEEP_B = 12;
   const SIZE_K = { carrier: 1, battleship: 1, base: 0.8, cruiser: 0.7, destroyer: 0.4, pt: 0.3, submarine: 0.3 };
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
@@ -33,7 +33,7 @@ window.WW = window.WW || {};
   const ESC_WAIT = 45;   // s a strike waits for fighters to come back before it goes against a strong CAP without them
   // A/B switches (tests: env Q=staff=route:0,size:0): route (plotted routes), size (sizing, CAP hold, commitment, ledger),
   // brk (break-off), sun (sun / cloud sighting), base (the escort test for a raid on the island)
-  const TUNE = { route: 1, size: 1, brk: 1, sun: 1, base: 1 };
+  const TUNE = { route: 1, size: 1, brk: 1, sun: 1, base: 1, ipb: 1, ftr: 1, bpen: 1 };
   { const m = typeof location !== 'undefined' && /[?&]staff=([^&]*)/.exec(location.search); if (m) decodeURIComponent(m[1]).split(',').forEach(kv => { const q = kv.split(':'); if (q.length === 2) TUNE[q[0]] = +q[1]; }); }
   let mem = {}, side = {}, acc = 0;
 
@@ -81,8 +81,8 @@ window.WW = window.WW || {};
       if (WW.dist2(x, z, T.x, T.z) < FINAL_IN * FINAL_IN) continue;   // the target's own umbrella is the job
       let d = WW.threat ? WW.threat.danger(n, x, z, { air: true }) : 0;
       d = d * ds / v;
-      if (base) { const db = WW.dist(x, z, base.x, base.z); if (db < BASE_R) d += ds * BASE_K * (1 - 0.5 * db / BASE_R) * (1 + base.ftr / 4); }
-      d += ds * FTR_K * fighterDensity(n, x, z, T);
+      if (base) { const db = WW.dist(x, z, base.x, base.z); if (db < BASE_R) d += ds * BASE_K * TUNE.bpen * (1 - 0.5 * db / BASE_R) * (1 + base.ftr / 4); }
+      if (TUNE.ftr) d += ds * FTR_K * TUNE.ftr * fighterDensity(n, x, z, T);
       c += d;
     }
     return c;
@@ -122,7 +122,7 @@ window.WW = window.WW || {};
         const len = vp ? WW.dist(x0, z0, vp.x, vp.z) + WW.dist(vp.x, vp.z, ip.x, ip.z) + Lf : L;
         if (len > maxLen && (vp || L > maxLen)) continue;
         const c = (vp ? legCost(n, x0, z0, vp.x, vp.z, k, v, base) + legCost(n, vp.x, vp.z, ip.x, ip.z, k, v, base) : legCost(n, x0, z0, ip.x, ip.z, k, v, base))
-          + fin + (len - direct) * LEN_K - bon.s - keep;
+          + fin + (len - direct) * LEN_K - bon.s * TUNE.ipb - keep;
         if (c < bc) { bc = c; best = { b, vp, bon }; }
       }
     }
