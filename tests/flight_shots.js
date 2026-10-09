@@ -147,9 +147,9 @@ const SEED = +(process.argv[2] || 3), WHICH = (process.argv[3] || 'opening,cap,c
   for (const n of ['USN', 'IJN']) if (WHICH.includes(n === 'USN' ? 'sbd' : 'd3a')) await pairFind(n === 'USN' ? 'sbd_dive' : 'd3a_dive',
     new Function(`return () => { const q = WW.world.planes.find(d => d.alive && d.nation === '${n}' && d.kind === 'dive' && d.phase === 'roll' && d.push && d.diveTgt); if (!q) return null; const t = q.diveTgt; return { q, t, a: Math.atan2(t.z - q.z, t.x - q.x) + Math.PI / 2, desc: q.nation + ' push-over at y ' + q.y.toFixed(0) + ' on a ' + t.type }; }`)(),
     (s) => { const t = s.t, q = s.q, m = { x: q.x * 0.6 + t.x * 0.4, y: 32, z: q.z * 0.6 + t.z * 0.4 }; return eye(m, 75, s.a, 6); }, 6, 18, 300);
-  if (WHICH.includes('anvil')) await pairFind('anvil',
-    () => { const t = WW.world.ships.find(s => { if (!s.alive) return false; let a = 0, b = 0; for (const p of WW.world.planes) if (p.alive && p.kind === 'torpedo' && p.target === s && (p.phase === 'run' || p.sk === 'anvil')) { if (p.side > 0) a++; else b++; } return a && b; }); if (!t) return null; const q = WW.world.planes.find(p => p.alive && p.kind === 'torpedo' && p.target === t && (p.phase === 'run' || p.sk === 'anvil')); return { t, q, desc: 'anvil on a ' + t.type }; },
-    (s) => { const t = s.t, h = t.heading; return { x: t.x - Math.cos(h) * 110, y: 50, z: t.z - Math.sin(h) * 110, tx: t.x + Math.cos(h) * 60, ty: 0, tz: t.z + Math.sin(h) * 60 }; }, 4, 45, 300);   // from astern and above: one bow each side
+  if (WHICH.includes('anvil')) await pairFind('anvil',   // torpedo planes on both bows running in: across the ship's beam, the near side between camera and ship
+    () => { const t = WW.world.ships.find(s => { if (!s.alive) return false; let a = 0, b = 0; for (const p of WW.world.planes) if (p.alive && p.kind === 'torpedo' && p.target === s && (p.phase === 'run' || (p.sk === 'anvil' && p.ready))) { if (p.side > 0) a++; else b++; } return a && b; }); return t ? { t, desc: 'anvil on a ' + t.type } : null; },
+    (s) => { const t = s.t, a = t.heading + Math.PI / 2 * (WW.world.planes.some(p => p.alive && p.kind === 'torpedo' && p.target === t && p.side > 0) ? 1 : -1); return { x: t.x + Math.cos(a) * 115, y: 13, z: t.z + Math.sin(a) * 115, tx: t.x, ty: 2, tz: t.z }; }, 5, 30, 300);
   if (errs.length) console.log('errors:\n' + errs.slice(0, 8).join('\n'));
   await b.close();
 })();
