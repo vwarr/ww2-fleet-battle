@@ -111,10 +111,12 @@ window.WW = window.WW || {};
   // dmgK: the warhead, x WW.TORPEDO.dmg (balance pass, Oct 2026): Type 93 490 kg against the Mk 15's 374 kg (1.31x),
   // Type 95 405 kg against the Mk 14's 230 kg (1.76x; here 1.5x), Type 91 Mod 2 204 kg against the 1942 Mk 13's 182 kg
   // (1.12x), Mk 8 (PT) 211 kg; set about the old common 220 so a torpedo hit stays as deadly on average.
+  // USN duds (balance pass): Mk 15 0.1 -> 0.2 and Mk 14 0.2 -> 0.3, nearer the 1942 record (the Mk 6 exploder both
+  // carried; the Mk 14's failures were only fixed in 1943); they had been set low when the USN was the weaker side.
   WW.TORPEDO_NATION = {
     IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7, dmgK: 1.2 },
            pt: { rangeK: 1, speed: 14, dud: 0, sight: 1, dmgK: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1, dmgK: 1.1 } },
-    USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.2, sight: 1.1, dmgK: 0.8 },
+    USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.2, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.3, sight: 1.1, dmgK: 0.8 },
            pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1, dmgK: 1 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
