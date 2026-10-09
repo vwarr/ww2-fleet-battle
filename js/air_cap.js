@@ -24,9 +24,11 @@ window.WW = window.WW || {};
     overhead: { leash: 160, leash2: 205, vecR: 200, spd: 0.8 }   // the loops reach ~155 (115 + 12% + 25 toward the threat)
   };
   // USN stations by section index: distance out, angle off the threat bearing, altitude band, inner (kept back)
-  const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 66 }, { d: 60, a: 0, y: 30, inner: true }];
+  const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 64 }, { d: 60, a: 0, y: 30, inner: true }];
   const LEG = 90, TURN = 0.42;           // racetrack half-leg (u) and turn rate (rad/s)
-  const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 45, dir: -1 }, { r: 80, y: 36, dir: 1 }]; // IJN loops round the fleet
+  const RING_A = 0.35, RING_D = 15, RING_DY = 1.5;   // USN: a further round of sections, across the bearing, ~300 ft up
+  // IJN loops round the fleet, low and medium (Zeros at 1,000-2,500 m: 27-38 u), shotai a few hundred feet apart in a band
+  const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 38, dir: -1 }, { r: 80, y: 29, dir: 1 }];
   const ST = { vectors: 0, contacts: 0, joins: 0 };
 
   function doc(nation) {
@@ -132,12 +134,15 @@ window.WW = window.WW || {};
       const u = cover(pl, raidFor(pl, band, S.inner, D), S.inner);
       if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, band, dt); return true; }
       pl.vec = null;
-      const a = b + S.a, p = inMap(c.x + Math.cos(a) * S.d, c.z + Math.sin(a) * S.d, 60);
-      racetrack(pl, p[0], p[1], a, S.y + Math.floor(i / PICKET.length) * 8, D, dt);
+      // a further round of sections spreads out across the bearing (wider, a little farther out), not up: real
+      // stations a few hundred feet apart in the band (RING_DY, the altitude rule y = 0.4 h^0.59), not a stack 8 u a step
+      const ring = Math.floor(i / PICKET.length), ra = ring ? (ring % 2 ? 1 : -1) * Math.ceil(ring / 2) * RING_A : 0;
+      const a = b + S.a + ra, sd = S.d + ring * RING_D, p = inMap(c.x + Math.cos(a) * sd, c.z + Math.sin(a) * sd, 60);
+      racetrack(pl, p[0], p[1], a, S.y + ring * RING_DY, D, dt);
       return true;
     }
     // overhead: loops round the fleet, shifted a little toward the threat; all react to a seen raid
-    const L = LOOP[i % LOOP.length], u = cover(pl, raidFor(pl, L.y < 35 ? 'low' : 'high', false, D), false);
+    const L0 = LOOP[i % LOOP.length], lr = Math.floor(i / LOOP.length), L = lr ? { r: L0.r + lr * 18, y: L0.y + lr * RING_DY, dir: L0.dir } : L0, u = cover(pl, raidFor(pl, L.y < 35 ? 'low' : 'high', false, D), false);
     pl.capBand = null;                    // the Zeros all go for whatever is lowest and nearest (drawn to the torpedo planes)
     if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, L.y < 35 ? 'low' : 'high', dt); return true; }
     pl.vec = null;
