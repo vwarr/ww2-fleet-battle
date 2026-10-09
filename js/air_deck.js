@@ -10,7 +10,8 @@ window.WW = window.WW || {};
   const STERN = -13.55, BOW = 12.85, AFT_FRONT = 0.6, BARRIER = -1.5; // deck ends / spot limit / barrier
   const LAUNCH_X = 3.2, TD_X = -9.5, ELEV_X = -5.5;   // start of the deck run, touchdown point, aft elevator
   const GAP = 0.2, TAXI = 4, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
-  const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s
+  const WIND_FOE = 600;   // a known enemy gun ship this close on the wind bearing: launch and recover on the course held
+  const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
 
@@ -19,7 +20,7 @@ window.WW = window.WW || {};
     const dx = x - c.x, dz = z - c.z, ch = Math.cos(c.heading), sh = Math.sin(c.heading);
     return [dx * ch + dz * sh, -dx * sh + dz * ch];
   }
-  function lenOf(kind) { return ({ fighter: 2.66, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * P().scale; }
+  function lenOf(kind) { return ({ fighter: 2.66, dive: 2.68, torpedo: 2.78 }[kind] || 2.6) * ((WW.cfg && WW.cfg.PLANE_SCALE) || P().scale); } // the plane scale at run time
   // Wing fold: wingL / wingR pivot at the wing root (Corsair: at the gull knee, outer panels fold up over the top); rotation.x lifts the tip (side from the pivot's z).
   function setFold(m, f) {
     if (!m.wingL || !m.wingR) return;
@@ -145,6 +146,8 @@ window.WW = window.WW || {};
     if (D.loose.some(e => e.ph === 'elev')) landAct = true;
     const launchAct = D.launchers.some(p => p.deckPh !== 'queued');
     const launchPend = D.launchers.length > 0;
+    // A strike load or a scramble (raid near) may break into a recovery; a CAP relief waits for the stack to clear
+    const urgent = launchPend && (D.launchers.some(p => p.target) || (c._air && c._air.near > 0));
     let lqWait = 0; for (const p of D.lq) lqWait = Math.max(lqWait, now - (p.lqT === undefined ? now : p.lqT));
     D.waitT = launchPend && D.mode !== 'launch' ? D.waitT + dt : 0;
     // Windows: a launch window runs until the launch queue is empty (returning planes hold in the marshal stack),
@@ -152,10 +155,10 @@ window.WW = window.WW || {};
     // (the plane in the groove lands first). Nothing waiting: recover if anyone is home, else idle (spotted for launch).
     const prev = D.mode;
     if (D.mode === 'launch' && launchPend && !(recPend && lqWait > LQ_MAX && !launchAct && now - D.modeT > LW_MIN)) { /* keep the launch window */ }
-    else if (D.mode === 'recover' && (landAct || (recPend && !(launchPend && (D.recN >= RW_N || D.waitT > LW_MAX))))) { /* keep */ }
+    else if (D.mode === 'recover' && (landAct || (recPend && !yieldRec(D, urgent)))) { /* keep */ }
     else D.mode = launchPend ? 'launch' : recPend ? 'recover' : 'idle';
     if (D.mode !== prev) { D.recN = 0; D.modeT = now; }
-    D.closing = D.mode === 'recover' && launchPend && (D.recN >= RW_N || D.waitT > LW_MAX); // no new approaches: the window is closing
+    D.closing = D.mode === 'recover' && yieldRec(D, urgent); // no new approaches: the window is closing
     // reconcile what is shown with what the carrier holds (launched from below / rearm counts)
     const t = counts(c), vis = { fighter: 0, dive: 0, torpedo: 0 };
     for (const col of D.cols) for (const e of col.e) vis[e.kind]++;
@@ -166,7 +169,10 @@ window.WW = window.WW || {};
       }
     }
     D.riseT -= dt;
-    if (D.mode === 'idle' && D.riseT <= 0) { // bring one up from the hangar deck
+    // bring one up from the hangar deck: while idle, and while launching (the next load is spotted as the first goes;
+    // not while a plane taxis up the deck or rides the forward elevator)
+    const spotting = D.mode === 'idle' || (D.mode === 'launch' && !D.launchers.some(q => q.deckPh === 'taxi' || q.deckPh === 'rise'));
+    if (spotting && D.riseT <= 0) {
       D.riseT = 1.6;
       for (const k of ['fighter', 'dive', 'torpedo']) {
         if (vis[k] >= t[k]) continue;
@@ -181,6 +187,13 @@ window.WW = window.WW || {};
     moveEntries(D, dt);
     for (const col of D.cols) for (const e of col.e) syncEntry(D, e, now, dt);
     for (const e of D.loose) syncEntry(D, e, now, dt);
+  }
+  // Does the recovery window give the deck to the launches waiting below? A strike or a scramble after RW_N traps
+  // (or LW_MAX s); a CAP relief once the stack is down to one, or after LW_RELIEF s.
+  function yieldRec(D, urgent) {
+    if (!D.launchers.length) return false;
+    if (urgent) return D.recN >= RW_N || D.waitT > LW_MAX;
+    return D.lq.length < 2 || D.waitT > LW_RELIEF;
   }
   // Is the landing area (aft of the barrier) and the runway clear?
   function clearAft(D) {
@@ -257,6 +270,8 @@ window.WW = window.WW || {};
       const E = 80, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H; // near the map edge: no wind turn (the standing CAP keeps the deck busy)
       if (ship.x < E || ship.x > W - E || ship.z < E || ship.z > Hh - E) return;
       const a = ship.ai, w = a && a.threat && a.threatD < 160 ? 0.5 : 2.5, dh = ship.desiredHeading;
+      if (a && a.thrT === WW.time.now && a.thrD < WIND_FOE && Math.abs(WW.angleDiff(h, a.thrB)) < 1.2) return; // the wind blows from the enemy: no turn toward a known gun ship (ai_carrier.js thrB)
+      if (D.lq.some(p => p.deckPh === 'app' || p.deckPh === 'final') || D.launchers.some(p => p.deckPh === 'run')) { ship.desiredHeading = ship.heading; ship.throttle = Math.max(ship.throttle, 0.75); return; } // a steady deck under a plane in the groove or on its run
       ship.desiredHeading = Math.atan2(Math.sin(dh) + Math.sin(h) * w, Math.cos(dh) + Math.cos(h) * w);
       ship.throttle = Math.max(ship.throttle, 0.75);
     },
@@ -282,19 +297,19 @@ window.WW = window.WW || {};
           else if (!spotBusy(D, p)) p.deckPh = 'rise'; // nothing suitable spotted: up on the elevator at the launch point
           break;
         }
-        case 'rise': p.yoff = Math.min(0, p.yoff + 3 * dt); if (p.yoff > -0.4) p.fold = Math.max(0, p.fold - 1.5 * dt); if (p.yoff >= 0) p.deckPh = 'hold'; break;
+        case 'rise': p.yoff = Math.min(0, p.yoff + 4 * dt); if (p.yoff > -0.4) p.fold = Math.max(0, p.fold - 1.5 * dt); if (p.yoff >= 0) p.deckPh = 'hold'; break;
         case 'taxi': { // forward along its column (folded, clear of the island), hold short while the launch spot is taken, then onto the runway
           const stop = spotBusy(D, p) ? LAUNCH_X - 3.4 : LAUNCH_X;
-          if (p.lx < stop) { p.lx = Math.min(stop, p.lx + TAXI * 1.5 * dt); if (stop - p.lx < 3) p.fold = Math.max(0.35, p.fold - 1.2 * dt); }
+          if (p.lx < stop) { p.lx = Math.min(stop, p.lx + TAXI * 2.2 * dt); if (stop - p.lx < 3) p.fold = Math.max(0.35, p.fold - 1.2 * dt); }
           else if (stop < LAUNCH_X) p.fold = Math.max(0.35, p.fold - 1.2 * dt);   // spreading the wings while it waits
           else if (Math.abs(p.lz - D.run) > 1e-3) p.lz += WW.clamp(D.run - p.lz, -3 * dt, 3 * dt);
           else p.deckPh = 'hold';
           break;
         }
         case 'hold': { // spread the wings; go when the ship is into the wind (or has tried long enough) and the deck ahead is clear
-          p.fold = Math.max(0, p.fold - 1.5 * dt);
+          p.fold = Math.max(0, p.fold - 2.5 * dt);
           const h = intoWind();
-          if (D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < LAUNCH_X + 5.5)) break;
+          if (D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < LAUNCH_X + 4)) break;
           if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 5)) { p.deckPh = 'run'; p.rel = 0; }
           break;
         }

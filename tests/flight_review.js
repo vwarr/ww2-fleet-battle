@@ -178,6 +178,25 @@ function report(rounds) {
   say(`  carrier waves with no drop, leaving out the ${cvW.length - fair.length} cut short (carrier lost before arrival, or the round ended first): ${pc(out.waves._real.noDropFair)} (n ${fair.length})`);
   say(`carrier waves per carrier-round: ${f1(cvW.length / Math.max(1, rounds.reduce((s, r) => s + Object.entries(r.comp || {}).filter(([k]) => k.endsWith(':carrier')).reduce((a, [, v]) => a + v, 0), 0)))}; ` +
     `waves per round with carriers: ${f1(cvW.length / Math.max(1, cvRounds.length))}; first order at median ${f1(med(rounds.map(r => r.rec && r.rec.first.order).filter(x => x !== undefined && x !== null)))} s`);
+  // carrier hunting (item 5): per side, in rounds where the enemy has a carrier (not the island base)
+  {
+    const cvOf = (r, n) => (r.comp && r.comp[n + ':carrier']) || 0, sides = [];
+    for (const r of rounds) if (r.rec) for (const n of ['USN', 'IJN']) { const e = n === 'USN' ? 'IJN' : 'USN'; if (cvOf(r, e)) sides.push({ r, n, e }); }
+    const air = d => d.o === 'cv' || d.o === 'base';
+    const dr = sides.map(x => x.r.rec.drops.filter(d => d.n === x.n && air(d) && d.tt === 'carrier'));
+    const all = sides.map(x => x.r.rec.drops.filter(d => d.n === x.n && air(d)).length);
+    const sunkCv = sides.map(x => (x.r.rec.sunk || []).filter(s => s.n === x.e && s.type === 'carrier' && !s.base));
+    const byAir = sunkCv.map(a => a.filter(s => s.by === 'bomb' || s.by === 'torpedo' || s.by === 'crash').length);
+    const eCv = sides.reduce((s, x) => s + cvOf(x.r, x.e), 0);
+    const hits = dr.map(a => a.filter(d => d.hit === 'tgt').length);
+    out.waves._cv = { sides: sides.length, dropsAtCv: mean(dr.map(a => a.length)), shareAtCv: dr.reduce((s, a) => s + a.length, 0) / Math.max(1, all.reduce((s, x) => s + x, 0)),
+      hitsOnCv: mean(hits), cvSunk: sunkCv.reduce((s, a) => s + a.length, 0) / Math.max(1, eCv), cvSunkAir: byAir.reduce((s, x) => s + x, 0) / Math.max(1, eCv),
+      wipe: rounds.filter(r => r.rec && ['USN', 'IJN'].some(n => cvOf(r, n) && (r.rec.sunk || []).filter(s => s.n === n && s.type === 'carrier' && !s.base).length >= cvOf(r, n))).length / Math.max(1, rounds.filter(r => r.rec && (cvOf(r, 'USN') || cvOf(r, 'IJN'))).length) };
+    const bs = rounds.reduce((o, r) => { const b = r.rec && r.rec.boss; if (b) for (const k in b) o[k] = (o[k] || 0) + b[k]; return o; }, {});
+    const C = out.waves._cv;
+    say(`carrier hunting, per side per round facing enemy carriers (n ${C.sides}): air drops at a carrier ${f1(C.dropsAtCv)} (${pc(C.shareAtCv)} of its air drops), hits on a carrier ${f1(C.hitsOnCv)}; ` +
+      `enemy carriers sunk ${pc(C.cvSunk)} (by air ${pc(C.cvSunkAir)}); rounds where a side lost all its carriers ${pc(C.wipe)}; air boss: strikes turned to a carrier ${bs.cvFirst || 0} at the order, ${bs.cvRetarget || 0} while forming, of ${bs.strikes || 0}`);
+  }
 
   // 4. formation quality
   say('\n== 4. FORMATION QUALITY ==');

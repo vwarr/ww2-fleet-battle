@@ -10,8 +10,9 @@ window.WW = window.WW || {};
   const HOLD_MAX = 30;         // a strike waits at most this long for a raid to clear
   const MIN_B = 4;             // bombers for a strike (fewer: they join the next one, unless no more are coming)
   const RETRY = 2;             // s between strike checks while nothing can go
-  const CV_AGE = 120;
-  const LOADS = 2;             // deck loads per strike: the spotted load, then one more up the elevators while it forms up          // a carrier contact this fresh draws the strike (Midway: the carriers first)
+  const CV_AGE = 120;          // a carrier contact this fresh draws the strike (Midway: the carriers first)
+  const LOADS = 2;             // deck loads per strike (toy group): the spotted load, then one more up the elevators while it forms up
+  const LOADS_FULL = 4;        // with the full air group (TUNE.wing 1): a 1942 deck-load strike of ~25 per carrier
   // Air groups, 1942 (doctrine, not rolled): Yorktown class 27 F4F / 37 SBD / 15 TBD; Shokaku 18 A6M / 27 D3A / 27 B5N.
   // TUNE.wing blends from the toy group (core.js ship stats, 6 / 4 / 4) to the full group: 0 toy, 1 full.
   const FULL = { USN: { fighter: 27, dive: 37, torpedo: 15 }, IJN: { fighter: 18, dive: 27, torpedo: 27 } };
@@ -151,7 +152,8 @@ window.WW = window.WW || {};
   function orderStrike(cv) {
     const a = cv.ai, hg = cv.hangar;
     let tgt = O().pickTarget(cv);
-    if (tgt && tgt.type !== 'carrier') { const k = cvContact(cv.nation, cv.x, cv.z); if (k) { tgt = k; BS.cvFirst++; } } // the carriers first
+    let cvf = false;
+    if (tgt && tgt.type !== 'carrier') { const k = cvContact(cv.nation, cv.x, cv.z); if (k) { tgt = k; cvf = true; } } // the carriers first
     if (!tgt || hg.dive + hg.torpedo <= 0) { a.strikeT = RETRY; return; }
     const SB = WW.fleetCmd && WW.fleetCmd.side(cv.nation);
     if (SB && SB.timeLeft < 30 + WW.dist(cv.x, cv.z, tgt.x, tgt.z) / 22) { a.strikeT = RETRY; return; } // it could not get there before the end
@@ -164,7 +166,7 @@ window.WW = window.WW || {};
     }
     if (nd + nt <= 0) { a.strikeT = RETRY; return; }
     // the deck spot (air_deck.js) and the next load spotted from the hangar while the first forms up, escorts first
-    const cap = WW.airDeck && WW.airDeck.spotCap ? WW.airDeck.spotCap(cv) * LOADS : 99;
+    const cap = WW.airDeck && WW.airDeck.spotCap ? WW.airDeck.spotCap(cv) * Math.round(LOADS + (LOADS_FULL - LOADS) * Math.min(1, TUNE.wing)) : 99;
     const cs = O().capState(cv), keep = Math.max(0, O().capWanted(cv) - cs.on - cs.coming) + elem(cv); // a relief element stays back
     let esc = Math.min(Math.max(0, hg.fighter - keep), Math.max(2, Math.round(cap * 0.3)), 12);
     const nb = Math.min(nd + nt, Math.max(MIN_B, cap - esc));
@@ -175,7 +177,7 @@ window.WW = window.WW || {};
       if (i < nd) a.queue.push({ kind: 'dive', target: tgt });
       if (i < nt) a.queue.push({ kind: 'torpedo', target: tgt });
     }
-    BS.strikes++;
+    BS.strikes++; if (cvf) BS.cvFirst++;
     if (WW.strike) WW.strike.newWave(cv, tgt, a.queue, { reserve: !!a.rsvGo });
     a.rsvGo = false;
     a.strikeT = 1e9;                // the clock restarts when this strike departs (departed)
@@ -190,8 +192,8 @@ window.WW = window.WW || {};
   function formTarget(w) {
     const t = w.target;
     if (w.carrier.isBase || (t && t.type === 'carrier' && t.alive)) return;
-    const k = cvContact(w.nation, w.carrier.x, w.carrier.z); if (!k) return;
-    w.target = k; BS.cvRetarget++;
+    const k = cvContact(w.nation, w.carrier.x, w.carrier.z); if (!k || k === w.hunted) return;   // (a reported carrier may be a cruiser: once)
+    w.target = w.hunted = k; BS.cvRetarget++;
     for (const p of w.members) if (p.alive && p.target) p.target = k;
   }
 

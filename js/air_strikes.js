@@ -21,7 +21,7 @@ window.WW = window.WW || {};
   // Every wave leaves FORMED (all its planes up, >= FORMED_K of them on their slots) or, failing that, on a timeout
   // scaled to the load (the deck launches about one plane per LAUNCH_DT s). A live wave is never deleted: a new strike
   // waits until the last one has left (air_boss.js), so no plane is orphaned. Form-up time comes out of the fuel.
-  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.4, STALE = 60;
+  const JOINT_WAIT = 20, SQ_KINDS = ['torpedo', 'dive'], FORMED_K = 0.8, SLOT_TOL = 14, LAUNCH_DT = 2.0, STALE = 60, SQ_MIN = 3, FORM_TOL = 1.5, RDV_V = 0.75;
   const ST = { forms: [] }; // { nation, first, mode, formT, formed, n } per wave at departure
   function mk(carrier, target, mode, first) {
     return { carrier, target, nation: carrier.nation, pend: { fighter: 0, dive: 0, torpedo: 0 }, pendN: 0, n0: 0, mode, first,
@@ -32,15 +32,16 @@ window.WW = window.WW || {};
   // carrierAI hook: a strike was queued; count its planes so the wave(s) know who to wait for.
   function newWave(carrier, target, queue, opts) {
     const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(carrier.nation) : null, a = carrier.ai || {};
-    const first = !a.struck, mode = !d ? 'group' : first ? (d.jointStrike ? 'joint' : 'group') : d.followUp || 'group';
+    const first = !a.struck, mode = !d ? 'group' : first ? (d.jointStrike && !carrier.isBase ? 'joint' : 'group') : d.followUp || 'group'; // the island base is not part of the carrier force's joint strike
     a.struck = true;
     for (let i = waves.length - 1; i >= 0; i--) if (waves[i].done) waves.splice(i, 1); // finished waves only: a live one keeps its planes
     const out = [], mine = q => q.target === target && !q.wave;
     if (mode === 'squadron') { // one wave per bomber squadron; fighters escort the torpedo squadron (else the dive bombers)
       const n = { fighter: 0, dive: 0, torpedo: 0 };
       for (const q of queue) if (mine(q) && n[q.kind] !== undefined) n[q.kind]++;
+      const split = SQ_KINDS.every(k => n[k] >= SQ_MIN);   // a squadron of fewer than SQ_MIN goes with the other: one wave
       for (const k of SQ_KINDS) {
-        if (!n[k]) continue;
+        if (!n[k] || !split) continue;
         const w = mk(carrier, target, mode, first); w.pend[k] = n[k]; w.pendN = n[k];
         if (!out.length && n.fighter) { w.pend.fighter = n.fighter; w.pendN += n.fighter; }
         out.push(w);
@@ -54,7 +55,7 @@ window.WW = window.WW || {};
     for (const q of queue) if (mine(q)) q.wave = true;   // these queue entries belong to this strike
     for (const w of out) { w.n0 = w.pendN; if (opts && opts.reserve) w.reserve = true; waves.push(w); }
     if (mode === 'joint') for (const s of WW.world.ships) // Kido Butai: the other carriers spot their first deck loads now
-      if (s !== carrier && s.alive && s.hangar && s.nation === carrier.nation && s.ai && !s.ai.struck && s.ai.strikeT > 2) s.ai.strikeT = 2;
+      if (s !== carrier && s.alive && s.hangar && !s.isBase && s.nation === carrier.nation && s.ai && !s.ai.struck && s.ai.strikeT > 2) s.ai.strikeT = 2;
     return out[0];
   }
   // A wave of this carrier still on deck or forming over it (air_boss.js: no new strike until it has gone).
@@ -80,7 +81,7 @@ window.WW = window.WW || {};
   // Ready to leave the carrier: all up and formed, or the timeout for a load this size ran out.
   function ready(w, now) {
     const up = w.t1 >= 0, wait = LAUNCH_DT * Math.max(4, w.n0) + 22;
-    if (up && w.pendN <= 0 && w.frac >= FORMED_K) { w.why = 'formed'; return true; }
+    if (up && w.pendN <= 0 && w.fracF >= FORMED_K) { w.why = 'formed'; return true; }
     if ((up && now - w.t1 > wait) || now - w.t0 > wait + 25) { w.why = 'timer'; return true; }
     return false;
   }
@@ -104,20 +105,29 @@ window.WW = window.WW || {};
     if (dt <= 0) return;
     w.lt = now;
     const c = w.carrier, n = { fighter: 0, dive: 0, torpedo: 0 };
-    let inS = 0, tot = 0;
+    let inS = 0, tot = 0, inF = 0;
     for (const p of w.members) {
       if (!inForm(p)) continue;
       p.fi = n[p.kind]++; tot++;
       if (p.slotD !== undefined && p.slotD <= SLOT_TOL) inS++;
+      if (p.slotD !== undefined && p.slotD <= SLOT_TOL * FORM_TOL) inF++;
     }
     w.frac = tot ? inS / tot : 0;
+    w.fracF = tot ? inF / tot : 0;   // in the form-up turn the outer and trailing slots swing wide: a looser test
     w.nDive = n.dive;
     if (!n.fighter && !n.dive && !n.torpedo && w.t1 >= 0) { w.done = true; return; }
     if (!w.go) { // orbit over the carrier while the deck launches the rest of the load (wider for a bigger load)
       if (WW.airBoss) WW.airBoss.formTarget(w);                // a carrier sighted while forming: the strike goes for it
-      const R = FORM_R + Math.min(25, w.n0 * 0.8), v = w.v || GUIDE_V;
-      w.ang += (v * 0.85 / R) * dt * w.dir;
-      w.x = c.x + Math.cos(w.ang) * R; w.z = c.z + Math.sin(w.ang) * R; w.h = w.ang + w.dir * PI / 2;
+      const R = FORM_R + Math.min(25, w.n0 * 0.8), v = w.v || GUIDE_V, t = w.target;
+      if (w.t1 >= 0 && w.pendN <= 0 && t && t.alive) { // all up: a running rendezvous, rolled out on the course out at RDV_V (the trailing slots close up on a straight leg)
+        const k = aimAt(w, t), want = Math.atan2(k.z - w.z, k.x - w.x);
+        w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
+        w.x += Math.cos(w.h) * v * RDV_V * dt; w.z += Math.sin(w.h) * v * RDV_V * dt;
+        w.dT = WW.dist(w.x, w.z, k.x, k.z);
+      } else {
+        w.ang += (v * 0.85 / R) * dt * w.dir;
+        w.x = c.x + Math.cos(w.ang) * R; w.z = c.z + Math.sin(w.ang) * R; w.h = w.ang + w.dir * PI / 2;
+      }
       w.ok = ready(w, now);
       if (w.mode !== 'joint') { if (w.ok) depart(w, now); return; }
       // joint: every first deck load of the side forming now is ready (or the joint wait ran out): all go together
@@ -142,12 +152,22 @@ window.WW = window.WW || {};
     if (WW.cag) t = WW.cag.waveTick(w);                        // strike leader: redirect, handover (air_cag.js)
     if (!t || !t.alive || t.submerged) t = w.target = WW.airOps ? WW.airOps.pickTarget({ x: w.x, z: w.z, nation: w.nation }, { near: 200 }) : WW.shipAI ? WW.shipAI.pickStrikeTarget({ x: w.x, z: w.z, nation: w.nation }) : null;
     if (!t) { w.done = true; return; }
-    const k = WW.intel && WW.intel.known(w.nation, t) || t;   // fly to where the side last saw it (intel.js)
+    const k = aimAt(w, t);                                     // where the side reckons it is now (intel.js)
     let want = Math.atan2(k.z - w.z, k.x - w.x);
     if (WW.cag) want = WW.cag.detour(w, want, t);              // round the AA umbrella of escorts
     w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
     w.x += Math.cos(w.h) * gv(w) * dt; w.z += Math.sin(w.h) * gv(w) * dt;
     w.dT = WW.dist(w.x, w.z, k.x, k.z);
+  }
+  // The strike navigates on the side's plot: the last report, run on at its course and speed for up to DR_MAX s
+  // (dead reckoning: a carrier reported an hour ago is not where it was seen). In sight, the target itself.
+  const DR_MAX = 45, AIM = { x: 0, z: 0 };
+  function aimAt(w, t) {
+    const c = WW.intel && WW.intel.known(w.nation, t);
+    if (!c) return t;
+    const age = Math.min(DR_MAX, Math.max(0, WW.time.now - c.seenAt));
+    AIM.x = c.x + Math.cos(c.heading || 0) * (c.speed || 0) * age; AIM.z = c.z + Math.sin(c.heading || 0) * (c.speed || 0) * age;
+    return AIM;
   }
   // Fly to slot (a = ahead, s = right of the guide, alt): aim a little ahead of the slot, speed by along-track error.
   // Far off the slot (a straggler, a late launch), it cuts across at up to 1.3x the guide's speed until it is in.
