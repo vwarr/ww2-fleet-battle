@@ -197,7 +197,10 @@ window.WW = window.WW || {};
     }
     if (b.hitT && b.hitT !== hitSeen) { hitSeen = b.hitT; if (now > nextTeam && R() < 0.6) { nextTeam = now + rr(6, 14); team(b.hitX, b.hitZ); } }
     if (phase !== 'peace') fires(now);
-    const gp = WW.baseGroundFx && WW.baseGroundFx._ground ? WW.baseGroundFx._ground() : [];
+    const gp = (WW.baseGroundFx && WW.baseGroundFx._ground ? WW.baseGroundFx._ground() : []).slice();
+    const V = WW.landAir.VAR, cls = v => WW.airfieldLayout.CLS[(V[v] && V[v].cls) || 'S'];   // the wrecks on the ground too
+    for (const s of b.slots) if (s.spot && s.state === 'wreck') gp.push([s.x, s.z, s.h, cls(s.v), false, null]);
+    for (const w of b.wrecks || []) gp.push([w.x, w.z, w.h, cls(w.v), false, null]);
     W().frame();
     if (WW.baseLifeCars) WW.baseLifeCars.update(sdt, gp, cam, P);
     const vs = vehicles();
@@ -228,8 +231,8 @@ window.WW = window.WW || {};
       const t = p.path[p.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz);
       const spd = p.spd * (attack && p.act === 'run' ? 1.15 : 1), mv = Math.min(d, spd * dt);
       const nx = p.x + dx / (d || 1) * mv, nz = p.z + dz / (d || 1) * mv;
-      if (!W().stand(nx, nz, 0.12) && W().stand(p.x, p.z, 0.12) && p.goal && now > (p.replanT || 0)) { p.replanT = now + 2; const g = p.goal, n0 = p.next, f0 = p.goalFace; go(p, g[0], g[1], g[2], g[3], g[4], g[5]); if (p.next === undefined) { p.next = n0; p.goalFace = f0; } clearOf(p, gp, vs); return; } // about to brush a wall: plan again from here
-      if (!W().stand(nx, nz, 0.12) && W().stand(p.x, p.z, 0.12)) { p.wait += dt; }
+      if (!W().stand(nx, nz, 0.3) && W().stand(p.x, p.z, 0.3) && p.goal && now > (p.replanT || 0)) { p.replanT = now + 2; const g = p.goal, n0 = p.next, f0 = p.goalFace; go(p, g[0], g[1], g[2], g[3], g[4], g[5]); if (p.next === undefined) { p.next = n0; p.goalFace = f0; } clearOf(p, gp, vs); return; } // about to brush a wall: plan again from here
+      if (!W().stand(nx, nz, 0.3) && W().stand(p.x, p.z, 0.3)) { p.wait += dt; }
       else if (blocker(nx, nz, gp, vs, 0.3, false) || (blocker(nx, nz, gp, vs, 0.3, true) && !blocker(p.x, p.z, gp, vs, 0.3, true))) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
       else { p.x = nx; p.z = nz; p.face = Math.atan2(dz, dx); p.wait = 0; }
       if (d - mv < 0.05) { p.pi++; if (p.pi >= p.path.length) { p.path = null; arrive(p); } }
@@ -251,7 +254,7 @@ window.WW = window.WW || {};
       let best = null, bd = 1e9;
       for (const q of [[a, bk[5] + E], [a, -bk[5] - E], [bk[4] + E, b], [-bk[4] - E, b]]) {
         const x = bk[0] + q[0] * bk[2] - q[1] * bk[3], z = bk[1] + q[0] * bk[3] + q[1] * bk[2], d = (q[0] - a) ** 2 + (q[1] - b) ** 2;
-        if (d < bd && !blocker(x, z, gp, vs, 0.15, false) && W().stand(x, z, 0.12)) { bd = d; best = [x, z]; }
+        if (d < bd && !blocker(x, z, gp, vs, 0.15, false) && W().stand(x, z, 0.3)) { bd = d; best = [x, z]; }
       }
       if (!best) { p.hid = true; return; }
       p.x = best[0]; p.z = best[1];

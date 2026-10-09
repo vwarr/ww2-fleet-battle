@@ -72,7 +72,7 @@ function round(P) {
   const built = WW.baseFx._built(), facs = [];
   const SOFT = { aa: 1, battery: 1, mg: 1, trench: 1, laundry: 1, light: 1 };   // walked into (pits, trenches) or under (the line)
   if (built) for (const part of built.parts) {
-    const m = part.mesh; if (!m) continue;   // the drill ground: open grass
+    const m = part.mesh; if (!m || (part.decor && WW.baseLifeCars && WW.baseLifeCars.cars.some(c => c.d === part.f))) continue;   // the drill ground: open grass; the camp's trucks are vehicles (below)
     const g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
     const bb = g.boundingBox, h = -m.rotation.y, c = Math.cos(h), s = Math.sin(h), k = m.scale.x, cx = (bb.min.x + bb.max.x) / 2 * k, cz = (bb.min.z + bb.max.z) / 2 * k;
     facs.push({ k: part.f.kind, f: part.f, decor: !!part.decor, solid: !SOFT[part.f.kind], top: m.position.y + bb.max.y * m.scale.y,
@@ -130,7 +130,9 @@ function round(P) {
     }
     // vehicles and figures (base_ground_fx.js, drawn this frame)
     R.maxVeh = Math.max(R.maxVeh, tr.veh.length); R.maxFig = Math.max(R.maxFig, tr.figs.length);
-    for (const v of tr.veh) {
+    const camp = WW.baseLifeCars ? WW.baseLifeCars.cars.filter(c => !c.away && !c.d.out).map(c => ({ kind: c.kind === 'fire' ? 'crash' : c.kind, x: c.x, z: c.z, h: c.h, parked: c.d })) : [];
+    const vall = tr.veh.concat(camp);   // the camp's trucks parked in the motor pool too
+    for (const v of vall) {
       const d = VD[v.kind] || [2.4, 1], vb = __box(v.x, v.z, v.h, d[0] * VK, d[1] * VK, 0);
       for (const q of gp) if (__sat(vb, q.b[0], 0.05) || __sat(vb, q.b[1], 0.05)) { const qq = L.toL(q.x, q.z); hit('plane_veh', v.kind + ' @' + L.toL(v.x, v.z).u.toFixed(1) + ',' + L.toL(v.x, v.z).v.toFixed(1) + ' ~ ' + q.k + ' @' + qq.u.toFixed(1) + ',' + qq.v.toFixed(1)); break; }
       for (const f of facs) if (!(v.parked && v.parked === f.f) && __sat(vb, f.box, 0.05)) { hit('veh_fac', v.kind + ' h' + v.h.toFixed(2) + ' d' + Math.hypot(v.x - f.box.x, v.z - f.box.z).toFixed(2) + ' ~ ' + f.k + ' ' + (f.box.hu * 2).toFixed(1) + 'x' + (f.box.hv * 2).toFixed(1) + (v.t ? ' trip p0 ' + Math.hypot(v.t.p0.x - f.box.x, v.t.p0.z - f.box.z).toFixed(2) + ' n' + v.t.n + ' out ' + v.t.out.toFixed(1) + '/' + v.t.len.toFixed(1) : '')); break; }
@@ -139,7 +141,7 @@ function round(P) {
       for (const w of berms) if (__sat(vb, w.box, 0.05)) { hit('veh_berm', vs + ' ~ spot' + w.sp.i + ' @' + w.sp.u.toFixed(1) + ',' + w.sp.v.toFixed(1) + ' lane ' + w.sp.laneV.toFixed(1) + ' col ' + w.sp.col + ' ' + w.sp.cls); break; }
     }
     const FR = 0.12 * (WW.crew ? WW.crew.SCALE : 1) * 2;
-    const vbs = tr.veh.map(v => { const d = VD[v.kind] || [2.4, 1]; return { v, b: __box(v.x, v.z, v.h, d[0] * VK, d[1] * VK, 0) }; });
+    const vbs = vall.map(v => { const d = VD[v.kind] || [2.4, 1]; return { v, b: __box(v.x, v.z, v.h, d[0] * VK, d[1] * VK, 0) }; });
     for (let i = 0; i < vbs.length; i++) for (let j = i + 1; j < vbs.length; j++) if (__sat(vbs[i].b, vbs[j].b, 0.05)) hit('veh_veh', vbs[i].v.kind + (vbs[i].v.parked ? '(camp)' : vbs[i].v.t ? '(trip ' + vbs[i].v.t.out.toFixed(1) + '/' + vbs[i].v.t.len.toFixed(1) + ')' : '') + ' ~ ' + vbs[j].v.kind + (vbs[j].v.parked ? '(camp)' : vbs[j].v.t ? '(trip ' + vbs[j].v.t.out.toFixed(1) + '/' + vbs[j].v.t.len.toFixed(1) + ')' : '') + ' @' + L.toL(vbs[i].v.x, vbs[i].v.z).u.toFixed(1) + ',' + L.toL(vbs[i].v.x, vbs[i].v.z).v.toFixed(1));
     for (const f of tr.figs) {
       const fb = __box(f.x, f.z, 0, FR, FR, 0);
