@@ -318,7 +318,7 @@ window.WW = window.WW || {};
     // fighter on the tail runs inside fight() without dropping the foe, so engagements do not flicker.
     pick(p, best) {
       const s = st(p), cur = p.foe;
-      if (s.lock > 0 && cur && cur.alive && d3(p, cur) < 140) return cur;
+      if (s.lock > 0 && cur && cur.alive && d3(p, cur) < 190) return cur;   // the CAP tally is at 130 u (air_cap.js ENGAGE), plus the height
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;
       for (const m of elementMates(p)) { const t = threat(m, 60); if (t && d3(p, t) < 90) return t; } // cover the leader / wingman
