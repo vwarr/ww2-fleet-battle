@@ -158,7 +158,7 @@ window.WW = window.WW || {};
     let want = Math.atan2(k.z - w.z, k.x - w.x);
     const g = WW.staff ? WW.staff.steer(w, k, t) : null;       // the plotted route: dogleg, initial point (air_staff.js)
     if (g) want = Math.atan2(g.z - w.z, g.x - w.x);
-    else if (WW.cag && !(w.route && w.route.tgt === t)) want = WW.cag.detour(w, want, t);   // round the AA umbrella of escorts
+    if (WW.cag) want = WW.cag.detour(w, want, t);              // and round the AA umbrella of escorts it meets on the way
     w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
     w.x += Math.cos(w.h) * gv(w) * dt; w.z += Math.sin(w.h) * gv(w) * dt;
     w.dT = WW.dist(w.x, w.z, k.x, k.z);

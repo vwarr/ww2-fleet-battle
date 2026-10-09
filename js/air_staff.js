@@ -25,7 +25,7 @@ window.WW = window.WW || {};
   'use strict';
   const MEM_T = 180, MEM_FULL = 60, PRIOR = { carrier: 8, base: 4 }, EST_R = 170;
   const IP_D = 230, IP_N = 12, REPLAN = 25, SAMPLE = 20, LEN_K = 0.2, EXTRA_MAX = 0.5, FINAL_IN = 70;
-  const BASE_R = 140, BASE_K = 0.3, FTR_R = 110, FTR_K = 0.05, SUN_K = 30, CLOUD_K = 25, KEEP_B = 12;
+  const BASE_R = 140, BASE_K = 0.3, FTR_R = 110, FTR_K = 0.05, SUN_K = 15, CLOUD_K = 15, KEEP_B = 12;
   const SIZE_K = { carrier: 1, battleship: 1, base: 0.8, cruiser: 0.7, destroyer: 0.4, pt: 0.3, submarine: 0.3 };
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
@@ -48,7 +48,12 @@ window.WW = window.WW || {};
     const now = WW.time.now;
     for (const n of ['USN', 'IJN']) {
       const M = mem[n] || (mem[n] = new Map());
-      for (const c of WW.intel.enemyPlanes(n)) { const u = c.unit; if (u && u.kind === 'fighter') M.set(u, { x: c.x, z: c.z, t: now }); }
+      // a CAP is fighters over the enemy's ships or airfield (escorts seen over our own fleet are not a strongpoint)
+      const S = WW.intel.enemyShips(n, { fresh: 120 }).slice(), b = ebase(n);   // (a copy: intel filters into one scratch array)
+      for (const c of WW.intel.enemyPlanes(n)) {
+        const u = c.unit; if (!u || u.kind !== 'fighter') continue;
+        if ((b && WW.dist2(b.x, b.z, c.x, c.z) < 220 * 220) || S.some(s => WW.dist2(s.x, s.z, c.x, c.z) < 220 * 220)) M.set(u, { x: c.x, z: c.z, t: now });
+      }
       M.forEach((e, u) => { if (now - e.t > MEM_T || (!u.alive && now - e.t < 6)) M.delete(u); });   // a fighter seen going down is off the plot
     }
   }
@@ -211,7 +216,8 @@ window.WW = window.WW || {};
     for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.state !== 'takeoff') { if (p.kind === 'fighter' && !p.target && !p.search) capUp++; if (p.target && !p.search && p.kind !== 'scout') out++; }
     for (const q of cv.ai.queue) if (q.target) queued++;
     const hold = Math.round(wingF * (Lg.mauled ? 0.6 : D.capHold));
-    const avail = Math.max(0, hg.fighter - Math.max(0, hold - capUp));
+    const cs = WW.airOps ? WW.airOps.capState(cv) : { on: capUp, coming: 0 }, cw = WW.airOps ? WW.airOps.capWanted(cv) : 0;
+    const avail = Math.max(0, hg.fighter - Math.max(0, hold - capUp, cw - cs.on - cs.coming));   // the CAP the fighter director wants comes first
     // the escort follows the expected CAP over the target
     const want = Math.round(capE * D.escortK * S.escK), escMax = Math.max(2, Math.round(wingF * ESC_MAX_K));
     if (want > esc) ST.escUp++;
@@ -219,9 +225,11 @@ window.WW = window.WW || {};
     // the load for the target: a part load for a small ship; within bpe bombers per escort against a strong CAP
     let cap = Math.max(MIN_B, Math.round(KEEP_B * 2 * (SIZE_K[tgt.isBase ? 'base' : tgt.type] || 1)));
     if (capE >= 4) {
-      // no escort to speak of against a strong CAP: wait for fighters to come back (ESC_WAIT s at most), then go
-      if (esc * D.bpe < MIN_B && hg.fighter < 2) { const a = cv.ai; if (!a.escWait) a.escWait = WW.time.now; if (!urgent || WW.time.now - a.escWait < ESC_WAIT) { ST.waits++; return null; } }   // only a carrier (or self-defence) goes in without them
-      cap = Math.min(cap, Math.max(MIN_B, Math.round(esc * D.bpe)));
+      // too thin an escort for the CAP expected: hold the strike for fighters to come back and land (ESC_WAIT s, a carrier
+      // or self-defence target a third of it), then go: a coordinated, escorted strike, not a stream of small ones
+      const need = Math.max(2, Math.round(capE * D.escortK * 0.5)), a = cv.ai;
+      if (esc < need) { if (!a.escWait) a.escWait = WW.time.now; if (WW.time.now - a.escWait < ESC_WAIT * (urgent ? 0.33 : 1)) { ST.waits++; return null; } }
+      cap = Math.min(cap, Math.max(MIN_B, Math.round(cap * 0.6), Math.round(esc * D.bpe)));
     }
     cv.ai.escWait = 0; cv.ai.capE = capE;
     if (J.lastLoss >= LOSS_HEAVY && !J.last.cut) { J.last.cut = true; cap = Math.min(cap, Math.max(MIN_B, Math.round(J.last.n * (1.2 - J.lastLoss)))); ST.cuts++; }   // smaller than the strike that was mauled
