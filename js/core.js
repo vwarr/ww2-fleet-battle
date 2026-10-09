@@ -6,7 +6,7 @@ window.WW = window.WW || {};
   // sight, and the surface forces close later (fleet_cmd.js air-war hold). Ships keep their size; the sea grows.
   // REF_W: the old width, for the few tactical distances that were written as a share of it (fleet_formation vanguard).
   // ROUND_TIMEOUT sim s (x2 real at 1x, BASE_SPEED 0.5): see docs/ARCHITECTURE.md "Time" for how it was picked.
-  WW.cfg = { MAP_W: 2400, MAP_H: 1350, REF_W: 960, CELL: 2, ROUND_TIMEOUT: 780 /* sim seconds */ };
+  WW.cfg = { MAP_W: 2400, MAP_H: 1350, REF_W: 960, CELL: 2, ROUND_TIMEOUT: 720 /* sim seconds */ };
   // Sim-only mode (index.html?sim, headless tests): the full simulation with no rendering, no visuals and no
   // render loop (main.js boot). Results are bit-identical to normal mode (tests/determinism.js --cross).
   WW.simOnly = WW.cfg.SIM_ONLY = /[?&]sim(&|=|$)/.test(location.search);

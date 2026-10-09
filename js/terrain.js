@@ -72,6 +72,14 @@ window.WW = window.WW || {};
     return land / tot;
   }
 
+  // the land share, from the depth grid at the nodes landFraction(5) samples (x, z = 2, 7, 12, ...; CELL 2: odd
+  // positions read between two nodes, as depthAt does)
+  function gridLand() {
+    let land = 0, tot = 0;
+    for (let z = 2; z < H; z += 5) for (let x = 2; x < W; x += 5) { tot++; if (depthAt(x, z) < 0) land++; }
+    return land / tot;
+  }
+
   // ---- depth grid ----
   let grid = new Float32Array(GW * GH); // depth at nodes (positive = water)
   function buildGrid() {
@@ -224,7 +232,7 @@ window.WW = window.WW || {};
     buildGrid();
     if (!WW.simOnly) buildMeshes(); // sim-only mode: the depth grid is all the sim reads
     WW.terrain.seed = seed;
-    WW.terrain.landFraction = landFraction();
+    WW.terrain.landFraction = gridLand(); // from the depth grid (heightRaw again over the big map cost ~40 ms)
   }
 
   function update() { /* water animates on real time (main calls WW.water.update) */ }
