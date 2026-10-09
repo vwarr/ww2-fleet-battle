@@ -192,7 +192,8 @@ window.WW = window.WW || {};
     B.orders.forEach(function (o) { o.fg = null; });
     var fitOf = function (g) { return g.members.filter(function (q) { var o = B.orders.get(q.id); return o && o.role !== 'withdraw'; }); };
     var fgList = fitMain.length ? fitMain : fitOf(G.screen).concat(fitOf(G.flotilla));
-    var fg = WW.formation && fgList.length ? WW.formation.guide(B, 'main', fgList, at(sg.x, sg.z, lead, 0)) : null;
+    var ba = WW.formation && fitMain.length && !hold ? WW.formation.battleAim(B, fitMain) : (B.battle = null); // the line deploys across the enemy's bearing
+    var fg = WW.formation && fgList.length ? WW.formation.guide(B, 'main', fgList, ba || at(sg.x, sg.z, lead, 0)) : null;
     var COL = COL_L * (WW.cfg.L || 26), nm = fitMain.length, half = Math.max(0, nm - 1) * COL / 2;
     var onGuide = function (q, f, l) {
       var o = B.orders.get(q.id); if (!o) return;

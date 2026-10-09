@@ -209,7 +209,7 @@ window.WW = window.WW || {};
     if (dt > 0) { g.x += Math.cos(g.h) * g.v * dt; g.z += Math.sin(g.h) * g.v * dt; g.t = now; }
     if (WW.dist(g.x, g.z, x, z) > GUIDE_LEASH * L) { g.x = (g.x + x) / 2; g.z = (g.z + z) / 2; } // the group was pulled away: meet it half way
     var d = WW.dist(g.x, g.z, aim.x, aim.z), want = d > 0.5 * L ? Math.atan2(aim.z - g.z, aim.x - g.x) : B.axis.h;
-    if (dt > 0) { g.h += WW.clamp(WW.angleDiff(g.h, want), -GUIDE_TURN * dt, GUIDE_TURN * dt); g.fa += WW.clamp(WW.angleDiff(g.fa, g.h), -AXIS_TURN * dt, AXIS_TURN * dt); }
+    if (dt > 0) { g.h += WW.clamp(WW.angleDiff(g.h, want), -GUIDE_TURN * dt, GUIDE_TURN * dt); var ax = key === 'main' && B.battle ? AXIS_BATTLE : AXIS_TURN; g.fa += WW.clamp(WW.angleDiff(g.fa, g.h), -ax * dt, ax * dt); }
     var off = Math.abs(WW.angleDiff(g.h, want));
     // forming up: the guide eases off while its ships are still far off their stations (mean RMS of the last tick, in L),
     // so a ship ordered to the head of the column can get there
@@ -222,6 +222,36 @@ window.WW = window.WW || {};
     }
     g.off = sn ? Math.sqrt(se / sn) : 0;
     return g;
+  }
+  // The battle line's deployment: with a known enemy gun ship (a battleship or cruiser first; contact <= BATTLE_AGE s)
+  // within BATTLE_K x the line's main-battery range of the guide, the guide no longer steams at the enemy: it steers
+  // across the bearing (every turret bears) at the doctrine's preferred range, edging in when farther and out when
+  // nearer, on the side that runs across the enemy's bow (crossing the T, re-chosen every SIDE_T s). The line keeps
+  // station and fights from it (ai_surface.js formHold); the formation axis then swings round onto the new course
+  // faster (AXIS_BATTLE), as a column deploying in succession. B.battle = { side, t, c } while deployed, else null.
+  var BATTLE_K = 1.5, BATTLE_AGE = 20, SIDE_T = 30, AXIS_BATTLE = 0.02, BIGG = { battleship: 1, cruiser: 1 };
+  function battleAim(B, list) {
+    var g = B.fg && B.fg.main, now = WW.time.now, R = 0, i;
+    if (!g || !WW.intel || !(B.posture === 'engage' || B.posture === 'press' || B.posture === 'approach')) { B.battle = null; return null; }
+    for (i = 0; i < list.length; i++) if (BIGG[list[i].type] && list[i].stats.guns[0]) R = Math.max(R, list[i].stats.guns[0].range);
+    if (!R) { B.battle = null; return null; }
+    var cs = WW.intel.enemyShips(B.nation), best = null, bd = 1e18, big = false;
+    for (i = 0; i < cs.length; i++) {
+      var u = cs[i].unit; if (!u || !u.alive || u.submerged || u.isBase || !u.stats.guns.length || u.type === 'carrier' || u.type === 'pt' || now - cs[i].seenAt > BATTLE_AGE) continue;
+      var hv = !!BIGG[u.type], d2 = WW.dist2(g.x, g.z, cs[i].x, cs[i].z);
+      if ((hv && !big) || ((hv === big) && d2 < bd)) { bd = d2; best = cs[i]; big = hv; }
+    }
+    var d = Math.sqrt(bd);
+    if (!best || d > R * BATTLE_K) { B.battle = null; return null; }
+    var pref = R * B.doctrine.rangeFrac * (B.posture === 'press' ? 0.85 : 1), b = Math.atan2(best.z - g.z, best.x - g.x), bt = B.battle;
+    if (!bt || now > bt.t || bt.c !== best.unit) {
+      var toBow = WW.angleDiff(b + PI, best.heading), side;
+      if (Math.abs(toBow) > 0.2 && best.speed > 0.5) side = toBow > 0 ? -1 : 1;
+      else side = bt ? bt.side : Math.abs(WW.angleDiff(g.h, b + PI / 2)) < Math.abs(WW.angleDiff(g.h, b - PI / 2)) ? 1 : -1;
+      bt = B.battle = { side: side, t: now + SIDE_T, c: best.unit };
+    }
+    var e = WW.clamp((d - pref) / pref, -0.5, 0.5), h = b + bt.side * (PI / 2 - e * 1.2);
+    return { x: g.x + Math.cos(h) * 300, z: g.z + Math.sin(h) * 300 };
   }
   // the live station of an order on a guide: o.fg (the guide), o.ff / o.fl (forward / lateral offset)
   function guidePoint(o, out) {
@@ -251,6 +281,6 @@ window.WW = window.WW || {};
     return true;
   }
 
-  WW.formation = { threatAxis: threatAxis, guide: guide, guidePoint: guidePoint, guideKeep: guideKeep, ringCounts: ringCounts, tagRing: tagRing, ringStations: ringStations, ringPoint: ringPoint, ringKeep: ringKeep,
+  WW.formation = { threatAxis: threatAxis, battleAim: battleAim, guide: guide, guidePoint: guidePoint, guideKeep: guideKeep, ringCounts: ringCounts, tagRing: tagRing, ringStations: ringStations, ringPoint: ringPoint, ringKeep: ringKeep,
     vanguardBack: vanguardBack, zigzag: zigzag, zig: zig, ZIG: ZIG, LEG: LEG };
 })();

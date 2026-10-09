@@ -129,8 +129,11 @@ window.WW = window.WW || {};
   function formHold(ship, t, o, B) {
     if (!o || !o.fg || !GUIDED[o.role] || !B || B.posture === 'press' || B.posture === 'pursue' || B.posture === 'withdraw') return false;
     if (ship.type === 'destroyer' && CAPITAL[t.type]) return false;
-    const g = ship.stats.guns[0], R = g ? g.range : 60;
-    return WW.dist(ship.x, ship.z, t.x, t.z) > R * FORM_K;
+    const g = ship.stats.guns[0], R = g ? g.range : 60, d = WW.dist(ship.x, ship.z, t.x, t.z);
+    // the deployed battle line (fleet_formation.js battleAim) fights from its stations, broadside on, unless the target
+    // has come inside half the preferred range (then each ship manoeuvres on its own)
+    if (o.role === 'line' && B.battle && d > prefRange(ship, B, t) * 0.5) return true;
+    return d > R * FORM_K;
   }
   // A carrier's AA-ring escort (doctrine ringR) keeps the ring whatever it is shooting at, while its carrier lives
   // and the side is not pressing, pursuing or withdrawing (fleet_formation.js; the escort charge is ai_charge.js).
