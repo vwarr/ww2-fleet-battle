@@ -62,8 +62,14 @@ function install() {
       const C = R.cur; if (!C || !e || e.kind !== 'torpedo' || !e.proj || e.proj.__trRound !== C) return;
       const sh = C.shots[e.proj.__trI]; if (!sh || sh.res) return;
       sh.res = e.ship ? (e.dud ? 'dud' : 'hit') : 'miss'; sh.onType = e.ship ? e.ship.type : null;
-      const tg = sh.tgt !== null ? WW.world.ships.find(s => s.id === sh.tgt) : null;
+      const tg = sh.tgt !== null ? WW.world.ships.find(s => s.id === sh.tgt) : null, p = e.proj;
       sh.combed = tg && tg.ai ? (tg.ai.combUntil || 0) > sh.t : null;
+      if (sh.res === 'miss' && tg) { // why: ran out short of the target (outrun / dropped too far), passed it (wide / combed), or land
+        const c = Math.cos(p.h), sn = Math.sin(p.h), rx = tg.x - p.x, rz = tg.z - p.z, along = rx * c + rz * sn, perp = Math.abs(-rx * sn + rz * c);
+        const par = Math.abs(Math.sin(tg.heading - p.h));   // 0 parallel to the track (combed), 1 broadside on
+        sh.why = !tg.alive || tg.sinking ? 'gone' : p.run < p.range - 0.5 ? 'land' : along > 0 ? 'short' : 'passed';
+        sh.along = +along.toFixed(1); sh.perp = +perp.toFixed(1); sh.par = +par.toFixed(2); sh.run = +p.run.toFixed(0);
+      }
     } catch (x) { if (R.cur) R.cur.err++; }
   });
   WW.on('shipHit', e => {
@@ -80,7 +86,8 @@ function install() {
   WW.on('shipSunk', s => {
     try {
       const C = R.cur; if (!C || !s) return;
-      const S = ship(s); S.sunkT = now(); S.killer = S.lastT === now() ? S.lastKind : 'fire/flood';
+      const S = ship(s); S.sunkT = now(); S.killer = s.capsized ? 'capsize' : S.lastT === now() ? S.lastKind : (s.floodHp || 0) > 0 && s.breach > 0 ? 'flooding' : 'fire/flood';
+      S.torpDmg += s.floodHp || 0;   // hp lost to torpedo breaches (ship_fires.js) counts as torpedo damage
     } catch (x) { if (R.cur) R.cur.err++; }
   });
   // sample torpedoed ships once a sim second: speed factor and list, 5 / 20 s after the first hit
@@ -126,6 +133,12 @@ function report(rounds) {
     out.rate[sc + ':' + n] = { fired: S.length, hits: h, duds: d, rate: h / S.length };
     say(`  ${(sc + ' ' + n).padEnd(9)} fired ${String(S.length).padStart(5)}  hits ${String(h).padStart(4)}  duds ${String(d).padStart(3)}  hit rate ${pc(h / S.length)}`);
   }
+  for (const n of ['USN', 'IJN']) {
+    const M = shots.filter(s => s.src === 'air' && s.n === n && s.res === 'miss' && s.why); if (!M.length) continue;
+    const k = w => M.filter(s => s.why === w);
+    say(`  air ${n} misses: short (ran out before reaching the target) ${pc(k('short').length / M.length)} (target still ${f0(med(k('short').map(s => s.along)))} u ahead p50), ` +
+      `passed ${pc(k('passed').length / M.length)} (wide by ${f2(med(k('passed').map(s => s.perp)))} u p50; target parallel-ish |sin| < 0.4: ${pc(k('passed').filter(s => s.par < 0.4).length / (k('passed').length || 1))}), land ${pc(k('land').length / M.length)}, target gone ${pc(k('gone').length / M.length)}`);
+  }
   const air = shots.filter(s => s.src === 'air'), airC = air.filter(s => s.combed !== null);
   say(`  aerial torpedoes whose target was combing at the drop or later: ${pc(airC.filter(s => s.combed).length / (airC.length || 1))}; hit rate when combed ${pc(airC.filter(s => s.combed && s.res === 'hit').length / (airC.filter(s => s.combed).length || 1))}, not combed ${pc(airC.filter(s => !s.combed && s.res === 'hit').length / (airC.filter(s => !s.combed).length || 1))}`);
   say('\ndirect damage per torpedo hit (share of the target\'s max hp: p50 / mean; n)');
@@ -152,7 +165,7 @@ function report(rounds) {
   }
   say('\nsinkings');
   out.sink = {};
-  const tk = s => s.sunkT !== null && (s.killer === 'torpedo' || s.torpDmg >= 0.5 * (s.torpDmg + s.other));
+  const tk = s => s.sunkT !== null && (s.killer === 'torpedo' || s.killer === 'flooding' || s.killer === 'capsize' || s.torpDmg >= 0.5 * (s.torpDmg + s.other));
   for (const t of ['carrier', 'battleship', 'cruiser', 'destroyer', 'submarine']) {
     const all = ships.filter(s => s.type === t), torped = all.filter(s => s.torp > 0), sunk = all.filter(s => s.sunkT !== null);
     if (!torped.length && !sunk.length) continue;

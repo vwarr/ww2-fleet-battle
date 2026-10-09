@@ -248,6 +248,24 @@ window.WW = window.WW || {};
   // Torpedo combing: a ship that has seen (WW.intel.torpedoes) a torpedo track heading for it turns parallel to
   // it (bow or stern on, whichever needs less rudder) after a reaction delay by type. Returns true while combing.
   const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 };
+  // Combing needs the turn made before the track arrives. T90: s for a 90-degree turn at full rudder, from the real
+  // tactical diameters at the game's ship speeds (a quarter of the circle: (pi / 2) x (diameter / 2) / speed; carrier
+  // ~800 m, battleship ~650 m, cruiser ~650 m, destroyer ~550 m, PT ~200 m, submarine ~500 m at 10 m a unit). The
+  // nav turn rates (stats.turn) are about twice that for handling; this is the captain's judgement of his own ship.
+  // A ship that cannot come parallel in time holds her course and takes it (turning half-way only shows more beam).
+  const T90 = { pt: 1.5, destroyer: 5.8, submarine: 11, cruiser: 9.2, carrier: 11.2, battleship: 12.2 };
+  function canComb(ship, e, along) {
+    const turn = Math.min(Math.abs(WW.angleDiff(ship.heading, e.h)), Math.abs(WW.angleDiff(ship.heading, e.h + PI)));
+    return 0.4 + turn / (PI / 2) * (T90[ship.type] || 8) < along / Math.max(1, e.speed);
+  }
+  // An aerial torpedo's drop is seen only by ships within R.DROP of it (the lookouts watching the plane's run);
+  // for the others the track counts once its wake is within R.TORP x sight of this ship (intel.js).
+  function sawIt(ship, e) {
+    const R = WW.intel.R, p = e.proj, c = Math.cos(e.h), s = Math.sin(e.h);
+    if (p && p.src === 'Air' && R.DROP) { const r = R.DROP; if (WW.dist2(ship.x, ship.z, e.x - c * (e.run || 0), e.z - s * (e.run || 0)) < r * r) return true; }
+    const rt = R.TORP * ((p && p.sight) || 1);
+    return WW.dist2(ship.x, ship.z, e.x, e.z) < rt * rt;
+  }
   function comb(ship) {
     const a = ship.ai, now = WW.time.now;
     if (a.combUntil > now) { ship.desiredHeading = a.combH; return true; }
@@ -260,6 +278,7 @@ window.WW = window.WW || {};
       const px = e.x + c * e.speed * dt, pz = e.z + s * e.speed * dt, rx = ship.x - px, rz = ship.z - pz;
       const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
       if (along < -2 || along > 70 || perp > L + along * 0.12) continue; // passed, too far, or missing wide
+      if (!sawIt(ship, e) || !canComb(ship, e, along)) continue;            // not seen from here, or too late to turn
       if (WW.dstat && e.proj) { WW.dstat('combN', e.proj.nation); WW.dstat('combD', e.proj.nation, along); } // metric: by the torpedo's nation
       a.combH = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
       a.combUntil = now + along / Math.max(1, e.speed) + 1.5;
@@ -272,7 +291,7 @@ window.WW = window.WW || {};
   const roles = {}; // type -> fn(ship, dt), filled by the role files; 'surface' is the default
   WW.shipAI = {
     roles,
-    h: { bearing, seen, lead, fireSpread, blend, idle, withdraw, comb, score, riskOf, unreachable }, // shared helpers for the role files
+    h: { bearing, seen, lead, fireSpread, blend, idle, withdraw, comb, canComb, sawIt, score, riskOf, unreachable }, // shared helpers for the role files
     ROLE_W, VALUE, retarget,
     setup(ship) {
       const st = ship.stats;
