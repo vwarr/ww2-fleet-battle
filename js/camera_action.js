@@ -2,7 +2,8 @@
 //  - bomb cam: a filmed dive-bomb attack hands off to the falling bomb, then holds on the impact;
 //  - torpedo hand-off: a filmed torpedo run hands off to the torpedo's wake, to the hit (or the miss);
 //  - over-the-shoulder: behind and a little above an attacking fighter, its target ahead (heavily damped);
-//  - slow motion: ~0.5x for ~1.5 s (eased) on a kill or a direct hit that is being filmed right now.
+//  - slow motion: ~0.5x for ~1.5 s (eased) on a kill or a direct hit that is being filmed right now; a filmed dive
+//    (camera_story.js) holds it while the dive lasts (slowmo(until, max)), so the push-over to the release reads.
 // Hand-offs never cut: they change the live shot in place, so the camera glides on.
 // Slow motion only sets WW.time.warp (main.js scales the sim dt by it); everything else is real time.
 window.WW = window.WW || {};
@@ -11,11 +12,12 @@ window.WW = window.WW || {};
   const SLOW_GAP = 20;                       // at most one slow motion per 20 real seconds
   const ease = x => x * x * (3 - 2 * x);
   const V = () => new THREE.Vector3();
-  let clock = 0, slowAt = -1e9, slowLast = -1e9, live = false;
+  let clock = 0, slowAt = -1e9, slowLast = -1e9, live = false, holdFn = null, holdMax = 0;
 
-  function slowmo() {
+  // until (optional): hold the 0.5x while until() is true, at most max real s
+  function slowmo(until, max) {
     if (!live || clock - slowLast < SLOW_GAP) return false;
-    slowAt = slowLast = clock;
+    slowAt = slowLast = clock; holdFn = typeof until === 'function' ? until : null; holdMax = max || 0;
     return true;
   }
   // 1 -> 0.5 over 0.3 s, hold to 1.3 s, back to 1 by 1.8 s
@@ -31,7 +33,7 @@ window.WW = window.WW || {};
   // ---------- hand-offs (events come from combat_weapons.js during the sim step) ----------
   function onDrop(ev) {
     const shot = WW.cam && WW.cam._shot && WW.cam._shot();
-    if (!live || !shot || shot.stage || !ev || !ev.proj) return;
+    if (!live || !shot || shot.stage || shot.nohand || !ev || !ev.proj) return; // nohand: a brief cut away (camera_story.js dive) returns to its story
     const p = ev.proj, cur = WW.cam.current();
     if (ev.kind === 'bomb') {
       const mine = ev.plane && (ev.plane === shot.subj || ev.plane === shot.plane);
@@ -187,7 +189,7 @@ window.WW = window.WW || {};
     init() {
       WW.on('weaponDropped', onDrop);
       WW.on('weaponImpact', onImpact);
-      WW.on('roundStart', () => { slowAt = -1e9; WW.time.warp = 1; });
+      WW.on('roundStart', () => { slowAt = -1e9; holdFn = null; WW.time.warp = 1; });
     },
     // shot goals for the action kinds; returns true when it filled gP / gL
     goal(shot, gP, gL, rdt) {
@@ -210,7 +212,12 @@ window.WW = window.WW || {};
     // real-time clock and slow-motion envelope; `on` = the director is filming a battle right now
     tick(rdt, on) {
       clock += rdt; live = on;
-      if (!on) slowAt = -1e9;
+      if (!on) { slowAt = -1e9; holdFn = null; }
+      if (holdFn) { // a held slow motion: stay at 0.5x, then ease out from where it lets go
+        let go = false; try { go = clock - slowAt < holdMax && holdFn(); } catch (e) { go = false; }
+        if (go && clock - slowAt > 1.3) slowAt = clock - 1.3;
+        if (!go) holdFn = null;
+      }
       WW.time.warp = warpAt(clock - slowAt);
     },
     _dbg() { return { clock, slowAt, slowLast, warp: WW.time.warp, live }; }

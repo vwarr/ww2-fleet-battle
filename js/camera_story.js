@@ -21,7 +21,33 @@ window.WW = window.WW || {};
   const KIND = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
   let S = null, nextAt = 0, lastEnd = -1e9, checkT = 0, lastSq = null, scrambles = [];
   const log = [];                                         // recent shots (tests): { sk, kind, phase, at, dur, hard }
-  const ST = { stories: 0, handoffs: 0, cutaways: 0, ended: 0 };
+  const ST = { stories: 0, handoffs: 0, cutaways: 0, ended: 0, strikeStories: 0, diveStories: 0, diveFilmed: 0 }; // dive*: strike stories whose wave dived while they ran / with a dive on screen >= DIVE_SEEN s
+  const DIVE_SEEN = 1, DIVE_VIEW = 220, ndc = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
+  // a dive bomber of the story's wave diving (roll / dive) in the frame, nearer than DIVE_VIEW: the dive is on screen
+  function diveWatch(rdt) {
+    const w = S.lead && S.lead.wave, c = WW.camera; if (!w || !c || !ndc) return;
+    let dove = false, seen = false;
+    for (const m of w.members) if (ok(m) && m.kind === 'dive' && (m.phase === 'roll' || m.phase === 'dive')) {
+      dove = true;
+      if (seen || Math.hypot(m.x - c.position.x, m.y - c.position.y, m.z - c.position.z) > DIVE_VIEW) continue;
+      ndc.set(m.x, m.y, m.z).project(c);
+      if (ndc.z < 1 && Math.abs(ndc.x) < 0.95 && Math.abs(ndc.y) < 0.95) seen = true;
+    }
+    if (dove) S.waveDove = true;
+    if (seen) S.diveSeen = (S.diveSeen || 0) + rdt;
+  }
+  // the push-over: the first of the story's wave to roll into its dive (the leader itself if it is diving); cut to it
+  // once per story. A torpedo leader's story cuts away only while its own drop is still TORP_AWAY off (the dive
+  // shot then ends with the dive and the story goes back to the run before the drop)
+  const TORP_AWAY = 150;
+  function diveCue() {
+    const L = S.lead, w = L && L.wave, t = L && (L.target || (w && w.target));
+    if (S.dive || !w || (L.kind === 'torpedo' && L.phase === 'run' && t && WW.dist(L.x, L.z, t.x, t.z) < TORP_AWAY)) return null;
+    if (L.kind === 'dive' && L.phase === 'roll') return L;
+    for (const m of w.members) if (ok(m) && m.kind === 'dive' && m.phase === 'roll') return m;
+    return null;
+  }
+  const diving = m => ok(m) && (m.phase === 'roll' || m.phase === 'dive');
 
   // ---------- arcs ----------
   function rank(p) { return (WW.squadrons && WW.squadrons.rank(p)) || (p.pilot ? p.pilot.name : null); }
@@ -121,6 +147,7 @@ window.WW = window.WW || {};
   function end(quiet) {
     if (!S) return;
     const short = S.user || S.imminent;
+    if (S.mission === 'strike' && S.begun) { ST.strikeStories++; if (S.waveDove) { ST.diveStories++; if ((S.diveSeen || 0) >= DIVE_SEEN) ST.diveFilmed++; else log.push({ miss: 'dive seen ' + (S.diveSeen || 0).toFixed(1) + ' s, cut ' + (S.dive ? (S.dive.shown ? 'shown' : 'pending') : 'none') + ', lead ' + S.lead.kind, at: wall() }); } }
     S = null; ST.ended++; lastEnd = wall();
     nextAt = wall() + (short ? dur(40, 60) : dur(GAP[0], GAP[1]));
     log.push({ end: true, at: wall() });
@@ -215,6 +242,12 @@ window.WW = window.WW || {};
       return { kind: 'orbit', subj: s, r: s.stats.length * 1.5 + 18, dur: CUTAWAY, w: 0.05, story: true, cutaway: true };
     }
     S.cutaway = null;
+    if (S.dive && !S.dive.shown && diving(S.dive.m)) { // the dive: chase the diver down, in slow motion while it dives
+      const m = S.dive.m, away = m !== S.lead && S.lead.kind !== 'dive'; S.dive.shown = true; S.last = 'dive';
+      log.push({ sk: 'dive', kind: 'story', phase: 'attack', at: now, dur: 9, hard: true, lead: m === S.lead ? 'dive lead' : 'dive wing' });
+      if (WW.camAction && WW.camAction.slowmo) WW.camAction.slowmo(() => diving(m), 10);
+      return { kind: 'story', sk: 'chase', subj: m, group: [m], nation: S.nation, dur: 9, story: true, hard: true, kP: 4.5, kL: 4.5, back: 18, nohand: away, diveOf: away ? m : null }; // a hard cut: no cross-fade over the push-over
+    }
     const L = S.lead;
     if (!ok(L)) { S.ending = 1; return pick(); }
     S.phase = phaseOf(L);
@@ -258,6 +291,12 @@ window.WW = window.WW || {};
       if (!S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
       if (S.imminent && shot && !shot.stage && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
       return;
+    }
+    if (S.mission === 'strike') {
+      diveWatch(rdt);
+      const m = !S.fall && !S.ending ? diveCue() : null;
+      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); } // cut now (not a bomb / torpedo hand-off)
+      if (shot && shot.diveOf && !diving(shot.diveOf) && shot.t > 1) shot.dur = Math.min(shot.dur, shot.t + 1.2); // a cut away to the dive: back to the story's own attack
     }
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
       S.regroupT = 2; const g = groupOf(S.lead);
