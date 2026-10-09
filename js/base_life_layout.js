@@ -17,11 +17,11 @@ window.WW = window.WW || {};
   // hx, hz: half extents (item frame, +x along its yaw); hp; roof: top above the pad (island_base roofAt); solid:
   // people walk round it (pits, trenches, the laundry line and the drill ground are walked into)
   var K = {
-    hut: [2.1, 1.0, 60, 1.4, 1], sick: [2.1, 1.0, 60, 1.4, 1], tent: [0.8, 0.8, 20, 1.2, 1], mess: [3.0, 1.4, 90, 2.4, 1],
+    hut: [2.1, 1.0, 120, 1.4, 1], sick: [2.1, 1.0, 120, 1.4, 1], tent: [0.8, 0.8, 50, 1.2, 1], mess: [3.0, 1.4, 160, 2.4, 1],
     radio: [3.6, 0.9, 50, 8.6, 1], water: [1.2, 1.2, 60, 6.4, 1], cp: [1.6, 1.3, 120, 1.6, 1], flag: [0.35, 0.35, 400, 7, 1],
     mg: [1.3, 1.3, 50, 0.9, 0], trench: [3.0, 0.8, 400, 0.3, 0], drums: [1.0, 0.8, 25, 1, 1], light: [0.6, 0.6, 40, 1.6, 1],
     truck: [0.75, 0.36, 30, 1.0, 1], fire: [0.75, 0.36, 30, 1.0, 1], jeep: [0.55, 0.33, 20, 0.7, 1], laundry: [2.0, 0.3, 10, 1.5, 0], table: [0.35, 0.35, 10, 0.6, 1],
-    drill: [3.6, 2.6, 1e9, 0, 0]
+    drill: [3.6, 2.6, 1e9, 0, 0], yard: [3.8, 1.1, 1e9, 0, 0]   // yard: the motor pool's forecourt (kept clear)
   };
   var H = Math.PI / 2;
   // groups: [name, preferred spots (site-local u, v), members [kind, du, dv, yaw]] (du along the group's axis, dv
@@ -29,13 +29,13 @@ window.WW = window.WW || {};
   // can name a facility kind or an earlier group: anywhere beside it.
   var GROUPS = [
     ['huts', [[-74, 34], [74, -34], [-74, -34], [74, 34], [0, 76], [0, -76]],
-      [['hut', -5.0, 0, 0], ['hut', 0, 0, 0], ['hut', 5.0, 0, 0]]],
-    ['huts', ['huts'], [['hut', -5.0, 0, 0], ['hut', 0, 0, 0], ['hut', 5.0, 0, 0]]],
-    ['mess', ['huts', [-66, -50], [66, 50]], [['mess', 0, 0, 0], ['sick', 6.4, 0.4, 0]]],
-    ['tents', ['huts', [74, 30], [-74, -30]], [['tent', -4.4, 0, 0], ['tent', -2.2, 0, 0], ['tent', 0, 0, 0], ['tent', 2.2, 0, 0], ['tent', 4.4, 0, 0]]],
-    ['tents', ['tents', 'huts'], [['tent', -3.3, 0, 0], ['tent', -1.1, 0, 0], ['tent', 1.1, 0, 0], ['tent', 3.3, 0, 0], ['laundry', 0, 2.4, 0], ['table', 4.6, 2.4, 0]]],
+      [['hut', -3.4, 0, H], ['hut', 0, 0, H], ['hut', 3.4, 0, H]]],
+    ['huts', ['huts'], [['hut', -3.4, 0, H], ['hut', 0, 0, H], ['hut', 3.4, 0, H]]],
+    ['mess', ['huts', [-66, -50], [66, 50]], [['mess', 0, 0, 0], ['sick', 7.8, 0.4, 0]]],
+    ['tents', ['huts', [74, 30], [-74, -30]], [['tent', -4.4, 0, H], ['tent', -2.2, 0, H], ['tent', 0, 0, H], ['tent', 2.2, 0, H], ['tent', 4.4, 0, H]]],
+    ['tents', ['tents', 'huts'], [['tent', -3.3, 0, H], ['tent', -1.1, 0, H], ['tent', 1.1, 0, H], ['tent', 3.3, 0, H], ['laundry', 0, -2.8, 0], ['table', 4.8, -2.8, 0]]],
     ['cp', ['tower', 'huts'], [['cp', 0, 0, 0], ['flag', 3.0, 0, 0]]],
-    ['motor', ['hangar', 'huts'], [['fire', -2.6, 0, H], ['truck', -1.3, 0, H], ['truck', 0, 0, H], ['truck', 1.3, 0, H], ['jeep', 2.5, 0, H], ['jeep', 3.6, 0, H]]],
+    ['motor', ['hangar', 'huts'], [['yard', 0.5, 2.6, 0], ['yard', 0.5, -2.6, 0], ['fire', -2.6, 0, H], ['truck', -1.3, 0, H], ['truck', 0, 0, H], ['truck', 1.3, 0, H], ['jeep', 2.5, 0, H], ['jeep', 3.6, 0, H]]],
     ['radio', [[-20, 74], [20, -74], [-40, -74], [40, 74], [-84, 20]], [['radio', 0, 0, 0]]],
     ['water', ['huts', 'mess'], [['water', 0, 0, 0]]],
     ['drill', ['huts', 'tents'], [['drill', 0, 0, 0]]],
@@ -133,10 +133,10 @@ window.WW = window.WW || {};
   function hit(base, x, z, dmg, blast) {
     var D = base.decor; if (!D) return;
     for (var i = 0; i < D.length; i++) {
-      var d = D[i]; if (d.out || d.kind === 'drill') continue;
+      var d = D[i]; if (d.out || d.kind === 'drill' || d.kind === 'yard') continue;
       var dist = Math.hypot(x - d.x, z - d.z), reach = d.r + blast;
       if (dist >= reach) continue;
-      d.hp -= dmg * (dist < d.r ? 1 : 1 - (dist - d.r) / blast * 0.8);
+      d.hp -= dmg * (dist < d.r ? 1 : 0.5 * (1 - (dist - d.r) / blast));   // a near miss scorches, a direct hit flattens
       if (d.hp <= 0) { d.hp = 0; d.out = true; d.outAt = WW.time.now; }
     }
   }

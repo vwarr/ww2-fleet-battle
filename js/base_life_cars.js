@@ -25,9 +25,11 @@ window.WW = window.WW || {};
   }
   // drive c to (x, z): out of (or back into) its motor-pool bay straight along its nose, the rest along the ways
   function send(c, x, z, job) {
-    const H = c.home, out = { x: H.x + Math.cos(H.h) * 2.8 * K(), z: H.z + Math.sin(H.h) * 2.8 * K() }, fromHome = !c.away, toHome = job === 'home';
+    const H = c.home, P = WW.baseLifePaths, fromHome = !c.away, toHome = job === 'home';
+    let out = null;   // out of the bay: ahead if that is clear, else backing out
+    for (const sg of [1, -1]) { const q = { x: H.x + Math.cos(H.h) * sg * 3.4 * K(), z: H.z + Math.sin(H.h) * sg * 3.4 * K() }; if (P.stand(q.x, q.z, 0.9, true) || sg < 0) { out = q; break; } }
     const a = fromHome ? out : c, b = toHome ? out : { x, z };
-    const w = WW.baseLifePaths.path(a.x, a.z, b.x, b.z, true); if (!w) return false;
+    const w = WW.baseLifePaths.path(a.x, a.z, b.x, b.z, true, true); if (!w) return false;
     c.path = (fromHome ? [out] : []).concat(w.slice(1), [b]);
     if (toHome) c.path.push({ x: H.x, z: H.z, rev: true });   // backs into the bay
     c.pi = 0; c.job = job; c.wait = 0; c.away = true;
@@ -85,9 +87,9 @@ window.WW = window.WW || {};
       if (c.path && dt > 0) {
         const t = c.path[c.pi], dx = t.x - c.x, dz = t.z - c.z, d = Math.hypot(dx, dz), want = t.rev ? Math.atan2(-dz, -dx) : Math.atan2(dz, dx);
         const turn = WW.angleDiff(c.h, want);
-        c.h += WW.clamp(turn, -3 * dt, 3 * dt);                     // it steers onto the leg (slows into a sharp turn)
-        const v = SPD[c.kind] * (Math.abs(turn) > 0.6 ? 0.35 : 1) * (t.rev ? 0.3 : 1), mv = Math.min(d, v * dt);
-        const nx = c.x + (t.rev ? dx / (d || 1) : Math.cos(c.h)) * mv, nz = c.z + (t.rev ? dz / (d || 1) : Math.sin(c.h)) * mv;
+        c.h += WW.clamp(turn, -4 * dt, 4 * dt);                     // it steers onto the leg
+        const v = Math.abs(turn) > 0.5 ? 0 : SPD[c.kind] * (t.rev ? 0.3 : 1), mv = Math.min(d, v * dt);   // it turns on the spot (a toy), then drives the leg exactly
+        const nx = c.x + dx / (d || 1) * mv, nz = c.z + dz / (d || 1) * mv;
         if (blocked(c, nx, nz, gp, others)) c.wait += dt;
         else { c.x = nx; c.z = nz; c.wait = 0; }
         if (d < 0.35 || c.wait > 40) { c.pi++; if (c.pi >= c.path.length || c.wait > 40) { c.path = null; if (c.job === 'home') { c.x = c.home.x; c.z = c.home.z; c.h = c.home.h; c.away = false; c.job = null; } } }

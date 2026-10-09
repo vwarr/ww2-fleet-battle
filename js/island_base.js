@@ -239,7 +239,10 @@ window.WW = window.WW || {};
     base.alarm = { t: WW.time.now, kind, x, z, bearing: brg, n: (o && o.n) || 0, what: (o && o.what) || null };
     stats.alarmAt = WW.game ? WW.game.roundTime : WW.time.now; stats.alarmKind = kind;
     ev('alarm', { alarm: base.alarm, x: base.x, z: base.z });
-    WW.emit('baseAlarm', { x: base.x, z: base.z, t: WW.time.now, kind, tx: x, tz: z, bearing: brg, base });
+    // the focus for the cameras: the camp (huts, tents, the mess), else the base's centre
+    const C = (base.decor || []).filter(d => d.kind === 'hut' || d.kind === 'tent' || d.kind === 'mess');
+    const fx = C.length ? C.reduce((s, d) => s + d.x, 0) / C.length : base.x, fz = C.length ? C.reduce((s, d) => s + d.z, 0) / C.length : base.z;
+    WW.emit('baseAlarm', { x: base.x, z: base.z, t: WW.time.now, kind, tx: x, tz: z, bearing: brg, fx, fz, base });
   }
   function fuelOut() { return base.facilities.some(f => f.kind === 'fuel' && f.out); }
   function batteries(dt) {

@@ -140,10 +140,10 @@ function round(P) {
     }
     const FR = 0.12 * (WW.crew ? WW.crew.SCALE : 1) * 2;
     const vbs = tr.veh.map(v => { const d = VD[v.kind] || [2.4, 1]; return { v, b: __box(v.x, v.z, v.h, d[0] * VK, d[1] * VK, 0) }; });
-    for (let i = 0; i < vbs.length; i++) for (let j = i + 1; j < vbs.length; j++) if (__sat(vbs[i].b, vbs[j].b, 0.05)) hit('veh_veh', vbs[i].v.kind + ' ~ ' + vbs[j].v.kind + ' @' + L.toL(vbs[i].v.x, vbs[i].v.z).u.toFixed(1) + ',' + L.toL(vbs[i].v.x, vbs[i].v.z).v.toFixed(1));
+    for (let i = 0; i < vbs.length; i++) for (let j = i + 1; j < vbs.length; j++) if (__sat(vbs[i].b, vbs[j].b, 0.05)) hit('veh_veh', vbs[i].v.kind + (vbs[i].v.parked ? '(camp)' : vbs[i].v.t ? '(trip ' + vbs[i].v.t.out.toFixed(1) + '/' + vbs[i].v.t.len.toFixed(1) + ')' : '') + ' ~ ' + vbs[j].v.kind + (vbs[j].v.parked ? '(camp)' : vbs[j].v.t ? '(trip ' + vbs[j].v.t.out.toFixed(1) + '/' + vbs[j].v.t.len.toFixed(1) + ')' : '') + ' @' + L.toL(vbs[i].v.x, vbs[i].v.z).u.toFixed(1) + ',' + L.toL(vbs[i].v.x, vbs[i].v.z).v.toFixed(1));
     for (const f of tr.figs) {
       const fb = __box(f.x, f.z, 0, FR, FR, 0);
-      for (const q of gp) if (__sat(fb, q.b[0], 0.02) || __sat(fb, q.b[1], 0.02)) { hit('plane_fig', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + q.k); break; }
+      for (const q of gp) if (__sat(fb, q.b[0], 0.02) || __sat(fb, q.b[1], 0.02)) { const c = Math.cos(q.h), s = Math.sin(q.h), dx = f.x - q.x, dz = f.z - q.z; hit('plane_fig', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + q.k + ' a' + (dx * c + dz * s).toFixed(2) + ' b' + (-dx * s + dz * c).toFixed(2) + ' len' + CLS(q.v).len.toFixed(2) + ' span' + CLS(q.v).span.toFixed(2)); break; }
       for (const g of facs) if (g.solid && __sat(fb, g.box, 0.02)) { const fq = L.toL(f.x, f.z); hit('fig_fac', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + g.k + ' @' + fq.u.toFixed(1) + ',' + fq.v.toFixed(1)); break; }
       if (!f.ride) for (const q of vbs) if (__sat(fb, q.b, 0.02)) { hit('fig_veh', f.role + (f.act ? '/' + f.act : '') + ' ~ ' + q.v.kind); break; }
     }

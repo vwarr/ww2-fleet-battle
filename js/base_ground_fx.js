@@ -73,7 +73,7 @@ window.WW = window.WW || {};
 
   // ---------- figures ----------
   function figure(x, z, face, nation, role, run) {
-    if (fig >= MAX_FIG || !WW.crew || !WW.crew.addFigure) return;
+    if (fig >= MAX_FIG || !WW.crew || !WW.crew.addFigure || inVeh(x, z)) return;
     const bob = run ? Math.abs(Math.sin(performance.now() / 70 + x)) * 0.05 : 0;
     if (trace) trace.figs.push({ x, z, role });
     _q.setFromEuler(_e.set(0, -face, 0)); _p.set(x, gy(x, z) + bob, z); _s.set(FIG_K, FIG_K, FIG_K);
@@ -128,7 +128,7 @@ window.WW = window.WW || {};
     if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > NEAR_FIG * NEAR_FIG) { vehSet('roller', null); return; }
     const t = performance.now() / 1000, rw = base.runways[rp.runway] || base.runways[0], hx = Math.cos(rw.h), hz = Math.sin(rw.h);
     let busy = false;   // a plane rolling or taxiing close by: the gang steps well back off the runway
-    for (const p of WW.world.planes) if (p.carrier === base && p.alive && WW.landGround.onGround(p) && Math.hypot(p.x - c.x, p.z - c.z) < c.r + 12) busy = true;
+    for (const p of WW.world.planes) if (p.carrier === base && p.alive && WW.landGround.onGround(p) && Math.hypot(p.x - c.x, p.z - c.z) < c.r + 18) busy = true;
     for (let i = 0; i < 6; i++) { // shovels: a bob in the figure's height is the work
       const a = i / 6 * Math.PI * 2 + 0.4, r = c.r * 1.25 + 0.6 + (busy ? 6 : 0);
       figure(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, a + Math.PI + Math.sin(t * 3 + i) * 0.3, base.nation, i === 0 ? 'o' : 'c', i % 2 === 0);
@@ -154,10 +154,12 @@ window.WW = window.WW || {};
     const per = {};
     if (on) {
       const gp = groundPlanes();
+      const placed = [];
       for (const t of trips) {
         let q = tripPos(t);
         if (burnDt > 0 && !(q && inWay(q, gp, t.follow)) && inWay(tripPos(t, 0.8), gp, t.follow)) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // give way: wait short of a plane's path (already in it: drive on clear)
-        if (q) { q.trip = t; (per[t.kind] = per[t.kind] || []).push(q); }
+        else if (burnDt > 0 && q && [0.15, 0.3, 0.45, 0.6, Math.max(0.6, burnDt * 1.5)].some(k => closing(q, tripPos(t, k), vehPre.filter(o => o.trip !== t).concat(placed, WW.baseLifeCars ? WW.baseLifeCars.now() : []), t))) { t.t0 += burnDt; t.until += burnDt; q = tripPos(t); } // and to another truck
+        if (q) { q.trip = t; placed.push(q); (per[t.kind] = per[t.kind] || []).push(q); }
       }
       for (const k in fixed) if (fixed[k]) (per[k] = per[k] || []).push(...fixed[k]);
     }
@@ -172,6 +174,18 @@ window.WW = window.WW || {};
       }
       vm.mesh.count = n; vm.mesh.visible = n > 0; vm.mesh.instanceMatrix.needsUpdate = true;
     }
+  }
+  function closing(q, a, L, t) { // a step from q to a (ahead) comes within a truck's length of another truck, and nearer (or level with an older trip)
+    if (!a) return false; const d = 2.7 * (WW.baseModels.VEH_K || 1), ti = trips.indexOf(t);
+    for (const o of L) { const da = (o.x - a.x) ** 2 + (o.z - a.z) ** 2, dq = (o.x - q.x) ** 2 + (o.z - q.z) ** 2; if (da < d * d && (da < dq - 1e-6 || (da <= dq + 1e-6 && o.trip && trips.indexOf(o.trip) < ti))) return true; }
+    return false;
+  }
+  // a figure inside a vehicle's footprint (this frame's trips, before they are drawn): not drawn there
+  let vehPre = [];
+  function inVeh(x, z) {
+    const K = WW.baseModels.VEH_K || 1;
+    for (const q of vehPre) { const c = Math.cos(q.h), s = Math.sin(q.h), dx = x - q.x, dz = z - q.z; if (Math.abs(dx * c + dz * s) < 1.3 * K + 0.2 && Math.abs(-dx * s + dz * c) < 0.55 * K + 0.2) return true; }
+    return false;
   }
   // a trip: out along path (site-local points -> world), wait until t.until, back the same way
   function trip(kind, ptsL, until, follow, t0) {
@@ -261,7 +275,7 @@ window.WW = window.WW || {};
     return k[0];
   }
   function inFac(u, v, own, skipOwn) {
-    if (base.decor) for (const g of base.decor) { if (g.kind === 'drill') continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + 0.6) return true; } // the camp too
+    if (base.decor) for (const g of base.decor) { if (g.kind === 'drill' || g.kind === 'yard') continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + 0.6) return true; } // the camp too
     for (const g of base.facilities) { if (skipOwn && g === own) continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + (g === own ? 0.4 : 0.6)) return true; } // own: the door (+0.8) is just outside
     return false;
   }
@@ -347,6 +361,7 @@ window.WW = window.WW || {};
     const cam = WW.camera.position, near = (cam.x - b.x) ** 2 + (cam.z - b.z) ** 2 < FAR * FAR;
     fig = 0; if (trace) { trace.figs.length = 0; trace.veh.length = 0; }
     for (const k in fixed) fixed[k] = null;
+    vehPre = trips.map(t => { const q = tripPos(t); if (q) q.trip = t; return q; }).filter(q => q);
     if (near) { engines(rdt, sdt); crewsAt(cam, now); repairGang(cam, now); }
     drawVehicles(near);
   }

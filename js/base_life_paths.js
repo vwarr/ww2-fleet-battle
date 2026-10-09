@@ -5,12 +5,12 @@
 //  - cost: people keep off the taxi network (x3) and the runways (x6) unless it is the only way; trucks use the network
 //    (x1.5) and keep a wider berth from the walls.
 //  - path(x0, z0, x1, z1, veh): the cheapest way (Dijkstra, 8 neighbours), pulled straight where the line is clear;
-//    world points, cached. The ends are snapped to the nearest open cell (a caller adds its own last steps).
+//    world points, cached; at most 2 new ones a frame (path() returns undefined: ask again). The ends are snapped to the nearest open cell (a caller adds its own last steps).
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  const U0 = -130, V0 = -115, NU = 261, NV = 231, N = NU * NV, MAXEXP = 60000;
-  let G = null;
+  const U0 = -130, V0 = -115, NU = 261, NV = 231, N = NU * NV, MAXEXP = 240000;
+  let G = null, budget = 2;   // new (uncached) paths per frame: a crowd starting at once spreads its planning over frames
   const id = (i, j) => j * NU + i;
 
   // a rotated rectangle (site-local centre u, v; yaw from the u axis; half extents) stamped into a grid
@@ -35,14 +35,14 @@ window.WW = window.WW || {};
       cost[k] = run ? 6 : net ? 3 : 1; vcost[k] = run ? 4 : net ? 1 : 2;
     }
     const site = (x, z) => L.toL(x, z);
-    for (const d of b.decor || []) if (d.solid) { stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.45); stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.0); }
+    for (const d of b.decor || []) { if (d.solid) stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.8); if (d.kind !== 'drill' && d.kind !== 'yard') stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.0); }
     if (built) for (const part of built.parts) {
       if (part.decor || !part.mesh) continue;
       const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 3.5, 3.5, 0.5); continue; }
       const m = part.mesh, g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
       const bb = g.boundingBox, h = -m.rotation.y, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
       const q = site(m.position.x + Math.cos(h) * cx - Math.sin(h) * cz, m.position.z + Math.sin(h) * cx + Math.cos(h) * cz);
-      stamp(wall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 0.45);
+      stamp(wall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 0.8);
       stamp(vwall, 1, q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 1.0);
     }
     for (const sp of L.spots) { // the hardstand (a plane parks there) and its berms
@@ -54,11 +54,28 @@ window.WW = window.WW || {};
         stamp(vwall, 1, sp.u + c * w[0] - s * w[1], sp.v + s * w[0] + c * w[1], yaw - w[4], w[2] / 2, w[3] / 2, 0.9);
       }
     }
-    G = { base: b, L, wall, vwall, cost, vcost, cache: new Map(), made: 0 };
+    // exact footprints (site-local rects) for spot checks finer than the grid: [u, v, yaw, hx, hz]
+    const rects = [];
+    for (const d of b.decor || []) if (d.kind !== 'drill' && d.kind !== 'yard') rects.push([d.u, d.v, d.a - S.h, d.hx, d.hz, d.solid ? 1 : 0]);
+    if (built) for (const part of built.parts) {
+      if (part.decor || !part.mesh || part.f.kind === 'aa' || part.f.kind === 'battery') continue;
+      const m = part.mesh, g = m.geometry, bb = g.boundingBox, h = -m.rotation.y, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+      const q = site(m.position.x + Math.cos(h) * cx - Math.sin(h) * cz, m.position.z + Math.sin(h) * cx + Math.cos(h) * cz);
+      rects.push([q.u, q.v, h - S.h, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, 1]);
+    }
+    for (const sp of L.spots) rects.push([sp.u, sp.v, sp.h - S.h, sp.len / 2 + 1.6, sp.span / 2 + 1.6, 1]);   // a revetment and its berms
+    G = { base: b, L, wall, vwall, cost, vcost, rects, cache: new Map(), made: 0 };
     return G;
   }
   function cell(u, v) { const i = Math.round(u - U0), j = Math.round(v - V0); return i < 0 || j < 0 || i >= NU || j >= NV ? -1 : id(i, j); }
   function open(x, z, veh) { if (!G) return false; const q = G.L.toL(x, z), c = cell(q.u, q.v); return c >= 0 && !(veh ? G.vwall : G.wall)[c]; }
+  // a place to stand (finer than the grid): on land and outside every solid footprint by pad (default 0.25)
+  function stand(x, z, pad, veh) {
+    if (!G || !(WW.terrain.depthAt(x, z) < -0.35)) return false;
+    const q = G.L.toL(x, z), p = pad === undefined ? 0.25 : pad;
+    for (const r of G.rects) { if (!veh && !r[5]) continue; const du = q.u - r[0], dv = q.v - r[1], c = Math.cos(r[2]), s = Math.sin(r[2]); if (Math.abs(du * c + dv * s) < r[3] + p && Math.abs(-du * s + dv * c) < r[4] + p) return false; }
+    return true;
+  }
   // the nearest open cell to a site-local point (rings out to r), or -1
   function snap(u, v, W, r) {
     const c0 = cell(u, v); if (c0 >= 0 && !W[c0]) return c0;
@@ -69,18 +86,31 @@ window.WW = window.WW || {};
     return -1;
   }
   // a straight leg clear of walls (sampled every 0.3 u), and not cheaper to go round (no shortcut across a runway)
-  function clear(a, b, W, C) {
-    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.3), c0 = C[cell(a[0], a[1])] || 1;
-    for (let k = 1; k <= n; k++) { const c = cell(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n); if (c < 0 || W[c] || C[c] > Math.max(c0, C[cell(b[0], b[1])] || 1)) return false; }
+  function clear(a, b, W, C, veh) {
+    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.3), c0 = C[cell(a[0], a[1])] || 1, L = G.L;
+    for (let k = 1; k <= n; k++) {
+      const u = a[0] + (b[0] - a[0]) * k / n, v = a[1] + (b[1] - a[1]) * k / n, c = cell(u, v);
+      if (c < 0 || W[c] || C[c] > Math.max(c0, C[cell(b[0], b[1])] || 1)) return false;
+      const w = L.toW(u, v); if (!stand(w.x, w.z, veh ? 1.0 : 0.35, veh)) return false;   // the exact footprints too
+    }
+    return true;
+  }
+  // a straight world leg clear of the footprints (people: pad 0.3; vehicles: wider)
+  function legOK(x0, z0, x1, z1, veh) {
+    const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.25);
+    for (let k = 0; k <= n; k++) if (!stand(x0 + (x1 - x0) * k / n, z0 + (z1 - z0) * k / n, veh ? 0.9 : 0.3, veh)) return false;
     return true;
   }
   // binary heap of [cost, cell]
-  function path(x0, z0, x1, z1, veh) {
+  // -> world points, null (no way) or undefined (over this frame's budget: ask again next frame; force: never)
+  function path(x0, z0, x1, z1, veh, force) {
     if (!G) return null;
     const L = G.L, W = veh ? G.vwall : G.wall, C = veh ? G.vcost : G.cost, a = L.toL(x0, z0), b = L.toL(x1, z1);
     const s = snap(a.u, a.v, W, 5), t = snap(b.u, b.v, W, 6); if (s < 0 || t < 0) return null;
     const key = (veh ? 'v' : 'w') + s + ':' + t;
     if (G.cache.has(key)) return G.cache.get(key);
+    if (!force && budget <= 0) return undefined;
+    budget--;
     const dist = new Float32Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), hc = [], hk = [];
     const push = (c, k) => { hc.push(c); hk.push(k); let i = hc.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (hc[p] <= hc[i]) break; [hc[p], hc[i]] = [hc[i], hc[p]]; [hk[p], hk[i]] = [hk[i], hk[p]]; i = p; } };
     const pop = () => { const c = hc[0], k = hk[0], lc = hc.pop(), lk = hk.pop(); if (hc.length) { hc[0] = lc; hk[0] = lk; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < hc.length && hc[l] < hc[m]) m = l; if (r < hc.length && hc[r] < hc[m]) m = r; if (m === i) break; [hc[m], hc[i]] = [hc[i], hc[m]]; [hk[m], hk[i]] = [hk[i], hk[m]]; i = m; } } return [c, k]; };
@@ -103,11 +133,11 @@ window.WW = window.WW || {};
       const P = []; for (let k = t; k >= 0; k = prev[k]) { const i = k % NU; P.push([i + U0, (k - i) / NU + V0]); }
       P.reverse();
       const S = [P[0]];
-      for (let i = 0; i < P.length - 1;) { let j = P.length - 1; while (j > i + 1 && !clear(P[i], P[j], W, C)) j--; S.push(P[j]); i = j; }
+      for (let i = 0; i < P.length - 1;) { let j = P.length - 1; while (j > i + 1 && !clear(P[i], P[j], W, C, veh)) j--; S.push(P[j]); i = j; }
       out = S.map(q => L.toW(q[0], q[1]));
     }
     G.cache.set(key, out); G.made++;
     return out;
   }
-  WW.baseLifePaths = { build, path, open, get grid() { return G; }, clear: () => { G = null; } };
+  WW.baseLifePaths = { build, path, open, stand, legOK, frame: () => { budget = 2; }, get grid() { return G; }, clear: () => { G = null; } };
 })();

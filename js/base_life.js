@@ -27,11 +27,11 @@ window.WW = window.WW || {};
   const W = () => WW.baseLifePaths;
 
   // ---------- the places: doors, the chow line, the drill ground, trenches, pits ----------
-  function door(d, out) { const c = dir(d.a); return { x: d.x + c[0] * (d.hx + (out || 0.5)), z: d.z + c[1] * (d.hx + (out || 0.5)), face: d.a + PI }; }
+  function door(d, out) { const c = dir(d.a); return { x: d.x + c[0] * (d.hx + (out || 1.0)), z: d.z + c[1] * (d.hx + (out || 1.0)), face: d.a + PI }; }
   function sites() {
     const D = base.decor || [], s = { doors: [], huts: [], trenches: [], pits: [], mess: null, sick: null, drill: null, table: null, laundry: null, cp: null, flag: null };
     for (const d of D) {
-      if (d.kind === 'hut' || d.kind === 'tent' || d.kind === 'mess' || d.kind === 'sick' || d.kind === 'radio' || d.kind === 'cp') { const q = door(d); q.d = d; if (W().open(q.x, q.z)) { s.doors.push(q); if (d.kind === 'hut' || d.kind === 'tent') s.huts.push(q); } }
+      if (d.kind === 'hut' || d.kind === 'tent' || d.kind === 'mess' || d.kind === 'sick' || d.kind === 'radio' || d.kind === 'cp') { const q = door(d); q.d = d; if (W().stand(q.x, q.z)) { s.doors.push(q); if (d.kind === 'hut' || d.kind === 'tent') s.huts.push(q); } }
       if (d.kind === 'mess') s.mess = d; if (d.kind === 'sick') s.sick = door(d); if (d.kind === 'drill') s.drill = d; if (d.kind === 'table') s.table = d;
       if (d.kind === 'laundry') s.laundry = d; if (d.kind === 'cp') s.cp = door(d, 0.7); if (d.kind === 'flag') s.flag = d;
       if (d.kind === 'trench') { // crouching places along the three bays (models_base_life.js trench)
@@ -47,7 +47,7 @@ window.WW = window.WW || {};
       const c = dir(s.mess.a), dq = door(s.mess, 0.45);
       for (const sv of [1, -1]) {
         const L = [];
-        for (let i = 0; i < 7; i++) { const o = sv * (0.3 + i * 0.5), x = dq.x - c[1] * o + c[0] * 0.15 * i / 6, z = dq.z + c[0] * o + c[1] * 0.15 * i / 6; if (W().open(x, z)) L.push({ x, z, face: Math.atan2(dq.z - z, dq.x - x) }); else break; }
+        for (let i = 0; i < 7; i++) { const o = sv * (0.3 + i * 0.5), x = dq.x - c[1] * o + c[0] * 0.15 * i / 6, z = dq.z + c[0] * o + c[1] * 0.15 * i / 6; if (W().stand(x, z)) L.push({ x, z, face: Math.atan2(dq.z - z, dq.x - x) }); else break; }
         if (!s.chow || L.length > s.chow.length) s.chow = L;
       }
       s.messDoor = dq;
@@ -61,9 +61,14 @@ window.WW = window.WW || {};
     P.push(p); return p;
   }
   // send p to (x, z) along the ways; then = the act on arrival, face = its heading there
-  function go(p, x, z, run, then, face) {
-    const w = W().path(p.x, p.z, x, z);
-    p.path = (w ? w.slice(1) : []).concat([{ x, z }]); p.pi = 0; p.spd = run ? RUN * rr(0.9, 1.1) : WALK * rr(0.85, 1.15);
+  // via: a post close to something solid (a seat at the card table) is reached, and left, straight from a point outside
+  function go(p, x, z, run, then, face, via) {
+    const from = p.via && Math.hypot(p.x - p.via.x, p.z - p.via.z) < 2.5 ? p.via : p, to = via || { x, z };
+    const w = W().path(from.x, from.z, to.x, to.z);
+    if (w === undefined) { p.pend = [x, z, run, then, face, via]; p.path = null; p.act = run ? 'ready' : p.act; return; } // planned next frame
+    p.pend = null;
+    if (!w) { p.path = null; p.act = 'idle'; p.at = WW.time.now + 3; return; }   // no way there: stays put
+    p.path = (from === p ? [] : [{ x: from.x, z: from.z }]).concat(w, via ? [via] : [], [{ x, z }]); p.via = via || null; p.pi = 0; p.spd = run ? RUN * rr(0.9, 1.1) : WALK * rr(0.85, 1.15);
     p.next = then || 'idle'; p.goalFace = face; p.act = run ? 'run' : 'walk'; p.wait = 0;
   }
   function peace() { // the peacetime posts (re-used after the raid)
@@ -74,16 +79,19 @@ window.WW = window.WW || {};
       out.push({ act: 'instr', x: d.x + c[0] * 2.6, z: d.z + c[1] * 2.6, face: d.a + PI, role: 'o' });
       for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) { const a = -1 + r * 0.9, b = -1.5 + k * 1.0; out.push({ act: 'drill', x: d.x + c[0] * a - c[1] * b, z: d.z + c[1] * a + c[0] * b, face: d.a }); }
     }
-    if (S.table) for (let k = 0; k < 4; k++) { const a = S.table.a + k * PI / 2, x = S.table.x + Math.cos(a) * 0.62, z = S.table.z + Math.sin(a) * 0.62; out.push({ act: 'cards', x, z, face: a + PI }); }
+    if (S.table) for (let k = 0; k < 4; k++) { const a = S.table.a + k * PI / 2, c = Math.cos(a), sn = Math.sin(a); out.push({ act: 'cards', x: S.table.x + c * 0.62, z: S.table.z + sn * 0.62, face: a + PI, via: { x: S.table.x + c * 1.9, z: S.table.z + sn * 1.9 } }); }
     if (S.laundry) { const c = dir(S.laundry.a); out.push({ act: 'laundry', x: S.laundry.x + c[0] * 0.8 - c[1] * 0.55, z: S.laundry.z + c[1] * 0.8 + c[0] * 0.55, face: S.laundry.a + PI / 2 }); }
     if (S.cp) out.push({ act: 'sentry', x: S.cp.x, z: S.cp.z, face: S.cp.face + PI, role: 'o' });
-    S.huts.slice(0, 6).forEach(q => out.push({ act: 'idle', x: q.x + rr(-0.2, 0.2), z: q.z + rr(-0.2, 0.2), face: q.face + PI + rr(-0.6, 0.6) }));
-    return out.filter(q => W().open(q.x, q.z));
+    S.doors.slice(0, 14).forEach((q, i) => { // one or two men loafing at each door, facing out (a smoke, a chat)
+      const c = dir(q.face + PI), n = c[1], m = -c[0];
+      for (let k = 0; k < (i % 3 ? 1 : 2); k++) { const o = (k ? -1 : 1) * 0.4; out.push({ act: 'idle', x: q.x + c[0] * 0.3 + n * o, z: q.z + c[1] * 0.3 + m * o, face: q.face + PI + (k ? 0.9 : -0.9) * (i % 3 ? 0.4 : 1) }); }
+    });
+    return out.filter(q => W().stand(q.x, q.z, 0.15));
   }
   function populate() {
     P = [];
-    for (const q of peace()) man(q.x, q.z, q.role || (R() < 0.15 ? 'o' : 'c'), q.act, { face: q.face, post: q });
-    for (let i = 0; i < 10 && S.doors.length; i++) { const d = S.doors[Math.floor(R() * S.doors.length)]; const p = man(d.x, d.z, R() < 0.2 ? 'o' : 'c', 'idle'); if (p) { p.walker = true; p.at = -rr(0, 8); } }
+    for (const q of peace()) man(q.x, q.z, q.role || (R() < 0.15 ? 'o' : 'c'), q.act, { face: q.face, post: q, via: q.via || null });
+    for (let i = 0; i < 16 && S.doors.length; i++) { const d = S.doors[Math.floor(R() * S.doors.length)]; const p = man(d.x, d.z, R() < 0.2 ? 'o' : 'c', 'idle'); if (p) { p.walker = true; p.at = -rr(0, 8); } }
   }
   // ---------- the alarm: everyone to a station ----------
   function free(list) { return list.find(s => !s.who); }
@@ -113,7 +121,7 @@ window.WW = window.WW || {};
       const lane = WW.airfieldLayout && base.layout.toW(sp.u, sp.laneV), nose = { x: sp.x + c[0] * (C.len / 2 + 0.9), z: sp.z + c[1] * (C.len / 2 + 0.9) };
       const tip = { x: sp.x + c[0] * C.len * 0.27 - c[1] * sd * (C.span / 2 + 0.35), z: sp.z + c[1] * C.len * 0.27 + c[0] * sd * (C.span / 2 + 0.35) };
       const p = man(d.x, d.z, 'o', 'idle'); if (!p) break;
-      p.pilot = s; go(p, lane.x, lane.z, true, 'climb', sp.h + PI); p.path.push(nose, tip);
+      p.pilot = s; go(p, lane.x, lane.z, true, 'climb', sp.h + PI); if (p.pend) p.tail = [nose, tip]; else if (p.path) p.path.push(nose, tip); else p.gone = true;
     }
   }
   function standDown() { // after the raid: out of the trenches, back to work; the gun crews stay
@@ -122,13 +130,13 @@ window.WW = window.WW || {};
       if (p.gone || p.bearer || p.casualty || p.fire || (p.station && p.act === 'gun')) continue;
       if (p.station) { p.station.who = null; p.station = null; }
       const q = posts.shift();
-      if (q) { p.post = q; go(p, q.x, q.z, false, q.act, q.face); } else { p.walker = true; p.act = 'idle'; p.at = WW.time.now + rr(0, 6); }
+      if (q) { p.post = q; go(p, q.x, q.z, false, q.act, q.face, q.via); } else { p.walker = true; p.act = 'idle'; p.at = WW.time.now + rr(0, 6); }
     }
   }
   function resumeLeisure() { // the drill and the cards, a while after the raid
     for (const q of peace()) if (q.act === 'drill' || q.act === 'cards' || q.act === 'instr') {
       const d = nearest(S.doors, q.x, q.z); if (!d) continue;
-      const p = man(d.x, d.z, q.role || 'c', 'idle'); if (p) { p.post = q; go(p, q.x, q.z, false, q.act, q.face); }
+      const p = man(d.x, d.z, q.role || 'c', 'idle'); if (p) { p.post = q; go(p, q.x, q.z, false, q.act, q.face, q.via); }
     }
   }
   // stretcher teams: two bearers and the wounded man from near a hit to the sick bay
@@ -151,7 +159,7 @@ window.WW = window.WW || {};
       const d = nearest(S.doors, f.x, f.z) || S.cp; if (!d) return;
       for (let k = 0; k < 3; k++) {
         const r = (f.hx ? Math.hypot(f.hx, f.hz) : f.r) + 1.1, a0 = Math.atan2(d.z - f.z, d.x - f.x) + (k - 1) * 0.6, x = f.x + Math.cos(a0) * r, z = f.z + Math.sin(a0) * r;
-        if (!W().open(x, z)) continue;
+        if (!W().stand(x, z)) continue;
         const p = man(d.x, d.z, k ? 'c' : 'r', 'idle'); if (!p) return;
         p.fire = f; go(p, x, z, true, 'hose', a0 + PI);
       }
@@ -188,6 +196,7 @@ window.WW = window.WW || {};
     if (b.hitT && b.hitT !== hitSeen) { hitSeen = b.hitT; if (now > nextTeam && R() < 0.6) { nextTeam = now + rr(6, 14); team(b.hitX, b.hitZ); } }
     if (phase !== 'peace') fires(now);
     const gp = WW.baseGroundFx && WW.baseGroundFx._ground ? WW.baseGroundFx._ground() : [];
+    W().frame();
     if (WW.baseLifeCars) WW.baseLifeCars.update(sdt, gp, cam, P);
     const vs = vehicles();
     for (const p of P) if (!p.gone) step(p, sdt, now, gp, vs, attack);
@@ -201,7 +210,7 @@ window.WW = window.WW || {};
     for (const g of gp) {
       const C = g[3], c = Math.cos(g[2]), s = Math.sin(g[2]), dx = x - g[0], dz = z - g[1], a = dx * c + dz * s, b = -dx * s + dz * c;
       if (ahead && g[4] && a > -C.len / 2 - 1 && a < C.len / 2 + 4 && Math.abs(b) < C.span / 2 + 1) return [g[0], g[1], c, s, C.len / 2, C.span / 2];
-      if ((Math.abs(a) < C.len / 2 + m && Math.abs(b) < C.len * 0.08 + m) || (Math.abs(a - C.len * 0.05) < C.len * 0.15 + m && Math.abs(b) < C.span / 2 + m)) return [g[0], g[1], c, s, Math.abs(b) < C.len * 0.08 + m ? C.len / 2 : C.len * 0.15, Math.abs(b) < C.len * 0.08 + m ? C.len * 0.08 : C.span / 2, g[4]];
+      if ((Math.abs(a) < C.len / 2 + m && Math.abs(b) < C.len * 0.08 + m) || (Math.abs(a - C.len * 0.05) < C.len * 0.15 + m && Math.abs(b) < C.span / 2 + m)) return [g[0], g[1], c, s, C.len / 2, C.span / 2, g[4]];
     }
     const K = WW.baseModels.VEH_K || 1;
     for (const v of vs) {
@@ -211,31 +220,47 @@ window.WW = window.WW || {};
     return null;
   }
   function step(p, dt, now, gp, vs, attack) {
+    if (p.pend) { const q = p.pend, tail = p.tail; go(p, q[0], q[1], q[2], q[3], q[4], q[5]); if (!p.pend && tail) { if (p.path) p.path.push(...tail); else if (p.pilot) p.gone = true; p.tail = null; } if (p.pend) { clearOf(p, gp, vs); return; } }
     if (p.walker && p.act === 'idle' && now > p.at && S.doors.length) { const d = S.doors[Math.floor(R() * S.doors.length)]; go(p, d.x, d.z, false, 'idle'); p.at = now + rr(4, 14); }
     if (p.path && dt > 0) {
       const t = p.path[p.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz);
       const spd = p.spd * (attack && p.act === 'run' ? 1.15 : 1), mv = Math.min(d, spd * dt);
       const nx = p.x + dx / (d || 1) * mv, nz = p.z + dz / (d || 1) * mv;
-      if (blocker(nx, nz, gp, vs, 0.3, true) && !blocker(p.x, p.z, gp, vs, 0.3, true)) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
+      if (blocker(nx, nz, gp, vs, 0.3, false) || (blocker(nx, nz, gp, vs, 0.3, true) && !blocker(p.x, p.z, gp, vs, 0.3, true))) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
       else { p.x = nx; p.z = nz; p.face = Math.atan2(dz, dx); p.wait = 0; }
       if (d - mv < 0.05) { p.pi++; if (p.pi >= p.path.length) { p.path = null; arrive(p); } }
     }
     // caught in the open under attack: hit the dirt (until the bombs stop)
-    if (attack && !p.path && (p.act === 'idle' || p.act === 'chow' || p.act === 'cards' || p.act === 'laundry' || p.act === 'drill' || p.act === 'instr' || p.act === 'prone')) p.act = 'prone';
+    if (attack && !p.path && (p.act === 'idle' || p.act === 'chow' || p.act === 'cards' || p.act === 'laundry' || p.act === 'drill' || p.act === 'instr' || p.act === 'ready')) { p.act = 'prone'; proneFace(p); }
     else if (!attack && p.act === 'prone' && phase === 'after') { p.act = 'idle'; p.walker = true; p.at = now + rr(1, 5); }
     // a plane or a truck came at him: a step clear (to the nearer side of its box)
-    const bk = blocker(p.x, p.z, gp, vs, 0.15, false);
-    if (bk) {
-      const dx = p.x - bk[0], dz = p.z - bk[1], a = dx * bk[2] + dz * bk[3], b = -dx * bk[3] + dz * bk[2], sb = b >= 0 ? 1 : -1, sa = a >= 0 ? 1 : -1;
-      const out = (bk[5] - Math.abs(b) < bk[4] - Math.abs(a)) ? [a, sb * (bk[5] + 0.32)] : [sa * (bk[4] + 0.32), b];
-      p.x = bk[0] + out[0] * bk[2] - out[1] * bk[3]; p.z = bk[1] + out[0] * bk[3] + out[1] * bk[2];
-    }
+    clearOf(p, gp, vs);
     if (p.pilot && (p.pilot.state !== 'parked' || !p.pilot.spot)) { p.pilot = null; const t = trenchFor(p); if (t) { t.who = p; p.station = t; go(p, t.x, t.z, true, 'trench'); } else p.act = 'prone'; }
+  }
+  // a plane or a truck came at him: the nearest step clear of its whole box (beside it, ahead of it or behind it)
+  // that is clear of everything else too; nowhere to go: he is not drawn this frame (p.hid)
+  function clearOf(p, gp, vs) {
+    p.hid = false;
+    for (let it = 0; it < 3; it++) {
+      const bk = blocker(p.x, p.z, gp, vs, 0.15, false); if (!bk) return;
+      const dx = p.x - bk[0], dz = p.z - bk[1], a = dx * bk[2] + dz * bk[3], b = -dx * bk[3] + dz * bk[2], E = 0.34;
+      let best = null, bd = 1e9;
+      for (const q of [[a, bk[5] + E], [a, -bk[5] - E], [bk[4] + E, b], [-bk[4] - E, b]]) {
+        const x = bk[0] + q[0] * bk[2] - q[1] * bk[3], z = bk[1] + q[0] * bk[3] + q[1] * bk[2], d = (q[0] - a) ** 2 + (q[1] - b) ** 2;
+        if (d < bd && !blocker(x, z, gp, vs, 0.15, false) && W().stand(x, z, 0.12)) { bd = d; best = [x, z]; }
+      }
+      if (!best) { p.hid = true; return; }
+      p.x = best[0]; p.z = best[1];
+    }
+  }
+  // lying down: a heading along which his whole length is clear of the buildings
+  function proneFace(p) {
+    for (let k = 0; k < 8; k++) { const a = p.face + k * PI / 4, c = Math.cos(a), s = Math.sin(a); if (W().stand(p.x + c * 0.3, p.z + s * 0.3, 0.12) && W().stand(p.x - c * 0.3, p.z - s * 0.3, 0.12)) { p.face = a; return; } }
   }
   function arrive(p) {
     p.act = p.next || 'idle'; if (p.goalFace !== undefined) p.face = p.goalFace;
     if (p.act === 'climb' || p.act === 'inside') p.gone = true;     // climbs into the cockpit / goes indoors
-    if (p.act === 'prone') p.face = p.face || 0;
+    if (p.act === 'prone') { p.face = p.face || 0; proneFace(p); }
   }
   // the camp's machine guns: train on the nearest enemy plane in reach (else the threat bearing), elevate at the alarm
   function guns(rdt, now) {
@@ -259,7 +284,7 @@ window.WW = window.WW || {};
   function draw(cam, now, gp, vs) {
     const t = performance.now() / 1000;
     for (const p of P) {
-      if ((p.x - cam.x) ** 2 + (p.z - cam.z) ** 2 > DRAW * DRAW) continue;
+      if (p.hid || (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2 > DRAW * DRAW) continue;
       const moving = !!p.path, run = moving && p.spd > 1.5, sw = moving ? Math.sin(t * (run ? 15 : 9) + p.ph) : 0;
       let y = moving ? Math.abs(sw) * (run ? 0.06 : 0.025) : 0, lean = run ? 0.25 : 0, sy = 1, face = p.face;
       pose.aL = sw * (run ? 1.0 : 0.45); pose.aR = -pose.aL; pose.oL = pose.oR = null;
@@ -277,9 +302,14 @@ window.WW = window.WW || {};
         case 'hose': pose.aL = pose.aR = 1.3; lean = 0.15; face += Math.sin(t * 1.3 + p.ph) * 0.25; break;
         default: face += Math.sin(t * 0.5 + p.ph) * 0.2;
       }
-      if (p.act === 'prone') { const c = Math.cos(face), s = Math.sin(face); tr.x = p.x + c * 0.2; tr.z = p.z + s * 0.2; }
-      if (p.team) { carry(p, face, y, tr); continue; }
-      figure(p.x, p.z, face, p.role, y, lean, sy, tr);
+      let fx = p.x, fz = p.z;
+      if (p.act === 'prone') { fx -= Math.cos(face) * 0.2 * FIG_K / 1.17; fz -= Math.sin(face) * 0.2 * FIG_K / 1.17; }   // feet back: the body lies centred on his spot
+      if (p.team) { // the bearers fore and aft must be clear too (else the team waits unseen behind it)
+        const c = Math.cos(face), sn = Math.sin(face), k = 0.32 * FIG_K / 1.17;
+        if (!blocker(p.x + c * k, p.z + sn * k, gp, vs, 0.12, false) && !blocker(p.x - c * k, p.z - sn * k, gp, vs, 0.12, false)) carry(p, face, y, tr);
+        continue;
+      }
+      figure(fx, fz, face, p.role, y, lean, sy, tr);
     }
   }
   // a stretcher team: two bearers fore and aft of the leader's point, the wounded man lying on the canvas between
