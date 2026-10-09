@@ -11,6 +11,7 @@ window.WW = window.WW || {};
   function rr(a, b) { return a + (b - a) * R(); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
+  var LIST_HIT = 0.07, LIST_MAX = 0.26;  // torpedo list (rad) per hit and at most (ship_fires.js: counter-flooding, capsizing)
   var burning = [];               // ships that carry damage sites (alive, sinking or wreck)
   var v = null;                   // scratch vector
   var load = 1, demand = 0;       // emission scale from last frame's demand (>= 1 when over budget)
@@ -61,8 +62,8 @@ window.WW = window.WW || {};
     var p = worldOf(ship, site), px = p.x, py = p.y, pz = p.z;
     if (fx) {
       if (kind === 'torpedo') {
-        fx.splash(px, pz, 3.5); fx.splash(px + rr(-1, 1), pz + rr(-1, 1), 2.2);
-        fx.explosion(px, 0.8, pz, 1.4);
+        if (fx.torpedoHit) fx.torpedoHit(px, pz, -sn * side, c * side, clamp(L / 16, 0.9, 1.6) * (amount > 300 ? 1.15 : 1)); // underwater flash, column, slick
+        else { fx.splash(px, pz, 3.5); fx.explosion(px, 0.8, pz, 1.4); }
       } else if (kind === 'dc') {
         // the depth charge already threw its water column
       } else if (under) {
@@ -105,7 +106,9 @@ window.WW = window.WW || {};
         low: kind === 'torpedo', fT: R() * 0.1, sT: R() * 0.3, boomT: rr(6, 14), perm: false });
     }
     if (WW.emit && !WW.simOnly) WW.emit('dmgSite', { ship: ship, lx: lx, ly: ly, lz: lz, kind: kind, cal: cal, amount: amount }); // damage_visuals.js
-    if (kind === 'torpedo' && !sub) ship.listRoll = clamp((ship.listRoll || 0) + side * 0.035, -0.12, 0.12);
+    // sim state (also in sim-only mode): the list toward the holed side, ~4 deg a hit (Prince of Wales took 11.5 deg from
+    // one); counter-flooding takes it back as breaches are shored, three unshored hits on one side can capsize her (ship_fires.js)
+    if (kind === 'torpedo' && !sub) ship.listRoll = clamp((ship.listRoll || 0) + side * LIST_HIT, -LIST_MAX, LIST_MAX);
     if (big) disableTurret(ship, lx, lz);
     if (burning.indexOf(ship) < 0) burning.push(ship);
   }

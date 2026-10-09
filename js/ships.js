@@ -316,7 +316,7 @@ window.WW = window.WW || {};
       if (!this.alive) return;
       this.hp -= amount;
       WW.emit('shipHit', { ship: this, amount, x: hx, z: hz, kind, cal }); // sound hook (audio_naval_wire.js)
-      if (WW.shipSpeed) WW.shipSpeed.hit(this, amount, kind, cal);         // flooding, engine room (sim: WW.rand)
+      if (WW.shipSpeed) WW.shipSpeed.hit(this, amount, kind, cal, hx, hz);         // flooding, engine room (sim: WW.rand)
       if (WW.shipFires) WW.shipFires.hit(this, amount, kind, cal, hx, hz); // fires, a loaded flight deck (ship_fires.js)
       if (WW.damage) WW.damage.hit(this, amount, hx, hz, kind, cal);
       if (!this.alive) return; // a magazine or the deck already sent her down (ship_fires.js)

@@ -9,23 +9,30 @@
 //    damageControl^2 a second while 3 or more burn). An empty deck takes the normal damage.
 //  - Damage control (doctrine.damageControl; USN 1.5, IJN 1): above 1.15 flooding is slowly pumped out (some speed
 //    back) and a ship over 60% hp with no fire patches up to REPAIR_MAX of its hp; at 1.15 or below flooding creeps on.
+//  - Torpedo breaches: each torpedo hit opens a breach below the waterline (ship.breach). Each open breach floods
+//    BREACH_DPS x max hp a second (ship.floodHp: hp lost to flooding) until the damage-control party shores it
+//    (SHORE_P x damageControl a second); shoring one counter-floods (the list eases by COUNTER). With the list at
+//    CAPSIZE or more and breaches still open she may roll over (CAPSIZE_P / damageControl a second: Yorktown
+//    listed 26 deg after two hits at Midway; Hiei, Kirishima and Musashi went over). A torpedo in a carrier may
+//    also rupture the avgas tanks and lines (FIRE_P.torpCv, an avgas fire: Lexington at Coral Sea).
 //  - Magazine: a heavy hit (torpedo, bomb, big shell) on a battleship or cruiser detonates a magazine with chance
 //    MAG_P (x MAG_TURRET within MAG_R of a main turret): the ship blows up and sinks ('magazine' event).
 // Ship.takeDamage calls hit(); main.js step calls update(). Public: ship.fireN, ship.avgas, ship.repaired.
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var FIRE_P = { bomb: 0.35, torpedo: 0.1, big: 0.15, med: 0.08 }, FIRE_MAX = 8, FIRE_DPS = 3, AVGAS_K = 2.5;
+  var FIRE_P = { bomb: 0.35, torpedo: 0.1, torpCv: 0.3, big: 0.15, med: 0.08 }, FIRE_MAX = 8, FIRE_DPS = 3, AVGAS_K = 2.5;
   var OUT_P = 0.035, SPREAD_P = 0.012, CHAIN_P = 0.012, CHAIN_DMG = 380;
   var DECK_MIN = 2, DECK_P0 = 0.25, DECK_P1 = 0.08, DECK_BOOM = 25, DECK_BOOM_MAX = 400;
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
+  var BREACH_DPS = 0.003, SHORE_P = 0.03, COUNTER = 0.75, CAPSIZE = 0.19, CAPSIZE_P = 0.05, CAPSIZE_ROLL = 1.7;
   var MAG_P = 0.0004, MAG_TURRET = 3, MAG_R = 3;   // magazine: chance per heavy hit on a BB / CA, x3 within MAG_R of a turret
   var NATIONS = ['USN', 'IJN'], tick = 0, stats = null;
   function per() { return { USN: 0, IJN: 0 }; }
   function reset() {
     tick = 0;
     stats = { started: per(), out: per(), deckHits: per(), deckFires: per(), deckPlanes: per(), deckSafe: per(), chain: per(),
-      fireKills: per(), repaired: per(), magazine: per() };
+      fireKills: per(), repaired: per(), magazine: per(), breaches: per(), shored: per(), floodHp: per(), floodKills: per(), capsized: per() };
     WW.shipFires.stats = stats;
   }
   function doc(n) { return (WW.fleetCmd && WW.fleetCmd.doctrine(n)) || {}; }
@@ -93,8 +100,9 @@ window.WW = window.WW || {};
     if (!battle() || !ship.alive || ship.hp <= 0 || !(amount > 0) || kind === 'deck' || kind === 'dc' || kind === 'magazine' || ship.type === 'submarine') return;
     if (magazine(ship, kind, cal, x, z)) return;
     if (kind === 'bomb' && ship.type === 'carrier') deckHit(ship, x, z);
-    var p = FIRE_P[kind === 'shell' ? cal : kind] || 0;
-    if (p && ship.alive && WW.rand() < p) { ship.fireN = Math.min(FIRE_MAX, (ship.fireN || 0) + 1); stats.started[ship.nation]++; }
+    var cvT = kind === 'torpedo' && ship.type === 'carrier', p = cvT ? FIRE_P.torpCv : FIRE_P[kind === 'shell' ? cal : kind] || 0;
+    if (p && ship.alive && WW.rand() < p) { ship.fireN = Math.min(FIRE_MAX, (ship.fireN || 0) + 1); stats.started[ship.nation]++; if (cvT) ship.avgas = true; }
+    if (kind === 'torpedo' && ship.alive) { ship.breach = (ship.breach || 0) + 1; stats.breaches[ship.nation]++; }
   }
 
   // ---- once a second: burn, spread, put out, flood, repair ----
@@ -119,6 +127,7 @@ window.WW = window.WW || {};
           s.applyLook();
         }
       }
+      if (s.breach > 0 && flooding(s, dc)) continue;
       if (s.flood > 0) {
         if (dc > DC_GOOD) s.flood = Math.max(s.floodMax * FLOOD_FLOOR || 0, s.flood - FLOOD_RATE * (dc - 1) * 3);
         else s.flood = Math.min(0.4, s.flood + FLOOD_RATE);
@@ -130,6 +139,21 @@ window.WW = window.WW || {};
       }
       if (WW.damage && WW.damage.syncFires && s.fireN) WW.damage.syncFires(s, s.fireN, s.avgas);
     }
+  }
+  // open torpedo breaches: flood (hp), shore, counter-flood, capsize. Returns true when she went down.
+  function flooding(s, dc) {
+    var d = BREACH_DPS * s.maxHp * s.breach;
+    s.hp -= d; s.floodHp = (s.floodHp || 0) + d; stats.floodHp[s.nation] += d;
+    if (s.hp <= 0) { s.hp = 0; stats.floodKills[s.nation]++; s.startSinking(); return true; }
+    for (var k = 0, n = s.breach; k < n; k++) if (WW.rand() < SHORE_P * dc) { s.breach--; stats.shored[s.nation]++; s.listRoll = (s.listRoll || 0) * COUNTER; }
+    if (s.breach > 0 && Math.abs(s.listRoll || 0) >= CAPSIZE && WW.rand() < CAPSIZE_P / dc) { // she rolls over on the holed side
+      stats.capsized[s.nation]++; s.capsized = true;
+      s.sinkRoll = Math.sign(s.listRoll) * CAPSIZE_ROLL; s.hp = 0;
+      WW.emit('capsize', { ship: s, x: s.x, z: s.z });
+      s.startSinking(); return true;
+    }
+    s.applyLook();
+    return false;
   }
   function update(dt) {
     if (!battle()) return;

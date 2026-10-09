@@ -270,6 +270,7 @@ window.WW = window.WW || {};
       const rx = ship.x - (e.x + c * e.speed * dt), rz = ship.z - (e.z + s * e.speed * dt);
       const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
       if (along < 0 || along > W || perp > L + along * 0.25) continue;
+      if (!WW.shipAI.h.canComb(ship, e, along)) continue;   // too late to come parallel: hold course
       ship.desiredHeading = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
       return;
     }

@@ -94,7 +94,7 @@ window.WW = window.WW || {};
       float fr = pow(1.0 - clamp(v.y, 0.0, 1.0), 4.0);
       // the horizon colour depends on where we look: peach toward the sun, soft blue away from it
       vec2 az = normalize(-v.xz + 1e-5);
-      float toward = dot(az, normalize(sunDir.xz)) * 0.5 + 0.5;
+      float toward = clamp(dot(az, normalize(sunDir.xz)) * 0.5 + 0.5, 0.0, 1.0); // clamped: pow() of a hair below 0 is NaN (see sky.js)
       vec3 hz = mix(hzAway, hzSun, pow(toward, 5.0));
       col = mix(col, hz, fr * 0.35);
       alpha = mix(alpha, 1.0, fr);
