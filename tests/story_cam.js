@@ -30,6 +30,13 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
     const f = (n, x, s) => [{ type: 'carrier', nation: n, x, z: H / 2 }, { type: 'cruiser', nation: n, x: x + s * 60, z: H / 2 - 50 }, { type: 'destroyer', nation: n, x: x + s * 70, z: H / 2 + 50 }];
     G.composition = [...f('USN', 70, 1), ...f('IJN', W - 70, -1)];
     G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null;
+    // a seeded carrier battle (two carriers a side) for the lead-time run
+    window.__carrierRound = (sd) => {
+      WW.terrain.generate(sd); WW.seedRandom(sd); G.seed = sd; WW.time.now = 0;
+      const g = (n, x, s) => [{ type: 'carrier', nation: n, x, z: H / 2 - 60 }, { type: 'carrier', nation: n, x, z: H / 2 + 60 }, { type: 'battleship', nation: n, x: x + s * 50, z: H / 2 },
+        { type: 'cruiser', nation: n, x: x + s * 60, z: H / 2 - 90 }, { type: 'destroyer', nation: n, x: x + s * 70, z: H / 2 + 90 }];
+      G.composition = [...g('USN', 70, 1), ...g('IJN', W - 70, -1)]; G.startRound({ keepMap: true }); G.composition = null;
+    };
     window.__rec = []; __rec.ids = 0;
     const orig = WW.cam.afterRender;
     WW.cam.afterRender = function () {
@@ -220,15 +227,15 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
 
   // 8. lead time: how long before each bomb / torpedo release the camera was already on that strike
   if (WHICH.includes('lead')) {
-    await p.evaluate(t => { window.__TRACE = t; }, !!process.env.TRACE);
+    await p.evaluate(([t, sd]) => { window.__TRACE = t; window.__SEED = sd; }, [!!process.env.TRACE, SEED]);
     const r = await p.evaluate((secs) => {
-      WW.camStory.stop(); WW.freecam.release(); WW.game.startRound(); __sim.setScale(2); __render = false; if (window.__TRACE) window.__trace = [];
+      WW.camStory.stop(); WW.freecam.release(); __carrierRound(window.__SEED); __sim.setScale(2); __render = false; if (window.__TRACE) window.__trace = [];
       const since = new Map(), drops = [];
       const onW = () => { const s = WW.cam._shot(), st = WW.camStory.story(), set = new Set();
-        const add = o => { if (o && o.wave) set.add(o.wave); };
+        const add = o => { if (o && o.squadron) set.add(o.squadron); }; // the squadron on camera (story leader, shot subject)
         if (s) { add(s.subj); add(s.plane); } if (st && st.begun) add(st.lead); return set; };
       WW.on('weaponDropped', e => { const pl = e && e.plane; if (!pl || !pl.kind || !pl.wave || (e.kind !== 'bomb' && e.kind !== 'torpedo')) return;
-        const t0 = since.get(pl.wave); drops.push({ kind: e.kind, sq: pl.squadron && pl.squadron.short, lead: t0 === undefined ? null : __fakeT / 1000 - t0, sim: WW.time.now }); });
+        const t0 = since.get(pl.squadron); drops.push({ kind: e.kind, sq: pl.squadron && pl.squadron.short, lead: t0 === undefined ? null : __fakeT / 1000 - t0, sim: WW.time.now }); });
       for (let i = 0; i < secs * 30 && WW.game.state === 'battle'; i += 3) {
         __step(3);
         const on = onW();

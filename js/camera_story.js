@@ -38,7 +38,7 @@ window.WW = window.WW || {};
     let b = null;
     if (WW.camFinder) for (const it of WW.camFinder.list()) {
       const p = it.subj;
-      if (!p || !p.pt || !airborne(p) || it.etaReal < 8 || it.etaReal > 45 || (not && not(p))) continue;
+      if (!p || !p.pt || !ok(p) || it.etaReal < 8 || it.etaReal > 45 || (not && not(p))) continue; // (a deck launch is a fine opening)
       if (!b || imm(it) > imm(b)) b = it;
     }
     return b;
@@ -281,10 +281,10 @@ window.WW = window.WW || {};
       if (ph !== S.phase && (ph === 'attack' || ph === 'bandits' || ph === 'after' || S.phase === 'launch')) shot.dur = Math.min(shot.dur, shot.t);
     }
     // an automatic story gives way to a better attack about to happen elsewhere (a CAP circle must not hide a strike)
-    if (!S.user && shot && shot.story && !shot.stage && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 20 && (S.swT = (S.swT || 0) - rdt) <= 0) {
+    if (!S.user && shot && shot.story && !shot.stage && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 8 && (S.swT = (S.swT || 0) - rdt) <= 0) {
       S.swT = 2;
       const mine = WW.camFinder && WW.camFinder.about(S.lead), my = mine && mine.etaReal >= 0 && mine.etaReal < 60 ? imm(mine) : 0;
-      const b = bestImminent(p => p === S.lead || S.group.indexOf(p) >= 0 || (p.wave && p.wave === S.lead.wave));
+      const b = my && now - S.t0 < 20 ? null : bestImminent(p => p === S.lead || S.group.indexOf(p) >= 0 || (p.wave && p.wave === S.lead.wave)); // its own attack coming: 20 s
       if (b && (my ? imm(b) > my + 4 : imm(b) > 12)) { // hysteresis: no flapping between two strikes
         log.push({ switch: (b.subj.squadron ? b.subj.squadron.short : b.subj.kind) + ' ' + b.kind, at: now });
         start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false);
