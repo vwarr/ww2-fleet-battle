@@ -120,9 +120,9 @@ window.WW = window.WW || {};
   // USN duds (balance pass): Mk 15 0.1 -> 0.2 and Mk 14 0.2 -> 0.3, nearer the 1942 record (the Mk 6 exploder both
   // carried; the Mk 14's failures were only fixed in 1943); they had been set low when the USN was the weaker side.
   WW.TORPEDO_NATION = {
-    IJN: { ship: { rangeK: 1.4, speed: 16, dud: 0, sight: 0.7, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7, dmgK: 1.2 },
+    IJN: { ship: { rangeK: 1.4, speed: 8.4, dud: 0, sight: 0.7, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7, dmgK: 1.2 },
            pt: { rangeK: 1, speed: 14, dud: 0, sight: 1, dmgK: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1, dmgK: 1.1 } },
-    USN: { ship: { rangeK: 0.95, speed: 13.5, dud: 0.2, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.3, sight: 1.1, dmgK: 0.8 },
+    USN: { ship: { rangeK: 0.95, speed: 7.9, dud: 0.2, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.3, sight: 1.1, dmgK: 0.8 },
            pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1, dmgK: 1 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
