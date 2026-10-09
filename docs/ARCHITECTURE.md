@@ -177,6 +177,7 @@ node tests/sim_rounds.js [rounds=8] [firstSeed=1]    # per-round report, seeds a
 node tests/determinism.js [seed] [seconds]           # same seed, same round: one game, after another seed, a fresh game
 node tests/determinism.js --cross 1,2,3 300          # full rendered page vs sim-only page vs node runner (--modes browser,node: skip the render)
 node tests/ship_heel.js, node tests/air_probe.js     # heel jitter, one carrier round's air picture
+node tests/sim_profile.js [rounds] [seed] [secs] --prof [--lines] [--root DIR]   # per-round time, CPU profile of the sim (--root: A/B against another checkout)
 node tests/sim_behaviour.js --only night,dusk,weather   # night and weather scenarios and metrics
 TOD=night WX=line node tests/determinism.js --cross 3,4 250   # force the time of day / the weather
 node tests/night_shots.js [seed] [seq,duel,squall]   # dusk / night / squall screenshots (render mode)
@@ -196,6 +197,17 @@ The browser `--pages` default of 6 was measured on an 8-core M1 Pro (6 performan
 - Proof: `node tests/determinism.js --cross 1,2,3 300 --modes browser,node` gives the same trace hash in Chrome (headless shell 1243, Chrome 153) and in the runner, and the behaviour suite's per-round JSON (`JSON=… node tests/sim_behaviour.js` vs `… --browser`) is identical.
 - Limits: sim-only mode only (no renderer, so no screenshots, camera, audio or UI tests); game code must not touch browser APIs outside the stubs while loading or in the sim path (a new one fails loudly; add it to `node_env.js`); `waitForTimeout` is a no-op, since there is no render loop or network to wait for.
 - Speed (M1 Pro, measured with load average 20 to 30 from other jobs, so read the ratios, not the seconds): one game runs a round at the same speed as a Chrome page (seed 1, 300 sim s: about 1.05 s in both once warm), so wall time and CPU time tie at the same parallelism. Behaviour suite (8 seeds, 2 games): browser 28.4 s / 62 CPU s, node 29.5 s / 63 CPU s. Balance gate (100 rounds, 2 games): browser 59.7 s / 128 CPU s, node 59.1 s / 121 CPU s. The gains: about 2.4× less memory (2 games: 373 to 449 MB against 882 to 925 MB; 6 games: about 0.9 GB against 2.4 GB); no Chrome, `CHROMIUM` path, web server or port; a game boots in about 0.3 s; and a run can use more games for the same memory. The old Node (V8 12.9) also ran a round about 1.5× slower than Chrome. A V8 15 Node closes that gap.
+
+### Sim performance
+
+`node tests/sim_profile.js 5 1 300 --prof` profiles warm seeded rounds. The profile is flat: ship movement and navigation (`Ship.move`, `ships_nav.js` clearance / hull gate / collisions) take about a quarter of the time, the ship AI another quarter, aircraft about a quarter, and nothing else is above 3% self time. Things that were cheap to fix (October 2026, about 15% off a round, 37% off map setup, 20% off the one-worker behaviour suite):
+
+- A THREE `Euler` rebuilds its quaternion (6 sin/cos) on every axis assignment: ship and plane poses use one `rotation.set(x, y, z)`, and turret yaw and wing fold are written only when they change (`Object.is`).
+- `Ship.move` skips far ship pairs before the separation maths. It computes the current pose's hull depth and wreck overlap only when a probe needs them. `fixedOverlap` does not allocate a closure per call.
+- `ai_threat.bestHeading` reads the danger channel once per call and uses a cos table.
+- `terrain.generate`: `heightRaw` skips features beyond their reach (`terrain_islands.js reach`, the distance past which a feature's height is certainly -99), so the map builds 2.2× faster.
+
+Performance changes must not change results. Float re-association, `Math.hypot` → `sqrt`, or reordering a sum all change the rounds. Check with `determinism.js --cross 1,2,3 300` (the hashes must not change) and the behaviour suite's per-round JSON. Compare suite JSON from `--workers 1` runs: the per-round records carry some cumulative module counters (`rep` intel stats, `night.w.shelter`, `base.landHits`) that depend on which rounds a worker ran before, so they differ between parallel runs even on the same code.
 
 ## Data tables (core.js)
 
