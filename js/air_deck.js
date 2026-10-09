@@ -23,7 +23,8 @@ window.WW = window.WW || {};
     const a = FOLD * f * f * (3 - 2 * f);
     for (const w of [m.wingL, m.wingR]) {
       const z = w.position.z, side = z > 1e-3 ? 1 : z < -1e-3 ? -1 : (w === m.wingL ? -1 : 1);
-      w.rotation.x = -side * a;
+      const rx = -side * a;
+      if (!Object.is(w.rotation.x, rx)) w.rotation.x = rx; // parked planes stay folded: skip the unchanged quaternion rebuild
     }
   }
   function giveBack(m) { // back to the pool: unfolded, visible, out of any carrier group

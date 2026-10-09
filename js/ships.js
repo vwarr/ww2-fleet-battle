@@ -171,11 +171,17 @@ window.WW = window.WW || {};
 
       // Step, with hard guarantees: the centre never ends on a non-navigable cell and no hull sample
       // (bow, stern, beams) ends on water shallower than shipNav.HARD — full turn, half turn, astern, straight.
-      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, N = WW.shipNav, m = N.EDGE, cur = N.hullMin(this, this.x, this.z, h0);
-      const fo = N.fixedOverlap(this, this.x, this.z, h0) + 1e-6; // never drive deeper into a wreck / sinking hull
+      const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, N = WW.shipNav, m = N.EDGE, x0 = this.x, z0 = this.z;
+      // hull gate: clear of the shallows, or (already clipping) no worse than here. The current pose's hullMin is only
+      // needed when a probe is shallow, so it is computed then, once (pure: the pose is unchanged until a probe succeeds)
+      let cur;
+      const hullOK = (x, z, h) => { const mm = N.hullMin(this, x, z, h); if (mm >= N.HARD) return true; if (cur === undefined) cur = N.hullMin(this, x0, z0, h0); return cur < N.HARD && mm >= cur - 1e-6; };
+      // never drive deeper into a wreck / sinking hull: the overlap here (+1e-6, so > 0) is only needed when a probe overlaps
+      let fo;
+      const deeper = (x, z, h) => { const ov = N.fixedOverlap(this, x, z, h); if (!(ov > 0)) return false; if (fo === undefined) fo = N.fixedOverlap(this, x0, z0, h0) + 1e-6; return ov > fo; };
       const pose = (h, v) => {
         const nx = WW.clamp(this.x + Math.cos(h) * v, m, W - m), nz = WW.clamp(this.z + Math.sin(h) * v, m, H - m);
-        if (!nav(nx, nz, md) || !N.hullOK(this, nx, nz, h, cur) || N.fixedOverlap(this, nx, nz, h) > fo) return false;
+        if (!nav(nx, nz, md) || !hullOK(nx, nz, h) || deeper(nx, nz, h)) return false;
         this.x = nx; this.z = nz; this.heading = wrap(h); return true;
       };
       this.turnRate = 0;
@@ -225,7 +231,7 @@ window.WW = window.WW || {};
         for (let k = 0; k < 13; k++) {
           const a = out + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.35;
           const px = this.x + Math.cos(a) * ve, pz = this.z + Math.sin(a) * ve;
-          if (px > m && px < W - m && pz > m && pz < H - m && WW.terrain.isNavigable(px, pz, md) && N.hullOK(this, px, pz, h0, cur)) { this.x = px; this.z = pz; return; }
+          if (px > m && px < W - m && pz > m && pz < H - m && WW.terrain.isNavigable(px, pz, md) && hullOK(px, pz, h0)) { this.x = px; this.z = pz; return; }
         }
         return; // boxed in: hold position (still on valid terrain)
       }
