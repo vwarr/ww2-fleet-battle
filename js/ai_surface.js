@@ -62,7 +62,8 @@ window.WW = window.WW || {};
   const PRESS_AGE = 60;
   const HOME_K = 0.35;     // ... nor into the enemy's home waters (its carrier band: 0.15-0.35 W from its edge)    // a pressing ship with nothing in sight steams for last-known (non-carrier) contacts this old
   const SUB_HELP = 70, SUB_HELP_R = 250; // a DD answers a known sub this close to an ally, from this far away
-  const RAID_R = 300, RAID_CLOSE = 45;   // AA cover: cruisers (and the carrier group's battleship) close on a raided carrier
+  const RAID_R = 300, RAID_CLOSE = 80;   // AA cover: cruisers (and the carrier group's battleship) close to a point this far out on the raid's side of a raided carrier (outside the ring: was 45, inside it)
+  const GUIDED = { line: 1, asw: 1, torpedo: 1 }; // roles that keep station on the formation guide (fleet_formation.js)
   const TDIR_T = 20;       // s between crossing-the-T orbit side choices (a battleship turns slowly)
   const BAND = 0.1;        // +-10% of the preferred range: hold a pure broadside there
   const RUN_OUT = 14;      // s: a destroyer turns away after its torpedo spread
@@ -93,6 +94,7 @@ window.WW = window.WW || {};
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
     if (aaCover(ship, t, o, B)) { /* steaming to the raided carrier */ }
     else if (ringHold(o, B)) followStation(ship, o, B); // AA ring escort: holds its ring station and shoots from it
+    else if (t && formHold(ship, t, o, B)) followStation(ship, o, B); // target still out of reach: the formation closes together
     else if (!t || (o && H.unreachable(ship, t)) || homeWaters(ship, t, B)) { // nothing to shoot, a carrier that outruns us
       const pur = B && B.posture === 'pursue' && WW.endgameAI;
       const pc = pur ? WW.endgameAI.pursueContact(ship, B) : B && B.posture === 'press' ? pressContact(ship) : null;
@@ -111,12 +113,27 @@ window.WW = window.WW || {};
   // A ring escort (doctrine ringR, fleet_formation.js) keeps its live station on its carrier instead, matching the
   // carrier's course and speed. Under sub threat the formation zigzags: B.zig is added to the course (shared plan).
   function followStation(ship, o, B) {
-    if (o.role === 'escort' && o.ringR > 0 && WW.formation && WW.formation.ringKeep(ship, o, B)) return;
+    if (o.role === 'escort' && (o.ringR > 0 || o.looseR > 0) && WW.formation && WW.formation.ringKeep(ship, o, B)) return;
+    if (o.fg && GUIDED[o.role] && WW.formation && WW.formation.guideKeep(ship, o, B)) return; // battle line, screen, flotilla
     const d = WW.dist(ship.x, ship.z, o.sx, o.sz), risk = B.doctrine.risk[ship.type] || 0.5, zig = B.zig || 0;
     let want;
     if (d > 20) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + zig * WW.clamp(1.6 - d / 100, 0, 1); ship.throttle = WW.clamp(d / 60, 0.55, 1); }
     else { want = B.axis.h + zig; ship.throttle = 0.55; }
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, risk) : want;
+  }
+  // A ship of the battle line, screen or flotilla keeps its station on the formation guide while its target is still
+  // beyond FORM_K x its reach: the formation closes on the enemy together (the guide advances along the axis), and the
+  // ships break off to fight on their own only near gun range. Not while pressing, pursuing or withdrawing, not for a
+  // destroyer's torpedo attack on a capital ship, and not for a sub hunt (that comes first in surfaceRole).
+  const FORM_K = 1.35;
+  function formHold(ship, t, o, B) {
+    if (!o || !o.fg || !GUIDED[o.role] || !B || B.posture === 'press' || B.posture === 'pursue' || B.posture === 'withdraw') return false;
+    if (ship.type === 'destroyer' && CAPITAL[t.type]) return false;
+    const g = ship.stats.guns[0], R = g ? g.range : 60, d = WW.dist(ship.x, ship.z, t.x, t.z);
+    // the deployed battle line (fleet_formation.js battleAim) fights from its stations, broadside on, unless the target
+    // has come inside half the preferred range (then each ship manoeuvres on its own)
+    if (o.role === 'line' && B.battle && d > prefRange(ship, B, t) * 0.5) return true;
+    return d > R * FORM_K;
   }
   // A carrier's AA-ring escort (doctrine ringR) keeps the ring whatever it is shooting at, while its carrier lives
   // and the side is not pressing, pursuing or withdrawing (fleet_formation.js; the escort charge is ai_charge.js).
@@ -153,7 +170,9 @@ window.WW = window.WW || {};
     }
     let e = (d - pref) / pref, h;
     e = Math.sign(e) * Math.max(0, Math.abs(e) - BAND);
-    if (d > pref * 1.3) { h = b + a.orbitDir * 0.3; ship.throttle = 1; }
+    const R = ship.stats.guns[0] ? ship.stats.guns[0].range : pref;
+    if (d > R) { const q = lead(ship, t, Math.max(1, ship.stats.speed)); h = Math.atan2(q.z - ship.z, q.x - ship.x); ship.throttle = 1; } // out of range: steer for the intercept point (cut it off, no tail chase)
+    else if (d > pref * 1.3) { h = b + a.orbitDir * 0.75; ship.throttle = 1; }    // in range, still closing: angled in with the after turrets bearing
     else if (d < pref * 0.6) { h = b + PI + a.orbitDir * 0.4; ship.throttle = 1; }
     else { h = b + a.orbitDir * (PI / 2 - WW.clamp(e, -0.5, 0.5) * 1.4); ship.throttle = Math.abs(e) > 0.15 ? 1 : 0.8; }
     if (o && !(B && (B.posture === 'press' || B.posture === 'pursue') && o.role !== 'escort')) {
@@ -175,7 +194,7 @@ window.WW = window.WW || {};
     let h;
     ship.throttle = 1;
     if (a.runOut > now) h = b + PI + a.orbitDir * 0.5;                       // spread away: open out
-    else if (a.torpReload > 0 || !mate(ship, t, L * 1.8)) { const R = L * 1.35; h = b + a.orbitDir * (d > R ? 0.6 : d < R * 0.85 ? 2.2 : PI / 2); ship.throttle = 0.85; }
+    else if (a.torpReload > 0 || (!mate(ship, t, L * 1.8) && !(WW.endgameAI && WW.endgameAI.isCripple(t)))) { /* a cripple: no need to wait for a second boat */ const R = L * 1.35; h = b + a.orbitDir * (d > R ? 0.6 : d < R * 0.85 ? 2.2 : PI / 2); ship.throttle = 0.85; }
     else if (d > L) h = b + a.orbitDir * 0.45;                               // run in from the flank
     else h = b + a.orbitDir * PI / 2;                                        // beam on: torpedoes() launches
     if (d < minD) h = b + PI + a.orbitDir * 0.6;
@@ -241,10 +260,14 @@ window.WW = window.WW || {};
     const R = B && B.airRaid, cv = R && R.carrier;
     if (!cv || !cv.alive || ship.type === 'destroyer' || (ship.type === 'battleship' && !(o && o.group === 'carrier'))) return false;
     const d = WW.dist(ship.x, ship.z, cv.x, cv.z);
-    if (d > RAID_R || d < RAID_CLOSE) return false;
+    if (d > RAID_R) return false;
     if (t && WW.dist(ship.x, ship.z, t.x, t.z) <= ship.stats.guns[0].range) return false;
-    ship.throttle = 1;
-    const want = Math.atan2(cv.z - ship.z, cv.x - ship.x);
+    // the cover point: RAID_CLOSE out from the carrier on the raid's side (fleet_formation.js threatAxis), outside its ring
+    const th = WW.formation && WW.formation.threatAxis ? WW.formation.threatAxis(B, cv) : Math.atan2(ship.z - cv.z, ship.x - cv.x);
+    const px = cv.x + Math.cos(th) * RAID_CLOSE, pz = cv.z + Math.sin(th) * RAID_CLOSE, dp = WW.dist(ship.x, ship.z, px, pz);
+    if (dp < 20) return false;                                       // there: manoeuvre and shoot on its own
+    ship.throttle = dp > 60 ? 1 : 0.7;
+    const want = Math.atan2(pz - ship.z, px - ship.x);
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
     return true;
   }

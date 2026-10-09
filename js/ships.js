@@ -5,7 +5,7 @@ window.WW = window.WW || {};
   const TAU = Math.PI * 2;
   let nextId = 1;
   const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
-  const SPACE = { carrier: 70, battleship: 35, cruiser: 35, destroyer: 20, pt: 12, submarine: 12 }; // personal space
+  const SPACE = { carrier: 70, battleship: 45, cruiser: 42, destroyer: 30, pt: 12, submarine: 12 }; // personal space (centre to centre; BB / CA ~1.7 L, DD ~1.15 L: a screen keeps 2-3 L)
   // the largest personal-space radius (SPACE or the default 20): with the hull term, an upper bound of the separation
   // radius in Ship.move, for an early skip of far pairs (the other hull is taken as up to 100 units long: the longest
   // ship is Lexington at 28, an island airfield 40)
@@ -115,6 +115,9 @@ window.WW = window.WW || {};
         if (d2 < r * r && d2 > 1e-4) {
           const d = Math.sqrt(d2), k = (r - d) / r, w = (k + k * k * 4) * (o.nation === this.nation ? 1.5 : 0.6);
           dx += (ex / d) * w; dz += (ez / d) * w;
+        }
+        if (o.alive && o.type !== 'pt' && this.type !== 'pt') { // closing on a collision course: turn away early (a ring escort and its carrier: inside the hull term only)
+          const c = WW.shipNav.cpaPush(this, o, this.ringCv === o || o.ringCv === this ? hull * 1.25 : r); if (c) { dx += c[0]; dz += c[1]; }
         }
       }
       // Soft edge avoidance: an inward push that grows fast inside EDGE_BAND, so ships turn off the map
