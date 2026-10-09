@@ -36,7 +36,7 @@ const SHOTS = [
     const en = WW.enemyOf(B.nation), rw = B.runways[0];
     for (const d of B.decor.filter(d => d.kind === 'hut').slice(0, 2)) WW.islandBase.impact(en, d.x, d.z, 200, 'bomb');
     for (const k of [-14, 9]) WW.islandBase.impact(en, rw.x + rw.c * k, rw.z + rw.s * k, 180, 'bomb');
-    __until(() => WW.baseLife.phase === 'after', 200); __ff(20); return __camp('huts', 26, 12, 8); }],
+    __until(() => WW.baseLife.phase === 'after', 400); __ff(20); return __camp('huts', 26, 12, 8); }],
   ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4); return __camp('huts', 40, 14, 10); }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {

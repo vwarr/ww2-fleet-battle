@@ -172,7 +172,7 @@ window.WW = window.WW || {};
     for (const p of WW.world.planes) {
       if (!p.alive || p.nation === base.nation) continue;
       const d2 = (p.x - base.x) ** 2 + (p.z - base.z) ** 2;
-      if (d2 < 170 * 170) around = true;
+      if (d2 < 120 * 120 && p.y < 90) around = true;   // still over the island: no all-clear yet
       if (d2 < 95 * 95 && p.y < 70) near = true;
     }
     const hit = now - (base.hitT || -1e9) < 8;
