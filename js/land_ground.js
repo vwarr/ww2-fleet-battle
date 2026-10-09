@@ -30,10 +30,13 @@ window.WW = window.WW || {};
   function gear(p) { return (p.variant && VAR()[p.variant].gear) || WW.air._pool.deckY; }
 
   // ---- the air group: one carrier air group's worth by default (TUNE.group x TUNE.air / 0.6) ----
-  function carrierGroup() { var P = WW.SHIP_TYPES.carrier.planes || {}, n = 0; for (var k in P) n += P[k]; return n || 14; }
+  function carrierGroup(nation) { // the side's carrier air group at the air boss's TUNE.wing (air_boss.js groupSize), else the ship stats
+    if (WW.airBoss && WW.airBoss.groupSize) return WW.airBoss.groupSize(nation);
+    var P = WW.SHIP_TYPES.carrier.planes || {}, n = 0; for (var k in P) n += P[k]; return n || 14;
+  }
   function plan(b) {
     var T = WW.islandBase.TUNE, mix = MIX[b.nation] || MIX.USN, keys = Object.keys(mix);
-    var total = Math.max(keys.length, Math.round(carrierGroup() * (T.group || 1) * (T.air === undefined ? 0.6 : T.air) / 0.6));
+    var total = Math.max(keys.length, Math.round(carrierGroup(b.nation) * (T.group || 1) * (T.air === undefined ? 0.6 : T.air) / 0.6));
     var counts = {}, rem = [], used = 0;
     keys.forEach(function (k) { var x = total * mix[k], n = Math.max(1, Math.floor(x)); counts[k] = n; used += n; rem.push({ k: k, f: x - Math.floor(x) }); });
     rem.sort(function (a, c) { return c.f - a.f || (a.k < c.k ? -1 : 1); });

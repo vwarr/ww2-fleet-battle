@@ -10,7 +10,7 @@
 // Names come from the slot, never from WW.rand, so they cannot change the sim's random sequence.
 window.WW = window.WW || {};
 (function () {
-  const CV = {
+  const CV = WW.CV_ROSTER || { // the slot roster lives in ship_classes.js (a carrier's class follows its name)
     USN: [['Enterprise', 6], ['Yorktown', 5], ['Hornet', 8], ['Saratoga', 3], ['Lexington', 2], ['Wasp', 7]],
     IJN: [['Akagi'], ['Kaga'], ['Soryu'], ['Hiryu'], ['Shokaku'], ['Zuikaku']]
   };

@@ -13,23 +13,30 @@ window.WW = window.WW || {};
   const CV_AGE = 120;          // a carrier contact this fresh draws the strike (Midway: the carriers first)
   const LOADS = 2;             // deck loads per strike (toy group): the spotted load, then one more up the elevators while it forms up
   const ESCORT_FRAC = { IJN: 0.3, USN: 0.15 }; // escort floor per bomber (doctrine escortFrac overrides)
-  const LOADS_FULL = 4;        // with the full air group (TUNE.wing 1): a 1942 deck-load strike of ~25 per carrier
+  const STRIKE_N = [12, 24];   // planes per strike, toy group / full group (TUNE.wing 1: a 1942 deck-load strike of ~25), in as many deck loads as it takes
   // Air groups, 1942 (doctrine, not rolled): Yorktown class 27 F4F / 37 SBD / 15 TBD; Shokaku 18 A6M / 27 D3A / 27 B5N.
   // TUNE.wing blends from the toy group (core.js ship stats, 6 / 4 / 4) to the full group: 0 toy, 1 full.
   const FULL = { USN: { fighter: 27, dive: 37, torpedo: 15 }, IJN: { fighter: 18, dive: 27, torpedo: 27 } };
-  const TUNE = { wing: 0 };
+  const TUNE = { wing: 1 };     // full 1942 air groups by default (airperf instancing renders them); ?wing=0 for the toy group
   { const m = typeof location !== 'undefined' && /[?&]wing=([\d.]+)/.exec(location.search); if (m) TUNE.wing = +m[1]; } // ?wing=K (tests: env Q=wing=K)
   const BS = { strikes: 0, waits: 0, small: 0, cvFirst: 0, cvRetarget: 0, capBatches: 0, capHome: 0, diverts: 0 };
   const O = () => WW.airOps;
 
   function group(ship, base) {   // ships.js: the hangar a new carrier starts with
     const F = FULL[ship.nation], k = TUNE.wing;
-    if (base) ship.wingF = base.fighter;
+    if (base) { ship.wingF = base.fighter; ship.wingN = base.fighter + base.dive + base.torpedo; }
     if (!F || !base || ship.type !== 'carrier' || !(k > 0)) return base;
     const g = {};
     for (const kind of ['fighter', 'dive', 'torpedo']) g[kind] = Math.round(base[kind] + (F[kind] - base[kind]) * Math.min(1, k));
     ship.wingF = g.fighter;   // the CAP scales with it (ai_carrier.js capWanted)
+    ship.wingN = g.fighter + g.dive + g.torpedo;   // deck room for a divert (land_air.js deckRoom)
     return g;
+  }
+  // Planes in one carrier air group of this nation at the current TUNE.wing (land_ground.js sizes the island base by it).
+  function groupSize(nation) {
+    const B = (WW.SHIP_TYPES.carrier && WW.SHIP_TYPES.carrier.planes) || {}, F = FULL[nation] || FULL.USN, k = Math.min(1, Math.max(0, TUNE.wing));
+    let n = 0; for (const kind of ['fighter', 'dive', 'torpedo']) n += Math.round((B[kind] || 0) + (F[kind] - (B[kind] || 0)) * k);
+    return n;
   }
 
   // ---------- the reserve strike (Nagumo's dilemma) ----------
@@ -167,7 +174,7 @@ window.WW = window.WW || {};
     }
     if (nd + nt <= 0) { a.strikeT = RETRY; return; }
     // the deck spot (air_deck.js) and the next load spotted from the hangar while the first forms up, escorts first
-    const cap = WW.airDeck && WW.airDeck.spotCap ? WW.airDeck.spotCap(cv) * Math.round(LOADS + (LOADS_FULL - LOADS) * Math.min(1, TUNE.wing)) : 99;
+    const cap = WW.airDeck && WW.airDeck.spotCap ? Math.max(WW.airDeck.spotCap(cv) * LOADS, Math.round(STRIKE_N[0] + (STRIKE_N[1] - STRIKE_N[0]) * Math.min(1, TUNE.wing))) : 99;
     const cs = O().capState(cv), keep = Math.max(0, O().capWanted(cv) - cs.on - cs.coming) + elem(cv); // a relief element stays back
     let esc = Math.min(Math.max(0, hg.fighter - keep), Math.max(2, Math.round(cap * 0.3)), 12);
     const nb = Math.min(nd + nt, Math.max(MIN_B, cap - esc));
@@ -252,6 +259,6 @@ window.WW = window.WW || {};
 
   function reset() { RS.held = RS.launches = RS.rearmed = 0; RS.targets = {}; PS.held = PS.released = 0; PS.why = {}; for (const k in BS) BS[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airBoss = { plan, departed, formTarget, group, strikeBusy, cvContact, TUNE, FULL, stats: BS };
+  WW.airBoss = { plan, departed, formTarget, group, groupSize, strikeBusy, cvContact, TUNE, FULL, stats: BS };
   if (WW.airOps) Object.assign(WW.airOps, { plan, reserve: RS, pursuit: PS, beaten });
 })();

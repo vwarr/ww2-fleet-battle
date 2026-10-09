@@ -118,10 +118,11 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 
 ## World coordinates
 
-- 1 unit is approximately 2 m. The map is `WW.cfg.MAP_W` (x, 0 to 960) by `WW.cfg.MAP_H` (z, 0 to 600). Sea level is y = 0. Up is +y.
+- Ship scale: 1 unit = 9.6 m (`WW.cfg.U_PER_M` = 0.104), from `WW.cfg.L` = 26 u, the carrier hull (~250 m). Ships are at true relative size (ship_classes.js). Write ship-size-related distances in hull lengths L (`2.7 * WW.cfg.L`, or a ship's own `stats.length`). Planes are drawn at `WW.cfg.PLANE_SCALE` (default 1.7, ~4x true; true 0.41; `?planeScale=x`).
+- The map is `WW.cfg.MAP_W` (x, 0 to 960) by `WW.cfg.MAP_H` (z, 0 to 600). Sea level is y = 0. Up is +y.
 - A heading `h` is in radians. It goes from +x toward +z. The forward vector is `(cos h, 0, sin h)`.
 - Each model (ship and plane) has its bow or nose on local **+x**. To show heading `h`, set `group.rotation.y = -h`.
-- Hull lengths: carrier 26, battleship 24, cruiser 18, destroyer 12, submarine 10, PT boat 5 units.
+- Hull lengths come from the ship's 1942 class (ship_classes.js, `WW.SHIP_CLASSES`): carriers 23.6 (Soryu) to 28.1 (Lexington), battleships 21.5 to 23.4, cruisers 17.2 (Atlanta) to 21.2 (Takao), destroyers 11.0 to 12.3, submarines 9.9 / 11.3, PT boats 2.1 / 2.5 units. The shell / bomb hit box never goes under 5 units long (combat.js HIT_MIN_L, the old PT size: balance left to the end pass).
 - The USN fleet starts on the west side (x 15 to 115). The IJN fleet starts on the east side (x `MAP_W` − 115 to `MAP_W` − 15, so 845 to 945). The formations keep their size; approximately 670 units of open sea lie between the two screens at the start. Light forces (destroyers, PT boats) meet after approximately 35 s, the battleships and cruisers after approximately 90 s.
 
 ## Time
@@ -299,10 +300,20 @@ WW.nightOps = { seeR(s, o, size, glow), visK(s, o), radarR(s, o), airK(o), lit(o
 - Visual (render mode only, `Math.random`): `sky.update` calls `WW.skyTime.update`, which keys every colour on the sun's elevation (70° high noon: bright, clear, white light; 22° the golden afternoon, the original look; 10° golden; 3° the sun on the horizon: a strong orange / pink sky, a big glowing HDR disc, a gold-to-orange glitter path, clouds lit warm from below; −1° afterglow; −5° blue hour; −10° night), with a cooler dawn palette (pink, peach, lavender) before noon (`morning()`), sets the sun's place in the dome (its azimuth moves through the day), the disc size and halo, the light direction (the sun, kept 6° up so the shadows run long at sunset, then the moon after it sets; the shadow basis follows), the stars and moon in the dome, the water tint, horizon colours, glitter direction and the moon's path, the rain on the water, and post.js `setNight` (lower bloom threshold, stronger bloom). Under rain near the camera it greys and closes in the fog and dims the lights. It then calls `WW.nightFx.update` and `WW.weatherFx.update`.
 - `night_fx.js` keeps a fixed pool of 5 PointLights (never added or removed: the light count is compiled into the materials; idle ones have intensity 0), handed each frame to the best sources near the camera (star shells, searchlight spots, burning ships, big-gun flashes, secondary explosions). It draws pooled star-shell flares, searchlight cones and light pools on the sea, brightens the tracers, adds camera candidates (`WW.camHooks`: at sunrise / sunset a big ship steaming into the sun, chased in silhouette, 8.8; at night a lit target 9.5, a searchlight ship 8.5, a burning ship 7.5), calls `WW.camAction.slowmo()` when a star shell bursts over the director's subject, and wraps `WW.camStory` so air stories end and do not start after dusk.
 
+### ship_classes.js (1942 classes, true size)
+
+`WW.SHIP_CLASSES[key]`: `{ key, type, nation, name, lenM, beamM, len, beam, navBeam, deckLen, deckW, tons, names[], hull{top, bowF, sternW, sheer}, mod{hp, speed, turn, aa}, guns[] }`. USN: yorktown, lexington, northcarolina, southdakota, northampton, neworleans, atlanta, fletcher, benson, gato, elco. IJN: akagi, kaga, soryu, hiryu, shokaku, kongo, nagato, takao, mogami, kagero, fubuki, iboat, gyoraitei.
+
+- `WW.pickClass(type, nation, key, slot)`: a forced key (tests), a carrier's class from its slot name (`WW.CV_ROSTER`, shared with air_squadrons.js: Kaga looks like Kaga), else weighted `WW.rand`. `ship.cls`, `ship.mk` (the model key) and `ship.name` are set in the Ship constructor.
+- `WW.classStats(base, cls)`: the type's per-nation stats shaded by the class (hp, AA; speed capped ±3 %, turn ±5 %); gun mounts per class keep the type's fire rate.
+- Carrier flight decks are `DECK_K` x their real width (1.8 at PLANE_SCALE 1.7, 1 at true scale) so parked planes fit; `navBeam` (the collision / nav footprint) is the deck width. `DECK_K` follows `PLANE_SCALE`, so changing the plane scale changes carrier footprints in the sim, not only rendering.
+- Carrier DECK API (models_cv.js): `model.deck` (Object3D at the deck surface) and `model.deckDims = { len, w, halfW, x0, top, islandSide, island: [x0, x1], stern, bow, aftFront, barrier, launchX, tdX, elevX, elevators[], lane }` in deck-local x (bow +x). air_deck.js reads its stations from it.
+- Class builders: models_cv.js (carriers), models_usn.js, models_ijn.js on the shared kit in models.js (`WW.models.CLASS[key]`). Screenshots: `node tests/class_shots.js [outdir] [--only lineup,close,cvside,planes,formation]`; probe: `node tests/class_probe.js`.
+
 ### models.js, models_detail.js, models_planes.js
 
 ```js
-WW.models.buildShip(type, nation) -> {
+WW.models.buildShip(type, nation, classKey) -> {
   group,                         // THREE.Group, bow on +x, waterline at y = 0
   turrets: [ { obj, barrel, cal } ],  // obj turns around y; aft turrets rest at rotation.y = PI
   stacks: [ Object3D ],          // funnel tops, for smoke

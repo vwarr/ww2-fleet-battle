@@ -14,12 +14,17 @@ window.WW = window.WW || {};
   var SCALE = 1.1;                       // figure height ~0.48 units (see report: readable at close shots)
   var MAX = 400, FAR = 115;              // instance capacity, LOD distance from the camera
   var COUNT = { carrier: 13, battleship: 10, cruiser: 7, destroyer: 5, pt: 3, submarine: 3 };
-  // hull loft parameters, copied from models.js newShip(): [L, B, top, bowLen, sternW, sheer]
-  var HP = { carrier: [26, 3.7, 1.0, 4.8, 0.85, 0.35], battleship: [24, 4.0, 1.0, 5.5, 0.72, 0.55], cruiser: [18, 2.8, 0.9, 4.2, 0.7, 0.45],
+  // Per-class geometry: a ship's model key k (ship.mk, the class key; a type name means its first class). The
+  // stations below were laid out on these reference hulls [L, B, top, bowLen, sternW, sheer] (the pre-class models);
+  // each class maps them onto its own hull: x by length, z by beam (carriers: by flight-deck width, island side).
+  var REF = { carrier: [26, 3.7, 1.0, 4.8, 0.85, 0.35], battleship: [24, 4.0, 1.0, 5.5, 0.72, 0.55], cruiser: [18, 2.8, 0.9, 4.2, 0.7, 0.45],
     destroyer: [12, 1.8, 0.7, 3.2, 0.7, 0.4], submarine: [10, 1.25, 0.4, 3.4, 0.25, 0.15], pt: [5, 1.4, 0.55, 1.7, 0.85, 0.2] };
   // Stations (priority order; invalid ones are dropped per nation, the first COUNT valid are used, the rest are spares
   // for rescued sailors): [x, z, deckY ('d' = main deck from the hull loft), face, role, turret index]
   // face: 'o' outboard, 'i' inboard, 'f' bow, 'a' stern, or radians. role: c crew, o officer, g gunner, y/b/r/n/w deck jerseys.
+  function hp(k) { return WW.models.hull(k); }                              // the class's hull loft (models.js)
+  function cl(k) { return WW.SHIP_CLASSES[k] || WW.models.classOf(k, 'USN'); }
+  function tp(k) { var c = cl(k); return c ? c.type : k; }
   var ST = {
     battleship: [[10.2, 0.35, 'd', 'f', 'c'], [1.5, 1.75, 'd', 'o', 'c'], [-3.0, -1.78, 'd', 'o', 'c'], [2.4, 1.18, 1.8, 'o', 'o'],
       [-1.73, 1.62, 1.16, 'o', 'g'], [0.57, -1.62, 1.16, 'o', 'g'], [1.5, -1.75, 'd', 'o', 'c'], [-3.0, 1.78, 'd', 'o', 'c'],
@@ -152,7 +157,7 @@ window.WW = window.WW || {};
   // top-surface height map (0.25-unit cells, ship-local) for scorch decals (damage_visuals.js): the median of the
   // highest surface over a 3 x 3 sample, so thin masts and rails do not count
   function topMap(grid, type) {
-    var a = HP[type], S = 0.25, nx = Math.ceil(a[0] / S) + 2, nz = Math.ceil((type === 'carrier' ? 6 : a[1]) / S) + 2;
+    var a = hp(type), c = cl(type), S = 0.25, nx = Math.ceil(a[0] / S) + 2, nz = Math.ceil((c && c.deckW ? c.deckW + 1.2 : a[1]) / S) + 2;
     var x0 = -a[0] / 2 - S, z0 = -(nz - 1) * S / 2, y = new Float32Array(nx * nz), smp = [];
     for (var i = 0; i < nx; i++) for (var k = 0; k < nz; k++) {
       smp.length = 0;
@@ -171,8 +176,8 @@ window.WW = window.WW || {};
     if (i < 0 || k < 0 || i >= c.nx || k >= c.nz) return null;
     var y = c.y[i * c.nz + k]; return y > -1e8 ? y : null;
   }
-  function deckY(type, x) { var a = HP[type]; return WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1)).yt; }
-  function halfW(type, x) { var a = HP[type]; return WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1)).w; }
+  function deckY(type, x) { var a = hp(type); return WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1)).yt; }
+  function halfW(type, x) { var a = hp(type); return WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1)).w; }
   function lane(list, x, z, y, range) {   // contiguous walkable strip along x at this z (same deck level)
     var STEP = 0.25, n = Math.round(range / STEP), L = [], Rr = [], prev = y, i, yy;
     for (i = 1; i <= n; i++) { yy = surf(list, x - i * STEP, z, prev, true); if (yy == null || Math.abs(yy - prev) > 0.07) break; L.push(yy); prev = yy; }
@@ -183,23 +188,31 @@ window.WW = window.WW || {};
   }
   function laneY(ln, x) { var f = (x - ln.x0) / ln.step, i = Math.max(0, Math.min(ln.ys.length - 2, Math.floor(f))), t = WW.clamp(f - i, 0, 1); return ln.ys[i] + (ln.ys[i + 1] - ln.ys[i]) * t; }
   function faceOf(f, z) { return typeof f === 'number' ? f : f === 'f' ? 0 : f === 'a' ? PI : (f === 'o') === (z >= 0) ? -PI / 2 : PI / 2; }
-  function stations(type, nation) {
-    var key = type + '|' + nation;
+  function stations(k, nation) {
+    var c = cl(k), type = c ? c.type : k, key = (c ? c.key : k) + '|' + nation;
+    k = c ? c.key : k;
     if (cache[key]) return cache[key];
     var out = [], m = null, tb = performance.now();
+    if (!_v) _v = new THREE.Vector3();
     try {
-      m = WW.models.buildShip(type, nation);
+      m = WW.models.buildShip(type, nation, k);
       perf.model += performance.now() - tb;
       m.group.updateMatrixWorld(true);
       var lm = WW.models._lineMat(), list = [];
       m.group.traverse(function (o) { if (o.isMesh && o.material !== lm && !(Array.isArray(o.material) && o.material[0] === lm)) list.push(o); });
       list = triGrid(list);
-      out.top = topMap(list, type);
-      var side = type === 'carrier' && nation === 'IJN' ? -1 : 1;
+      out.top = topMap(list, k);
+      var dd = m.deckDims, side = dd ? dd.islandSide : 1, r = REF[type], h = m.hull;
+      var kx = h[0] / r[0], kz = dd ? dd.halfW / 2.5 : h[1] / r[1];   // reference hull -> this class
       (ST[type] || []).forEach(function (s) {
-        var tu = s[5] != null ? m.turrets[s[5]] : null, x = s[0], z = s[1] * side, gx = x, gz = z;
+        var tu = s[5] != null ? m.turrets[s[5]] : null, x = s[0] * kx, z = s[1] * side * kz, gx = x, gz = z;
         if (tu) { tu.obj.updateMatrix(); _v.set(x, 0, z).applyMatrix4(tu.obj.matrix); gx = _v.x; gz = _v.z; }
-        var ys = s[2] === 'd' ? deckY(type, gx) : s[2], y = surf(list, gx, gz, ys);
+        var ys = s[2] === 'd' ? deckY(k, gx) : s[2] + (dd ? dd.top - 1.99 : 0), y = surf(list, gx, gz, ys);
+        if (y == null && s[2] !== 'd') {   // a raised station on another class: the highest floor up to ~ys there
+          hits(list, gx, gz, _h); var t = -1e9;
+          for (var j = 0; j < _h.length; j += 2) if (_h[j + 1] > 0 && _h[j] <= ys + 0.6 && _h[j] > t) t = _h[j];
+          if (t > deckY(k, gx) - 0.1) y = surf(list, gx, gz, t);
+        }
         if (y == null) return;
         var st = { x: x, z: z, y: tu ? y - tu.obj.position.y : y, f: faceOf(s[3], z), role: s[4], t: tu ? s[5] : null, lane: null };
         if (!tu && type !== 'submarine') st.lane = lane(list, x, z, y, type === 'pt' ? 0.6 : 4.5);
@@ -217,7 +230,7 @@ window.WW = window.WW || {};
       tx: st.x, sc: 0.93 + R() * 0.12, tur: st.t != null ? ship.model.turrets[st.t].obj : null, col: cols(ship.nation, st.role), job: null };
   }
   function makeCrew(ship) {
-    var all = stations(ship.type, ship.nation), n = COUNT[ship.type] || 0, rec = { ship: ship, sailors: [], spare: [], fireT: R() * 0.5, sink: false, job: null };
+    var all = stations(ship.mk || ship.type, ship.nation), n = COUNT[ship.type] || 0, rec = { ship: ship, sailors: [], spare: [], fireT: R() * 0.5, sink: false, job: null };
     all.forEach(function (st, i) { if (i < n) rec.sailors.push(sailor(ship, st)); else rec.spare.push(st); });
     ship._crew = rec; recs.push(rec);
     return rec;
@@ -254,7 +267,8 @@ window.WW = window.WW || {};
       if (s.tur) { s.tur.updateMatrix(); _v.set(s.x, s.y, s.z).applyMatrix4(s.tur.matrix); s.x = _v.x; s.y = _v.y; s.z = _v.z; s.f += s.tur.rotation.y; s.tur = null; }
       s.mode = 'flee'; s.wait = R() * 2.2; s.below = R() < 0.25; s.job = null; s.jk = null;
       s.side = Math.abs(s.z) > 0.05 ? Math.sign(s.z) : (R() < 0.5 ? -1 : 1);
-      s.ez = s.side * (rec.ship.type === 'carrier' && s.y > 1.9 ? 2.6 : halfW(rec.ship.type, s.x) + 0.1);
+      var dd = rec.ship.model.deckDims, mk = rec.ship.mk || rec.ship.type;
+      s.ez = s.side * (dd && s.y > dd.top - 0.1 ? dd.halfW + 0.1 : halfW(mk, s.x) + 0.1);
     });
   }
 
@@ -376,8 +390,8 @@ window.WW = window.WW || {};
     init: function () {
       if (meshes || !WW.scene || !WW.models) return;
       build();
-      // ray-cast every type + nation now (one-time boot cost) so no battle frame hitches on a first sighting
-      Object.keys(ST).forEach(function (t) { stations(t, 'USN'); stations(t, 'IJN'); });
+      // ray-cast every class now (one-time boot cost) so no battle frame hitches on a first sighting
+      Object.keys(WW.SHIP_CLASSES).forEach(function (k) { stations(k, WW.SHIP_CLASSES[k].nation); });
       WW.on('roundStart', clear); WW.on('setupStart', clear);
     },
     update: function (rdt) { try { update(rdt); } catch (e) { if (!WW.crew._err) { WW.crew._err = e; console.error('crew', e); } } },
@@ -393,8 +407,8 @@ window.WW = window.WW || {};
       var n = 0; while (n < k && rec.spare.length) { rec.sailors.push(sailor(ship, rec.spare.shift())); n++; }
       return n;
     },
-    stations: stations, halfW: halfW, deckY: deckY, HP: HP, recs: recs,
-    top: function (type, nation, x, z) { var c = stations(type, nation).top; return c ? topAt(c, x, z) : null; },
+    stations: stations, halfW: halfW, deckY: deckY, hp: hp, recs: recs,      // k: a model key (ship.mk) or a type
+    top: function (k, nation, x, z) { var c = stations(k, nation).top; return c ? topAt(c, x, z) : null; },
     stats: function () {
       var sl = 0; recs.forEach(function (r) { sl += r.sailors.filter(function (s) { return s.mode !== 'gone'; }).length; });
       return { ships: recs.length, sailors: sl, visible: perf.vis, ms: +perf.ms.toFixed(3), maxMs: +perf.max.toFixed(3), buildMs: Math.round(perf.build), modelMs: Math.round(perf.model) };

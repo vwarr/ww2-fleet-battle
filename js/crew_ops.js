@@ -34,7 +34,7 @@ window.WW = window.WW || {};
   }
   // the hull side's half width at local (x, y) (models.js hull loft)
   function hullZ(type, x, y) {
-    var a = WW.crew.HP[type], h = WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1));
+    var a = WW.crew.hp(type), h = WW.models._hullAt(a[0], a[1], a[2], a[3], a[4], a[5], WW.clamp((x + a[0] / 2) / a[0], 0, 1));
     if (y >= h.yt) return h.w * 1.06;
     var t = WW.clamp((h.yt - y) / (h.yt - h.yb), 0, 1), sn = t * t, c = Math.sqrt(1 - sn * sn);
     return h.w * Math.pow(c, 0.35) * (1 + 0.06 * (1 - sn));
