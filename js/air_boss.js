@@ -168,6 +168,7 @@ window.WW = window.WW || {};
     let hold = reserveHold(cv, tgt);
     const ph = SB ? pursuitHold(cv, SB) : null;    // the larger of the two reserves stays aboard
     if (ph) hold = { dive: Math.min(hg.dive, Math.max(hold.dive, ph.dive)), torpedo: Math.min(hg.torpedo, Math.max(hold.torpedo, ph.torpedo)) };
+    if (WW.airAlert) { const al = WW.airAlert.hold(cv); hold = { dive: Math.min(hg.dive, hold.dive + al.dive), torpedo: Math.min(hg.torpedo, hold.torpedo + al.torpedo) }; }   // the ready deck alert (air_alert.js)
     let nd = Math.max(0, hg.dive - hold.dive), nt = Math.max(0, hg.torpedo - hold.torpedo);
     if (nd + nt < MIN_B && (owned(cv, 'dive') + owned(cv, 'torpedo') > 0 || hold.dive + hold.torpedo > 0) && !(SB && SB.timeLeft < LATE_T)) {
       a.strikeT = RETRY; BS.waits++; return;        // too few for a strike: wait for the rest to come back and rearm
@@ -249,10 +250,11 @@ window.WW = window.WW || {};
     }
     const q = a.queue.splice(i, 1)[0];
     let tgt = q.target;
+    if (q.alert && (!tgt || !tgt.alive || tgt.submerged)) return;   // the alert's harasser is gone: the plane stays aboard
     if (tgt && (!tgt.alive || tgt.submerged)) tgt = O().pickTarget(cv);
     if (q.target && !tgt) return;
     const p = WW.air.launch(cv, q.kind, tgt);
-    if (p) { a.launchT = 0.8; if (q.search && WW.search) WW.search.begin(p); }
+    if (p) { a.launchT = 0.8; if (q.search && WW.search) WW.search.begin(p); if (q.alert && WW.airAlert) WW.airAlert.launched(p, q); }
   }
   // Own carrier under air attack: escorts in range with the fuel to get back recall to defend it.
   function recall(cv) {
