@@ -79,7 +79,11 @@ During a battle, push `H` and click **Edit fleet** to go back to your fleets.
 | `G` | Choose whose plot (it also opens the plot table): OMNISCIENT (every ship at its true position), USN PLOT or IJN PLOT. A side's plot shows only what that side knows: enemy tokens at their last-known positions in the type that was reported (a scout can make a mistake), pencil circles that grow as a contact gets old, dashed course arrows, and pinned paper notes for the sighting reports ("2 CV, 040, 0714"). |
 | `X` | On the plot table, show or hide the danger layer: where the chosen side thinks the enemy guns and torpedoes reach (red) and where the enemy AA is (blue). |
 | `L` | Show or hide the war diary: a typed log of the battle with clock times (sightings, strikes, hits, sinkings, the admirals' orders). It shows at the side of the plot table; in the director view it is off until you push `L`. Important entries also show as a short caption. |
-| `F` | Follow the action: start a story now. The camera picks a squadron or a fighter division and follows its mission like a film: the launch, the form-up, the flight out, the attack and the flight home. Push `F` again to stop. The director also tells a story by itself every few minutes. |
+| `F` | Follow the action. The camera goes at once to the attack that is about to happen (a strike closing on its target, dive bombers about to push over, a torpedo run, torpedoes running at a ship) and follows it like a film. If no attack is coming, it shows the best action now. A small label at the bottom left says what you follow, for example "VT-6 strike reaches the carrier in ~25 s". While you follow something, push `F` again to give the camera back to the director. The director also tells such stories by itself, and it tries to arrive 10 to 30 s before an attack. |
+| `Tab`, `Shift` + `Tab` | Go to the next or the previous upcoming attack, in time order. |
+| `8` | Go to the next dogfight. |
+| `9` | Go to the next ship in danger (torpedoes running at it, fires, flooding). |
+| `O` | When you move the camera around a subject that you follow: keep your view fixed to the subject's heading (the default: the view turns with it) or fixed to the world. |
 | `T` | Set the tilt-shift effect on or off. Tilt-shift blurs the top and bottom of the picture, so the scene looks like a small model. The default is on. |
 | `P` | Set pixel mode on or off. Pixel mode shows the game at a low resolution, as in an old game. The default is off. |
 | `1`, `2`, `4` | Set the game speed to 1×, 2× or 4×. |
@@ -93,16 +97,16 @@ During a battle, you can move the camera yourself:
 
 | Input | Action |
 |---|---|
-| Drag with the left mouse button | Turn the camera around the point it looks at. |
-| Mouse wheel | Move the camera nearer or farther. |
-| Drag with the right mouse button, or `W` `A` `S` `D`, or the arrow keys | Move the camera across the sea. |
+| Drag with the left mouse button | Turn the camera around the point it looks at. When you follow a ship or a plane, you turn around it. |
+| Mouse wheel (or a trackpad pinch) | Move the camera nearer or farther. |
+| Drag with the right mouse button, or `W` `A` `S` `D`, or the arrow keys | Move the camera across the sea. This stops following. |
 | `Q`, `E` | Turn the camera left or right. |
 | `R`, `V` (or `Page Up`, `Page Down`) | Move the camera up or down. |
-| Click a ship | Follow it. |
+| Click a ship | Follow it. You can then turn around it, move nearer or farther, and move up or down; the camera stays at that place relative to the ship (see `O`). |
 | Click a plane | Follow that plane and its wingmen as a story (the director camera takes over). |
 | `Esc`, or click empty water | Stop following. |
 
-When you do not touch the mouse or the keys for 20 seconds, the director camera starts again.
+If you touch the mouse or the keys while the director camera films a ship or a plane (also in a story), the camera keeps that subject, and you move around it. The director does not cut away while you control the camera. When you do not touch the mouse or the keys for some seconds (10 s when you took over a director shot, 25 s after you clicked a ship, 20 s otherwise), or when you push `F`, the director camera starts again.
 
 In setup mode, the camera always shows all of the map from above.
 The game does not show health bars.
@@ -141,7 +145,8 @@ The game does not show health bars.
 | `js/ships_ai.js` | Ship AI: targets, guns, torpedoes, submarines, PT boats and carriers. |
 | `js/aircraft.js` | Planes. |
 | `js/camera.js` | The director camera and the map camera. |
-| `js/camera_story.js`, `js/camera_story_shots.js` | Story mode: the camera follows one squadron or fighter division through its mission (key `F`). |
+| `js/camera_story.js`, `js/camera_story_shots.js` | Story mode: the camera follows one squadron or fighter division through its mission. |
+| `js/camera_finder.js`, `js/camera_follow.js` | The imminent-action finder (attacks that are about to happen) and the follow keys `F`, `Tab`, `8`, `9`, with the follow label. |
 | `js/freecam.js` | The free camera (mouse and keys). |
 | `js/post.js` | The bloom and the soft tone curve. |
 | `js/ui.js` | The panels, the setup clicks, the captions and fullscreen. |

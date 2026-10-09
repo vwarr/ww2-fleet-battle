@@ -68,8 +68,8 @@ window.WW = window.WW || {};
     el.sound.dataset.audio = el.soundPanel.dataset.audio = '1'; // the gesture that starts a remembered "on" is the toggle itself
     if (!AU()) { el.sound.style.display = 'none'; sr.style.display = 'none'; }
     soundLabels();
-    $('div', 'row dim small', el.panel, 'H panel   N new battle   C map / plot   G whose plot   X danger   L diary\nF follow action   T tilt-shift   P pixels   M sound');
-    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R V camera up / down \u00b7 Click ship follow \u00b7 Click plane story');
+    $('div', 'row dim small', el.panel, 'H panel   N new battle   C map / plot   G whose plot   X danger   L diary\nF follow action   Tab / \u21e7Tab next attack   8 dogfight   9 ship in danger\nT tilt-shift   P pixels   M sound');
+    $('div', 'row dim small', el.panel, 'Drag orbit \u00b7 Scroll zoom \u00b7 Right-drag / WASD pan\nQ E turn \u00b7 R V camera up / down \u00b7 Click ship follow \u00b7 Click plane story\nWhile following: drag / scroll / R V move around it \u00b7 O heading / world');
 
     // setup palette
     el.setup = $('div', 'panel setup', root);
@@ -128,7 +128,11 @@ window.WW = window.WW || {};
     if (k === 'h') hudPeek = !hudPeek;
     else if (k === 'n') newRound();
     else if (k === 'c' && WW.cam) say('Camera: ' + WW.cam.toggle());
-    else if (k === 'f' && !e.repeat && WW.camStory) say(WW.camStory.toggle());
+    else if (k === 'f' && !e.repeat && WW.camStory) say(WW.camStory.toggle());          // follow the action (camera_follow.js)
+    else if (k === 'tab' && WW.camFollow) { e.preventDefault(); const m = WW.camFollow.cycle(e.shiftKey ? -1 : 1); if (m) say(m); } // next / previous attack
+    else if (k === '8' && !e.repeat && WW.camFollow) say(WW.camFollow.cycle(1, 'dogfight'));
+    else if (k === '9' && !e.repeat && WW.camFollow) say(WW.camFollow.cycle(1, 'danger'));
+    else if (k === 'o' && !e.repeat && WW.freecam && WW.freecam.toggleRel) say('Follow camera: ' + WW.freecam.toggleRel());
     else if (k === 'p' && WW.view) say('Pixel mode ' + (WW.view.togglePixel() ? 'on' : 'off'));
     else if (k === 'm' && !e.repeat) toggleSound();
     else if (k === 'g' && !e.repeat && WW.plot) say(WW.plot.cycle());          // plot table: whose plot (plot_table.js)
