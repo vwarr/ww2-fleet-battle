@@ -344,7 +344,10 @@ function install(P) {
       if (!isFinite(s.x) || !isFinite(s.z)) R.nan++;
       const m = R.moved[s.id] || (R.moved[s.id] = { x: s.x, z: s.z, t });
       const lurk = s.type === 'submarine' && s.submerged && enemies(s).some(o => !o.submerged && WW.dist(s.x, s.z, o.x, o.z) < 120); // a sub holding its ambush submerged, a target close: waiting, not stuck
-      if (WW.dist(m.x, m.z, s.x, s.z) > 3 || lurk) { m.x = s.x; m.z = s.z; m.t = t; } else if (t - m.t > 30 && !m.flag) { m.flag = true; R.stuck++; R.stuckWho.push(s.nation + ':' + s.type + '@' + Math.round(s.x) + ',' + Math.round(s.z)); }
+      // a ship stopped alongside survivors or ditched aircrew (endgame.js pickup: ship.rescue, a DD's rescueSteer or a USN
+      // lifeguard sub, throttle 0.03 inside the pickup radius) is at work, not stuck: the pickup itself can take 30 s
+      const alongside = !!(s.rescue && !s.rescue.done && s.rescue.by === s && WW.dist(s.x, s.z, s.rescue.x, s.rescue.z) < (s.rescue.r || 10) + 15);
+      if (WW.dist(m.x, m.z, s.x, s.z) > 3 || lurk || alongside) { m.x = s.x; m.z = s.z; m.t = t; } else if (t - m.t > 30 && !m.flag) { m.flag = true; R.stuck++; R.stuckWho.push(s.nation + ':' + s.type + '@' + Math.round(s.x) + ',' + Math.round(s.z)); }
       if (R.firstContact === null && s.type !== 'submarine' && s.stats.guns[0])
         for (const o of enemies(s)) if (!o.submerged && WW.dist(s.x, s.z, o.x, o.z) <= s.stats.guns[0].range) { R.firstContact = t; break; }
       if (B.sees && R.firstSight === null) for (const o of enemies(s)) { try { if (B.sees(s.nation, o)) { R.firstSight = t; break; } } catch (e) { /* */ } }
@@ -572,6 +575,7 @@ const amin = a => { if (!a.length) return null; let m = Infinity; for (const v o
 const amax = a => { if (!a.length) return null; let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };
 const med = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 const ratio = (a, b) => (b > 0 ? a / b : null);
+const SUB_MIN_SHOTS = 3, SUB_MIN_NEAR = 60;
 function aggregate(rounds) {
   const S = (f) => rounds.reduce((s, r) => s + f(r), 0), C = (f) => rounds.flatMap(f);
   const cvd = C(r => r.cv.d), pen = C(r => r.pt.pen), react = C(r => r.dd.react);
@@ -621,7 +625,9 @@ function aggregate(rounds) {
     pt_mg_big: ratio(S(r => r.pt.mgBig), S(r => r.pt.mgShots)),
     dd_sub_kills: ratio(S(r => r.dd.subDC), S(r => r.dd.subDeaths)), dd_react_med: med(react),
     dd_react_rate: ratio(react.length, react.length + S(r => r.dd.missed)), dd_episodes: react.length + S(r => r.dd.missed),
-    sub_bowbeam: ratio(S(r => r.sub.bow + r.sub.beam), shots), sub_shots: shots, sub_dived_dd: ratio(S(r => r.sub.nearDived), near),
+    // (a scenario with fewer than SUB_MIN_SHOTS sub shots or SUB_MIN_NEAR s of a sub near a destroyer reports n/a: one
+    // stray shot or one forced surfacing in eight rounds is no rate)
+    sub_bowbeam: shots >= SUB_MIN_SHOTS ? ratio(S(r => r.sub.bow + r.sub.beam), shots) : null, sub_shots: shots, sub_dived_dd: near >= SUB_MIN_NEAR ? ratio(S(r => r.sub.nearDived), near) : null,
     cap_bkills: rounds.length ? S(r => r.air.capBK || 0) / rounds.length : null,
     cap_on_bmb: ratio(S(r => r.air.capB || 0), S(r => r.air.capF || 0)),
     cap_gap: ratio(S(r => r.air.capGap || 0), S(r => r.air.capN || 0)), esc_with: ratio(S(r => r.air.escWith || 0), S(r => r.air.escN || 0)),

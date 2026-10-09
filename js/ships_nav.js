@@ -222,5 +222,21 @@ window.WW = window.WW || {};
     best %= Math.PI * 2; this.navHeading = best < 0 ? best + Math.PI * 2 : best;
   };
 
-  WW.shipNav = { HARD, GROUND, EDGE, edgeDist, hullPoints, hullMin, hullOK, fixedOverlap, resolve, placeHull, wreckAt, nav };
+  // Collision course (Ship.move): two ships closing so that their closest point of approach within CPA_T s falls inside
+  // r (the pair's personal space): a push away from the other's position at the CPA, growing as the CPA nears and
+  // tightens, so each turns off well before the hulls meet (head-on, both turn to starboard: the rule of the road).
+  const CPA_T = 20, CPA_W = 2.2, CPA_OUT = [0, 0];
+  function cpaPush(a, b, r) {
+    const rx = a.x - b.x, rz = a.z - b.z, vx = Math.cos(a.heading) * a.speed - Math.cos(b.heading) * b.speed, vz = Math.sin(a.heading) * a.speed - Math.sin(b.heading) * b.speed;
+    const v2 = vx * vx + vz * vz; if (v2 < 0.04) return null;
+    const tc = -(rx * vx + rz * vz) / v2; if (tc <= 0 || tc > CPA_T) return null;     // opening, or too far off
+    const cx = rx + vx * tc, cz = rz + vz * tc, dc = Math.hypot(cx, cz);
+    if (dc >= r) return null;
+    const w = CPA_W * (1 - tc / CPA_T) * (1 - dc / r);
+    if (dc > r * 0.15) { CPA_OUT[0] = cx / dc * w; CPA_OUT[1] = cz / dc * w; }
+    else { CPA_OUT[0] = -Math.sin(a.heading) * w; CPA_OUT[1] = Math.cos(a.heading) * w; } // head on: starboard (+z of the heading is to starboard, x east z south)
+    return CPA_OUT;
+  }
+
+  WW.shipNav = { cpaPush, HARD, GROUND, EDGE, edgeDist, hullPoints, hullMin, hullOK, fixedOverlap, resolve, placeHull, wreckAt, nav };
 })();

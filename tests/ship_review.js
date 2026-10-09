@@ -41,14 +41,15 @@ const SCEN = {
   carrier_duel: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'] },
   midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
   surface: { A: ['battleship', 'battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer', 'destroyer'], B: ['battleship', 'battleship', 'cruiser', 'cruiser', 'destroyer', 'destroyer', 'destroyer'] },
-  odd: { odd: true }
+  odd: { odd: true },
+  sub_ambush: { A: ['submarine', 'submarine'], B: ['carrier', 'cruiser', 'destroyer', 'destroyer'], noStall: true }   // not in the default list
 };
 function specFor(name, seed) {
   const sc = SCEN[name];
   let s;
   if (sc.random) s = { seed, random: true, light: true };
   else if (sc.odd) { const o = ODD[seed % ODD.length]; s = { seed, A: o[1], B: o[2], aNation: seed % 2 ? 'USN' : 'IJN', cripple: -1, noStall: false, base: null, light: true, label: o[0] }; }
-  else s = { seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: -1, noStall: false, base: sc.base || null, light: true };
+  else s = { seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: -1, noStall: !!sc.noStall, base: sc.base || null, light: true };
   s.scen = name;
   return s;
 }
@@ -62,9 +63,9 @@ function install(opt) {
   const armed = u => u && u.alive && (u.kind === 'dive' || u.kind === 'torpedo') && u.ordnance;
   let S = null;
   function fresh() {
-    S = { next: 0, trNext: 0, st: { cruise: [], air: [], surface: [] }, stKeep: { cruise: [], air: [], surface: [] }, roleT: { cruise: 0, air: 0, surface: 0 }, roleN: { cruise: 0, air: 0, surface: 0 },
+    S = { next: 0, trNext: 0, st: { cruise: [], air: [], surface: [] }, stKeep: { cruise: [], air: [], surface: [] }, lat: { cruise: [], air: [], surface: [] }, latKeep: { cruise: [], air: [], surface: [] }, nearWho: {}, roleT: { cruise: 0, air: 0, surface: 0 }, roleN: { cruise: 0, air: 0, surface: 0 },
       nn: { cruise: [], air: [], surface: [] }, near: 0, nearSet: new Set(), coh: [], fire: new Map(), broad: 0, broadN: 0, ptMain: 0, ptMainDD: 0, mainShots: 0,
-      chase: new Map(), chases: [], aa: [], lastHit: new Map(), fatal: {}, sunk: 0, trace: opt && opt.trace ? [] : null, fired: new Map(), air: [], phaseT: { cruise: 0, air: 0, surface: 0 } };
+      chase: new Map(), chases: [], aa: [], lastHit: new Map(), fatal: {}, sunk: 0, trace: opt && opt.trace ? [] : null, fired: new Map(), air: [], cohG: {}, spreads: {}, phaseT: { cruise: 0, air: 0, surface: 0 } };
   }
   fresh();
   WW.on('roundStart', fresh);
@@ -86,6 +87,18 @@ function install(opt) {
       if (S.trace) S.fired.set(s, { t: WW.time.now, tg: t.id });
     } catch (er) { R.err++; }
   });
+  // torpedo spreads: destroyers at crippled battleships / carriers, submarines at anything (pass shots: WW.docStats)
+  const FS0 = WW.shipAI.h.fireSpread;
+  WW.shipAI.h.fireSpread = function (ship, t) {
+    const r = FS0.apply(this, arguments);
+    try {
+      if (S && r !== false && ship && t) {
+        const k = ship.type + '>' + t.type + (WW.endgameAI && WW.endgameAI.isCripple(t) ? '(crip)' : '');
+        S.spreads[k] = (S.spreads[k] || 0) + 1;
+      }
+    } catch (e) { R.err++; }
+    return r;
+  };
   const U0 = WW.ships.update;
   WW.ships.update = function () {
     const r0 = U0.apply(this, arguments);
@@ -94,7 +107,8 @@ function install(opt) {
   };
   function stationOf(s) {
     const o = WW.fleetCmd && WW.fleetCmd.order(s); if (!o) return null;
-    if (o.role === 'escort' && o.ringR > 0 && WW.formation && WW.formation.ringPoint) { const p = WW.formation.ringPoint(o); if (p) return { x: p.x, z: p.z, o }; }
+    if (o.role === 'escort' && (o.ringR > 0 || o.looseR > 0) && WW.formation && WW.formation.ringPoint) { const p = WW.formation.ringPoint(o); if (p) return { x: p.x, z: p.z, o }; }
+    if (o.fg && WW.formation.guidePoint && (o.role === 'line' || o.role === 'asw' || o.role === 'torpedo')) { const p = WW.formation.guidePoint(o, {}); if (p) return { x: p.x, z: p.z, o, h: o.fg.h }; }
     return { x: o.sx, z: o.sz, o };
   }
   function phases() {
@@ -128,6 +142,23 @@ function install(opt) {
     }
     return m - (a.beam || 2) * 0.5 - (b.beam || 2) * 0.5;
   }
+  // a near-collision by type pair, same side or not, the commander's roles, the phase, the first minute
+  function nearWho(a, b, P, t) {
+    const ro = s => { const o = WW.fleetCmd && WW.fleetCmd.order(s); return o ? o.role : '-'; }, ty = [a.type, b.type].sort().join('-');
+    const keys = ['type ' + ty, a.nation === b.nation ? 'same side' : 'enemies', 'roles ' + [ro(a), ro(b)].sort().join('-'), 'phase ' + (a.nation === b.nation ? P[a.nation] : 'mixed'),
+      t < 60 ? 'first minute' : 'later', a.ringCv === b || b.ringCv === a ? 'ring escort-carrier' : 'not ring'];
+    for (const k of keys) S.nearWho[k] = (S.nearWho[k] || 0) + 1;
+  }
+  // analytic: the time to come within R of a target holding its course and speed, at our top speed on the best course
+  function icept(s, tg, R) {
+    const v = s.stats.speed * (s.speedK || 1), dx = tg.x - s.x, dz = tg.z - s.z, vx = Math.cos(tg.heading) * tg.speed, vz = Math.sin(tg.heading) * tg.speed;
+    // |D + V t| = R + v t
+    const a = vx * vx + vz * vz - v * v, b = 2 * (dx * vx + dz * vz) - 2 * R * v, c = dx * dx + dz * dz - R * R;
+    if (Math.abs(a) < 1e-6) return b < 0 ? -c / b : null;
+    const q = b * b - 4 * a * c; if (q < 0) return null;
+    const r1 = (-b - Math.sqrt(q)) / (2 * a), r2 = (-b + Math.sqrt(q)) / (2 * a), m = [r1, r2].filter(x => x > 0);
+    return m.length ? Math.min(...m) : null;
+  }
   function sample() {
     const t = now(), ships = WW.world.ships, Lu = L(), P = phases();
     for (const n in P) S.phaseT[P[n]] += DT;
@@ -136,9 +167,13 @@ function install(opt) {
       if (!s.alive || s.sinking || !SURF[s.type] || s.type === 'carrier' || s.isBase) continue;
       const st = stationOf(s); if (!st || !STATION[st.o.role]) continue;
       const ph = P[s.nation], d = WW.dist(s.x, s.z, st.x, st.z) / Lu;
-      S.st[ph].push(d); S.roleN[ph]++;
+      // lateral error: across the guide's course (the ring's carrier heading, else the side's axis of advance); a
+      // station that runs ahead of the group (the posture lead) shows as along-axis error, not as being out of line
+      const B = WW.fleetCmd.side(s.nation), gh = st.h !== undefined ? st.h : st.o.ringCv && st.o.ringCv.alive ? st.o.ringCv.heading : B && B.axis ? B.axis.h : 0;
+      const lat = Math.abs(-(s.x - st.x) * Math.sin(gh) + (s.z - st.z) * Math.cos(gh)) / Lu;
+      S.st[ph].push(d); S.roleN[ph]++; S.lat[ph].push(lat);
       const busy = !!s.target || !!(s.ai && (s.ai.dcLeft > 0 || s.ai.dcSub)) || !!(s.ai && s.ai.withdrawing);
-      if (busy) S.roleT[ph]++; else S.stKeep[ph].push(d);
+      if (busy) S.roleT[ph]++; else { S.stKeep[ph].push(d); S.latKeep[ph].push(lat); }
     }
     // spacing: nearest own surface ship; near-collisions between any two live hulls
     const live = ships.filter(s => s.alive && !s.sinking && !s.isBase && !s.submerged && s.type !== 'battery');
@@ -153,18 +188,23 @@ function install(opt) {
       const R = (a.stats.length + b.stats.length) * 0.5 + Lu * 1.2;
       if (WW.dist2(a.x, a.z, b.x, b.z) > R * R) { S.nearSet.delete(k); continue; }
       const g = gap(a, b);
-      if (g < NEAR_GAP * Lu) { if (!S.nearSet.has(k)) { S.nearSet.add(k); S.near++; } }
+      if (g < NEAR_GAP * Lu) { if (!S.nearSet.has(k)) { S.nearSet.add(k); S.near++; nearWho(a, b, P, t); } }
       else if (g > Lu) S.nearSet.delete(k);
     }
     // heading coherence in cruise
     if (WW.fleetCmd) for (const n of ['USN', 'IJN']) {
       if (P[n] !== 'cruise') continue;
       const B = WW.fleetCmd.side(n); if (!B || !B.groups) continue;
-      for (const g of ['carrier', 'main']) {
-        const m = (B.groups[g] && B.groups[g].members || []).filter(s => s.alive && !s.sinking && (!B.orders.get(s.id) || B.orders.get(s.id).role !== 'withdraw'));
-        if (m.length < 3) continue;
+      // groups: the main body (battle line, >= 3 keeping station) and each carrier with its own screen (>= 2: a task group);
+      // 'formed': after the first 90 s (the fleets spawn abreast and form up)
+      const keep = s => s.alive && !s.sinking && !s.target && !(s.ai && (s.ai.dcSub || s.ai.dcLeft > 0)) && (!B.orders.get(s.id) || B.orders.get(s.id).role !== 'withdraw');
+      const sets = [['main', (B.groups.main ? B.groups.main.members : []).filter(keep), 3]];
+      for (const cv of (B.groups.carrier ? B.groups.carrier.members : [])) if (cv.type === 'carrier' && keep(cv)) sets.push(['taskgroup', [cv, ...B.groups.carrier.members.filter(q => q !== cv && keep(q) && B.orders.get(q.id) && B.orders.get(q.id).ringCv === cv)], 2]);
+      for (const [g, m, k] of sets) {
+        if (m.length < k) continue;
         let cx = 0, cz = 0; for (const s of m) { cx += Math.cos(s.heading); cz += Math.sin(s.heading); }
-        S.coh.push(Math.hypot(cx, cz) / m.length);
+        const v = Math.hypot(cx, cz) / m.length;
+        S.coh.push(v); (S.cohG[g] || (S.cohG[g] = [])).push(v); if (t > 90) (S.cohG[g + '_formed'] || (S.cohG[g + '_formed'] = [])).push(v);
       }
     }
     // chases: target beyond main range and not closing faster than half our speed
@@ -179,14 +219,17 @@ function install(opt) {
         if (d < R0 * 1.15) continue;
         const away = Math.atan2(tg.z - s.z, tg.x - s.x), opening = Math.cos(tg.heading - away) * tg.speed; // target's speed away from us
         if (opening < -0.3 * s.stats.speed || s.stats.speed < tg.stats.speed * 0.9) continue;      // coming at us, or one we cannot catch
-        c = { t: tg, t0: t, d0: d, vx: s.x, vz: s.z, vt: null, at: null, R: R0 }; S.chase.set(s, c);
+        const B = WW.fleetCmd && WW.fleetCmd.side(s.nation), o = WW.fleetCmd && WW.fleetCmd.order(s);
+        const free = !!(B && (B.posture === 'press' || B.posture === 'pursue')) || !(o && o.fg);   // chasing, not closing in formation
+        c = { t: tg, t0: t, d0: d, vx: s.x, vz: s.z, vh: s.heading, vt: null, at: null, R: R0, ic: icept(s, tg, R0), free }; S.chase.set(s, c);
       }
       if (c.vt === null) { // the pure-pursuit ghost: same speed, always straight at the target
         const vd = WW.dist(c.vx, c.vz, tg.x, tg.z), step = s.speed * DT;
-        if (vd <= c.R) c.vt = t - c.t0; else { c.vx += (tg.x - c.vx) / vd * Math.min(step, vd); c.vz += (tg.z - c.vz) / vd * Math.min(step, vd); }
+        if (vd <= c.R) c.vt = t - c.t0;
+        else { c.vh += WW.clamp(WW.angleDiff(c.vh, Math.atan2(tg.z - c.vz, tg.x - c.vx)), -s.stats.turn * DT, s.stats.turn * DT); c.vx += Math.cos(c.vh) * step; c.vz += Math.sin(c.vh) * step; }
       }
       if (c.at === null && d <= c.R) c.at = t - c.t0;
-      if (c.at !== null && c.vt !== null) { S.chases.push({ at: c.at, vt: c.vt, d0: Math.round(c.d0), type: s.type }); S.chase.delete(s); }
+      if (c.at !== null && c.vt !== null) { S.chases.push({ at: c.at, vt: c.vt, ic: c.ic, d0: Math.round(c.d0), type: s.type, free: c.free }); S.chase.delete(s); }
       else if (t - c.t0 > 180) S.chase.delete(s);
     }
     // AA escorts and the raid bearing
@@ -196,9 +239,14 @@ function install(opt) {
       for (const c of WW.intel.enemyPlanes(cv.nation)) { const u = c.unit; if (!armed(u)) continue; const d = WW.dist(cv.x, cv.z, c.x, c.z); if (d > RAID_R || d < 60) continue; rx += c.x; rz += c.z; rn++; }
       if (!rn) continue;
       const rb = Math.atan2(rz / rn - cv.z, rx / rn - cv.x);
-      let best = 1e9, ne = 0;
-      for (const s of ships) { if (!s.alive || s === cv || s.nation !== cv.nation) continue; const o = WW.fleetCmd.order(s); if (!o || o.role !== 'escort' || o.ringCv !== cv) continue; ne++; const off = Math.abs(WW.angleDiff(rb, Math.atan2(s.z - cv.z, s.x - cv.x))) * 180 / Math.PI; if (off < best) best = off; }
-      if (ne) S.aa.push({ n: cv.nation, off: Math.round(best), ne });
+      let best = 1e9, bst = 1e9, ne = 0;
+      for (const s of ships) {
+        if (!s.alive || s === cv || s.nation !== cv.nation) continue; const o = WW.fleetCmd.order(s); if (!o || o.role !== 'escort' || o.ringCv !== cv) continue; ne++;
+        const off = Math.abs(WW.angleDiff(rb, Math.atan2(s.z - cv.z, s.x - cv.x))) * 180 / Math.PI; if (off < best) best = off;
+        const p = WW.formation && WW.formation.ringPoint ? WW.formation.ringPoint(o, {}) : null, ps = p || { x: o.sx, z: o.sz };
+        const so = Math.abs(WW.angleDiff(rb, Math.atan2(ps.z - cv.z, ps.x - cv.x))) * 180 / Math.PI; if (so < bst) bst = so;
+      }
+      if (ne) S.aa.push({ n: cv.nation, off: Math.round(best), st: Math.round(bst), ne });
     }
   }
   function trace() {
@@ -214,7 +262,7 @@ function install(opt) {
   }
   R.flush = function () {
     for (const [s, c] of S.chase) if (c.at !== null && c.vt === null) S.chases.push({ at: c.at, vt: null, d0: Math.round(c.d0), type: s.type });
-    return { st: S.st, stKeep: S.stKeep, roleT: S.roleT, roleN: S.roleN, nn: S.nn, near: S.near, coh: S.coh, broad: S.broad, broadN: S.broadN, ptMain: S.ptMain, ptMainDD: S.ptMainDD, mainShots: S.mainShots,
+    return { st: S.st, stKeep: S.stKeep, lat: S.lat, latKeep: S.latKeep, nearWho: S.nearWho, cohG: S.cohG, spreads: S.spreads, pass: WW.docStats && WW.docStats.subPassShot ? WW.docStats.subPassShot.USN + WW.docStats.subPassShot.IJN : 0, roleT: S.roleT, roleN: S.roleN, nn: S.nn, near: S.near, coh: S.coh, broad: S.broad, broadN: S.broadN, ptMain: S.ptMain, ptMainDD: S.ptMainDD, mainShots: S.mainShots,
       chases: S.chases, aa: S.aa, fatal: S.fatal, sunk: S.sunk, phaseT: S.phaseT, trace: S.trace, air: S.trace ? S.air : null, err: R.err, last: R.last || null };
   };
   return true;
@@ -255,32 +303,45 @@ function report(rounds, label) {
   const out = {}, say = s => console.log(s), PH = ['cruise', 'air', 'surface'];
   say(`SHIP REVIEW${label ? ' (' + label + ')' : ''}: ${rounds.length} rounds, recorder errors ${rounds.reduce((s, r) => s + r.rec.err, 0)}${rounds.find(r => r.rec.last) ? ' (' + rounds.find(r => r.rec.last).rec.last.split('\n')[0] + ')' : ''}`);
   const cat = k => { const o = { cruise: [], air: [], surface: [] }; for (const r of rounds) for (const p of PH) for (const v of r.rec[k][p]) o[p].push(v); return o; };
-  const st = cat('st'), sk = cat('stKeep'), nn = cat('nn');
+  const st = cat('st'), sk = cat('stKeep'), nn = cat('nn'), la = cat('lat'), lk = cat('latKeep');
   out.station = {}; out.spacing = {};
   say('== 1. STATION (L) ==  phase: RMS all / RMS keeping station (no target) / share of samples on a role (target, sub hunt, cripple) / n');
   for (const p of PH) {
     let rt = 0, rn = 0; for (const r of rounds) { rt += r.rec.roleT[p]; rn += r.rec.roleN[p]; }
     out.station[p] = { all: rms(st[p]), keep: rms(sk[p]), keepP50: qs(sk[p], 0.5), keepP90: qs(sk[p], 0.9), role: rn ? rt / rn : null, n: st[p].length };
-    say(`  ${p.padEnd(8)} ${f2(out.station[p].all)} / ${f2(out.station[p].keep)} (p50 ${f2(out.station[p].keepP50)} p90 ${f2(out.station[p].keepP90)}) / ${pc(out.station[p].role)} / ${st[p].length}`);
+    out.station[p].lat = rms(la[p]); out.station[p].latKeep = rms(lk[p]); out.station[p].latKeepP90 = qs(lk[p], 0.9);
+    say(`  ${p.padEnd(8)} ${f2(out.station[p].all)} / ${f2(out.station[p].keep)} (p50 ${f2(out.station[p].keepP50)} p90 ${f2(out.station[p].keepP90)}) / ${pc(out.station[p].role)} / ${st[p].length};  lateral RMS all ${f2(out.station[p].lat)}, keeping ${f2(out.station[p].latKeep)} (p90 ${f2(out.station[p].latKeepP90)})`);
   }
   say('== 2. SPACING: nearest own surface ship (L) p1 / p5 / p50, share under 1.2 L ==');
   const all = [].concat(nn.cruise, nn.air, nn.surface);
   for (const p of [...PH, 'all']) { const a = p === 'all' ? all : nn[p]; out.spacing[p] = { p1: qs(a, 0.01), p5: qs(a, 0.05), p50: qs(a, 0.5), u12: a.length ? a.filter(v => v < 1.2).length / a.length : null }; say(`  ${p.padEnd(8)} ${f2(out.spacing[p].p1)} / ${f2(out.spacing[p].p5)} / ${f2(out.spacing[p].p50)}  under 1.2 L ${pc(out.spacing[p].u12)}  (n ${a.length})`); }
   const near = rounds.reduce((s, r) => s + r.rec.near, 0);
+  const nw = {}; for (const r of rounds) for (const k in r.rec.nearWho) nw[k] = (nw[k] || 0) + r.rec.nearWho[k];
+  out.nearWho = nw;
   out.nearPerRound = near / rounds.length; say(`  near-collisions (hulls < 0.15 L apart) per round: ${out.nearPerRound.toFixed(2)} (${near})`);
+  say('    by: ' + Object.keys(nw).sort((a, b) => nw[b] - nw[a]).map(k => k + ' ' + nw[k]).join(', '));
   const coh = []; for (const r of rounds) for (const v of r.rec.coh) coh.push(v);
   out.coh = { mean: coh.length ? coh.reduce((a, b) => a + b, 0) / coh.length : null, p10: qs(coh, 0.1) };
-  say(`== 3. COHERENCE in cruise (mean resultant length of group headings): mean ${f2(out.coh.mean)} p10 ${f2(out.coh.p10)} (n ${coh.length})`);
+  const cg = {}; for (const r of rounds) for (const g in (r.rec.cohG || {})) for (const v of r.rec.cohG[g]) (cg[g] || (cg[g] = [])).push(v);
+  out.cohG = {}; for (const g in cg) out.cohG[g] = { mean: cg[g].reduce((a, b) => a + b, 0) / cg[g].length, p10: qs(cg[g], 0.1), n: cg[g].length };
+  say(`== 3. COHERENCE in cruise (mean resultant length of the headings of a group's ships keeping station): mean ${f2(out.coh.mean)} p10 ${f2(out.coh.p10)} (n ${coh.length}); ${Object.keys(out.cohG).map(g => g + ' ' + f2(out.cohG[g].mean) + ' p10 ' + f2(out.cohG[g].p10)).join(', ')}`);
   let br = 0, bn = 0, pm = 0, pd = 0, ms = 0; for (const r of rounds) { br += r.rec.broad; bn += r.rec.broadN; pm += r.rec.ptMain; pd += r.rec.ptMainDD; ms += r.rec.mainShots; }
   out.broad = bn ? br / bn : null; out.ptMain = pm / rounds.length; out.ptMainDD = pd / rounds.length;
   say(`== 4. GUNS: BB / CA main-battery firing seconds with the A-arcs open (40-140 deg): ${pc(out.broad)} (n ${bn}); main-battery rounds at PT boats per round: BB / CA ${out.ptMain.toFixed(2)}, DD ${out.ptMainDD.toFixed(2)} (BB / CA main shells ${ms})`);
   const ch = []; for (const r of rounds) for (const c of r.rec.chases) ch.push(c);
-  const both = ch.filter(c => c.vt !== null && c.at !== null), ratio = both.map(c => c.at / Math.max(1, c.vt));
+  const both = ch.filter(c => c.vt !== null && c.at !== null), ratio = both.map(c => c.at / Math.max(1, c.vt)), ir = ch.filter(c => c.ic > 0 && c.at !== null).map(c => c.at / Math.max(1, c.ic));
+  out.chase_ic = { p25: qs(ir, 0.25), p50: qs(ir, 0.5), p75: qs(ir, 0.75), n: ir.length };
+  const fr = both.filter(c => c.free), frr = fr.map(c => c.at / Math.max(1, c.vt)), fri = ch.filter(c => c.free && c.ic > 0 && c.at !== null).map(c => c.at / Math.max(1, c.ic));
+  out.chaseFree = { n: fr.length, ratioP25: qs(frr, 0.25), ratioP50: qs(frr, 0.5), ratioP75: qs(frr, 0.75), icP50: qs(fri, 0.5) };
   out.chase = { n: ch.length, both: both.length, ratioP50: qs(ratio, 0.5), ratioP25: qs(ratio, 0.25), ratioP75: qs(ratio, 0.75), atP50: qs(both.map(c => c.at), 0.5), vtP50: qs(both.map(c => c.vt), 0.5), ghostOnly: ch.filter(c => c.vt === null).length };
-  say(`== 5. CHASE: ${ch.length} closed (${out.chase.ghostOnly} where the tail chase never got there); time to gun range / pure tail chase p25 ${f2(out.chase.ratioP25)} p50 ${f2(out.chase.ratioP50)} p75 ${f2(out.chase.ratioP75)}; actual p50 ${out.chase.atP50} s, tail chase p50 ${out.chase.vtP50} s`);
+  say(`== 5. CHASE: ${ch.length} closed (${out.chase.ghostOnly} where the tail chase never got there); time to gun range / pure tail chase p25 ${f2(out.chase.ratioP25)} p50 ${f2(out.chase.ratioP50)} p75 ${f2(out.chase.ratioP75)}; actual p50 ${out.chase.atP50} s, tail chase p50 ${out.chase.vtP50} s; vs the ideal intercept (top speed, best course) p25 ${f2(out.chase_ic.p25)} p50 ${f2(out.chase_ic.p50)} p75 ${f2(out.chase_ic.p75)}`);
+  say(`   free chases (pressing / pursuing, or not on a formation guide): n ${out.chaseFree.n}, vs tail chase p25 ${f2(out.chaseFree.ratioP25)} p50 ${f2(out.chaseFree.ratioP50)} p75 ${f2(out.chaseFree.ratioP75)}, vs ideal intercept p50 ${f2(out.chaseFree.icP50)}`);
   out.aa = {};
-  for (const n of ['USN', 'IJN']) { const a = []; for (const r of rounds) for (const x of r.rec.aa) if (x.n === n) a.push(x.off); out.aa[n] = { p50: qs(a, 0.5), p90: qs(a, 0.9), u45: a.length ? a.filter(v => v <= 45).length / a.length : null, n: a.length }; }
-  say(`== 6. AA ESCORTS: nearest ring escort's bearing off the raid bearing (deg) USN p50 ${out.aa.USN.p50} p90 ${out.aa.USN.p90} within 45 ${pc(out.aa.USN.u45)} (n ${out.aa.USN.n}); IJN p50 ${out.aa.IJN.p50} p90 ${out.aa.IJN.p90} within 45 ${pc(out.aa.IJN.u45)} (n ${out.aa.IJN.n})`);
+  for (const n of ['USN', 'IJN']) { const a = []; for (const r of rounds) for (const x of r.rec.aa) if (x.n === n) a.push(x.off); const sa = []; for (const r of rounds) for (const x of r.rec.aa) if (x.n === n && x.st !== undefined) sa.push(x.st); out.aa[n] = { stP50: qs(sa, 0.5), stU45: sa.length ? sa.filter(v => v <= 45).length / sa.length : null, p50: qs(a, 0.5), p90: qs(a, 0.9), u45: a.length ? a.filter(v => v <= 45).length / a.length : null, n: a.length }; }
+  say(`== 6. AA ESCORTS: nearest ring escort's bearing off the raid bearing (deg) USN p50 ${out.aa.USN.p50} p90 ${out.aa.USN.p90} within 45 ${pc(out.aa.USN.u45)} (n ${out.aa.USN.n}); IJN p50 ${out.aa.IJN.p50} p90 ${out.aa.IJN.p90} within 45 ${pc(out.aa.IJN.u45)} (n ${out.aa.IJN.n}); their stations: USN p50 ${out.aa.USN.stP50} within 45 ${pc(out.aa.USN.stU45)}, IJN p50 ${out.aa.IJN.stP50} within 45 ${pc(out.aa.IJN.stU45)}`);
+  const sp = {}; let ps = 0; for (const r of rounds) { for (const k in (r.rec.spreads || {})) sp[k] = (sp[k] || 0) + r.rec.spreads[k]; ps += r.rec.pass || 0; }
+  out.spreads = sp; out.passShots = ps;
+  say(`== 6b. TORPEDO SPREADS (shooter>target, (crip) = a cripple): ${Object.keys(sp).sort((a, b) => sp[b] - sp[a]).map(k => k + ' ' + sp[k]).join(', ')}; sub pass shots ${ps}`);
   const fa = {}; let sk2 = 0; for (const r of rounds) { for (const k in r.rec.fatal) fa[k] = (fa[k] || 0) + r.rec.fatal[k]; sk2 += r.rec.sunk; }
   out.fatal = fa; say(`== 7. FATAL BLOWS (${sk2} sunk): ${Object.keys(fa).sort().map(k => k + ' ' + fa[k]).join(', ')}`);
   const ph = { cruise: 0, air: 0, surface: 0 }; for (const r of rounds) for (const p of PH) ph[p] += r.rec.phaseT[p];

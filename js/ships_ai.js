@@ -69,6 +69,9 @@ window.WW = window.WW || {};
   const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6 };
   const VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };
   const STICKY = 1.3; // switch targets only for a score this much better
+  // The main battery of a battleship or cruiser does not waste shells on a PT boat beyond PT_CLOSE x its range (the
+  // secondaries, the AA and the destroyers take them); a cruiser with no secondary battery still fires on one close in.
+  const BIG_MAIN = { battleship: 1, cruiser: 1 }, PT_CLOSE = 0.45;
   // The air-war hold (fleet_cmd.js airWar): a gun ship takes no target beyond HOLD_REACH x its reach. A contact the
   // planes report far off is the carriers' business; the surface force keeps station with them until it closes.
   const GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 }, HOLD_REACH = 1.5;
@@ -83,7 +86,8 @@ window.WW = window.WW || {};
   }
   function score(ship, o, c, W, R, risk) {
     let w = W[o.type]; if (!w) return 0;
-    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship) &&
+    const crip = ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && cripReach(ship, o, c);
+    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship) && !crip &&
       !(WW.endgameAI && WW.endgameAI.isCripple(o) && WW.fleetCmd && (WW.fleetCmd.side(ship.nation) || {}).posture === 'pursue')) return 0; // a slowed cripple in a pursuit: alone too
     const d = WW.dist(ship.x, ship.z, c.x, c.z);
     if (GUNSHIP[ship.type] && d > R * HOLD_REACH && WW.fleetCmd && WW.fleetCmd.airWar(ship.nation)) return 0; // the air-war hold: no chase
@@ -96,7 +100,15 @@ window.WW = window.WW || {};
     const assign = WW.fleetCmd ? WW.fleetCmd.assignment(ship, o) : 1;
     const base = w * VALUE[o.type];
     const exposure = WW.threat ? base * 0.3 * Math.min(1, WW.threat.danger(ship.nation, c.x, c.z) / (2 * WW.threat.DREF)) * (1 - risk) : 0;
-    return base * pHit * finish * assign - exposure;
+    return base * pHit * finish * assign * (crip ? CRIP_RUN : 1) - exposure;
+  }
+  // A crippled battleship or carrier within CRIP_REACH x a destroyer's torpedo range: a torpedo run alone, in any
+  // posture (Hiei off Savo, Hornet at Santa Cruz: the destroyers finished the big ships that could no longer get away)
+  const CRIP_REACH = 1.6, CRIP_RUN = 2;
+  function cripReach(ship, o, c) {
+    if (!ship.stats.torpedoes || !(WW.endgameAI && WW.endgameAI.isCripple(o))) return false;
+    if (WW.supply && !WW.supply.torpLeft(ship)) return false;
+    return WW.dist2(ship.x, ship.z, c.x, c.z) < Math.pow(ship.stats.torpedoes.range * CRIP_REACH, 2);
   }
   // A carrier out of gun range that is (nearly) as fast as we are cannot be caught: chasing it only drags the ship
   // out of formation (a battleship or cruiser never runs down a carrier; it fights it only if it comes in range).
@@ -156,14 +168,15 @@ window.WW = window.WW || {};
     // target in range (its own weights); secondaries take the closest small threat in their range.
     const ct = a.calTarget || (a.calTarget = {});
     for (let gi = 0; gi < st.guns.length; gi++) {
-      const g = st.guns[gi], gw = GUN_W[g.cal] || (gi === 0 ? W : SEC_W);
+      const g = st.guns[gi], gw = GUN_W[g.cal] || (gi === 0 ? W : SEC_W), bigMain = gi === 0 && BIG_MAIN[ship.type];
       let t = null, bs = 0;
-      if (best && gw[best.type] > 0 && WW.dist(ship.x, ship.z, best.x, best.z) <= g.range) t = best;
+      const noPt = (o, d) => bigMain && o.type === 'pt' && d > g.range * PT_CLOSE; // the main battery of a BB / CA: no shells at a PT boat unless it is close in
+      if (best && gw[best.type] > 0 && WW.dist(ship.x, ship.z, best.x, best.z) <= g.range && !noPt(best, WW.dist(ship.x, ship.z, best.x, best.z))) t = best;
       else for (const c of cs) {
         const o = c.unit;
         if (!o || !o.alive || o.submerged || now - c.seenAt > FRESH || !(gw[o.type] > 0)) continue;
         const d = WW.dist(ship.x, ship.z, o.x, o.z);
-        if (d > g.range) continue;
+        if (d > g.range || noPt(o, d)) continue;
         const v = gw[o.type] * (gi === 0 && !GUN_W[g.cal] ? VALUE[o.type] : 1) / (1 + d / g.range);
         if (v > bs) { bs = v; t = o; }
       }

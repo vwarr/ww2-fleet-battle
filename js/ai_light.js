@@ -187,6 +187,7 @@ window.WW = window.WW || {};
       ship.desiredHeading = h; ship.throttle = 0.45;
       return;
     }
+    if (passingShot(ship, tgt, L)) return;   // a ship passing close across the bow: fire at it, whatever the ambush is set for
     if (L.amb && L.amb.shadow && WW.dstat) WW.dstat('subShadowT', n, dt);
     if (!tgt) { // patrol the commander's station (the flank of the enemy's approach), else ahead of our own fleet
       if (WW.dstat) WW.dstat('subPatrolT', n, dt);
@@ -207,6 +208,32 @@ window.WW = window.WW || {};
         seen(ship, tgt) && fanClear(ship, lb, Math.min(st.torpedoes.range, d + 15))) {
       if (H.fireSpread(ship, tgt) !== false) a.evadeT = SUB.EVADE;
     }
+  }
+
+  // Target of opportunity: with the tubes loaded, any seen enemy ship worth a spread (not a destroyer or PT boat) inside
+  // the firing range, from its bow or beam, whose lead bearing is within PASS_TURN of our bow: come round the last few
+  // degrees and fire (Wasp, Yorktown at Midway: the boats took what crossed in front of them). Not the ambush target
+  // (that run handles it).
+  const PASS_TURN = 0.6, PASS_AOB = 1.75; // (rad: from its bow or beam, a shade inside the ambush's AOB)
+  function passingShot(ship, tgt, L) {
+    const a = ship.ai, st = ship.stats;
+    if (a.torpReload > 0 || !WW.intel || a.forcedT > 0 || L.ddD < SUB.DIVE_DD) return false;   // not with a destroyer about, nor forced up
+    let best = null, bd = 1e9;
+    for (const c of contacts(ship, 3)) {
+      const u = c.unit; if (u === tgt || u.submerged || !VAL[u.type] || u.type === 'destroyer' || u.type === 'pt') continue;
+      const d = WW.dist(ship.x, ship.z, u.x, u.z);
+      if (d > SUB.FIRE || d < SUB.FIRE_MIN || d >= bd) continue;
+      if (Math.abs(WW.angleDiff(u.heading, Math.atan2(ship.z - u.z, ship.x - u.x))) >= PASS_AOB || !seen(ship, u)) continue;
+      const p = lead(ship, u, st.torpedoes.speed || WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
+      if (Math.abs(WW.angleDiff(ship.heading, lb)) > PASS_TURN) continue;
+      best = { u, lb, d }; bd = d;
+    }
+    if (!best) return false;
+    ship.desiredHeading = best.lb; ship.throttle = 0.3;
+    if (Math.abs(WW.angleDiff(ship.heading, best.lb)) < 0.25 && fanClear(ship, best.lb, Math.min(st.torpedoes.range, best.d + 15)) && H.fireSpread(ship, best.u) !== false) {
+      a.evadeT = SUB.EVADE; if (WW.dstat) WW.dstat('subPassShot', ship.nation);
+    }
+    return true;
   }
 
   WW.shipAI.roles.submarine = subAI;
