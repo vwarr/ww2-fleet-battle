@@ -12,12 +12,12 @@
 //   way home gone, or shot up below DITCH_HP and nearer a friendly destroyer than its deck, it flies to the nearest
 //   friendly ship (a destroyer first) and puts down on the water beside it (endgame.js makes it a rescue task).
 //   Before, a plane whose carrier sank ditched at once wherever it was.
-// - A damaged plane (< 50% hp) going home gets a wingman: a friendly plane also going home within PAIR_R with the fuel
-//   flies on its wing (plane.escortHome) until it is near its deck (or the deck it is ditching by).
+// - A damaged plane (< 50% hp) going home, clear of the flak (FLAK_R from enemy ships), gets a wingman: a friendly
+//   carrier plane also going home within PAIR_R with the fuel flies on its wing (plane.escortHome) until it is near its deck (or the deck it is ditching by).
 // Events: airOrder 'escortHome', 'ditchBy' (plane, carrier, target ship). Stats: WW.airFlight.stats.
 window.WW = window.WW || {};
 (function () {
-  const CLIMB_K = 0.7, CRUISE_BURN = 0.6, RES_K = 0.15, SKIRT_R = 220, DITCH_HP = 0.2, PAIR_R = 90, ESC_DONE = 140, MARGIN = 20;
+  const CLIMB_K = 0.7, CRUISE_BURN = 0.6, RES_K = 0.15, SKIRT_R = 220, DITCH_HP = 0.2, PAIR_R = 140, FLAK_R = 150, ESC_DONE = 140, MARGIN = 20;
   const ST = { diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0, short: 0 };
   const cruise = p => p.pt.cruise || p.pt.speed * 0.8;
   const reserve = p => (p.pt.range / p.pt.speed) * 6 * RES_K;   // the full load as aircraft.js fills it, x RES_K
@@ -101,9 +101,10 @@ window.WW = window.WW || {};
   function pair(p) {
     if (p.escortedBy && p.escortedBy.alive && p.escortedBy.escortHome === p) return;
     p.escortedBy = null;
+    for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation !== p.nation && WW.dist2(p.x, p.z, s.x, s.z) < FLAK_R * FLAK_R) return;   // clear of the flak first
     let best = null, bd = PAIR_R;
     for (const q of WW.world.planes) {
-      if (q === p || !q.alive || q.nation !== p.nation || q.state !== 'return' || q.escortHome || q.ditchTo || q.deckPh || q.hp < q.maxHp * 0.6 || q.fuel < 8 || q.carrier.isBase) continue;
+      if (q === p || !q.alive || q.nation !== p.nation || q.state !== 'return' || q.kind === 'scout' || q.kind === 'flyingboat' || q.escortHome || q.ditchTo || q.deckPh || q.hp < q.maxHp * 0.6 || q.fuel < 8 || q.carrier.isBase) continue;
       if (q.kind !== 'fighter' && q.ordnance) continue;
       const d = WW.dist(p.x, p.z, q.x, q.z) - (q.element && q.element === p.element ? 30 : 0) - (q.kind === 'fighter' ? 15 : 0);
       if (d < bd) { bd = d; best = q; }

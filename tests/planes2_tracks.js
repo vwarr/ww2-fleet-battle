@@ -36,19 +36,22 @@ function pick() {
       let f = null;
       for (const [fid, F] of planes) { if (F[0][2] === r[2] || F[0][3] !== 'f') continue; const q = at(F, r[0]); if (q && q[12] === id && Math.abs(q[0] - r[0]) < 0.6) { f = fid; break; } }
       if (!f) continue;
-      const sc = (ty === 'destroyer' ? 100 : ty === 'pt' ? 90 : 50) + (s[4] === 'crip' ? 20 : 0);
+      // a clear scene: the fighter came out to the ship (30 s before it was >= 100 away), few other planes around it
+      const f0 = at(planes.get(f), r[0] - 30); if (!f0 || Math.hypot(f0[5] - s[5], f0[6] - s[6]) < 100) continue;
+      let crowd = 0; for (const L of planes.values()) { const q = at(L, r[0]); if (q && Math.abs(q[0] - r[0]) < 0.6 && Math.hypot(q[5] - s[5], q[6] - s[6]) < 170) crowd++; }
+      const sc = (ty === 'destroyer' ? 100 : ty === 'pt' ? 90 : 50) + (s[4] === 'crip' ? 20 : 0) + (r[2] === 'J' ? 15 : 0) - crowd * 2;
       if (!best || sc > best.sc) best = { sc, t: r[0], raider: id, fighter: f, ship: r[13], ty };
     }
     if (!best) throw new Error('no cover scene in this trace');
-    if (!manual) { t0 = best.t - 40; t1 = best.t + 25; }
-    const s = at(ships.get(best.ship), best.t); cx = s[5]; cz = s[6]; R = 170;
+    if (!manual) { t0 = best.t - 35; t1 = best.t + 15; }
+    const s = at(ships.get(best.ship), best.t), f0 = at(planes.get(best.fighter), t0) || planes.get(best.fighter)[0];
+    cx = (s[5] + f0[5]) / 2; cz = (s[6] + f0[6]) / 2; R = Math.max(150, Math.hypot(s[5] - f0[5], s[6] - f0[6]) * 0.7);
     key = [best.fighter, best.raider];
-    for (const [fid, F] of planes) if (F[0][2] !== planes.get(best.raider)[0][2] && F[0][3] === 'f' && F.some(q => q[0] >= t0 && q[0] <= t1 && q[12] === best.raider) && !key.includes(fid)) key.push(fid);
     marks.push({ t: best.t, x: s[5], z: s[6], txt: best.ty + ' under attack' });
     title = `CAP covering a ${best.ty}: fighter #${best.fighter} on raider #${best.raider} at t=${best.t}`;
   } else if (scene === 'alert') {
     const e = EV.find(e => e.k === 'alert' && (!manual || (e.t >= t0 && e.t <= t1))); if (!e) throw new Error('no alert event');
-    const AL = [...planes].filter(([id, L]) => L.some(r => r[0] >= e.t && r[0] < e.t + 60 && /a/.test(r[4]))).map(([id]) => id);
+    const AL = [...planes].filter(([id, L]) => L.some(r => r[0] >= e.t && r[0] < e.t + 60 && /a/.test(r[4].slice(1)) && r[13] === e.tg)).map(([id]) => id);
     const tg = e.tg, S = ships.get(tg) || [];
     let tDrop = null; for (const d of EV) if (d.k === 'drop' && d.t >= e.t && AL.includes(d.id)) { tDrop = tDrop === null ? d.t : tDrop; marks.push({ t: d.t, x: d.x, z: d.z, txt: 'drop' }); }
     if (!manual) { t0 = e.t - 5; t1 = (tDrop || e.t + 60) + 25; }
@@ -95,8 +98,8 @@ const P = pick();
 
 // ---------- draw ----------
 const SZ = 560, sc = SZ / (2 * P.R), X = x => ((x - P.cx) * sc + SZ / 2).toFixed(1), Z = z => ((z - P.cz) * sc + SZ / 2).toFixed(1);
-const KC = ['#d93025', '#1a73e8', '#188038', '#f29900', '#a142f4', '#12b5cb', '#e8710a', '#5f6368'];
-const stCol = (st, nat) => /m/.test(st) ? '#f29900' : /e/.test(st) ? '#188038' : /a/.test(st) ? '#d93025' : st[0] === 'r' ? (nat === 'U' ? '#6fa8dc' : '#e6a0a0') : /f|v/.test(st) ? '#fbbc04' : st[0] === 'a' ? '#c5221f' : nat === 'U' ? '#7baaf7' : '#f28b82';
+const KC = ['#000000', '#a142f4', '#e8710a', '#12b5cb', '#795548', '#5f6368'];   // key planes: not the nation / phase colours
+const stCol = (st, nat) => /m/.test(st) ? '#f29900' : /e/.test(st) ? '#188038' : /a/.test(st.slice(1)) ? '#d93025' : st[0] === 'r' ? (nat === 'U' ? '#6fa8dc' : '#e6a0a0') : /f|v/.test(st) ? '#fbbc04' : st[0] === 'a' ? '#c5221f' : nat === 'U' ? '#7baaf7' : '#f28b82';
 const inWin = r => r[0] >= P.t0 && r[0] <= P.t1;
 let top = `<rect width="${SZ}" height="${SZ}" fill="#eef3f8" stroke="#99a"/>`;
 // scale bar: 100 u
@@ -120,10 +123,10 @@ for (const [id, L] of planes) {
     let seg = '', col = null;
     for (let i = 0; i < W.length; i++) {
       const c = stCol(W[i][4], nat);
-      if (c !== col || (i && Math.hypot(W[i][5] - W[i - 1][5], W[i][6] - W[i - 1][6]) > 30)) { if (seg) top += `<path d="${seg}" stroke="${col}" stroke-width="0.8" fill="none" opacity="0.55"/>`; seg = 'M' + X(W[i][5]) + ' ' + Z(W[i][6]); col = c; }
+      if (c !== col || (i && Math.hypot(W[i][5] - W[i - 1][5], W[i][6] - W[i - 1][6]) > 30)) { if (seg) top += `<path d="${seg}" stroke="${col}" stroke-width="0.8" fill="none" opacity="0.35"/>`; seg = 'M' + X(W[i][5]) + ' ' + Z(W[i][6]); col = c; }
       else seg += 'L' + X(W[i][5]) + ' ' + Z(W[i][6]);
     }
-    if (seg) top += `<path d="${seg}" stroke="${col}" stroke-width="0.8" fill="none" opacity="0.55"/>`;
+    if (seg) top += `<path d="${seg}" stroke="${col}" stroke-width="0.8" fill="none" opacity="0.35"/>`;
   }
 }
 for (const m of P.marks) top += `<circle cx="${X(m.x)}" cy="${Z(m.z)}" r="9" fill="none" stroke="#000" stroke-dasharray="3 2"/><text x="${+X(m.x) + 10}" y="${+Z(m.z) + 14}" font-size="10">${m.txt} (${m.t} s)</text>`;
@@ -155,7 +158,7 @@ P.key.forEach((id, k) => {
     let dh = W[i][8] - W[i - 1][8]; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
     const rate = WWclamp(dh / dt, -1.5, 1.5); maxRate = Math.max(maxRate, Math.abs(dh / dt)); maxDR = Math.max(maxDR, Math.abs(W[i][9] - W[i - 1][9]) / dt);
     a += (a ? 'L' : 'M') + T(W[i][0]) + ' ' + Ys(rate, -1.5, 1.5); b += (b ? 'L' : 'M') + T(W[i][0]) + ' ' + Ys(WWclamp(W[i][9], -1.5, 1.5), -1.5, 1.5);
-  });
+  }
   strip += `<path d="${a}" stroke="${KC[k % KC.length]}" stroke-width="1.4" fill="none"/><path d="${b}" stroke="${KC[k % KC.length]}" stroke-width="1" stroke-dasharray="3 2" fill="none"/>`;
 });
 function WWclamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
