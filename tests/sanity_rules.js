@@ -64,10 +64,12 @@ function install(P) {
       if (q.target === s || cosTo(q.heading, q, s) > 0.5) { att = q; break; }
     }
     R.aaN++;
+    const seen = R.aaAt.get(s) || (R.aaAt.set(s, new Map()), R.aaAt.get(s)); seen.set(pl, WW.game.roundTime);
     if (!att) return;
     R.aaAtt++;
     const away = !armed(pl) && (pl.state === 'return' || cosTo(pl.heading, pl, s) < -0.3) && d3(pl) > P.AA_POINT, far = d3(pl) > 0.8 * reach && d3(att) < d3(pl) - 15;
     if (!away && !far) return;
+    if (WW.game.roundTime - (seen.get(att) || -1e9) < P.AA_ENG) return;   // the ship's other mounts are on the attacker: split fire is fine
     R.aaBad++;
     H('S2', [s, pl, att], 0, () => `${heavy ? 'heavy' : 'light'} AA on ${lbl(pl)} (${away ? 'departing' : 'distant'} ${Math.round(d3(pl))}u, ord ${pl.ordnance ? 1 : 0}) while ${lbl(att)} closes at ${Math.round(d3(att))}u`);
   }
@@ -204,10 +206,13 @@ function install(P) {
       // P6c: circling (path long, net displacement small) when not on CAP station, not marshalling
       const tr = R.track.get(p) || (R.track.set(p, { q: [] }), R.track.get(p)), q = tr.q;
       q.push([t, p.x, p.z, p.state]); while (q.length && t - q[0][0] > P.CIRC_T) q.shift();
-      if (q.length > 4 && t - q[0][0] >= P.CIRC_T - P.DT && !(capF(p) && !p.foe)) {
+      if (q.length > 4 && t - q[0][0] >= P.CIRC_T - P.DT && !(capF(p) && !p.foe) && !q.some(r => r[3] === 'attack')) {   // its own attack run inside the window is not circling
         let path = 0; for (let i = 1; i < q.length; i++) path += Math.hypot(q[i][1] - q[i - 1][1], q[i][2] - q[i - 1][2]);
         const net = Math.hypot(p.x - q[0][1], p.z - q[0][2]);
-        if (net < P.CIRC_NET && path > P.CIRC_PATH && !p.foe && p.state !== 'attack') H('P6c', [p], 0, () => `${lbl(p)} ${p.state} circled: ${Math.round(path)}u flown, ${Math.round(net)}u net in ${P.CIRC_T}s${tg ? ', target ' + lbl(tg) + ' ' + Math.round(dist(p, tg)) + 'u' : ''}`);
+        // top cover: an escort over its target while a bomber of its strike is still armed or attacking there
+        const cover = k === 'fighter' && tg && dist(p, tg) < P.FLAK_NEAR && PL.some(b => b.alive && isBomber(b) && b.nation === p.nation && (p.wave ? b.wave === p.wave : b.target === tg) && (b.ordnance || b.state === 'attack'));
+        const hold = p.state === 'return' && dist(p, p.carrier) < P.HOLD_R;   // waiting for the deck near home (the landing queue: airdiag)
+        if (net < P.CIRC_NET && path > P.CIRC_PATH && !p.foe && p.state !== 'attack' && !cover) H(hold ? 'P6h' : 'P6c', [p], 0, () => `${lbl(p)} ${p.state} circled: ${Math.round(path)}u flown, ${Math.round(net)}u net in ${P.CIRC_T}s, ${Math.round(dist(p, p.carrier))}u from ${p.carrier.isBase ? 'base' : 'its carrier'}${tg ? ', target ' + lbl(tg) + ' ' + Math.round(dist(p, tg)) + 'u' : ''}`);
       }
       // P8: escorts: away from their own bombers while those are threatened before the attack; not fighting the attackers
       if (k === 'fighter' && p.target && !p.recall && (p.state === 'transit' || p.state === 'attack')) {
@@ -228,6 +233,7 @@ function install(P) {
           if (!live(o) || o.nation === p.nation || !HEAVY[o.type] || !o.stats.aa || o === tg) continue;
           const d3 = Math.hypot(p.x - o.x, p.y, p.z - o.z); if (d3 > o.stats.aa.range * P.AA_HEAVY_K * 0.9) continue;
           if (tg && dist(tg, o) < P.FLAK_NEAR) continue;
+          if (capF(p) && WW.cap && dist(o, p.carrier) < WW.cap.doc(p.nation).leash) continue;   // the enemy ship came into the fleet the CAP guards
           H('P9', [p, o], P.MIN.P9, () => `${lbl(p)} ${p.state} through the flak of ${lbl(o)} (${Math.round(d3)}u)${tg ? ', target ' + lbl(tg) + ' ' + Math.round(dist(tg, o)) + 'u from it' : ''}`);
           break;
         }
@@ -360,12 +366,12 @@ function install(P) {
   };
   S.begin = meta => {
     seq = 0; pid = new WeakMap(); // plane numbers restart each round, so an example replays with the same labels
-    R = { meta, ep: new Map(), res: {}, fired: new Map(), inb: 0, inbS: new WeakSet(), wand: new WeakMap(), track: new WeakMap(), hist: new WeakMap(), aaN: 0, aaAtt: 0, aaBad: 0, only: meta && meta.only ? Object.fromEntries(meta.only.map(k => [k, 1])) : null };
+    R = { meta, ep: new Map(), res: {}, fired: new Map(), inb: 0, inbS: new WeakSet(), wand: new WeakMap(), track: new WeakMap(), hist: new WeakMap(), aaN: 0, aaAtt: 0, aaBad: 0, aaAt: new WeakMap(), only: meta && meta.only ? Object.fromEntries(meta.only.map(k => [k, 1])) : null };
   };
   S.sample = () => {
     if (!R || WW.game.state !== 'battle') return;
     const t = WW.game.roundTime;
-    if (!R.only || ['P1', 'P1L', 'P1u', 'P2', 'P3', 'P4', 'P4b', 'P4f', 'P5', 'P5b', 'P6', 'P6c', 'P7', 'P7f', 'P8', 'P8b', 'P9', 'P10', 'P10s', 'P10b'].some(k => R.only[k])) planes(t);
+    if (!R.only || ['P1', 'P1L', 'P1u', 'P2', 'P3', 'P4', 'P4b', 'P4f', 'P5', 'P5b', 'P6', 'P6c', 'P6h', 'P7', 'P7f', 'P8', 'P8b', 'P9', 'P10', 'P10s', 'P10b'].some(k => R.only[k])) planes(t);
     ships(t);
   };
   S.end = () => {
@@ -382,7 +388,7 @@ const P = {
   DT: 0.5, GAP: 2, EX_KEEP: 4,
   THREAT_T: 45, DROP_VT: 90, DROP_VB: 5, FUEL_PAD: 8, P3_T: 25, RAID_R: 300,
   BUNCH_R: 50, BUNCH_N: 4, VALUE_GAP: 150, P5_R: 120, P5B_T: 20, P5B_R: 150,
-  DMG_HP: 0.35, CIRC_T: 60, CIRC_NET: 80, CIRC_PATH: 900, ESC_R: 80, FLAK_NEAR: 150, OFF: 20, REACH_PAD: 1, AA_POINT: 15,
+  DMG_HP: 0.35, CIRC_T: 60, CIRC_NET: 80, CIRC_PATH: 900, ESC_R: 80, FLAK_NEAR: 150, HOLD_R: 200, AA_ENG: 2, OFF: 20, REACH_PAD: 1, AA_POINT: 15,
   AA_HEAVY_K: 2.2, AA_LIGHT_K: 2,
   SPACE_K: 1.2, ESC_X: 150, S6_R: 500, S6_NEAR: 200, ATT_R: 100, EVADE_T: 6, EVADE_DH: 0.35, MID_R: 600,
   LONE_R: 250, CHARGE_R: 300, DMG_SHIP: 0.5,

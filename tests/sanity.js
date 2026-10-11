@@ -34,12 +34,13 @@ const RULES = [
   ['P5', 2, 'planes2/strike', 'armed bomber in transit to a target passes a seen enemy ship worth 150 more (air_ops VALUE: CV 250, BB 180, CA 80, DD 20) within 120 u, no farther than its own target (3 s)'],
   ['P5b', 2, 'planes2/strike', 'armed bomber in transit, its target seen within 150 u, not getting closer for 20 s'],
   ['P6', 1, 'planes2', 'bomber in the air (transit / attack) with no target and no wave (10 s)'],
-  ['P6c', 1, 'planes2/endgame', 'non-CAP plane circling: > 900 u flown with < 80 u net in 60 s (no foe, not in an attack)'],
+  ['P6c', 1, 'planes2/endgame', 'non-CAP plane circling: > 900 u flown with < 80 u net in 60 s (no foe, no attack run inside the 60 s, not an escort over its target while its strike is still armed / attacking there)'],
+  ['P6h', 0, 'airend', 'as P6c for a returning plane within 200 u of home: holding for the deck (the landing queue, see docs/airdiag; info)'],
   ['P7', 2, 'planes2', 'bomber with no ordnance still in transit / attack, or any plane under 35% hp not going home (10 s)'],
-  ['P7f', 2, 'planes2', 'not returning with less fuel than the way home x1.1 + 3 s (5 s)'],
+  ['P7f', 1, 'planes2', 'not returning with less fuel than the way home x1.1 + 3 s (5 s). The sim burns fuel only out (aircraft.js: return at fuel 0, the way home is free), so nobody ditches: a realism matter (no bingo fuel), not a visible blunder'],
   ['P8', 2, 'planes2', 'escort > 80 u from its strike\'s nearest bomber while an enemy fighter attacks one of them, before the attack (3 s)'],
   ['P8b', 2, 'planes2', 'escort within 50 u of an enemy fighter attacking its bomber and not fighting a fighter (3 s)'],
-  ['P9', 1, 'planes2', 'plane (not attacking) inside the heavy-flak reach (0.9 x aa.range x 2.2) of an enemy BB / CA / CV that is not its target nor within 150 u of it (the target\'s screen is unavoidable) (2 s)'],
+  ['P9', 1, 'planes2', 'plane (not attacking) inside the heavy-flak reach (0.9 x aa.range x 2.2) of an enemy BB / CA / CV that is not its target nor within 150 u of it (the target\'s screen is unavoidable), nor (for a CAP fighter) inside its carrier\'s CAP leash (the enemy came to the fleet) (2 s)'],
   ['P10', 1, 'planes2', 'plane in the air > 20 u off the map (2 s)'],
   ['P10s', 0, 'planes2', 'as P10 for a scout / search plane / flying boat (info)'],
   ['P10b', 1, 'planes2', 'CAP fighter > leash2 + 100 u from its carrier with no foe / vector (2 s)'],
@@ -74,8 +75,10 @@ function specsFor(seed) {
     if (sc.random) { out.push({ seed, random: true, tod: sc.tod, wx: sc.wx, scen: sc.name }); if (sc.mirror) out.push({ seed, random: true, swap: true, scen: sc.name }); }
     else out.push({ seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall, base: sc.base || null, scen: sc.name });
   }
-  for (const s of out) Object.assign(s, { light: true, step: SR.P.DT, san: RULES_ON ? RULES_ON.split(',') : true });
-  return out;
+  // mirror's unswapped round is the standard round (same seed, same random fleet): run it once
+  const seen = new Set(), uniq = out.filter(s => { const k = JSON.stringify([s.seed, !!s.random, !!s.swap, s.tod, s.wx, s.A, s.B, s.aNation, s.base, s.label]); if (seen.has(k)) return false; seen.add(k); return true; });
+  for (const s of uniq) Object.assign(s, { light: true, step: SR.P.DT, san: RULES_ON ? RULES_ON.split(',') : true });
+  return uniq;
 }
 
 async function openPage(b, errs) {
