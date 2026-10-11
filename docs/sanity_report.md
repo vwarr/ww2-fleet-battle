@@ -56,7 +56,7 @@ peaks in mirror / standard / weather (22-27). Night rounds have no air rules hit
 
 ## Top 10: root cause, code location, owner
 
-Examples are (seed[s = sides swapped] scenario t=start duration). Plots: `tests/shots/sanity/<rule>_<k>.png`, made with
+Examples are (seed[s = sides swapped] scenario t=start duration). Plots: `docs/sanity/<rule>_<k>.png` (copied from the gitignored `tests/shots/sanity/`), made with
 `FROM=<json> node tests/sanity.js --plot RULE:k` (bold = the units named; USN solid, IJN dashed; colour = flight state).
 
 1. **S2, AA on the wrong plane (ships: combat_aa.js).** Light AA takes the NEAREST detected plane in its altitude
@@ -75,7 +75,8 @@ Examples are (seed[s = sides swapped] scenario t=start duration). Plots: `tests/
    (a) `air_dogfight.js:294`: `pick()` keeps a committed foe while `s.lock > 0` (LOCK 5-7 s, `air_dogfight.js:17`),
    and `air_intercept.js:26` re-arms lock >= 1.5 s on every pass. A fighter that started on a bomber stays on it after
    the drop, with an armed torpedo plane 1 s away (seed 30 carrier_duel t=239 17 s, `P1_1.png`: U:fighter#p21
-   circles a spent torpedo plane while three armed ones run in on U:carrier#4).
+   dogfights a spent torpedo plane in the IJN group's orbit, then turns home, while the armed I:torpedo#p97 passes it
+   1 s away on its run to U:carrier#4).
    (b) `air_cap.js:76-95` `raidFor()` has no claim count for armed raiders. Only snoopers use `chasing()`, so every
    picket section scores the same best raider and the rest go unvectored. capPick's `claimed() * 70` spread
    (`air_ops.js:120`) works only inside ENGAGE (130 u, `inReach`).
@@ -122,9 +123,10 @@ Examples are (seed[s = sides swapped] scenario t=start duration). Plots: `tests/
     `air_strikes.js`; airend strike sizing / form-up). (c) Escorts left orbiting over a target after their bombers
     have gone (`air_cag.js:235`: no "strike done, go home"): planes2.
 
-Also worth routing (below the top 10): **P10**, torpedo planes orbiting OFF the map in the anvil setup (seed 19
-weather t=530: two IJN torpedo planes 106 s at x=-82, `P10_1.png`). The anvil set-up point at SET_R 140 around a
-target near the edge is not clamped to the map (`air_attack.js:26`, approach `:194-214`): planes2. **P2** (idle CAP
+Also worth routing (below the top 10): **P10**, torpedo planes flying straight off the map in attack state (seed 19
+weather t=530: two IJN torpedo planes, 106 s past the west edge at x=-82, `P10_1.png`). The likely cause is a run-out
+or anvil set-up point outside the map: the anvil point at SET_R 140 around a target near the edge is not clamped
+(`air_attack.js:26`, approach `:194-214`). Not probed further. Owner: planes2. **P2** (idle CAP
 83 u from a carrier while a dive bomber 7 s away is under-covered, seed 16 weather t=293.5): same `raidFor`
 band / inner-section filters as P1 (b-c). **P8** (escorts 170-350 u from their torpedo planes while US fighters
 attack them, seed 15 midway t=117.5): the escort had its own fighter foe and `pick()` keeps it
@@ -167,10 +169,14 @@ survey's numbering (`__san.labelIf`). Counts were never affected. Earlier plane 
 - The 100-round balance gate was not run: no gameplay code changed on this branch.
 - Survey wall time: 774 s for 510 rounds on 2 workers when the lock is free.
 
-## Plots looked at (tests/shots/sanity/)
+## Plots looked at (docs/sanity/)
 
-`S2_1` (bold units mostly out of frame; the detail line carries it), `P1_1` (fighter circling a spent torpedo plane
-while three armed ones run in), `P3_1`, `P7f_3`, `P9_1` (escorts orbiting a battleship that is not their target),
+`S2_1` (bold units mostly out of frame; the detail line carries it), `P1_1` (fighter on a spent torpedo plane while an armed
+one passes it), `P3_1`, `P7f_3`, `P9_1` (escorts orbiting a battleship that is not their target),
 `S8c_1` (two cruisers shuttling in place late in the round), `S5_2` (a carrier steaming alone), `S7_2` (a battleship
-holding course under a dive wheel), `P6c_1`, `P2_1`, `P10_1` (torpedo planes orbiting off the map edge). Earlier
-false positives (looked at, then rules fixed): the old `P6c_1` / `P6c_4`, `P9_1` and `P4_1` described above.
+holding course under a dive wheel), `P6c_1`, `P2_1`, `P10_1` (a torpedo plane flying straight off the west edge). Earlier
+false positives (looked at, then rules fixed): the old `P6c_1` / `P6c_4`, `P9_1` and `P4_1` described above. Those
+were drawn before the label fix, but the rule changes rest on the detail strings (an attack run inside the window,
+an escort 40 u from its target, "16 planes ... fighting") and on the before / after rates (20-seed run -> final: P6c
+15.7 -> 2.3, P4 0.49 -> 0.23, P9 6.1 -> 4.4, S2 13.7 -> 9.6), not on which track was drawn bold. All plots listed
+here were redrawn from the final run with the fixed labels.
