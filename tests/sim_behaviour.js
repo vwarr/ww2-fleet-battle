@@ -62,6 +62,8 @@
 const fs = require('fs');
 const HL = require('./headless');
 const FZ = require('./fuzz');   // composition fuzz (--only fuzz): odd and lopsided fleets
+const SR = require('./sanity_rules'); // the common-sense auditor (tests/sanity.js): a light subset rides the behaviour rounds
+const SAN_LIGHT = ['P1', 'P3', 'P4', 'S1', 'S2', 'S7'];
 
 // ======================= THRESHOLDS (tune here) =======================
 // op: '<=' | '>=' | 'in' (thr = [lo, hi]) | '=='.  level: FAIL (hard) | WARN (fuzzy).
@@ -138,6 +140,14 @@ const CHECKS = [
   { id: 'night_torps',   desc: 'night torpedo spreads per round',       op: '>=', thr: 0.5, level: 'WARN', only: ['night', 'dusk'] },
   { id: 'star_shells',   desc: 'star shells per round',                 op: '>=', thr: 1, level: 'WARN', only: ['night', 'dusk'] },
   { id: 'wx_detect',     desc: 'first-sighting range in rain / clear',   op: '<=', thr: 0.85, level: 'WARN', only: ['weather'] },
+  // common sense (tests/sanity_rules.js, the full audit is tests/sanity.js): bombers let through, fighters on the wrong
+  // foe, planes bunched over the carrier, guns silent, AA on the wrong plane, ships not turning under attack. WARN only.
+  { id: 'san_p1',        desc: 'seen raiders nobody went for while a fighter could reach (P1 / raiders)', op: '<=', thr: 0.15, level: 'WARN' },
+  { id: 'san_p3',        desc: 'CAP on a fighter while a reachable raider drops (P3 / round)', op: '<=', thr: 1, level: 'WARN' },
+  { id: 'san_p4',        desc: 'planes bunched over a carrier (P4 / round)', op: '<=', thr: 0.5, level: 'WARN' },
+  { id: 'san_s1',        desc: 'guns silent with a seen enemy in range and arc (S1 / round)', op: '<=', thr: 0.5, level: 'WARN' },
+  { id: 'san_s2',        desc: 'AA at departing / distant planes while an attacker closes (S2 share)', op: '<=', thr: 0.15, level: 'WARN' },
+  { id: 'san_s7',        desc: 'ships holding course under a bomb / torpedo run (S7 / round)', op: '<=', thr: 1, level: 'WARN' },
   { id: 'stuck',         desc: 'stuck ships',  op: '==', thr: 0, level: 'FAIL' },
   { id: 'nan',           desc: 'NaN positions', op: '==', thr: 0, level: 'FAIL' },
   { id: 'errors',        desc: 'page errors',  op: '==', thr: 0, level: 'FAIL' }
@@ -511,7 +521,7 @@ function install(P) {
   // ---- one round ----
   B.broken = n => { const S = WW.fleetCmd && WW.fleetCmd.side(n); return !!(S && S.brokenAt && S.posture === 'withdraw'); };
   B.run = function (spec) {
-    const G = WW.game, W = WW.cfg.MAP_W, cap = WW.cfg.ROUND_TIMEOUT + 180; // main.js stretches the limit by up to 150 s for a pursuit
+    const G = WW.game, W = WW.cfg.MAP_W, cap = spec.until || WW.cfg.ROUND_TIMEOUT + 180; // main.js stretches the limit by up to 150 s for a pursuit (spec.until: stop there, tests/sanity.js --shot)
     B.sees = intelSees();
     B.known = WW.intel && typeof WW.intel.known === 'function' ? (n, u) => { const c = WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= 90 ? c : null; } : null;
     WW.terrain.generate(spec.seed); WW.seedRandom(spec.seed); G.seed = spec.seed;
@@ -543,9 +553,12 @@ function install(P) {
       air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0, capBK: 0 } };
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
-    const step = spec.light ? 5 : P.SAMPLE, planesSeen = new Set();
+    const step = spec.step || (spec.light ? 5 : P.SAMPLE), planesSeen = new Set();
+    const SAN = spec.san && window.__san; // the common-sense auditor (tests/sanity_rules.js): read-only, sampled every step
+    if (SAN) SAN.begin({ seed: spec.seed, only: spec.san === true ? null : spec.san });
     while (G.state === 'battle' && G.roundTime < cap) {
       __sim.fastForward(step);
+      if (SAN) SAN.sample();
       for (const p of WW.world.planes) planesSeen.add(p); // planes lost per nation (balance diagnosis)
       if (spec.light) { if (spec.noStall) G.lastSink = G.roundTime; for (const s of WW.world.ships) if (!isFinite(s.x) || !isFinite(s.z)) R.nan++; continue; }
       if (spec.noStall && G.state === 'battle') G.lastSink = G.roundTime;
@@ -578,6 +591,7 @@ function install(P) {
     out.night = { tod: WW.dayNight ? WW.dayNight.kind : 'day', wx: WW.weather ? WW.weather.kind : 'clear', dlEnd: +(WW.daylight === undefined ? 1 : WW.daylight).toFixed(2), d: dlt(s1.d, s0.d), n: dlt(s1.n, s0.n), w: dlt(s1.w, s0.w) };
     out.det = R.det;
     out.tons = { USN: [tons0.USN, G.tonnage('USN')], IJN: [tons0.IJN, G.tonnage('IJN')] }; // [start, afloat at the end]
+    out.san = SAN ? SAN.end() : null;
     out.dmg = R.dmg; out.tsrc = R.tsrc; out.tl = R.tl; out.planesLost = { USN: 0, IJN: 0 }; out.planesFlown = { USN: 0, IJN: 0 };
     for (const p of planesSeen) { out.planesFlown[p.nation]++; if (!p.alive && (p.deathMode || p.state === 'falling' || p.state === 'ditch')) out.planesLost[p.nation]++; }
     R = null;
@@ -705,6 +719,10 @@ function searchAgg(rounds) {
   out.strafe_hits = rounds.some(r => r.strafe) ? rounds.reduce((s, r) => s + (r.strafe ? r.strafe.hits : 0), 0) : null;
   const nn = rounds.flatMap(r => r.ptNN || []).sort((a, b) => a - b); out.pt_nn_p10 = nn.length ? nn[Math.floor(nn.length * 0.1)] : null;
   out.first_dmg = med(rounds.map(r => r.firstDmg).filter(v => v !== null && v !== undefined));
+  const san = rounds.filter(r => r.san), sn = k => san.reduce((s, r) => s + ((r.san.res[k] || {}).n || 0), 0), sa = k => san.reduce((s, r) => s + (k === 'inb' ? r.san.inb || 0 : r.san.aa[k]), 0);
+  out.san_p1 = san.length ? ratio(sn('P1'), sa('inb')) : null;
+  for (const k of ['P3', 'P4', 'S1', 'S7']) out['san_' + k.toLowerCase()] = san.length ? sn(k) / san.length : null;
+  out.san_s2 = san.length ? ratio(sa('bad'), sa('att')) : null;
   return out;
 }
 const fmtv = v => (v === null || v === undefined ? '-' : v);
@@ -742,6 +760,7 @@ if (require.main === module) (async () => {
     // stop the render loop driving the sim (setScale clamps at 0.1; the director's slow-motion warp too): we drive it
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
     await p.evaluate(install, P);
+    await p.evaluate(SR.install, SR.P);
     if (TUNE_OPT) await p.evaluate(t => { for (const kv of t.split(',')) { const [k, v] = kv.split('='); WW.islandBase.TUNE[k] = +v; } }, TUNE_OPT);
     return p;
   }
@@ -760,6 +779,7 @@ if (require.main === module) (async () => {
       else specs.push({ seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: sc.cripple === undefined ? -1 : sc.cripple, noStall: !!sc.noStall, base: BASE_OPT || sc.base || null });
     }
     if (DAY_CLEAR) for (const sp of specs) sp.dayClear = true;
+    for (const sp of specs) if (!sp.light) sp.san = SAN_LIGHT;
     const rounds = new Array(specs.length);
     let next = 0;
     await Promise.all(pages.map(async pg => { while (next < specs.length) { const i = next++; rounds[i] = await pg.evaluate(s => window.__beh.run(s), specs[i]); } }));
@@ -832,4 +852,4 @@ if (require.main === module) (async () => {
 })().catch(e => { console.error(e); process.exit(2); });
 
 // tests/balance_ab.js reuses the page side and the aggregation
-module.exports = { install, P, aggregate, wilson };
+module.exports = { install, P, aggregate, wilson, SCEN };
