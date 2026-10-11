@@ -44,7 +44,7 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
       cover: () => { for (const f of WW.world.planes) { const u = f.foe; if (!f.alive || f.kind !== 'fighter' || !u || !u.alive || !u.ordnance || !u.target || u.target.type === 'carrier' || u.target.isBase || u.target.nation !== f.nation) continue;
         if (WW.dist(u.x, u.z, u.target.x, u.target.z) < 220 && WW.dist(f.x, f.z, u.x, u.z) < 45) return { a: f, b: u, c: u.target }; } return null; },
       alert: () => { for (const q of WW.world.planes) if (q.alive && q.alert && q.state !== 'takeoff' && q.target && q.target.alive && WW.dist(q.x, q.z, q.target.x, q.target.z) < 200) return { a: q, b: q.target }; return null; },
-      escort: () => { for (const q of WW.world.planes) { const d = q.escortHome; if (q.alive && d && d.alive && WW.dist(q.x, q.z, d.x, d.z) < 25) return { a: d, b: q }; } return null; },
+      escort: () => { for (const q of WW.world.planes) { const d = q.escortHome; if (q.alive && d && d.alive && WW.dist(q.x, q.z, d.x, d.z) < 30) return { a: q, b: d }; } return null; },
       cap: () => WW.game.roundTime > 70 ? { cv: WW.world.ships.find(s => s.alive && s.type === 'carrier' && !s.isBase) } : null
     };
   }, SEED);
@@ -56,11 +56,12 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
         const s = F(); if (!s) continue;
         window.__subj = s;
         if (kind === 'cap') {
-          window.__look = () => { const c = __subj.cv, n = c.heading + Math.PI / 2; return { x: c.x + Math.cos(n) * 330, y: 30, z: c.z + Math.sin(n) * 330, tx: c.x, ty: 40, tz: c.z }; };
+          window.__look = () => { const c = __subj.cv, n = c.heading + Math.PI / 2; return { x: c.x + Math.cos(n) * 210, y: 34, z: c.z + Math.sin(n) * 210, tx: c.x, ty: 42, tz: c.z }; };
         } else {
-          window.__look = () => { const a = __subj.a, o = __subj.b, mx = (a.x + o.x) / 2, mz = (a.z + o.z) / 2, my = ((a.y || 0) + (o.y || 0)) / 2;
-            const h = Math.atan2(o.z - a.z, o.x - a.x) + 2.5, D = Math.max(45, WW.dist(a.x, a.z, o.x, o.z) * 1.3);
-            return { x: mx + Math.cos(h) * D, y: my + 12, z: mz + Math.sin(h) * D, tx: mx, ty: my, tz: mz }; };
+          // behind the subject's quarter, a little above, looking past it at the second plane / ship
+          window.__look = () => { const a = __subj.a, o = __subj.b, h = Math.atan2(o.z - a.z, o.x - a.x), d = WW.dist(a.x, a.z, o.x, o.z), D = WW.clamp(d * 0.6, 14, 40);
+            const b = h + Math.PI + 0.45;
+            return { x: a.x + Math.cos(b) * D, y: (a.y || 0) + 5, z: a.z + Math.sin(b) * D, tx: (a.x + o.x) / 2, ty: ((a.y || 0) + (o.y || 0)) / 2, tz: (a.z + o.z) / 2 }; };
         }
         return 't=' + G.roundTime.toFixed(0) + (s.a ? ' ' + s.a.nation + ' ' + s.a.kind + ' / ' + (s.b.kind || s.b.type) + (s.c ? ' at a ' + s.c.type : '') : '');
       }
