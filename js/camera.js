@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   const P = new THREE.Vector3(), L = new THREE.Vector3();        // current camera position / look point
   const gP = new THREE.Vector3(), gL = new THREE.Vector3();      // goals for this frame
   const _c = new THREE.Vector3(), _f = new THREE.Vector3();
-  let manual = false, shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null, lastWide = -9;
+  let manual = false, shot = null, lastKind = '', lastSubj = null, recent = [], shotCount = 0, snapNext = true, forced = null, lastWide = -9, lastSunk = null;
 
   // ---------- overview fit (setup / map mode) ----------
   function placeOverview(d, tz) {
@@ -118,6 +118,7 @@ window.WW = window.WW || {};
   function pickShot() {
     const sc = WW.camStory && WW.camStory.pick(); // story mode (camera_story.js) owns the cuts while it runs
     if (sc) return startShot(sc);
+    if (shot && shot.finale && shot.finale.s) return coda(shot.finale);
     shotCount++;
     let best = null;
     const opening = shotCount === 1 && WW.game && WW.game.state === 'battle';
@@ -132,6 +133,12 @@ window.WW = window.WW || {};
       best = { kind: 'wide', dur: opening ? dur(10, 13) : dur(8, 11) }; lastWide = shotCount;
     }
     startShot(best);
+  }
+  // after the finale: the rescuer at the wreck, else a low orbit over the boats where she went down
+  function coda(f) {
+    const r = WW.endgame && WW.endgame.rescuerNear ? WW.endgame.rescuerNear(f.s.nation, f.x, f.z, 400) : null;
+    if (r && !gone(r)) return startShot({ kind: 'orbit', subj: r, r: shipR(r, 0.3, 6), dur: 10, w: 0.04, hgt: 0.14, pr: 99, finale: { coda: true } });
+    startShot({ kind: 'orbit', subj: { x: f.x, z: f.z, y: 0, diorama: true }, r: 34 + f.s.stats.length * 0.6, dur: 10, w: 0.035, hgt: 0.12, pr: 99, finale: { coda: true } });
   }
   function startShot(c) {
     shot = Object.assign({ t: 0, dur: 8 }, c);
@@ -326,7 +333,16 @@ window.WW = window.WW || {};
     init() {
       camera = WW.camera; cam.resize();
       if (typeof document !== 'undefined') makeFade();
-      WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; lastWide = -9; });
+      WW.on('roundStart', () => { shot = null; forced = null; shotCount = 0; lastWide = -9; lastSunk = null; });
+      // The finale: a round that ends with a sinking cuts to the ship going down (an orbit, 0.5x for a beat), then a
+      // coda on the survivors: the destroyer picking them up (endgame.js) or the boats round the wreck (lifeboats.js).
+      WW.on('shipSunk', s => { if (s && WW.game && WW.game.state === 'battle') lastSunk = { s, x: s.x, z: s.z, at: performance.now() / 1000 }; });
+      WW.on('victory', () => {
+        const ls = lastSunk; lastSunk = null;
+        if (!camera || cam.mode !== 'director' || (WW.freecam && WW.freecam.active()) || forced || !ls || gone(ls.s) || performance.now() / 1000 - ls.at > 15) return;
+        startShot({ kind: 'orbit', subj: ls.s, r: shipR(ls.s, 0.34, 4), dur: 7, w: 0.05, hgt: 0.16, pr: 99, finale: ls });
+        if (WW.camAction && WW.camAction.finale) WW.camAction.finale(3.5);
+      });
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
       // the island base's alarm (base life: the siren, crews running to the guns and planes): cut to the base for a
       // low 6-10 s orbit, unless the camera is on a hand-off, an attack in a story, the user's camera or a test shot.
@@ -373,7 +389,7 @@ window.WW = window.WW || {};
       const st = WW.game && WW.game.state;
       if (WW.game && WW.game.infinite) cam.mode = 'director'; // infinite: the director films it all
       const fc = WW.freecam && WW.freecam.active();
-      if (WW.camAction) WW.camAction.tick(rdt, st === 'battle' && cam.mode === 'director' && !fc); // slow motion only on director shots
+      if (WW.camAction) WW.camAction.tick(rdt, (st === 'battle' || (st === 'victory' && shot && shot.finale && shot.finale.s)) && cam.mode === 'director' && !fc); // slow motion only on director shots (and the finale)
       if (st === 'setup' || !st || cam.mode === 'map') {
         gP.set(W / 2, mapDist * Math.sin(OV_PITCH), mapTz + mapDist * Math.cos(OV_PITCH)); gL.set(W / 2, 0, mapTz);
       } else if (fc) {

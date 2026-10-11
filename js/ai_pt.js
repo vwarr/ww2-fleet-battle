@@ -141,7 +141,7 @@ window.WW = window.WW || {};
   function stalkSpot(ship, L) {
     let t = null, bd = 1e9;
     for (const c of contacts(ship, 45)) {
-      if (c.unit.submerged || !VAL[c.unit.type] || c.unit.isBase) continue;
+      if (c.unit.submerged || !VAL[c.unit.type] || c.unit.isBase || c.unit.type === 'submarine') continue;
       const d = WW.dist(ship.x, ship.z, c.x, c.z); if (d < bd) { bd = d; t = c; }
     }
     if (!t) return false;
@@ -225,7 +225,7 @@ window.WW = window.WW || {};
   function ptReach(u) {
     const G = u.stats.guns, W = WW.shipAI.ROLE_W[u.type]; let r = 0;
     for (let k = 0; k < G.length; k++) if (k > 0 || !W || W.pt > 0) r = Math.max(r, G[k].range);
-    return r || G[0].range;
+    return r || (G[0] ? G[0].range : 0);
   }
   function nearestBig(ship) { // nearest known enemy gun ship that out-guns a PT (flee from it)
     let b = null, bd = 1e9, near = null, nd = 1e9;
