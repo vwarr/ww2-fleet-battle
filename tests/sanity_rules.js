@@ -104,6 +104,7 @@ function install(P) {
   }
   // a wingman flies its section leader's vector (air_squadrons follow(): only the leader holds plane.vec)
   const vecOf = f => f.vec || (f.leader && f.leader.alive && f.leader.vec) || null;
+  const tailed = f => !!f.foe && f.foe.kind === 'fighter' && (f.foe.foe === f || !!(f.df && f.df.from === f.foe));
   const onIt = (f, u) => f.foe === u || vecOf(f) === u || (f.df && f.df.foe === u);
   function planes(t) {
     const PL = WW.world.planes, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H;
@@ -121,8 +122,8 @@ function install(P) {
         let best = null, bt = 1e9, cnt = 0;
         for (const f of ftr) {
           if (f.nation !== n || f.target || f.search || f.recall || armed(f.foe) || armed(vecOf(f))) continue;
-          const ok = capF(f) || (f.state === 'return' && !f.crippled) || (f.state === 'landing' && f.deckPh === 'marshal');
-          if (!ok) continue;
+          const ok = capF(f) || (f.state === 'return' && !f.crippled) || (f.state === 'landing' && f.deckPh === 'marshal' && f.fuel >= P.JOIN_FUEL && f.hp >= 0.6 * f.maxHp);   // the stack joins in on air_cap's terms
+          if (!ok || tailed(f)) continue;   // an enemy fighter on its tail: it is fighting for its life
           const r = reach(f, th); if (!r.ok) continue;
           cnt++; if (r.tI < bt) { bt = r.tI; best = f; }
         }
@@ -148,7 +149,7 @@ function install(P) {
       }
       // P3: dogfighting a fighter that is not on our tail while a raider drops on a friendly ship soon
       const fo = f.foe;
-      if (fo && fo.kind === 'fighter' && fo.foe !== f && !(f.df && f.df.from === fo)) {
+      if (fo && fo.kind === 'fighter' && !tailed(f)) {
         for (const th of tl) {
           if (th.tDrop > P.P3_T || th.tDrop < 2 || !vis(f.nation, th.u) || onCount(th.u) >= 2) continue;
           const r = reach(f, th); if (!r.ok) continue;
@@ -386,7 +387,7 @@ function install(P) {
 // Thresholds (sim units: map 2400 x 1350, a carrier ~26 u long, plane speeds 25-40 u/s; see tests/sanity.js RULES)
 const P = {
   DT: 0.5, GAP: 2, EX_KEEP: 4,
-  THREAT_T: 45, DROP_VT: 90, DROP_VB: 5, FUEL_PAD: 8, P3_T: 25, RAID_R: 300,
+  THREAT_T: 45, JOIN_FUEL: 22, DROP_VT: 90, DROP_VB: 5, FUEL_PAD: 8, P3_T: 25, RAID_R: 300,
   BUNCH_R: 50, BUNCH_N: 4, VALUE_GAP: 150, P5_R: 120, P5B_T: 20, P5B_R: 150,
   DMG_HP: 0.35, CIRC_T: 60, CIRC_NET: 80, CIRC_PATH: 900, ESC_R: 80, FLAK_NEAR: 150, HOLD_R: 200, AA_ENG: 2, OFF: 20, REACH_PAD: 1, AA_POINT: 15,
   AA_HEAVY_K: 2.2, AA_LIGHT_K: 2,

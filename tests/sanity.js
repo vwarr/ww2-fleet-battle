@@ -23,7 +23,7 @@ const SR = require('./sanity_rules');
 // id, severity (3 = what the user named: bombers through, obvious targets ignored, guns silent; 2 = plainly odd;
 // 1 = untidy / doctrine-adjacent; 0 = info), owner (who would fix it), what counts and why the threshold
 const RULES = [
-  ['P1', 3, 'planes2', 'seen armed bomber inbound (drop < 45 s) on a friendly ship, NO fighter on it or vectored to it, while a CAP / returning / stacked fighter could reach it on a lead course 1 s before the drop with fuel home; fighters already on or vectored to a raider are not counted as able (3 s)'],
+  ['P1', 3, 'planes2', 'seen armed bomber inbound (drop < 45 s) on a friendly ship, NO fighter on it or vectored to it, while a CAP / returning / stacked fighter could reach it on a lead course 1 s before the drop with fuel home; fighters already on or vectored to a raider, with an enemy fighter on their tail, or in the stack below air_cap\'s join terms (22 s fuel, 60% hp) are not counted as able (3 s)'],
   ['P1L', 1, 'planes2', 'as P1 but the bomber is outside the fighter carrier\'s doctrine long leash (air_cap DOC.leash2): doctrine, not a blunder'],
   ['P1u', 0, 'intel', 'as P1 but the bomber is not on the side\'s plot (undetected): a detection matter'],
   ['P2', 2, 'planes2', 'CAP fighter with no foe and no vector while a seen raider it can reach before the drop, inside its leash2, has < 2 fighters on it (3 s)'],
