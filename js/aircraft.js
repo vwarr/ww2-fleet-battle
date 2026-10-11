@@ -205,7 +205,7 @@ window.WW = window.WW || {};
       this.tr = dt > 0 ? (this.tr || 0) + (this.turn - (this.tr || 0)) * (1 - Math.exp(-dt / 0.15)) : this.turn;
       let bank = WW.clamp(Math.atan2(this.speed * this.tr, G_EFF), -1.3, 1.3);
       if (this.alive) bank *= Math.max(0, Math.cos(this.pitch)); // no steep bank while pointing down a dive
-      const dr = bank - this.roll, maxR = 2.6 * dt;               // roll rate limit = the roll-in / roll-out lag
+      const dr = bank - this.roll, maxR = 2.0 * dt;               // roll rate limit (~115 deg/s, a fighter's full aileron roll) = the roll-in / roll-out lag
       this.roll += WW.clamp(dr * Math.min(1, dt * 7), -maxR, maxR);
       const v = Math.hypot(this.speed, this.vy);
       this.gload = Math.hypot(this.speed * this.tr, v * Math.max(0, pr));

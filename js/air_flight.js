@@ -4,20 +4,23 @@
 //   with a load), not the 7 u/s zoom it used for everything; fighters keep their full climb (a scramble). Descents
 //   and the attack itself are unchanged (air_attack.js lets the torpedo planes down on the approach).
 // - The way home (air_recovery.js goHome asks home()): economic cruise (pt.cruise, else 0.8 x top speed; fuel burns at
-//   CRUISE_BURN), full speed when the fuel is short or a fighter is on it. With fuel to spare and more than SKIRT_R to
-//   go, the course skirts the known AA and fighters (air_search.js homeHeading); short of fuel it flies straight.
+//   CRUISE_BURN), full speed only with a fighter on it. plane.fuel counts down to bingo (the sortie's turn-for-home
+//   fuel); below it the tanks still hold the reserve RES_K x the full load (the 1942 return reserve). With fuel to
+//   spare and more than SKIRT_R to go, the course skirts the known AA and fighters (air_search.js homeHeading); short
+//   of fuel it flies straight at cruise (the longest range).
 // - Ditching: a plane whose deck is gone diverts to another carrier of the side; with none, or with the fuel for the
 //   way home gone, or shot up below DITCH_HP and nearer a friendly destroyer than its deck, it flies to the nearest
 //   friendly ship (a destroyer first) and puts down on the water beside it (endgame.js makes it a rescue task).
 //   Before, a plane whose carrier sank ditched at once wherever it was.
-// - A damaged plane (< 50% hp) going home gets a wingman: a friendly plane also going home within PAIR_R with the fuel
-//   flies on its wing (plane.escortHome) until it is near its deck (or the deck it is ditching by).
+// - A damaged plane (< 50% hp) going home, clear of the flak (FLAK_R from enemy ships), gets a wingman: a friendly
+//   carrier plane also going home within PAIR_R with the fuel flies on its wing (plane.escortHome) until it is near its deck (or the deck it is ditching by).
 // Events: airOrder 'escortHome', 'ditchBy' (plane, carrier, target ship). Stats: WW.airFlight.stats.
 window.WW = window.WW || {};
 (function () {
-  const CLIMB_K = 0.7, CRUISE_BURN = 0.6, SKIRT_R = 220, DITCH_HP = 0.2, PAIR_R = 90, ESC_DONE = 140, MARGIN = 20;
-  const ST = { diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0 };
+  const CLIMB_K = 0.7, CRUISE_BURN = 0.6, RES_K = 0.15, SKIRT_R = 220, DITCH_HP = 0.2, PAIR_R = 140, FLAK_R = 150, ESC_DONE = 140, MARGIN = 20;
+  const ST = { diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0, short: 0 };
   const cruise = p => p.pt.cruise || p.pt.speed * 0.8;
+  const reserve = p => (p.pt.range / p.pt.speed) * 6 * RES_K;   // the full load as aircraft.js fills it, x RES_K
 
   // the climb rate fly() uses to go up (aircraft.js)
   function climbV(p) {
@@ -51,7 +54,7 @@ window.WW = window.WW || {};
     if (p.state === 'takeoff' || p.state === 'rollout' || p.deckPh === 'final' || p.deckPh === 'trap' || p.carrier.isBase) return false;
     let best = null, bd = 1e9;
     for (const s of WW.world.ships) if (deckOK(s, p.nation)) { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
-    if (best && bd / cruise(p) < Math.max(p.fuel, 40) + MARGIN) {
+    if (best && bd / cruise(p) * CRUISE_BURN < Math.max(p.fuel, 0) + reserve(p)) {
       p.carrier = best; p.diverted = (p.diverted || 0) + 1; ST.diverts++;
       if (p.state === 'landing') { p.state = 'return'; p.deckPh = null; }
       if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
@@ -64,9 +67,9 @@ window.WW = window.WW || {};
   function home(p, wx, wz, alt, dt) {
     const d = WW.dist(p.x, p.z, wx, wz), v = cruise(p), need = d / v;
     const chased = p.df && p.df.from && p.df.from.alive && WW.dist(p.df.from.x, p.df.from.z, p.x, p.z) < 60;
-    const short = p.fuel < need + MARGIN;
-    const spd = chased || short ? p.pt.speed : v * (p.hp < p.maxHp * 0.5 ? 0.9 : 1);
-    if ((chased || short) && dt > 0) ST.fullSpeed += dt;
+    const short = p.fuel + reserve(p) < need * CRUISE_BURN + MARGIN;
+    const spd = chased ? p.pt.speed : v * (p.hp < p.maxHp * 0.5 && !short ? 0.9 : 1);
+    if (dt > 0) { if (chased) ST.fullSpeed += dt; if (short) ST.short += dt; }
     p.fuel -= dt * (spd < p.pt.speed * 0.95 ? CRUISE_BURN : 1);
     if (d > SKIRT_R && !short && WW.search && WW.search.homeHeading) {
       const H = WW.search.homeHeading(p, wx, wz);
@@ -79,7 +82,7 @@ window.WW = window.WW || {};
   function ditchCheck(p) {
     if (p.ditchTo || p.carrier.isBase || !deckOK(p.carrier, p.nation)) return;
     const dc = WW.dist(p.x, p.z, p.carrier.x, p.carrier.z);
-    if (p.fuel <= 0 && dc > 60) { ditchBy(p, 'fuelDitch'); return; }
+    if (p.fuel <= -reserve(p) && dc > 60) { ditchBy(p, 'fuelDitch'); return; }   // the reserve is gone too
     if (p.hp < p.maxHp * DITCH_HP && dc > 150) {
       const s = ditchShip(p);
       if (s && s.type === 'destroyer' && WW.dist(p.x, p.z, s.x, s.z) < dc * 0.6) ditchBy(p, 'dmgDitch');
@@ -98,9 +101,10 @@ window.WW = window.WW || {};
   function pair(p) {
     if (p.escortedBy && p.escortedBy.alive && p.escortedBy.escortHome === p) return;
     p.escortedBy = null;
+    for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation !== p.nation && WW.dist2(p.x, p.z, s.x, s.z) < FLAK_R * FLAK_R) return;   // clear of the flak first
     let best = null, bd = PAIR_R;
     for (const q of WW.world.planes) {
-      if (q === p || !q.alive || q.nation !== p.nation || q.state !== 'return' || q.escortHome || q.ditchTo || q.deckPh || q.hp < q.maxHp * 0.6 || q.carrier.isBase) continue;
+      if (q === p || !q.alive || q.nation !== p.nation || q.state !== 'return' || q.kind === 'scout' || q.kind === 'flyingboat' || q.escortHome || q.ditchTo || q.deckPh || q.hp < q.maxHp * 0.6 || q.fuel < 8 || q.carrier.isBase) continue;
       if (q.kind !== 'fighter' && q.ordnance) continue;
       const d = WW.dist(p.x, p.z, q.x, q.z) - (q.element && q.element === p.element ? 30 : 0) - (q.kind === 'fighter' ? 15 : 0);
       if (d < bd) { bd = d; best = q; }

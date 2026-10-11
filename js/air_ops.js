@@ -119,7 +119,7 @@ window.WW = window.WW || {};
       else if (snoop) pr = 200;   // a snooper shadowing the fleet (flying boat, scout, search plane): shoot it down before it reports
       else if (u.kind === 'fighter') pr = u.foe && u.foe.nation === pl.nation ? 140 : 100;
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
-      if (cov) pr = Math.max(pr, arm ? 330 : 240);   // on its run at one of our ships (a fighter strafing a PT): now
+      if (cov) pr = Math.max(pr, arm ? 300 : 240);   // on its run at one of our ships (a fighter strafing a PT): now, after a dive on the carrier
       if (arm && bd) pr += u.kind === (bd === 'high' ? 'dive' : 'torpedo') ? 140 : -150;   // USN height bands: each band its own raiders
       const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4 - claimed(u, pl) * 70;   // spread out: one section per raider
       if (s > bs) { bs = s; best = u; }

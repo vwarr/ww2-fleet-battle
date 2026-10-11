@@ -196,6 +196,7 @@ window.WW = window.WW || {};
     SL[0] = (-d * 34 - s2 * 16) * PKV - Math.abs(wing) * 6 * PKW; SL[1] = s2 * 22 * PKV + wing * 10 * PKW; SL[2] = -d * 2.5 - s2 * 2 + Math.abs(wing) * (j === 2 ? 1.5 : 1) * PKW;
     return SL;
   }
+  const LOOSE = 1.6, LOOSE_D = 520, TIGHT_D = 320;   // cruise formation spacing x LOOSE beyond LOOSE_D from the target, parade inside TIGHT_D
   const SWEEP_D = 280;         // the sweep (top cover with doctrine air.sweep) runs ahead from this far out
   function sweeping(pl, w) {
     if (pl.cover !== 'top' || !w.go || w.dT > SWEEP_D) return false;
@@ -214,6 +215,10 @@ window.WW = window.WW || {};
     if (w.done || (w.go && w.dT < brk)) { pl.sk = 'atk'; return false; }
     pl.state = 'transit';
     const i = pl.fi || 0, nb = Math.max(w.nDive || 0, 1);
+    // cruise formation: open (LOOSE x the parade spacing) on the long leg out, closed up from LOOSE_D to TIGHT_D before
+    // the target (mutual defence and one drop), as 1942 strikes flew: a loose cruise, a tight run in
+    const lk = w.go ? 1 + (LOOSE - 1) * WW.clamp((w.dT - TIGHT_D) / (LOOSE_D - TIGHT_D), 0, 1) : 1;
+    pl.slotK = lk;
     if (pl.kind === 'fighter') { // escorts weave (S-turns): close cover just above the bombers, top cover higher and ahead
       const ph = WW.time.now * 0.8 + (pl.element ? pl.element.id : i) * 1.9, top = pl.cover === 'top', wg = pl.wing || 0;
       const side = top ? 1 : -1, ws = (wg === 2 ? -10 : wg ? 10 : 0) * PKW, vb = WW.planeType ? WW.planeType('dive', pl.nation).alt : 54;
@@ -224,12 +229,12 @@ window.WW = window.WW || {};
       }
       // a further element of the same cover takes the mirror slot on the other side, then the next pair steps out and back
       const cn = pl.coverN || 0, sd = side * (cn % 2 ? -1 : 1), out = (cn >> 1) * 24;
-      keep(pl, w, (top ? 14 : -12) - (wg ? 6 : 0) - (cn >> 1) * 12 + Math.cos(ph) * 3, sd * ((top ? 26 : 18) + out) + ws * (cn % 2 ? -1 : 1) + Math.sin(ph) * 7,
+      keep(pl, w, ((top ? 14 : -12) - (wg ? 6 : 0) - (cn >> 1) * 12) * lk + Math.cos(ph) * 3, (sd * ((top ? 26 : 18) + out) + ws * (cn % 2 ? -1 : 1)) * lk + Math.sin(ph) * 7,
         (top ? (pl.pt.alt || 68) + 3 : Math.max(vb + 9, (pl.pt.alt || 68) - 1)) + wg, dt);   // close cover ~67, top cover ~71
     } else {
       const sl = bomberSlot(i), alt = pl.pt.alt || (pl.kind === 'dive' ? 54 : 30);
-      if (pl.kind === 'dive') keep(pl, w, sl[0], sl[1], alt + sl[2], dt);
-      else keep(pl, w, sl[0] - (6 + Math.min(2, Math.ceil(nb / 3) - 1) * 8) * PKV, sl[1] - 6 * PKV, alt + sl[2], dt);   // under the dive bombers
+      if (pl.kind === 'dive') keep(pl, w, sl[0] * lk, sl[1] * lk, alt + sl[2], dt);
+      else keep(pl, w, (sl[0] - (6 + Math.min(2, Math.ceil(nb / 3) - 1) * 8) * PKV) * lk, (sl[1] - 6 * PKV) * lk, alt + sl[2], dt);   // under the dive bombers
     }
     return true;
   }
