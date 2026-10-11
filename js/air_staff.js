@@ -38,8 +38,8 @@ window.WW = window.WW || {};
   const SIZE_K = { carrier: 1, battleship: 1, base: 0.8, cruiser: 0.7, destroyer: 0.4, pt: 0.3, submarine: 0.3 };
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
-  const ST = { packets: 0, plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
-  const SPENT_T = 60, BARE_R = 120, PACKET_DIV = 6, PACKET_SQN = 12, HEAVY = { carrier: 1, battleship: 1, cruiser: 1 };
+  const ST = { packets: 0, deckHolds: 0, plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
+  const SPENT_T = 60, BARE_R = 120, PACKET_DIV = 6, PACKET_SQN = 12, DECK_Q = 12, HEAVY = { carrier: 1, battleship: 1, cruiser: 1 };
   const ESC_WAIT = 45;   // s a strike waits for fighters to come back before it goes against a strong CAP without them
   // A/B switches (tests: env Q=staff=route:0,size:0): route (plotted routes), size (sizing, CAP hold, commitment, ledger),
   // brk (break-off), sun (sun / cloud sighting), base (the escort test for a raid on the island)
@@ -295,7 +295,14 @@ window.WW = window.WW || {};
       cap = Math.min(cap, Math.max(MIN_B, Math.round(cap * 0.6), Math.round(esc * D.bpe)));
     }
     cv.ai.escWait = 0; cv.ai.capE = capE;
-    if (spent && !tgt.isBase) { cap = Math.min(cap, heavy && !Lg.mauled ? PACKET_SQN : PACKET_DIV); ST.packets++; }   // no enemy air: packets, one after another (a steady stream home, not a 100-plane recovery)
+    if (spent && !tgt.isBase) {   // no enemy air: packets, one after another (a steady stream home, not a 100-plane recovery)
+      cap = Math.min(cap, heavy && !Lg.mauled ? PACKET_SQN : PACKET_DIV); esc = 0; ST.packets++;   // and no escort: there is nothing to escort against
+      // the deck turns round what comes home first: the next packet goes when it and the planes on their way home fit
+      // one recovery of DECK_Q (the stack never builds past a squadron)
+      let home = 0; for (const p of WW.world.planes) if (p.alive && p.carrier === cv && (p.state === 'return' || p.state === 'landing')) home++;
+      if (DECK_Q - home < MIN_B) { ST.deckHolds++; return null; }
+      cap = Math.min(cap, DECK_Q - home);
+    }
     else if (Lg.mauled) cap = Math.min(cap, PACKET_DIV);
     if (J.lastLoss >= LOSS_HEAVY && !J.last.cut) { J.last.cut = true; cap = Math.min(cap, Math.max(MIN_B, Math.round(J.last.n * (1.2 - J.lastLoss)))); ST.cuts++; }   // smaller than the strike that was mauled
     // the commitment ceiling: strike planes out at once (bombers and escorts) within commit x the air group

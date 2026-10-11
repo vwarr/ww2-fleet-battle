@@ -128,13 +128,13 @@ window.WW = window.WW || {};
         if (D.mode !== 'recover') { p.deckPh = 'marshal'; p.phT = 0; break; }
         to(Math.min(lx + Math.max(30, 1.3 * Math.abs(lz - D.run)), D.k.tdX - 12), D.run, 7, p.pt.speed * (lx < gate(c) - 15 ? 1 : 0.85), 1.8);        // a point up the centreline ahead of it
         if (lx > D.k.tdX - 15) { p.deckPh = 'marshal'; p.phT = 0; RS.why.overshoot = (RS.why.overshoot || 0) + 1; break; }          // overshot the groove: round again from the stack
-        if ((lx > gate(c) && lx < D.k.tdX - 15 && Math.abs(lz - D.run) < 6 && Math.abs(WW.angleDiff(p.heading, c.heading)) < 0.6) || p.phT > 25) { RS.appT = (RS.appT || 0) + p.phT; RS.appN = (RS.appN || 0) + 1; p.deckPh = 'final'; p.phT = 0; p._lz = undefined; }
+        if ((lx > gate(c) && lx < D.k.tdX - 15 && Math.abs(lz - D.run) < 9 && Math.abs(WW.angleDiff(p.heading, c.heading)) < 0.75) || p.phT > 25) { RS.appT = (RS.appT || 0) + p.phT; RS.appN = (RS.appN || 0) + 1; p.deckPh = 'final'; p.phT = 0; p._lz = undefined; }
         break;
       case 'final': {
         const vlz = dt > 0 && p._lz !== undefined ? (lz - p._lz) / dt : 0; p._lz = lz; // fly the runway centreline (PD on the drift)
         p.turnTo(c.heading - WW.clamp((lz - D.run) * 0.15 + vlz * 0.12, -0.8, 0.8), dt, 2.2);
         const togo = D.k.tdX - lx, ty = D.dy + P().deckY + WW.clamp(togo * 0.13, 0, 8);
-        const slow = togo < 30 && togo > 8 && !clearAft(D);                                     // deck still foul: ease off, the LSO waits
+        const slow = togo < 45 && togo > 8 && !clearAft(D);                                     // deck still foul: ease off, the LSO waits
         p.speed += WW.clamp(c.speed + (slow ? 7 : WW.clamp(togo * 0.35, 10, 19)) - p.speed, -8 * dt, 8 * dt);
         p.vy = WW.clamp((ty - p.y) * 2.5 - 0.13 * (p.speed - c.speed), -6, 4);
         const tw = c.toWorld(D.k.tdX, D.run), dh = WW.dist(p.x, p.z, tw[0], tw[1]), b = Math.atan2(tw[1] - p.z, tw[0] - p.x);
