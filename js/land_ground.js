@@ -197,6 +197,14 @@ window.WW = window.WW || {};
     p.rwPh = 'crash'; p.rollV = p.speed; p.waitT = 0; p.tdX = p.x; p.tdZ = p.z; p.crashed = true; ST.crashes++;
     p.loop = ((p.id || 0) % 2 ? 1 : -1) * (0.5 + ((p.id || 0) % 5) * 0.2);   // which way it ground-loops (deterministic)
   }
+  // a skid's next position on another wreck (or burned-out hulk) or a plane on the ground in its spot
+  function skidBlocked(p, b, x, z) {
+    var r = rad(p.variant), i, w;
+    for (i = 0; b.wrecks && i < b.wrecks.length; i++) { w = b.wrecks[i]; if (Math.hypot(w.x - x, w.z - z) < r + w.r) return true; }
+    for (i = 0; b.hulks && i < b.hulks.length; i++) { w = b.hulks[i]; if (Math.hypot(w.x - x, w.z - z) < r + w.r) return true; }
+    for (i = 0; i < b.slots.length; i++) { w = b.slots[i]; if ((w.state === 'parked' || w.state === 'rearm' || w.state === 'wreck') && Math.hypot(w.x - x, w.z - z) < r + w.r) return true; }
+    return false;
+  }
   function wreckAtStop(p, b) {
     var q = b.layout.toL(p.x, p.z), r = rad(p.variant), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + r && Math.abs(q.u) < 48;
     rw = rw || b.layout.crossD(q.u, q.v) < WW.airfieldLayout.RUN_HALF_W + r;
@@ -219,7 +227,9 @@ window.WW = window.WW || {};
     if (p.rwPh === 'crash') { // skidding on its belly / a collapsed leg: hard braking, slewing round, then a wreck
       p.rollV = Math.max(0, p.rollV - 11 * dt);
       p.heading += p.loop * dt * Math.min(1, p.rollV / 8);
-      p.x += Math.cos(p.heading) * p.rollV * dt; p.z += Math.sin(p.heading) * p.rollV * dt;
+      var nx = p.x + Math.cos(p.heading) * p.rollV * dt, nz = p.z + Math.sin(p.heading) * p.rollV * dt;
+      if (skidBlocked(p, b, nx, nz)) p.rollV = 0;   // fetched up short of a wreck or a plane in its revetment
+      else { p.x = nx; p.z = nz; }
       if (p.rollV <= 0.2) { pin(p, b); wreckAtStop(p, b); return; }
     } else if (p.rwPh === 'land') { // decelerate along the heading, then taxi to the spot
       p.rollV = Math.max(TAXI, p.rollV - 9 * dt);
