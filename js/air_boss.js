@@ -137,7 +137,7 @@ window.WW = window.WW || {};
     const LL = WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity;
     if (s.on + s.low > want + E - 1 && !A.near && !A.armed && WW.time.now - A.attackT > 30 && (LL < 1e9 || (WW.staff && WW.staff.airSpent && WW.staff.airSpent(cv.nation)))) {
       const L = [];
-      for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.kind === 'fighter' && !p.target && !p.search && !p.foe && !p.vec && !p.joined && p.state === 'transit' && !p.deckPh) L.push(p);
+      for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.kind === 'fighter' && !p.target && !p.search && !p.foe && !p.vec && !p.joined && !p.alert && p.state === 'transit' && !p.deckPh) L.push(p);
       L.sort((x, y) => x.fuel - y.fuel);
       const n = Math.min(L.length, Math.floor((s.on + s.low - want) / E) * E);
       for (let i = 0; i < n; i++) { L[i].state = 'return'; BS.capLanded++; }
