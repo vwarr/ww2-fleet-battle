@@ -450,3 +450,70 @@ USN DD > DD 16, IJN DD > CA 8, IJN CA > BB 8, IJN DD > BB 4, USN DD > BB 0, any 
 
 The PT-vs-battleship round (pt_vs_bb): the PT side is in an unbroken 'withdraw' for 450 s of 720 and its admiral
 captions 'retire' twice a round, while nothing happens (F12, F15).
+
+## Addendum (second instance of this agent, same worktree): F21-F24 and screenshots
+
+The two instances read the same code and converged on the same list (F1-F20 above are the canonical ids). What the
+second read adds, with nothing measured twice:
+
+### F21. The island's own radar sees ships to 68 u, its coastal batteries reach 140 (S2, base) → basebattle
+
+`island_base.js:31` SEE_SHIP 170 x `TUNE.radar` 0.4 (`:273`) = 68 u for the owner's base to sight a ship, while its
+batteries (`:28` BATTERY.range 140, `:255` fire only on a fresh contact) and the `baseAI.alarm` (`base_ai.js:65`
+ALARM_SHIP 320) assume a far longer eye. A battleship bombarding from 120 u is shelled back only when a ship or plane
+of the owner happens to see it; the comment "Midway's radar reached the raids" predates TUNE.radar. Fix: the
+coastal battery's own fire-control eye = its range (a battery on a headland sees as far as it shoots), radar for planes.
+
+### F22. A raid on the carrier recalls the escorts of a strike in transit (S2, plane AI) → planes2 / sanity P8
+
+`air_boss.js:258-264 recall()`: under air attack every escort fighter within 320 u with the fuel is ordered home,
+whatever its strike is doing; the bombers fly on unescorted into the enemy CAP (the strike's `breakOff` in
+`air_staff.js:291` then jettisons them for lack of escort). 1942 escorts stayed with the strike (the recall is what
+Nagumo could not do). Fix: recall only escorts of a strike that has not yet departed (forming over the carrier), or
+only the top cover with the strike inside 120 of home.
+
+### F23. Top cover over the attack orbits the target inside its heavy flak (S2, plane AI) → sanity P9
+
+`air_cag.js:240-245`: while the bombers attack, the top cover circles the *target ship* at r 45, alt 56, inside the
+heavy AA reach of 2.2 x `aa.range` ≈ 99 u (`combat_aa.js:18`); fighters are shot down doing nothing (the AA shooter
+scores fighters x1.7 but still takes them). 1942 top cover held above the flak ceiling outside the screen and came
+down on the CAP. Fix: orbit the strike's run-in bearing 110-130 u out from the target at the fighters' altitude, or
+over the retiring bombers.
+
+### F24. A broken side's carrier takes its airborne planes off the map with it, instantly (S3, endgame / camera) → endgame
+
+`endgame.js:104-105 escape()`: when a retiring carrier crosses its edge, every plane still flying from it (CAP, a
+returning strike; a Catalina's rescue claim is unaffected) is `remove()`d in the same step, mid-air, possibly in the
+director's shot. Fix: the planes fly for the same edge (`escapeEdge` on the plane, removed past it), as the ships do.
+
+Also for the record: `ai_endgame.js:131` lets a pursuing cruiser run down a PT boat contact (only battleships are
+excepted); `ai_threat.js:70` stamps the AA umbrella at 1.55 x `aa.range` while heavy AA reaches 2.2 x (memory item
+(c): the strike router plans through a belt it is shot in).
+
+### Screenshots (render mode, `tests/fable_shots.js`)
+
+- F4 (`redirSmall`, standard 1 t492: a USN dive bomber of a wave launched at the IJN carrier releases on the destroyer
+  Hatsuyuki #16): `fable_audit/smalldrop_1_490_0.jpg` .. `_2.jpg` (the destroyer at the drop, tracers up), and
+  `smalldrop_1_490_wide.jpg`: the whole IJN fleet hugging the Midway atoll at t 490, F18's "fleet steams at the island".
+- F20 (`ringAway`, standard 1 t100: USN destroyer Woodworth #5, ring escort of Enterprise #1, at throttle 1 leaving the
+  ring with no target, bound for a submarine contact): `fable_audit/ringaway_1_100_0.jpg`, `_1.jpg`, `_2.jpg` and
+  `ringaway_1_100_wide.jpg` (the USN task force round the atoll, the destroyer running off on its own).
+
+### Fix notes where the second read differs
+
+- F4: on arrival with the plotted target not in sight, search before redirecting: a 60-90 s expanding box along the
+  contact's last course (Enterprise's SBDs at Midway followed Arashi's wake; Hornet's never found Kido Butai and went
+  home), reading the screen's bearing as the clue (the escorts lie between the strike and their carrier: look past
+  them); a redirect onto a destroyer or PT only with no CV / BB / CA seen in 120 s, in pursuit, or in self-defence.
+- F20: a ring escort leaves the ring only for a sub contact within SUB_HUNT x 2 of *its carrier* (or an ally within
+  SUB_HELP); far datums are the ASW screen's (the 1942 screen commander sent one destroyer, never the plane guard).
+- F19: `battleAim` only for BB / CA contacts; a destroyer only inside 0.5 R (a torpedo threat the line turns away
+  from, `angleOnBoats`), else the line keeps advancing on its aim point.
+- F3 (thrash): keep the old target's score (with STICKY) for 10 s after it was last fresh, hysteresis on the
+  assignment factors; a battleship's main battery changes target on the admiral's signal (20-30 s), secondaries freely.
+- F2: the dive limit as a battery (60 s at full submerged speed, then creep at SILENT_THR for 10-15 min), surfacing
+  only with no gun ship known within sonar + 60 and no plane within DIVE_AIR, never "forced" with a destroyer inside
+  DD_SAFE.
+
+`tests/fable_probe.js --merge a.json,b.json` reports saved batches together (batches under the 10-minute background
+limit: `--only standard --seeds 14` is about a minute on the node runner).

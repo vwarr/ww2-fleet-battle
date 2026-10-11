@@ -20,7 +20,7 @@
 //                within 120 s; redirSmall: the wave's first target was big (the strike leader's redirect)
 //   unseenSink   an enemy gun ship sank with no contact on it fresher than 10 s, yet it counts in foeBroken (fleet_cmd)
 //   retireCap    an admiral 'retire' caption while the side is not broken; pursueBlind: 'pursue' with no contact < 60 s
-// Usage: node tests/fable_probe.js [--seeds N=20] [--only a,b] [--workers K] [--json FILE]
+// Usage: node tests/fable_probe.js [--seeds N=20] [--only a,b] [--workers K] [--json FILE]   (--merge a.json,b.json: report saved batches)
 'use strict';
 const fs = require('fs');
 const HL = require('./headless');
@@ -242,6 +242,8 @@ function report(R) {
 }
 
 (async () => {
+  const MERGE = arg('--merge', null);   // --merge a.json,b.json: report saved batches together (no rounds run)
+  if (MERGE) { const R = [].concat(...MERGE.split(',').map(f => JSON.parse(fs.readFileSync(f, 'utf8')))); report(R); return; }
   const list = [];
   for (const name in SCEN) {
     if (ONLY && ONLY.split(',').indexOf(name) < 0) continue;
