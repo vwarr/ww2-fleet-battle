@@ -106,6 +106,8 @@ function install(P) {
   const vecOf = f => f.vec || (f.leader && f.leader.alive && f.leader.vec) || null;
   const tailed = f => !!f.foe && f.foe.kind === 'fighter' && (f.foe.foe === f || !!(f.df && f.df.from === f.foe));
   const onIt = (f, u) => f.foe === u || vecOf(f) === u || (f.df && f.df.foe === u);
+  // an escort over its strike's bombers while they are still armed or attacking (wherever the strike went: retargets)
+  const covering = p => p.kind === 'fighter' && !!p.target && WW.world.planes.some(b => b.alive && isBomber(b) && b.nation === p.nation && (p.wave ? b.wave === p.wave : b.carrier === p.carrier) && (b.ordnance || b.state === 'attack') && dist(b, p) < P.FLAK_NEAR);
   function planes(t) {
     const PL = WW.world.planes, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H;
     const thr = { USN: threats('USN'), IJN: threats('IJN') };
@@ -166,7 +168,9 @@ function install(P) {
       for (const th of thr[cv.nation]) if (vis(cv.nation, th.u) && dist(th.u, cv) < P.RAID_R) { rx += th.u.x; rz += th.u.z; rn++; }
       for (const p of PL) {
         if (!p.alive || p.nation !== cv.nation || p.deckPh || (p.state !== 'transit' && p.state !== 'attack')) continue;
-        if (dist(p, cv) < P.BUNCH_R) { if (p.wave && !p.wave.go) nf++; else n++; }   // a strike orbiting while the deck launches the rest (air_strikes.js): form-up, counted apart
+        // a strike orbiting while the deck launches the rest (air_strikes.js): form-up, counted apart; fighters fighting
+        // a raid over the carrier are where they should be
+        if (dist(p, cv) < P.BUNCH_R && !p.foe) { if (p.wave && !p.wave.go) nf++; else n++; }
         if (rn && capF(p) && p.carrier === cv && !p.foe) { capN++; if (Math.cos(WW.angleDiff(brg(cv, p), Math.atan2(rz / rn - cv.z, rx / rn - cv.x))) > 0) capT++; }
       }
       if (n > P.BUNCH_N) H('P4', [cv], P.MIN.P4, () => `${n} planes within ${P.BUNCH_R}u of ${lbl(cv)} (not landing / taking off / forming up; + ${nf} forming up)`);
@@ -211,7 +215,7 @@ function install(P) {
         let path = 0; for (let i = 1; i < q.length; i++) path += Math.hypot(q[i][1] - q[i - 1][1], q[i][2] - q[i - 1][2]);
         const net = Math.hypot(p.x - q[0][1], p.z - q[0][2]);
         // top cover: an escort over its target while a bomber of its strike is still armed or attacking there
-        const cover = k === 'fighter' && tg && dist(p, tg) < P.FLAK_NEAR && PL.some(b => b.alive && isBomber(b) && b.nation === p.nation && (p.wave ? b.wave === p.wave : b.target === tg) && (b.ordnance || b.state === 'attack'));
+        const cover = covering(p);
         const hold = p.state === 'return' && dist(p, p.carrier) < P.HOLD_R;   // waiting for the deck near home (the landing queue: airdiag)
         if (net < P.CIRC_NET && path > P.CIRC_PATH && !p.foe && p.state !== 'attack' && !cover) H(hold ? 'P6h' : 'P6c', [p], 0, () => `${lbl(p)} ${p.state} circled: ${Math.round(path)}u flown, ${Math.round(net)}u net in ${P.CIRC_T}s, ${Math.round(dist(p, p.carrier))}u from ${p.carrier.isBase ? 'base' : 'its carrier'}${tg ? ', target ' + lbl(tg) + ' ' + Math.round(dist(p, tg)) + 'u' : ''}`);
       }
@@ -233,7 +237,7 @@ function install(P) {
         for (const o of WW.world.ships) {
           if (!live(o) || o.nation === p.nation || !HEAVY[o.type] || !o.stats.aa || o === tg) continue;
           const d3 = Math.hypot(p.x - o.x, p.y, p.z - o.z); if (d3 > o.stats.aa.range * P.AA_HEAVY_K * 0.9) continue;
-          if (tg && dist(tg, o) < P.FLAK_NEAR) continue;
+          if (tg && dist(tg, o) < P.FLAK_NEAR || covering(p)) continue;   // the target's screen; an escort stays with its bombers
           if (capF(p) && WW.cap && dist(o, p.carrier) < WW.cap.doc(p.nation).leash) continue;   // the enemy ship came into the fleet the CAP guards
           H('P9', [p, o], P.MIN.P9, () => `${lbl(p)} ${p.state} through the flak of ${lbl(o)} (${Math.round(d3)}u)${tg ? ', target ' + lbl(tg) + ' ' + Math.round(dist(tg, o)) + 'u from it' : ''}`);
           break;
