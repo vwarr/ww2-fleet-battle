@@ -142,14 +142,18 @@ async function plot(G, b, errs) {
   const e = a.ex[k - 1], spec = specsFor(e.seed).find(s => s.scen === e.scen && !!s.swap === e.swap);
   const p = await openPage(b, errs), t0 = Math.max(0, e.t - 20), t1 = e.t + Math.min(e.dur, 35) + 5;
   const rows = await p.evaluate(([spec, t0, t1]) => {
-    const rows = [], G = WW.game, w = window.__san, s0 = w.sample;
+    // planes are numbered lazily by the rules (first mention): keep object refs here and label them after the run, so
+    // the plot never numbers a plane itself and the labels match the survey's
+    const rows = [], G = WW.game, w = window.__san, s0 = w.sample, refs = [];
     const rec = () => {
       const t = G.roundTime; if (t < t0 || t > t1) return;
       for (const s of WW.world.ships) if (s.alive && !s.isBase && s.stats) rows.push([+t.toFixed(1), w.label(s), s.nation[0], s.type, s.sinking ? 'sinking' : 'ok', +s.x.toFixed(1), 0, +s.z.toFixed(1)]);
-      for (const q of WW.world.planes) if (q.alive && !q.removed && q.state !== 'parked' && q.state !== 'rearm' && q.pt) rows.push([+t.toFixed(1), w.label(q), q.nation[0], q.kind, q.deckPh ? 'deck' : q.state === 'attack' ? (q.foe ? 'dogfight' : 'attack') : q.state === 'return' ? 'return' : q.kind === 'fighter' && !q.target ? (q.vec ? 'intercept' : 'cap') : 'transit', +q.x.toFixed(1), +q.y.toFixed(1), +q.z.toFixed(1)]);
+      for (const q of WW.world.planes) if (q.alive && !q.removed && q.state !== 'parked' && q.state !== 'rearm' && q.pt) rows.push([+t.toFixed(1), (refs.push(q), refs.length - 1), q.nation[0], q.kind, q.deckPh ? 'deck' : q.state === 'attack' ? (q.foe ? 'dogfight' : 'attack') : q.state === 'return' ? 'return' : q.kind === 'fighter' && !q.target ? (q.vec ? 'intercept' : 'cap') : 'transit', +q.x.toFixed(1), +q.y.toFixed(1), +q.z.toFixed(1)]);
     };
     w.sample = () => { s0(); rec(); };
     try { window.__beh.run(Object.assign({}, spec, { until: t1 + 1 })); } finally { w.sample = s0; }
+    const tmp = new Map();
+    for (const r of rows) if (typeof r[1] === 'number') { const q = refs[r[1]]; r[1] = w.labelIf(q) || (tmp.has(q) ? tmp.get(q) : (tmp.set(q, q.nation[0] + ':' + q.kind + '~' + tmp.size), tmp.get(q))); }
     return rows;
   }, [spec, t0, t1]);
   await p.close();

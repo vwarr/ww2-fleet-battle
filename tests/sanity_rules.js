@@ -365,6 +365,7 @@ function install(P) {
   // ---------------- API ----------------
   // the unit behind an example label ('U:carrier#1', 'I:dive#p56'): ships by id, planes by the auditor's number
   S.label = lbl;
+  S.labelIf = u => (u.stats || pid.has(u) ? lbl(u) : null);   // the label without numbering a plane (plots must not shift the numbering)
   S.unit = l => {
     const m = /#(p?)(\d+)$/.exec(l); if (!m) return null;
     if (!m[1]) return WW.world.ships.find(s => s.id === +m[2]) || null;
