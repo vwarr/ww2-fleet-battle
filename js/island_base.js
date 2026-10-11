@@ -111,7 +111,8 @@ window.WW = window.WW || {};
     AL.columns(L);
     const pl = WW.landGround.plan(base);
     AL.rows(L, pl.demand);                                  // the dispersal rows first, then the buildings on free ground
-    const put = (kind, list, n) => { let k = 0; for (const q of list) { if (k >= n) break; const pt = AL.free(L, q[0], q[1], R[kind] + 1, true); if (!pt) continue; AL.addFac(L, pt.u, pt.v, R[kind] + 1); const w = L.toW(pt.u, pt.v); const f = fac(kind, w); f.u = pt.u; f.v = pt.v; f.a = Math.atan2(-w.z + S.z, -w.x + S.x); k++; } };
+    const put = (kind, list, n) => { const cr = R[kind] * (kind === 'fuel' ? 1.45 : 1) + 1; let k = 0; for (const q of list) { if (k >= n) break; const pt = AL.free(L, q[0], q[1], cr, true); if (!pt) continue; AL.addFac(L, pt.u, pt.v, cr); const w = L.toW(pt.u, pt.v); const f = fac(kind, w); f.u = pt.u; f.v = pt.v; f.a = Math.atan2(-w.z + S.z, -w.x + S.x); k++; } };
+    // cr: the clearance kept from the taxiways and the rest (the fuel farm's model is square: to its corners)
     put('hangar', PLACES.hangar, 2); put('tower', PLACES.tower, 1); put('fuel', PLACES.fuel, 2); put('ammo', PLACES.ammo, 1);
     put('barracks', PLACES.barracks, 3); put('aa', PLACES.aa, Math.round(3 * TUNE.pits));
     base.facilities.filter(f => f.kind === 'aa').forEach(f => {
