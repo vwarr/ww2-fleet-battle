@@ -60,14 +60,14 @@ function install() {
   let S = null;
   function fresh() {
     S = { next: 0, k: 0, atk: new Map(), atkDone: [], har: new Map(), harDone: [], fl: new WeakMap(), climbs: [], ret: [], dmgHome: { n: 0, wing: 0 },
-      ditch: [], form: { far: [], near: [] }, turn: [], roll: [], jumps: 0, rollJumps: 0, samples: 0, clusters: [], capY: [], alerts0: null,
+      ditch: [], form: { far: [], near: [] }, turn: [], roll: [], jumps: 0, rollJumps: 0, samples: 0, clusters: [], capY: [], alerts0: null, esc: 0, dby: 0,
       tr: R.trace ? { rows: [], ev: [] } : null };
     S.alerts0 = WW.airAlert && WW.airAlert.stats ? JSON.parse(JSON.stringify(WW.airAlert.stats)) : null;
   }
   fresh();
   WW.on('roundStart', fresh);
   const ev = (k, o) => { if (S && S.tr) S.tr.ev.push(Object.assign({ t: +now().toFixed(1), k }, o)); };
-  WW.on('airOrder', e => { try { if (S && e && (e.order === 'alert' || e.order === 'escortHome' || e.order === 'ditchBy' || e.order === 'coverShip')) ev(e.order, { id: e.plane ? id(e.plane) : 0, n: e.carrier ? e.carrier.nation : null, tg: e.target ? -id(e.target) : 0, x: e.plane ? +e.plane.x.toFixed(0) : 0, z: e.plane ? +e.plane.z.toFixed(0) : 0 }); } catch (er) { R.err++; } });
+  WW.on('airOrder', e => { try { if (S && e) { if (e.order === 'escortHome') S.esc++; if (e.order === 'ditchBy') S.dby++; } if (S && e && (e.order === 'alert' || e.order === 'escortHome' || e.order === 'ditchBy' || e.order === 'coverShip')) ev(e.order, { id: e.plane ? id(e.plane) : 0, n: e.carrier ? e.carrier.nation : null, tg: e.target ? -id(e.target) : 0, x: e.plane ? +e.plane.x.toFixed(0) : 0, z: e.plane ? +e.plane.z.toFixed(0) : 0 }); } catch (er) { R.err++; } });
   WW.on('weaponDropped', e => {
     try {
       const p = e && e.plane; if (!S || !p) return;
@@ -217,7 +217,7 @@ function install() {
     if (WW.airAlert && WW.airAlert.stats) alert = JSON.parse(JSON.stringify(WW.airAlert.stats));
     const out = { atk: S.atkDone, har: S.harDone, climbs: S.climbs, ret: S.ret, dmgHome: S.dmgHome, ditch: S.ditch, form: { far: S.form.far, near: S.form.near },
       turn: { p50: qs(S.turn, 0.5), p99: qs(S.turn, 0.99), max: qs(S.turn, 1) }, roll: { p50: qs(S.roll, 0.5), p99: qs(S.roll, 0.99), max: qs(S.roll, 1) }, jumps: S.jumps, rollJumps: S.rollJumps, samples: S.samples,
-      clusters: S.clusters, capY: S.capY, alert, pilots: WW.endgame && WW.endgame.stats ? { tasks: WW.endgame.tasks ? WW.endgame.tasks().filter(x => x.kind === 'pilot').length : null, done: WW.endgame.tasks ? WW.endgame.tasks().filter(x => x.kind === 'pilot' && x.done).length : null } : null,
+      clusters: S.clusters, capY: S.capY, alert, esc: S.esc, dby: S.dby, pilots: WW.endgame && WW.endgame.stats ? { tasks: WW.endgame.tasks ? WW.endgame.tasks().filter(x => x.kind === 'pilot').length : null, done: WW.endgame.tasks ? WW.endgame.tasks().filter(x => x.kind === 'pilot' && x.done).length : null } : null,
       err: R.err, last: R.last || null };
     if (S.tr) out.trace = S.tr;
     return out;
@@ -292,6 +292,7 @@ function report(rounds) {
     out.alert[n].near = nearL.length / N; out.alert[n].nearDay = dayL.length / N; out.alert[n].nearAir = nearL.reduce((s, h) => s + h.air, 0) / Math.max(1, nearL.reduce((s, h) => s + h.T, 0));
     if (al.length) say(`      alert flights: triggers ${f1(out.alert[n].triggers)}, launches ${f1(out.alert[n].launches)}, planes ${f1(out.alert[n].planes)}, drops ${f1(sum('drops') / N)} per round; why ${JSON.stringify(al.reduce((m, a) => { for (const k in a.why || {}) m[k] = (m[k] || 0) + a.why[k]; return m; }, {}))}`);
   }
+  say('   per round (alert launches / escortHome / ditchBy / covered attacks on non-carriers): ' + rounds.map(r => `${r.scen}:${r.seed} ${r.rec.alert ? r.rec.alert.USN.launches + r.rec.alert.IJN.launches : 0}/${r.rec.esc || 0}/${r.rec.dby || 0}/${r.rec.atk.filter(a => a.type !== 'carrier' && a.cov).length}`).join(' '));
   // 3. flight
   const C = [].concat(...rounds.map(r => r.rec.climbs));
   out.flight = { climb: {} };
@@ -308,10 +309,10 @@ function report(rounds) {
   out.flight.dmgHome = { s: dh.n / N, wing: dh.wing / Math.max(1, dh.n) };
   say(`   way home: speed / top speed p50 ${f1(out.flight.ret.p50)} p90 ${f1(out.flight.ret.p90)}, at top speed ${pc(out.flight.ret.atTop)}; damaged planes (< 50% hp) on the way home ${f1(dh.n / N)} plane-s / round, with a friend on the wing ${pc(out.flight.dmgHome.wing)}`);
   const Dt = [].concat(...rounds.map(r => r.rec.ditch)).filter(d => !d.base);
-  const why = Dt.reduce((m, d) => { m[d.why] = (m[d.why] || 0) + 1; return m; }, {});
+  const why = Dt.reduce((m, d) => { m[d.why] = (m[d.why] || 0) + 1; return m; }, {}), byK = Dt.reduce((m, d) => { m[d.k] = (m[d.k] || 0) + 1; return m; }, {});
   out.flight.ditch = { perRound: Dt.length / N, why, nearDD: Dt.length ? Dt.filter(d => d.dd < 60).length / Dt.length : null, nearShip: Dt.length ? Dt.filter(d => d.ship < 60).length / Dt.length : null, ddP50: qs(Dt.map(d => d.dd), 0.5) };
   const pil = rounds.filter(r => r.rec.pilots && r.rec.pilots.tasks !== null).reduce((a, r) => ({ t: a.t + r.rec.pilots.tasks, d: a.d + r.rec.pilots.done }), { t: 0, d: 0 });
-  say(`   carrier-plane ditches ${f1(out.flight.ditch.perRound)} / round ${JSON.stringify(why)}; within 60 of a friendly destroyer ${pc(out.flight.ditch.nearDD)} (any ship ${pc(out.flight.ditch.nearShip)}), nearest DD p50 ${f1(out.flight.ditch.ddP50)}; aircrew rescue tasks done ${pil.d} / ${pil.t}`);
+  say(`   carrier-plane ditches ${f1(out.flight.ditch.perRound)} / round ${JSON.stringify(why)}; within 60 of a friendly destroyer ${pc(out.flight.ditch.nearDD)} (any ship ${pc(out.flight.ditch.nearShip)}), nearest DD p50 ${f1(out.flight.ditch.ddP50)}; aircrew rescue tasks done ${pil.d} / ${pil.t}; by kind ${JSON.stringify(byK)}`);
   const fF = [].concat(...rounds.map(r => r.rec.form.far)), fN = [].concat(...rounds.map(r => r.rec.form.near));
   out.flight.form = { far: qs(fF, 0.5), near: qs(fN, 0.5), farN: fF.length, nearN: fN.length };
   say(`   strike bombers' nearest same-kind wave-mate: far out (> 400 from the target) p50 ${f1(out.flight.form.far)}, near (< 300) p50 ${f1(out.flight.form.near)}`);

@@ -103,11 +103,13 @@ window.WW = window.WW || {};
     pl.fly(px, pz, alt, dt, pl.pt.speed, 0.5);
   }
 
-  // A ship of ours under air attack within the cover reach (air_cover.js) comes before a raid still far from the
-  // carrier: the bombers on their run at a destroyer or a cripple are the raid that is hitting us now.
+  // A ship of ours under air attack within the cover reach (air_cover.js), when the raid picture has nothing for this
+  // section or only a raid still far out: the carrier comes first (the fighter director held the CAP over the
+  // carriers while a raid closed on them), the bombers on their run at a destroyer or a cripple next.
+  const COVER_R = 340;                    // a raid on the carrier inside this keeps the section on it
   function cover(pl, u, inner) {
     if (inner || !WW.airCover) return u;
-    if (u && WW.dist(pl.carrier.x, pl.carrier.z, u.x, u.z) < 200) return u;
+    if (u && WW.dist(pl.carrier.x, pl.carrier.z, u.x, u.z) < COVER_R) return u;
     const k = WW.airCover.raidOn(pl);
     if (k && pl.vec !== k && WW.airCover.stats[pl.nation]) WW.airCover.stats[pl.nation].vectors++;
     return k || u;
