@@ -75,6 +75,24 @@ window.WW = window.WW || {};
   const SNOOP_R = 260;
   const snooper = u => u.kind === 'scout' || u.kind === 'flyingboat' || (u.search && !u.ordnance);
   function chasing(pl, u) { for (const q of WW.world.planes) if (q !== pl && q.alive && q.nation === pl.nation && (q.vec === u || q.foe === u) && !(q.element && q.element === pl.element)) return true; return false; }
+  // Sections already on each armed raider (vectored or engaged), counted once per element, per side, every 0.5 s:
+  // raidFor spreads the sections over the raid instead of every section scoring the same best raider.
+  const CLAIM = { USN: { t: -1, m: new Map() }, IJN: { t: -1, m: new Map() } };
+  function claims(pl, u) {
+    const C = CLAIM[pl.nation]; if (!C) return 0;
+    if (WW.time.now - C.t >= 0.5 || C.t < 0) {
+      C.t = WW.time.now; C.m = new Map();
+      for (const q of WW.world.planes) {
+        if (!q.alive || q.nation !== pl.nation || q.kind !== 'fighter') continue;
+        const k = q.vec || q.foe; if (!k || !k.alive) continue;
+        let S = C.m.get(k); if (!S) C.m.set(k, S = new Set());
+        S.add(q.element || q);
+      }
+    }
+    const S = C.m.get(u); if (!S) return 0;
+    return S.size - (S.has(pl.element || pl) ? 1 : 0);   // our own section does not count against us
+  }
+  const INNER_R = 220;                    // the inner (kept back) section takes raiders this close to the carrier
   function raidFor(pl, band, inner, D) {
     if (!WW.intel) return null;
     const c = pl.carrier, armed = WW.airOps.armed, quiet = !WW.airOps.picture(c).armed;
@@ -84,13 +102,13 @@ window.WW = window.WW || {};
       const dc = WW.dist(c.x, c.z, ct.x, ct.z);
       if (snooper(u)) {   // not the inner section; one section to a snooper
         if (!quiet || inner || dc > Math.min(SNOOP_R, D.vecR) || (pl.vec !== u && chasing(pl, u))) continue;
-      } else if (dc > (inner ? 150 : D.vecR)) continue;
+      } else if (dc > (inner ? INNER_R : D.vecR)) continue;
       const arm = armed(u);
       if (!arm && u.kind !== 'fighter' && !snooper(u)) continue;   // empty bombers going home: not worth a vector
       let s = arm ? 200 : u.kind === 'fighter' ? 60 : 90;
       if (arm && u.kind === 'torpedo') s += band === 'low' ? 80 : style(pl.nation) === 'overhead' ? 60 : -20;   // the Zeros go for the torpedo planes
       if (arm && u.kind === 'dive') s += band === 'high' ? 60 : -30;
-      s -= WW.dist(pl.x, pl.z, ct.x, ct.z) * 0.5 + dc * 0.2;
+      s -= WW.dist(pl.x, pl.z, ct.x, ct.z) * 0.5 + dc * 0.2 + (arm ? claims(pl, u) * 70 : 0);   // one section per raider first
       if (s > bs) { bs = s; best = u; }
     }
     return best;
@@ -189,7 +207,7 @@ window.WW = window.WW || {};
   // a joined fighter with no foe goes back home once no raid has been near its carrier for 3 s
   function joinDone(pl) { return !!pl.joined && (pl.fuel < JOIN_MIN || !pl.foe && WW.time.now - (pl.carrier._joinT || -1e9) > 3); }
 
-  function reset() { ST.vectors = ST.contacts = ST.joins = 0; }
+  function reset() { ST.vectors = ST.contacts = ST.joins = 0; for (const n in CLAIM) { CLAIM[n].t = -1; CLAIM[n].m = new Map(); } }
   WW.on('roundStart', reset);
   WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, join, joinDone, snooper, ENGAGE, DOC, SNOOP_R, stats: ST };
 })();

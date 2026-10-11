@@ -165,7 +165,7 @@ window.WW = window.WW || {};
       if (this.state === 'transit' || this.state === 'attack') {
         // a CAP fighter on station with nothing to chase loiters at economical cruise (1942 CAP sorties ran 2-3 h)
         this.fuel -= this.kind === 'fighter' && !this.target && !this.foe && !this.vec && !this.joined && !this.search ? dt * LOITER : dt;
-        if (this.fuel <= 0) this.state = 'return';
+        if (this.fuel <= 0 || (WW.airFlight && WW.airFlight.bingo(this))) { if (this.fuel > 0 && WW.airFlight) WW.airFlight.stats.bingo++; this.state = 'return'; }   // bingo fuel (air_flight.js)
       }
       switch (this.state) {
         case 'takeoff': this.takeoff(dt); break;

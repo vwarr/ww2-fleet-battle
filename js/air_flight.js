@@ -18,10 +18,19 @@
 window.WW = window.WW || {};
 (function () {
   const CLIMB_K = 0.7, CRUISE_BURN = 0.6, RES_K = 0.15, SKIRT_R = 220, DITCH_HP = 0.2, PAIR_R = 140, FLAK_R = 150, ESC_DONE = 140, MARGIN = 20;
-  const ST = { diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0, short: 0 };
+  const ST = { bingo: 0, diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0, short: 0 };
   const cruise = p => p.pt.cruise || p.pt.speed * 0.8;
   const reserve = p => (p.pt.range / p.pt.speed) * 6 * RES_K;   // the full load as aircraft.js fills it, x RES_K
 
+  // Bingo (aircraft.js transit / attack): turn for home when the fuel left only just covers the way home at cruise
+  // (the cruise burn, CRUISE_BURN per s)
+  // (x BINGO_K + BINGO_S), as the planners budget it (air_cag, air_boss recall, air_ops homeward); not in the middle
+  // of a dive or a torpedo run (it finishes the attack: the reserve covers that), not from the island base.
+  const BINGO_K = 1.1, BINGO_S = 3;
+  function bingo(p) {
+    const c = p.carrier; if (!c || c.isBase || p.phase || p.kind === 'scout' || p.kind === 'flyingboat') return false;
+    return p.fuel < WW.dist(p.x, p.z, c.x, c.z) / cruise(p) * CRUISE_BURN * BINGO_K + BINGO_S;   // the fuel the way home really burns
+  }
   // the climb rate fly() uses to go up (aircraft.js)
   function climbV(p) {
     const c = p.pt.climb || 7;
@@ -141,5 +150,5 @@ window.WW = window.WW || {};
   }
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airFlight = { climbV, orphan, home, ditchShip, cruise, stats: ST };
+  WW.airFlight = { climbV, orphan, home, ditchShip, cruise, bingo, stats: ST };
 })();
