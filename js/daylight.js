@@ -24,11 +24,11 @@ window.WW = window.WW || {};
     SUNSET_AT: [0.4, 0.75],             // dusk rounds: the sun sets at this fraction of ROUND_TIMEOUT
     NIGHT_START: [20, 22]               // night rounds: start hour
   };
-  var FLY_MIN = 0.45,                                // no launches below this daylight
+  var FLY_MIN = 0.5,                                 // no launches below this daylight (= RECALL: what took off is not turned back at once; the follow caption reads canFly too)
       RECALL = 0.5,                                  // airborne planes recalled below this
       LAND_RISK = 0.14;                              // a landing in full dark: chance of a crash / ditch
   var stats = { rounds: 0, kinds: { dawn: 0, day: 0, dusk: 0, night: 0 }, launchesDark: 0, blocked: 0, recalls: 0,
-                nightLandings: 0, nightLandingLoss: 0, nightTorps: { USN: 0, IJN: 0 } };
+                nightLandings: 0, nightLandingLoss: 0, struckBelow: 0, nightExempt: 0, nightTorps: { USN: 0, IJN: 0 } };
   var D = {
     kind: 'day', pin: null, pinHour: null, startHour: 13, t0: 0, force: null, stats: stats, CFG: CFG, FLY_MIN: FLY_MIN,
     hour: 13, sunElev: 50, sunAz: Math.PI / 2,
@@ -81,6 +81,32 @@ window.WW = window.WW || {};
     WW.air.launch = function () { if (!D.canFly()) { stats.blocked++; return null; } return base.apply(this, arguments); };
     WW.air.launch.night = true;
   }
+  // The deck: a plane launched (queued below, taxiing, spotted) before the light failed does not take off into the dark.
+  // Below FLY_MIN it is struck below again (back in the hangar) before its run; a take-off run that starts in the dark
+  // is counted in launchesDark (sim_behaviour dark_launch: 0). Exempt: plane.nightOK (a captioned emergency launch).
+  var DECK_GATE = true;   // ?nodeckgate (A/B): the old behaviour, the queued planes take off into the dark
+  if (typeof location !== 'undefined' && /[?&]nodeckgate/.test(location.search)) DECK_GATE = false;
+  function wrapDeck() {
+    var A = WW.airDeck;
+    if (!A || !A.takeoff || A.takeoff.night) return;
+    var base = A.takeoff;
+    A.takeoff = function (p, dt) {
+      var before = onDeck(p);
+      var r = base.apply(this, arguments);
+      if (before && p.deckPh === 'run' && !D.canFly()) { if (p.nightOK) stats.nightExempt++; else stats.launchesDark++; }
+      return r;
+    };
+    A.takeoff.night = true;
+  }
+  function onDeck(p) { var ph = p.deckPh; return ph === 'queued' || ph === 'rise' || ph === 'taxi' || ph === 'hold'; }
+  function strikeBelow() {   // every step in the dark, before the planes move (main.js steps the clock first)
+    var P = WW.world.planes;
+    for (var i = 0; i < P.length; i++) {
+      var p = P[i];
+      if (!p.alive || p.removed || p.state !== 'takeoff' || p.nightOK || !onDeck(p) || !shipBorne(p) || !p.carrier.hangar) continue;
+      p.carrier.hangar[p.kind] = (p.carrier.hangar[p.kind] || 0) + 1; p.alive = false; p.remove(); stats.struckBelow++;
+    }
+  }
   // carrier planes and catapult scouts (not the shore-based flying boats: air_flyingboats.js, base objects)
   function shipBorne(p) { return p.kind !== 'flyingboat' && p.carrier && p.carrier.stats && !p.carrier.base && !p.carrier.isBase; } // isBase: the island air base (island_base.js) is shore-based too
   // Recall: once below RECALL, every airborne carrier plane in transit (and fighters in a fight) turns for home;
@@ -98,7 +124,7 @@ window.WW = window.WW || {};
   }
   function update() {
     if (!WW.game || WW.game.state === 'setup') return;
-    wrapLaunch();
+    wrapLaunch(); wrapDeck();
     setClock(D.pinHour != null ? D.pinHour : D.hourAt(D.roundT()));   // pin / pinHour: test hooks (screenshots)
     if (WW.game.state !== 'battle') return;
     var wasFly = D._fly !== false; D._fly = D.canFly(); // a launch in the step before the light failed was still a daylight launch
@@ -109,6 +135,7 @@ window.WW = window.WW || {};
     if (D._fly || wasFly) for (var j = 0; j < WW.world.planes.length; j++) WW.world.planes[j].nightSeen = true;
     D.lastLaunched = WW.stats.planesLaunched;
     if (WW.daylight < RECALL) { if (!D.recalled) D.recalled = true; recall(); }
+    if (DECK_GATE && !D._fly) strikeBelow();
   }
   // night torpedo attacks (metrics): ship-fired spreads (one per ship per 2 s) while daylight < 0.35
   var lastSpread = new Map();
