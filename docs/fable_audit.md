@@ -292,6 +292,28 @@ one that leaves. **Fix.** Make a ratio withdraw a real disengagement (steer for 
 only what closes, break contact for 60 s, then re-evaluate) or stop captioning it as a retirement ("Adm.: open the
 range"). Pairs with F3.
 
+### F16. A side that has lost its carrier cannot break off until the fleets have "met" (S1 in carrier rounds, endgame) → endgame
+
+**Seen** (`POS=1 node tests/shape_probe.js carrier_duel 23 30`): the IJN carrier is sunk at t≈300 and one of its two
+destroyers at t≈180. From 300 to 594 the last IJN destroyer, alone, with no air cover, holds posture `engage` /
+`approach` and makes for the USN task force (carrier, two destroyers, ~70 planes); 11 USN bombers attack it at
+t 390-420 and miss; the USN destroyers never get a gun on it (distance 164-278 for 200 s: a stern chase at equal speed,
+7.5 u/s each); the first shell between the fleets falls at t 594, only then does the air-cover rule break the IJN
+and the USN `pursue` (kill at 699). Five minutes of a destroyer steaming at a fleet it cannot hurt, under bombs.
+
+**The rules.** `fleet_cmd.js:199-204 beaten()`: the "outfought" and the "air cover lost" breaks apply only once
+`WW.game.metT !== null` (the first shell between fleet ships, `main.js:207-210`), a rule written so that a side is
+not broken by the air war alone and the fleets still meet (balance pass). One destroyer of two is 50% of the
+tonnage, above BREAK 15%. So the lone survivor's commander stays in `engage` (`fleet_cmd.js:116`, `dmin < 260`) and
+the ship's `engage()` steers an intercept on a target of its own speed (`ai_surface.js:174`, `lead()` with
+`ship.stats.speed`), which for equal speeds is a point it never reaches.
+
+**Fix.** "Met" should also count a side whose carrier was sunk by air (`metT` or `foeCV` sunk and the side's own
+carriers all gone): Nagumo's screen did not steam at TF 16 after the four carriers went; or let `beaten()` take
+`bare` without `metT` when the side's fit gun tonnage is a single destroyer / under ~20% of the enemy's seen tonnage.
+And the stern-chase: a pursuer that cannot close at its own speed should be given the carrier's strikes (it was:
+they missed) and give up the chase; the quarry should run (F15).
+
 ## Contradictions between modules (checked, for the record)
 
 - Strike doctrine SMALL (fleet_cmd) vs the CAG's redirect / retarget / homeward (air_cag, air_ops): F4.
