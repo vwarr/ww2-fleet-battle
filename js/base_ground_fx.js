@@ -157,8 +157,9 @@ window.WW = window.WW || {};
       }
     }
     const sw = Math.sin(t * 0.5) * (c.r + 2.5), side = c.r * 1.25 + 0.6 + (busy ? 6 : 0) + 1.1; // the roller works to and fro beside the hole, outside the gang's ring
-    const ro = { x: c.x + hx * sw * 0.5 - hz * side, z: c.z + hz * sw * 0.5 + hx * side, h: rw.h };
-    vehSet('roller', busy && inWay(ro, groundPlanes()) ? null : [ro]);   // a plane taxiing by: the roller is driven off
+    let ro = null;   // the side of the runway clear of the revetments (stepped back, it can reach a row's berms)
+    for (const sg of [1, -1]) { const q = { x: c.x + hx * sw * 0.5 - hz * side * sg, z: c.z + hz * sw * 0.5 + hx * side * sg, h: rw.h }, l = base.layout.toL(q.x, q.z); if (!inRevet(l.u, l.v)) { ro = q; break; } }
+    vehSet('roller', !ro || busy && inWay(ro, groundPlanes()) ? null : [ro]);   // a plane taxiing by: the roller is driven off
   }
 
   // ---------- vehicles ----------
@@ -247,12 +248,28 @@ window.WW = window.WW || {};
     }
     return false;
   }
+  // where a crash truck stands by a wreck (plane frame: along, across): a side, the other side, behind, ahead - the
+  // first off the taxi network and the revetments and not taken by the other truck (truck i starts its search at i)
+  function standBy(t, w) {
+    if (t.stand && t.stand.w === w) return t.stand;
+    const C = CLS(w.v), sd = C.span / 2 + 2.2, ln = C.len / 2 + 2.8, L = base.layout, AL = WW.airfieldLayout;
+    const c = Math.cos(w.h), s = Math.sin(w.h), pv = t.pts[t.pts.length - 2] || t.pts[0];
+    const taken = trips.filter(o => o !== t && o.stand && o.stand.w === w).map(o => o.stand.k);
+    // the sides in order of nearness to where the truck comes from (its way in never crosses the wreck)
+    const cand = [[0, sd], [0, -sd], [-ln, 0], [ln, 0]].map((q, k) => ({ w, k, a: q[0], b: q[1], x: w.x + c * q[0] - s * q[1], z: w.z + s * q[0] + c * q[1] }))
+      .sort((p, q) => Math.hypot(p.x - pv.x, p.z - pv.z) - Math.hypot(q.x - pv.x, q.z - pv.z));
+    const across = q => { const dx = q.x - pv.x, dz = q.z - pv.z, l2 = dx * dx + dz * dz || 1, f = WW.clamp(((w.x - pv.x) * dx + (w.z - pv.z) * dz) / l2, 0, 1);
+      return Math.hypot(pv.x + dx * f - w.x, pv.z + dz * f - w.z) < Math.max(C.span, C.len) / 2 + HW(); };   // the way in runs over the wreck
+    const free = cand.filter(q => taken.indexOf(q.k) < 0), ok = free.filter(q => { const l = L.toL(q.x, q.z); return !across(q) && !AL.onNetwork(L, l.u, l.v, HW() + 0.6) && !inRevet(l.u, l.v); });
+    return (t.stand = ok[0] || free[0] || cand[0]);
+  }
   function tripPos(t, ahead) {
     const now = WW.time.now + (ahead || 0), sp = VSPD[t.kind];
     if (t.follow) { // the plane as it skids, then its wreck: the end of the trip is always where it is now
-      const p = t.follow, w = p.wreck, o = (CLS(p.variant).span / 2 + 1.6) * (t.off || 1), e = t.pts[t.pts.length - 1];
+      const p = t.follow, w = p.wreck, e = t.pts[t.pts.length - 1];
       const at = p.alive && !p.removed && WW.landGround.onGround(p) ? p : w;
-      if (at) { const ox = at.x - Math.sin(at.h !== undefined ? at.h : at.heading) * o, oz = at.z + Math.cos(at.h !== undefined ? at.h : at.heading) * o, d = Math.hypot(ox - e.x, oz - e.z);
+      const st = at === w && w ? standBy(t, w) : { a: 0, b: (CLS(p.variant).span / 2 + 1.6) * (t.off ? -1 : 1) };
+      if (at) { const h = at.h !== undefined ? at.h : at.heading, c = Math.cos(h), s = Math.sin(h), ox = at.x + c * st.a - s * st.b, oz = at.z + s * st.a + c * st.b, d = Math.hypot(ox - e.x, oz - e.z);
         if (d > 0.01) { const pv = t.pts[t.pts.length - 2]; t.len += pv ? Math.hypot(ox - pv.x, oz - pv.z) - Math.hypot(e.x - pv.x, e.z - pv.z) : 0; e.x = ox; e.z = oz; } }
     }
     const out = (now - t.t0) * sp; if (out < 0) return null;   // not out of the garage yet
@@ -274,9 +291,13 @@ window.WW = window.WW || {};
   }
   // where a vehicle comes out of a facility: its edge (footprint radius + 1.5) toward the next point, not its middle
   function door(f, u1, v1) {
-    const fr = facR(f) + 0.8;   // the model's own footprint
-    const du = u1 - f.u, dv = v1 - f.v, d = Math.hypot(du, dv) || 1, r = Math.min(d, fr);
-    return [f.u + du / d * r, f.v + dv / d * r];
+    const fr = fpR(f) + 0.8;   // the model's own footprint
+    const a0 = Math.atan2(v1 - f.v, u1 - f.u), r = Math.min(Math.hypot(u1 - f.u, v1 - f.v), fr);
+    for (let k = 0; k <= 8; k++) for (const sg of k ? [1, -1] : [1]) {   // the side toward the next point, else the nearest side clear of a neighbour (the next tank)
+      const a = a0 + sg * k * 0.39, u = f.u + Math.cos(a) * r, v = f.v + Math.sin(a) * r;
+      if (!inFac(u, v, f, true)) return [u, v];
+    }
+    return [f.u + Math.cos(a0) * r, f.v + Math.sin(a0) * r];
   }
   // a site-local point inside (or within a truck's half width of) a revetment
   function inRevet(u, v, own, skipOwn) {
@@ -305,9 +326,10 @@ window.WW = window.WW || {};
     }
     return k[0];
   }
+  const fpR = f => Math.max(facR(f), (f.r || 0) * 1.45);   // a facility's footprint radius (a square one, the fuel farm: to its corners)
   function inFac(u, v, own, skipOwn) {
     if (base.decor) for (const g of base.decor) { if (g.kind === 'drill' || g.kind === 'yard') continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + 0.6) return true; } // the camp too
-    for (const g of base.facilities) { if (skipOwn && g === own) continue; const r = facR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + (g === own ? 0.4 : 0.6)) return true; } // own: the door (+0.8) is just outside
+    for (const g of base.facilities) { if (skipOwn && g === own) continue; const r = fpR(g), k = facK.get(g); if (Math.hypot(k[1] - u, k[2] - v) < r + (g === own ? 0.4 : 0.6)) return true; } // own: the door (+0.8) is just outside
     return false;
   }
   // from a facility's door out to the parallel taxiway (site-local points, ending on the taxiway line of side fs), round
@@ -316,7 +338,7 @@ window.WW = window.WW || {};
   function exitTo(f, e) {
     const L = base.layout, TU = L.TAXI_U, TV = L.TAXI_V, k = KL(), fs0 = f.v >= 0 ? 1 : -1, t = [e * (TU + k), fs0 * (TV + k)];
     for (const c of [[t], [[f.u, t[1]], t], [[t[0], f.v], t]]) {
-      if (Math.hypot(c[0][0] - f.u, c[0][1] - f.v) < facR(f) + 1.5) continue;   // the corner is at the building itself
+      if (Math.hypot(c[0][0] - f.u, c[0][1] - f.v) < fpR(f) + 1.5) continue;   // the corner is at the building itself
       const P = [door(f, c[0][0], c[0][1])].concat(c); let ok = true;
       for (let i = 1; i < P.length && ok; i++) ok = legClear(P[i - 1], P[i], f);
       if (ok) return { pts: P, fs: fs0 };
@@ -329,24 +351,25 @@ window.WW = window.WW || {};
   // shortest way on a 1 u grid (site-local, land only, round the revetments and the other facilities), then pulled
   // straight (each point to the farthest one it sees). Null when walled in.
   const ways = new Map();
-  function gridWay(f, t) {
+  function gridWay(f, t, tol) {   // tol: arrive within this many cells of t (a crash truck: t may be in a blocked cell)
     const L = base.layout, U0 = -90, V0 = -80, NU = 181, NV = 161, id = (i, j) => j * NU + i;
     const blocked = (u, v) => inRevet(u, v, f, true) || !L.land(u, v);   // out of its own building from the middle
     const start = [f.u, f.v], si = Math.round(start[0] - U0), sj = Math.round(start[1] - V0), ti = Math.round(t[0] - U0), tj = Math.round(t[1] - V0);
     const prev = new Int32Array(NU * NV).fill(-2), q = [id(si, sj)]; prev[q[0]] = -1;
+    let end = -1;
     for (let h = 0; h < q.length; h++) {
       const c = q[h], i = c % NU, j = (c - i) / NU;
-      if (i === ti && j === tj) break;
+      if (Math.abs(i - ti) <= (tol || 0) && Math.abs(j - tj) <= (tol || 0)) { end = c; break; }
       for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= NU || b >= NV) continue;
         const n = id(a, b); if (prev[n] !== -2 || blocked(a + U0, b + V0)) continue;
         prev[n] = c; q.push(n);
       }
     }
-    if (prev[id(ti, tj)] === -2) return null;
-    const P = []; for (let c = id(ti, tj); c >= 0; c = prev[c]) { const i = c % NU; P.push([i + U0, (c - i) / NU + V0]); }
-    P.reverse(); P[P.length - 1] = t;
-    let i0 = 0; while (i0 < P.length - 2 && Math.hypot(P[i0][0] - f.u, P[i0][1] - f.v) < facR(f) + 0.8) i0++;
+    if (end < 0) return null;
+    const P = []; for (let c = end; c >= 0; c = prev[c]) { const i = c % NU; P.push([i + U0, (c - i) / NU + V0]); }
+    P.reverse(); if (!tol) P[P.length - 1] = t;
+    let i0 = 0; while (i0 < P.length - 2 && Math.hypot(P[i0][0] - f.u, P[i0][1] - f.v) < fpR(f) + 0.8) i0++;
     P.splice(0, i0); P[0] = door(f, P[0][0], P[0][1]);  // the door: where the way leaves the building
     const out = [P[0]];
     for (let a = 0; a < P.length - 1;) { let b = P.length - 1; while (b > a + 1 && !legClear(P[a], P[b], f)) b--; out.push(P[b]); a = b; }
@@ -377,19 +400,18 @@ window.WW = window.WW || {};
   }
 
   // The crash trucks (on alert at the tower and a hangar) set off the moment a plane comes in crashing and drive STRAIGHT
-  // across the grass and hardstand to it (a short grid path round the buildings, berms and parked planes, base_life_paths
-  // people's grid: the taxiways cost more but may be crossed); the last leg follows the plane as it skids, then its
-  // wreck (tripPos), so they never drive to a stale spot. They stay while it burns and drive back the same way.
+  // across the grass, the hardstand and the runways to it (gridWay: round the buildings, the camp, the berms and the
+  // parked planes); the last leg follows the plane as it skids, then its wreck (tripPos), so they never drive to a stale
+  // spot. They stand beside the wreck clear of the taxiways (standBy), stay while it burns and drive back the same way.
   function crashRun(p) {
     const L = base.layout, q = L.toL(p.x, p.z), fs = [nearestFac('tower', p.x, p.z), nearestFac('hangar', p.x, p.z)].filter(f => f);
     // where it will stop: about rollV^2 / 22 further along (the skid's braking), the trucks' aim until it does
     const sx = p.x + Math.cos(p.heading) * p.speed * p.speed / 22, sz = p.z + Math.sin(p.heading) * p.speed * p.speed / 22;
     fs.slice(0, 2).forEach((f, i) => {
-      const d = door(f, q.u, q.v), dw = L.toW(d[0], d[1]), P = WW.baseLifePaths && WW.baseLifePaths.grid ? WW.baseLifePaths.path(dw.x, dw.z, sx, sz, false, true) : null;
-      const pts = [d].concat((P || []).map(w => { const r = L.toL(w.x, w.z); return [r.u, r.v]; }));
-      const e = L.toL(sx, sz); pts.push([e.u, e.v]);
-      trip('crash', pts, WW.time.now + 30, p, WW.time.now + i * 1.5);
-      trips[trips.length - 1].off = i ? -1 : 1;   // one each side of the wreck
+      const e = L.toL(sx, sz), pts = gridWay(f, [e.u, e.v], 4); if (!pts) return;   // walled in: that truck stays put
+      pts.push([e.u, e.v]);
+      trip('crash', pts, WW.time.now + 30, p, WW.time.now + i * 2.5);
+      trips[trips.length - 1].off = i;   // standBy: one each side of the wreck
     });
   }
 
