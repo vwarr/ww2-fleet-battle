@@ -99,7 +99,23 @@ window.WW = window.WW || {};
   // an open runway end to end, the AA pits and the rest. Two ships do not work the same line if they can help it.
   // fireShell aims at target.x / z, so the wrapper below moves the base's x / z to the walking aim point for the call.
   var WALK = 3.2, LINE_T = 30, BOMB_K = 0.7;   // BOMB_K: a bombardment run closes to this x the main battery's range
-  function bombardRange(ship, pref) { var g = ship.stats.guns[0]; return g ? Math.min(pref, g.range * BOMB_K) : pref; }
+  // a destroyer's light guns close to BOMB_K x their range of the pit / battery nearest it (the range is to the centre)
+  function bombardRange(ship, pref) {
+    var g = ship.stats.guns[0]; if (!g) return pref;
+    if (g.cal !== 'small') return Math.min(pref, g.range * BOMB_K);
+    var b = base(), f = b && lightAim(ship, b);
+    return f ? Math.min(pref, g.range * BOMB_K + WW.dist(b.x, b.z, f.x, f.z)) : pref;
+  }
+  // the live pit or battery nearest the ship, and the light guns' range to the island (ships_ai.js gunD): to it
+  function lightAim(ship, b) {
+    var best = null, bd = 1e9;
+    for (var i = 0; i < b.facilities.length; i++) {
+      var f = b.facilities[i]; if (f.out || (f.kind !== 'aa' && f.kind !== 'battery')) continue;
+      var d = WW.dist2(ship.x, ship.z, f.x, f.z); if (d < bd) { bd = d; best = f; }
+    }
+    return best;
+  }
+  function reach(ship, b) { var f = lightAim(ship, b); return f ? WW.dist(ship.x, ship.z, f.x, f.z) : 1e9; }
   // light guns (a destroyer's main battery, a big ship's secondaries: 'small', no crater): only what they can hurt -
   // the AA pits, the batteries, the planes in the open - within their own reach
   function aimLines(ship, b, small) {
@@ -165,6 +181,6 @@ window.WW = window.WW || {};
   if (WW.strike && WW.strike.TOP) WW.strike.TOP.base = 3;                         // pull-out clearance over the field
   WW.on('baseBuilt', function (e) { if (e && e.base) weights(true); });
 
-  WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, alarm: alarm, W_BASE: W_BASE, bombardRange: bombardRange, BOMB_K: BOMB_K,
+  WW.baseAI = { objective: objective, strikeValue: strikeValue, assign: assign, neutralized: neutralized, alarm: alarm, W_BASE: W_BASE, bombardRange: bombardRange, reach: reach, BOMB_K: BOMB_K,
     ALARM: { SHIP: ALARM_SHIP, PLANE: ALARM_PLANE, NEAR: ALARM_NEAR } };
 })();
