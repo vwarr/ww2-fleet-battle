@@ -1,0 +1,101 @@
+endgame survey: 424 rounds (node, 2 workers)
+........................................................................................................................................................................................................................................................................................................................................................................................................................................
+ENDGAME SURVEY: 424 rounds, recorder errors 0 
+ends by scenario (kill/retire/time/stall/cap) and median length:
+  standard           n 40  8/27/5/0/0  len p50 637
+  carrier_duel       n 40  14/22/4/0/0  len p50 440
+  midway             n 40  7/31/2/0/0  len p50 513
+  battle_line        n 40  5/21/14/0/0  len p50 705
+  carrier_vs_surface n 12  4/8/0/0/0  len p50 540
+  asymmetric         n 12  8/3/1/0/0  len p50 404
+  ijnbase            n 12  7/5/0/0/0  len p50 399
+  bb_vs_base         n 12  10/2/0/0/0  len p50 311
+  pt_vs_bb           n 12  1/0/11/0/0  len p50 720
+  pt_raid            n 12  7/0/5/0/0  len p50 422
+  asw                n 12  12/0/0/0/0  len p50 300
+  sub_ambush         n 12  0/0/12/0/0  len p50 210
+  cv_vs_pt           n 12  8/0/4/0/0  len p50 322
+  pt_vs_pt           n 12  0/0/12/0/0  len p50 720
+  sub_vs_cv          n 12  0/0/12/0/0  len p50 210
+  dd_swarm_vs_bb     n 12  12/0/0/0/0  len p50 281
+  ss_vs_ss           n 12  0/0/12/0/0  len p50 210
+  bb4_vs_bb4         n 12  3/3/6/0/0  len p50 720
+  cv_vs_bb           n 12  12/0/0/0/0  len p50 208
+  cv2_vs_cv2         n 12  2/0/10/0/0  len p50 720
+  dd6_vs_ss6         n 12  1/0/11/0/0  len p50 210
+  ca_vs_pt6          n 12  11/0/1/0/0  len p50 456
+  dd_vs_dd           n 12  11/0/1/0/0  len p50 229
+  cv3_vs_bb2ca2      n 12  12/0/0/0/0  len p50 436
+  full_vs_pt2        n 12  7/0/5/0/0  len p50 281
+  ss_vs_pt           n 12  0/0/12/0/0  len p50 210
+
+finish-off failure (beaten enemy afloat, no hit on it >= 60 s, winner fit gun ships): 82/424 (19%)  by scen: standard 13, carrier_duel 19, midway 23, battle_line 3, carrier_vs_surface 4, asymmetric 4, ijnbase 10, bb_vs_base 1, pt_raid 1, bb4_vs_bb4 3, full_vs_pt2 1
+  e.g. full_vs_pt2 9 t171 549s dmin 925 end time@720; carrier_duel 39 t151 389s dmin 73 end retire@627; midway 37 t349 371s dmin 1108 end time@720; carrier_duel 15 t135 288s dmin 250 end retire@632
+
+  ... >= 120 s: 25/424 (6%)  by scen: standard 1, carrier_duel 6, midway 7, carrier_vs_surface 2, asymmetric 3, ijnbase 4, bb4_vs_bb4 1, full_vs_pt2 1
+  e.g. full_vs_pt2 9 t171 549s dmin 925 end time@720; carrier_duel 39 t151 389s dmin 73 end retire@627; midway 37 t349 371s dmin 1108 end time@720; carrier_duel 15 t135 288s dmin 250 end retire@632
+
+dead air in the last third >= 60 s (no shell at a ship, drop or hit): 172/424 (41%)  by scen: standard 4, carrier_duel 22, midway 6, battle_line 3, carrier_vs_surface 5, asymmetric 2, ijnbase 3, bb_vs_base 2, pt_vs_bb 11, pt_raid 5, sub_ambush 12, cv_vs_pt 5, pt_vs_pt 12, sub_vs_cv 12, dd_swarm_vs_bb 1, ss_vs_ss 12, bb4_vs_bb4 4, cv_vs_bb 2, cv2_vs_cv2 11, dd6_vs_ss6 10, ca_vs_pt6 7, dd_vs_dd 2, cv3_vs_bb2ca2 2, full_vs_pt2 5, ss_vs_pt 12
+  e.g. carrier_duel 21 t480 240s nearest enemy 325->666 end time@720; carrier_duel 26 t480 240s nearest enemy 858->712 end time@720; carrier_duel 31 t480 240s nearest enemy 250->1271 end time@720; pt_vs_bb 8 t480 240s nearest enemy 422->654 end time@720
+
+  ... >= 120 s: 56/424 (13%)  by scen: carrier_duel 3, midway 1, battle_line 1, carrier_vs_surface 1, pt_vs_bb 8, pt_raid 4, cv_vs_pt 5, pt_vs_pt 8, sub_vs_cv 1, ss_vs_ss 3, cv_vs_bb 1, cv2_vs_cv2 10, dd6_vs_ss6 1, ca_vs_pt6 2, dd_vs_dd 1, full_vs_pt2 5, ss_vs_pt 1
+  e.g. carrier_duel 21 t480 240s nearest 325->666 time@720; carrier_duel 26 t480 240s nearest 858->712 time@720; carrier_duel 31 t480 240s nearest 250->1271 time@720; pt_vs_bb 8 t480 240s nearest 422->654 time@720
+
+  ... drifting apart (gap >= 60 s and nearest enemy grew > 100): 27/424 (6%)  by scen: standard 1, carrier_duel 6, midway 3, ijnbase 1, pt_vs_bb 4, pt_vs_pt 3, sub_vs_cv 2, ss_vs_ss 1, cv_vs_bb 1, cv2_vs_cv2 2, ca_vs_pt6 2, full_vs_pt2 1
+  e.g. standard 5 t652 90s 16->290 retire@742; carrier_duel 3 t342 118s 676->998 retire@460; carrier_duel 13 t379 75s 298->1018 retire@475; carrier_duel 18 t356 80s 601->747 retire@480
+
+break to end: 185 rounds with a broken loser, tail p50 85 p90 171
+
+long retirement (break to end >= 120 s with a dead stretch >= 60 s): 13/424 (3%)  by scen: standard 2, carrier_duel 5, midway 3, ijnbase 1, ca_vs_pt6 1, cv3_vs_bb2ca2 1
+  e.g. standard 4 brk 387 tail 232 dead 77 kill; carrier_duel 28 brk 264 tail 222 dead 71 kill; midway 39 brk 464 tail 184 dead 116 retire; carrier_duel 37 brk 387 tail 180 dead 79 retire
+
+time ending with enemies within 500: 49/424 (12%)  by scen: standard 5, carrier_duel 1, midway 1, battle_line 13, asymmetric 1, pt_vs_bb 3, pt_raid 2, cv_vs_pt 3, pt_vs_pt 7, bb4_vs_bb4 6, dd6_vs_ss6 2, dd_vs_dd 1, ss_vs_pt 4
+  e.g. standard 8 nearest 296; standard 22 nearest 245; standard 24 nearest 49; standard 34 nearest 76
+
+time ending (any): 140/424 (33%)  by scen: standard 5, carrier_duel 4, midway 2, battle_line 14, asymmetric 1, pt_vs_bb 11, pt_raid 5, sub_ambush 12, cv_vs_pt 4, pt_vs_pt 12, sub_vs_cv 12, ss_vs_ss 12, bb4_vs_bb4 6, cv2_vs_cv2 10, dd6_vs_ss6 11, ca_vs_pt6 1, dd_vs_dd 1, full_vs_pt2 5, ss_vs_pt 12
+  e.g. standard 8 nearest 296 len 741; standard 22 nearest 245 len 720; standard 24 nearest 49 len 720; standard 34 nearest 76 len 720
+
+standoff in the last third (enemy within 300, no damage >= 60 s): 150/424 (35%)  by scen: standard 12, carrier_duel 20, midway 18, battle_line 10, carrier_vs_surface 8, asymmetric 8, ijnbase 5, bb_vs_base 10, pt_vs_bb 5, pt_raid 1, asw 8, cv_vs_pt 4, pt_vs_pt 8, dd_swarm_vs_bb 11, bb4_vs_bb4 4, dd6_vs_ss6 2, ca_vs_pt6 6, dd_vs_dd 9, ss_vs_pt 1
+  e.g. cv_vs_pt 11 t421 299s U:carrier,I:pt; cv_vs_pt 12 t496 224s I:carrier,U:pt; carrier_duel 23 t407 188s U:carrier,U:destroyer,I:destroyer; cv_vs_pt 1 t409 186s U:carrier,I:pt
+
+  ... >= 120 s: 23/424 (5%)  by scen: carrier_duel 1, midway 1, carrier_vs_surface 3, asymmetric 1, pt_vs_bb 2, cv_vs_pt 4, pt_vs_pt 4, bb4_vs_bb4 1, ca_vs_pt6 3, dd_vs_dd 2, ss_vs_pt 1
+  e.g. cv_vs_pt 11 t421 299s U:carrier,I:pt; cv_vs_pt 12 t496 224s I:carrier,U:pt; carrier_duel 23 t407 188s U:carrier,U:destroyer,I:destroyer; cv_vs_pt 1 t409 186s U:carrier,I:pt
+
+stuck ship (< 0.3 u/s for >= 20 s, not sinking / rescuing / dived): 2/424 (0%)  by scen: standard 1, pt_vs_bb 1
+  e.g. standard 35 [["IJN","cruiser",332.5,0.42]]; pt_vs_bb 7 [["IJN","battleship",617.5,0.39]]
+
+spinning ship (> 720 deg in 30 s): 114/424 (27%)  by scen: standard 31, asymmetric 10, pt_vs_bb 12, pt_raid 12, cv_vs_pt 9, pt_vs_pt 12, ca_vs_pt6 12, full_vs_pt2 9, ss_vs_pt 7
+  e.g. standard 1 [["USN","pt",188.5],["USN","pt",484.6]]; standard 2 [["USN","pt",436.5],["USN","pt",420.5]]; standard 4 [["USN","pt",490.70000000000005],["USN","pt",501]]; standard 5 [["IJN","pt",146.5],["IJN","pt",398.5]]
+
+hulk afloat at the end (< 15% hp or 3+ fires for >= 60 s): 55/424 (13%)  by scen: standard 17, carrier_duel 8, midway 5, battle_line 7, carrier_vs_surface 2, asymmetric 2, ijnbase 4, pt_vs_pt 4, bb4_vs_bb4 3, cv_vs_bb 1, dd6_vs_ss6 1, ca_vs_pt6 1
+  e.g. standard 3 [["IJN","destroyer",428.5,70,0.07,0]]; standard 8 [["IJN","submarine",514,226,0.1,0]]; standard 9 [["USN","pt",306,432,0.12,0]]; standard 10 [["USN","destroyer",342.5,336,0.08,0]]
+
+last sinking -> round end: p50 15 p90 159 s (340 rounds with a sinking)
+
+last sinking far from every other ship (> 300) with no other action in its last 10 s: 8/424 (2%)  by scen: standard 1, bb_vs_base 1, pt_vs_bb 1, cv_vs_bb 1, cv2_vs_cv2 3, ca_vs_pt6 1
+  e.g. standard 25 t634.9 IJN destroyer nearest 752; bb_vs_base 9 t320 IJN destroyer nearest 901; pt_vs_bb 3 t659.9 IJN cruiser nearest 826; cv_vs_bb 4 t197 USN battleship nearest 1751
+
+last sinking then >= 90 s to the end: 60/424 (14%)  by scen: standard 5, carrier_duel 9, midway 6, battle_line 10, asymmetric 2, ijnbase 3, bb_vs_base 1, pt_raid 1, cv_vs_pt 3, pt_vs_pt 9, bb4_vs_bb4 1, cv2_vs_cv2 6, dd6_vs_ss6 1, full_vs_pt2 3
+  e.g. standard 5 t651.6 battleship +90s retire; standard 6 t618.7 battleship +90s retire; standard 8 t631.9 battleship +109s time; standard 24 t493.2 cruiser +227s time
+
+abrupt ending (bombers attacking / torpedoes running / shells in the last 5 s): 200/424 (47%)  by scen: standard 21, carrier_duel 16, midway 20, battle_line 16, carrier_vs_surface 4, asymmetric 12, ijnbase 11, bb_vs_base 10, pt_vs_bb 1, pt_raid 7, asw 11, cv_vs_pt 7, pt_vs_pt 2, dd_swarm_vs_bb 12, bb4_vs_bb4 6, cv_vs_bb 5, cv2_vs_cv2 1, dd6_vs_ss6 1, ca_vs_pt6 9, dd_vs_dd 11, cv3_vs_bb2ca2 10, full_vs_pt2 7
+  e.g. standard 1 retire@575 att 2 torps 0 shells5 3; standard 4 kill@619 att 2 torps 0 shells5 7; standard 8 time@741 att 1 torps 0 shells5 0; standard 11 kill@786 att 1 torps 0 shells5 0
+
+carrier hiding in the last third (> 900 from every enemy, no launch): 21/424 (5%)  by scen: carrier_duel 4, pt_raid 4, sub_ambush 1, cv_vs_pt 1, sub_vs_cv 2, cv2_vs_cv2 6, full_vs_pt2 3
+  e.g. carrier_duel 19 [["USN",210,79]]; carrier_duel 21 [["IJN",236,72]]; carrier_duel 26 [["USN",236,79]]; carrier_duel 39 [["IJN",206,40]]
+
+fit planeless carrier counted as air cover (side not broken) >= 60 s: 0/424 (0%)  by scen: 
+  e.g. 
+
+time of day: all rounds day 156, dawn 59, dusk 174, night 35
+  time endings > 300 s: day 29, dawn 9, dusk 32, night 19
+  dead air >= 120 s in the last third: day 14, dawn 4, dusk 22, night 16
+  rounds with no plane launched though a side has a carrier: 
+
+finish-off failure with the loser BROKEN (>= 60 s): 59/424 (14%)  by scen: standard 11, carrier_duel 11, midway 18, battle_line 2, carrier_vs_surface 1, asymmetric 4, ijnbase 9, bb_vs_base 1, bb4_vs_bb4 2
+  e.g. carrier_duel 28 t279 206s dmin 168 day end kill@486; midway 7 t277 204s dmin 118 day end retire@611; asymmetric 9 t219 182s dmin 1116 day end retire@402; asymmetric 7 t259 180s dmin 409 dawn end retire@439
+
+break by the air-cover rule (no fit carrier, fit gun tons >= 15% of start): 29/424 (7%)  by scen: standard 12, carrier_duel 6, midway 9, ijnbase 2
+  e.g. standard 2 [["IJN",365,306,116700,116700]] retire@671; standard 5 [["IJN",687,55,15500,72900]] retire@742; standard 12 [["IJN",483,63,18300,82300]] retire@546; standard 14 [["IJN",331,282,70500,75100]] kill@613
+
+417 s
