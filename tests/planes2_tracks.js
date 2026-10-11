@@ -38,16 +38,20 @@ function pick() {
       if (!f) continue;
       // a clear scene: the fighter came out to the ship (30 s before it was >= 100 away), few other planes around it
       const f0 = at(planes.get(f), r[0] - 30); if (!f0 || Math.hypot(f0[5] - s[5], f0[6] - s[6]) < 100) continue;
+      // ... and reached the raider (within 30 u) inside 30 s
+      let tc = null; for (const q of planes.get(f)) { if (q[0] < r[0] || q[0] > r[0] + 30) continue; const u = at(L, q[0]); if (u && Math.abs(u[0] - q[0]) < 0.6 && Math.hypot(u[5] - q[5], u[6] - q[6]) < 30) { tc = q[0]; break; } }
+      if (tc === null) continue;
       let crowd = 0; for (const L of planes.values()) { const q = at(L, r[0]); if (q && Math.abs(q[0] - r[0]) < 0.6 && Math.hypot(q[5] - s[5], q[6] - s[6]) < 170) crowd++; }
       const sc = (ty === 'destroyer' ? 100 : ty === 'pt' ? 90 : 50) + (s[4] === 'crip' ? 20 : 0) + (r[2] === 'J' ? 15 : 0) - crowd * 2;
-      if (!best || sc > best.sc) best = { sc, t: r[0], raider: id, fighter: f, ship: r[13], ty };
+      if (!best || sc > best.sc) best = { sc, t: r[0], tc, raider: id, fighter: f, ship: r[13], ty };
     }
     if (!best) throw new Error('no cover scene in this trace');
-    if (!manual) { t0 = best.t - 35; t1 = best.t + 15; }
+    if (!manual) { t0 = best.t - 35; t1 = best.tc + 12; }
     const s = at(ships.get(best.ship), best.t), f0 = at(planes.get(best.fighter), t0) || planes.get(best.fighter)[0];
-    cx = (s[5] + f0[5]) / 2; cz = (s[6] + f0[6]) / 2; R = Math.max(150, Math.hypot(s[5] - f0[5], s[6] - f0[6]) * 0.7);
+    const mq = at(planes.get(best.fighter), best.tc); cx = (s[5] + mq[5] + f0[5]) / 3; cz = (s[6] + mq[6] + f0[6]) / 3; R = Math.max(150, Math.hypot(s[5] - cx, s[6] - cz) + 40, Math.hypot(mq[5] - cx, mq[6] - cz) + 40, Math.hypot(f0[5] - cx, f0[6] - cz) + 20);
     key = [best.fighter, best.raider];
     marks.push({ t: best.t, x: s[5], z: s[6], txt: best.ty + ' under attack' });
+    { const q = at(planes.get(best.fighter), best.tc); marks.push({ t: best.tc, x: q[5], z: q[6], txt: 'fighter on the raider' }); }
     title = `CAP covering a ${best.ty}: fighter #${best.fighter} on raider #${best.raider} at t=${best.t}`;
   } else if (scene === 'alert') {
     const e = EV.find(e => e.k === 'alert' && (!manual || (e.t >= t0 && e.t <= t1))); if (!e) throw new Error('no alert event');
