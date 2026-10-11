@@ -260,14 +260,15 @@ window.WW = window.WW || {};
     for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && u.alive && !u.submerged && !u.isBase && cs[i].seenAt > bt) { bt = cs[i].seenAt; best = cs[i]; } }
     return best || B.enemyCentre || B.searchPoint;
   }
-  // The sortie: escorts past the first `keep` steam for the enemy (sortieGoal).
+  // The sortie: escorts past the first `keep` steam for the enemy (sortieGoal); a carrier's guards (fleet_formation.js
+  // tagRing) never go.
   function sortie(B, G, ncv) {
     var k = 0, t = sortieGoal(B), n = 0;
     G.carrier.members.forEach(function (q) { var o = B.orders.get(q.id); if (q.type !== 'carrier' && o && o.role !== 'withdraw') n++; });
     var keep = Math.min(ncv, n - 1);
     G.carrier.members.forEach(function (q) {
       var o = B.orders.get(q.id);
-      if (q.type === 'carrier' || !o || o.role === 'withdraw' || k++ < keep) return;
+      if (q.type === 'carrier' || !o || o.role === 'withdraw' || o.guard || k++ < keep) return;
       o.role = 'sortie'; o.sx = WW.clamp(t.x, 30, WW.cfg.MAP_W - 30); o.sz = WW.clamp(t.z, 30, WW.cfg.MAP_H - 30);
     });
   }

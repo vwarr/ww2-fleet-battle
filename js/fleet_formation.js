@@ -31,12 +31,21 @@ window.WW = window.WW || {};
     var bb = d.ringBB && nbb >= 2 ? 1 : 0;
     var ca = nca >= 2 ? Math.min(ncv, nca - 1) : 0;
     var dd = Math.min(ndd, Math.max(1, Math.min(Math.round(d.ringDD || 1) * ncv, ndd - 2)));
+    // every carrier gets at least one escort while the side has one to give: destroyers first, then a cruiser, then
+    // a battleship off the line (a carrier steaming alone under air attack was nobody's doctrine)
+    if (bb + ca + dd < ncv) dd = Math.min(ndd, ncv - bb - ca);
+    if (bb + ca + dd < ncv) ca = Math.min(nca, ncv - bb - dd);
+    if (bb + ca + dd < ncv && !bb) bb = Math.min(nbb, ncv - ca - dd);
     return { bb: bb, ca: ca, dd: dd };
   }
-  // after assign(): spread the escorts over the carriers (round robin, big ships first) and tag ship.ringCv
+  // after assign(): spread the escorts over the carriers (round robin, big ships first) and tag ship.ringCv.
+  // Guards (o.guard): the first GUARD_N escorts of each carrier (one while it has fewer than three) hold its ring in
+  // every posture and leave it for no target, sortie or sub hunt beyond GUARD_R of the carrier (ai_surface.js
+  // ringHold): a carrier always keeps its close AA escort while it has one (Hornet, Yorktown, the Kido Butai).
+  var GUARD_N = 2, GUARD_R = 120;
   function tagRing(B, cvs) {
-    var per = {}, k = 0;
-    B.orders.forEach(function (o) { o.ship.ringCv = null; });
+    var per = {}, tot = {}, k = 0, list = [];
+    B.orders.forEach(function (o) { o.ship.ringCv = null; o.guard = false; });
     if (!cvs.length) return;
     B.groups.carrier.members.forEach(function (s) {
       if (s.type === 'carrier') return;
@@ -44,7 +53,10 @@ window.WW = window.WW || {};
       var cv = cvs[k++ % cvs.length], n = per[cv.id] = (per[cv.id] || 0) + 1;
       o.ringCv = cv; o.ringSlot = n - 1;
       if (B.doctrine.ringR > 0 && o.role === 'escort') s.ringCv = cv;
+      if (o.role === 'escort') { tot[cv.id] = (tot[cv.id] || 0) + 1; list.push(o); }
     });
+    var g = {};
+    list.forEach(function (o) { var id = o.ringCv.id, n = g[id] = (g[id] || 0) + 1; o.guard = n <= (tot[id] >= 3 ? GUARD_N : 1); });
   }
   // The station of ring escort o: live point { x, z } (null when it has no carrier)
   function ringPoint(o, out) {
@@ -167,22 +179,28 @@ window.WW = window.WW || {};
 
   // Station keeping for a ring escort (ai_surface.js followStation): close the live station with a lead along the
   // carrier's course; on it, match the carrier's course and speed (the group turns together).
+  // Near the station (inside KEEP_IN x L, out to KEEP_OUT x L once there: hysteresis) the escort never turns back to
+  // re-cross the point: it steers the carrier's course with a cross-track correction and fixes its place along the
+  // course by speed alone (slowing to let a station astern come up). Steering at the point itself made an escort
+  // that overran it, with its carrier slow, turn round every ~25 s (sanity S8c: circling in place).
+  // Speed: the carrier's plus d / KEEP_T (proportional, no step), so it closes without overrunning.
   var ARC_STEP = 0.7; // rad: the waypoint ahead round the ring when the station is across it
+  var KEEP_IN = 1, KEEP_OUT = 2, KEEP_T = 12, XTRACK = 0.05, XMAX = 0.6;
   function ringKeep(ship, o, B) {
     var p = ringPoint(o); if (!p) return false;
-    var cv = o.ringCv, ch = Math.cos(cv.heading), sh = Math.sin(cv.heading), lead = Math.max(2, cv.speed) * 4;
+    var cv = o.ringCv, ch = Math.cos(cv.heading), sh = Math.sin(cv.heading), lead = Math.max(2, cv.speed) * 4, L = ship.stats.length;
     var d = WW.dist(ship.x, ship.z, p.x, p.z), want = Math.atan2(p.z + sh * lead - ship.z, p.x + ch * lead - ship.x);
+    var along = (p.x - ship.x) * ch + (p.z - ship.z) * sh, cross = -(p.x - ship.x) * sh + (p.z - ship.z) * ch;
+    o.onSta = d < (o.onSta ? KEEP_OUT : KEEP_IN) * L + 6;
     // a station across the ring (the threat axis swung): steam round the ring the short way, never through the carrier
     var R = WW.dist(cv.x, cv.z, p.x, p.z), as = Math.atan2(ship.z - cv.z, ship.x - cv.x), da = WW.angleDiff(as, Math.atan2(p.z - cv.z, p.x - cv.x));
     if (Math.abs(da) > ARC_STEP && WW.dist(ship.x, ship.z, cv.x, cv.z) < R * 1.8) {
       var wa = as + Math.sign(da) * ARC_STEP, wx = cv.x + Math.cos(wa) * R + ch * lead, wz = cv.z + Math.sin(wa) * R + sh * lead;
-      want = Math.atan2(wz - ship.z, wx - ship.x);
-    }
-    if (d > 25) ship.throttle = WW.clamp(d / 50, 0.6, 1);
-    else {
-      var along = (p.x - ship.x) * ch + (p.z - ship.z) * sh;
-      ship.throttle = WW.clamp((cv.speed + 0.3 * along) / ship.stats.speed, 0.15, 1);
-    }
+      want = Math.atan2(wz - ship.z, wx - ship.x); o.onSta = false;
+    } else if (o.onSta || (along < 0 && Math.abs(cross) < KEEP_OUT * L)) // on station, or ahead of it: the carrier's course, speed fixes the rest
+      want = cv.heading + WW.clamp(cross * XTRACK, -XMAX, XMAX);
+    var v = cv.speed + (along >= 0 ? d : along) / KEEP_T;   // ahead of the station: slower than the carrier, never round
+    ship.throttle = WW.clamp(v / ship.stats.speed, 0.1, 1);
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
     return true;
   }
@@ -281,6 +299,6 @@ window.WW = window.WW || {};
     return true;
   }
 
-  WW.formation = { threatAxis: threatAxis, battleAim: battleAim, guide: guide, guidePoint: guidePoint, guideKeep: guideKeep, ringCounts: ringCounts, tagRing: tagRing, ringStations: ringStations, ringPoint: ringPoint, ringKeep: ringKeep,
+  WW.formation = { threatAxis: threatAxis, battleAim: battleAim, guide: guide, guidePoint: guidePoint, guideKeep: guideKeep, ringCounts: ringCounts, tagRing: tagRing, GUARD_R: GUARD_R, ringStations: ringStations, ringPoint: ringPoint, ringKeep: ringKeep,
     vanguardBack: vanguardBack, zigzag: zigzag, zig: zig, ZIG: ZIG, LEG: LEG };
 })();

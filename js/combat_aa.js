@@ -42,6 +42,21 @@ window.WW = window.WW || {};
   // multiplier on the chance to hit / tightness of aim: jinking spoils it, a steady run makes it easy
   // (a plane on a run/dive is not weaving even if its jink value has not decayed yet)
   function exposure(pl) { return steady(pl) ? JINK.steadyMul : 1 - JINK.hitMul * Math.min(1, pl.jink || 0); }
+  // Fire-control priority (light and heavy): the gunners' weight on a plane's distance (lower = first). An armed
+  // bomber closing on this ship or a ship nearby (its target within PRI.NEAR) comes first; a spent or departing
+  // plane (no ordnance, going home or flying away) only when nothing else is in reach (point blank: anything);
+  // fighters after the bombers (a strafing pass is less of a threat than a bomb or torpedo).
+  var PRI = { armed: 0.45, fighter: 1.3, away: 3, near: 150, point: 15 };
+  function priority(s, pl, d) {
+    var bx = s.x - pl.x, bz = s.z - pl.z, bl = Math.sqrt(bx * bx + bz * bz) || 1, c = (Math.cos(pl.heading) * bx + Math.sin(pl.heading) * bz) / bl;
+    if (pl.ordnance && !pl.crippled && (pl.kind === 'dive' || pl.kind === 'torpedo')) {
+      var t = pl.target;
+      if (t === s || c > 0.5 || (t && t.x !== undefined && WW.dist2(t.x, t.z, s.x, s.z) < PRI.near * PRI.near)) return PRI.armed;
+      return 1;
+    }
+    if (d > PRI.point && (pl.state === 'return' || c < -0.3)) return PRI.away;
+    return pl.kind === 'fighter' ? PRI.fighter : 1;
+  }
   function hitPlane(pl, amt, ship, src) {
     if (!pl || !pl.alive || !(amt > 0) || !pl.damage) return;
     var prev = pl.killedBy;
@@ -272,7 +287,7 @@ window.WW = window.WW || {};
           if (!pl || !pl.alive || pl.nation === s.nation || (pl.y || 0) < HEAVY.minAlt) continue;
           var dx = pl.x - s.x, dz = pl.z - s.z, h2 = dx * dx + dz * dz, d3 = Math.sqrt(h2 + pl.y * pl.y);
           if (d3 > hr || h2 < HEAVY.minRange * HEAVY.minRange || !detected(s, pl)) continue;
-          var sc = d3 * (pl.kind === 'fighter' ? 1.7 : 1) * (pl.ordnance ? 0.8 : 1);   // bombers with ordnance first
+          var sc = d3 * (pl.kind === 'fighter' ? 1.3 : 1) * priority(s, pl, d3);   // armed bombers closing first, departing planes last
           if (sc < bs) { bs = sc; best = pl; }
         }
         var ak = best && WW.supply ? WW.supply.aa(s, true) : 1;   // AA ammunition (ship_supply.js): weaker when low
@@ -280,12 +295,14 @@ window.WW = window.WW || {};
       }
       if (tm.l <= 0) {
         tm.l += LIGHT.interval; if (tm.l <= 0) tm.l = LIGHT.interval * rnd();
-        var lr = aa.range * LIGHT.rangeK, lt = null, bd = lr * lr;
+        var lr = aa.range * LIGHT.rangeK, lt = null, bd = lr * lr, bsc = 1e18;
         for (var k = 0; k < planes.length; k++) {
           var p2 = planes[k];
           if (!p2 || !p2.alive || p2.nation === s.nation || (p2.y || 0) > LIGHT.maxAlt) continue;
           var ex = p2.x - s.x, ez = p2.z - s.z, ey = (p2.y || 0), dd = ex * ex + ez * ez + ey * ey;
-          if (dd < bd && detected(s, p2)) { bd = dd; lt = p2; }
+          if (dd >= lr * lr) continue;
+          var ds = Math.sqrt(dd), sl = ds * priority(s, p2, ds);   // the threat comes first, not the nearest plane
+          if (sl < bsc && detected(s, p2)) { bsc = sl; bd = dd; lt = p2; }
         }
         if (!lt) continue;
         var lk = WW.supply ? WW.supply.aa(s, false) : 1;

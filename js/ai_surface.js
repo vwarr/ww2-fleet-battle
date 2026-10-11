@@ -83,7 +83,8 @@ window.WW = window.WW || {};
     // Mutual support: a sub known close to an ally is hunted from SUB_HELP_R away.
     const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) &&
       WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
-    if (st.depthCharges && (a.dcLeft > 0 || ds || (a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
+    const go = WW.fleetCmd ? WW.fleetCmd.order(ship) : null;
+    if (st.depthCharges && (a.dcLeft > 0 || ds || (!guardOut(ship, go) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
       a.dcReload -= dt;
       if (a.dcLeft > 0) { dcPattern(ship, a, dt); return; }
       const fresh = !!ds || seen(ship, a.sub), s = ds || (fresh ? a.sub : a.subC);
@@ -137,9 +138,17 @@ window.WW = window.WW || {};
   }
   // A carrier's AA-ring escort (doctrine ringR) keeps the ring whatever it is shooting at, while its carrier lives
   // and the side is not pressing, pursuing or withdrawing (fleet_formation.js; the escort charge is ai_charge.js).
+  // A carrier's guard (fleet_formation.js tagRing: its first one or two escorts) holds the ring (USN) or its loose
+  // station (IJN) in every posture: the carrier is never left alone while it has an escort.
   function ringHold(o, B) {
-    return !!(o && B && o.role === 'escort' && o.ringR > 0 && o.ringCv && o.ringCv.alive && !o.ringCv.sinking &&
-      B.posture !== 'press' && B.posture !== 'pursue' && B.posture !== 'withdraw');
+    if (!(o && B && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking)) return false;
+    if (o.guard && (o.ringR > 0 || o.looseR > 0)) return true;
+    return o.ringR > 0 && B.posture !== 'press' && B.posture !== 'pursue' && B.posture !== 'withdraw';
+  }
+  // a guard more than GUARD_R from its carrier: back to the ring before hunting a sub there
+  function guardOut(ship, o) {
+    return !!(o && o.guard && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking && WW.formation &&
+      WW.dist2(ship.x, ship.z, o.ringCv.x, o.ringCv.z) > WW.formation.GUARD_R * WW.formation.GUARD_R);
   }
   // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range). Pressing
   // closes in by the doctrine's close-quarters style (IJN closer), a withdrawing side opens out. Never inside
@@ -295,6 +304,7 @@ window.WW = window.WW || {};
       if (along < 0 || along > W || perp > L + along * 0.25) continue;
       if (!WW.shipAI.h.canComb(ship, e, along)) continue;   // too late to come parallel: hold course
       ship.desiredHeading = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
+      ship.ai.earlyCombT = now;   // ships_ai.js airEvade leaves the helm to the combing
       return;
     }
   }
