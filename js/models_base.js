@@ -178,7 +178,9 @@ window.WW = window.WW || {};
     var SP = base.seaplane;
     if (SP) {
       var ex = SP.ax - Math.cos(SP.h) * 4, ez = SP.az - Math.sin(SP.h) * 4, y0 = gy(ex, ez) + 0.05, y1 = -0.5, len = Math.hypot(SP.wx - ex, SP.wz - ez);
-      var sl = new THREE.Mesh(new THREE.BoxGeometry(len + 1, 0.16, 4.2), M._mat(C.apron));
+      var sg = new THREE.BoxGeometry(len + 1, 0.16, 4.2);
+      sg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(sg.attributes.position.count * 3).fill(1), 3));   // the toon material takes vertex colours (none: black)
+      var sl = new THREE.Mesh(sg, M._mat(C.apron));
       sl.position.set((ex + SP.wx) / 2, (y0 + y1) / 2, (ez + SP.wz) / 2); sl.rotation.order = 'YZX';
       sl.rotation.set(0, -Math.atan2(SP.wz - ez, SP.wx - ex), Math.atan2(y1 - y0, len)); sl.receiveShadow = true; root.add(sl);
     }
