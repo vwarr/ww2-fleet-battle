@@ -9,6 +9,13 @@ branch. Numbers come from `tests/fable_probe.js` (a read-only recorder: 56 round
 1-10 carrier_duel / midway / surface, 1-6 asw; `node tests/fable_probe.js --seeds 20 --workers 2`), from
 `docs/airdiag/endgame_survey_output.txt` (424 rounds) and from `tests/shape_probe.js` on single seeds.
 
+Companion files: `tests/fable_probe.js` (the recorder and its report), `tests/fable_shots.js` (render-mode screenshots
+of a probe example by seed / time / ship), `docs/fable_audit/` (the plot and shots).
+
+Note for the coordinator: two instances of this agent ran in the same worktree after the restart (both wrote
+`tests/fable_probe.js`; the 102-round report below is the merged recorder's). The findings text here is one
+document; if the other instance pushes its own, the finding ids F1-F20 are the ones to keep.
+
 Ranking: fun impact x frequency, the "silly" ones first. Owner tags: a running agent whose scope covers the fix
 (→ planes2 / basebattle / sanity / airend / endgame); untagged findings have no owner yet.
 
@@ -305,6 +312,14 @@ destroyers at t≈180. From 300 to 594 the last IJN destroyer, alone, with no ai
 t 390-420 and miss; the USN destroyers never get a gun on it (distance 164-278 for 200 s: a stern chase at equal speed,
 7.5 u/s each); the first shell between the fleets falls at t 594, only then does the air-cover rule break the IJN
 and the USN `pursue` (kill at 699). Five minutes of a destroyer steaming at a fleet it cannot hurt, under bombs.
+
+![carrier_duel 23: tracks every 30 s](fable_audit/carrier_duel_23_tracks.png)
+
+The plot (`docs/fable_audit/carrier_duel_23_tracks.png`, from the shape_probe log): the IJN carrier (dark red) is
+sunk at ~270 s; its last destroyer (light red) crosses the map and from t 420 to 660 waltzes in a 300 u circle with
+the two USN destroyers (light blue, 'a' = asw role) at equal speed, nobody in gun range; the USN carrier (dark
+blue, bottom left) spends the whole round dithering on its station at x≈480 (the spaghetti of helm changes is its
+flee / station / wind-turn logic fighting itself, F9). Nothing a viewer could read as a decision for five minutes.
 
 **The rules.** `fleet_cmd.js:199-204 beaten()`: the "outfought" and the "air cover lost" breaks apply only once
 `WW.game.metT !== null` (the first shell between fleet ships, `main.js:207-210`), a rule written so that a side is
