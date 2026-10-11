@@ -197,12 +197,13 @@ window.WW = window.WW || {};
     p.rwPh = 'crash'; p.rollV = p.speed; p.waitT = 0; p.tdX = p.x; p.tdZ = p.z; p.crashed = true; ST.crashes++;
     p.loop = ((p.id || 0) % 2 ? 1 : -1) * (0.5 + ((p.id || 0) % 5) * 0.2);   // which way it ground-loops (deterministic)
   }
-  // a skid's next position on another wreck (or burned-out hulk) or a plane on the ground in its spot
+  // a skid's next position on another wreck (or burned-out hulk) or a plane on the ground in its spot (x 1.4: the
+  // clearance radii are a plane's middle; a wing swung round reaches further)
   function skidBlocked(p, b, x, z) {
-    var r = rad(p.variant), i, w;
-    for (i = 0; b.wrecks && i < b.wrecks.length; i++) { w = b.wrecks[i]; if (Math.hypot(w.x - x, w.z - z) < r + w.r) return true; }
-    for (i = 0; b.hulks && i < b.hulks.length; i++) { w = b.hulks[i]; if (Math.hypot(w.x - x, w.z - z) < r + w.r) return true; }
-    for (i = 0; i < b.slots.length; i++) { w = b.slots[i]; if ((w.state === 'parked' || w.state === 'rearm' || w.state === 'wreck') && Math.hypot(w.x - x, w.z - z) < r + w.r) return true; }
+    var r = rad(p.variant), i, w, K = 1.4;
+    for (i = 0; b.wrecks && i < b.wrecks.length; i++) { w = b.wrecks[i]; if (Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
+    for (i = 0; b.hulks && i < b.hulks.length; i++) { w = b.hulks[i]; if (Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
+    for (i = 0; i < b.slots.length; i++) { w = b.slots[i]; if ((w.state === 'parked' || w.state === 'rearm' || w.state === 'wreck') && Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
     return false;
   }
   function wreckAtStop(p, b) {
