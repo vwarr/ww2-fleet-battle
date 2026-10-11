@@ -484,11 +484,12 @@ coastal battery's own fire-control eye = its range (a battery on a headland sees
 
 ### F22. A raid on the carrier recalls the escorts of a strike in transit (S2, plane AI) → planes2 / sanity P8
 
-`air_boss.js:258-264 recall()`: under air attack every escort fighter within 320 u with the fuel is ordered home,
-whatever its strike is doing; the bombers fly on unescorted into the enemy CAP (the strike's `breakOff` in
-`air_staff.js:291` then jettisons them for lack of escort). 1942 escorts stayed with the strike (the recall is what
-Nagumo could not do). Fix: recall only escorts of a strike that has not yet departed (forming over the carrier), or
-only the top cover with the strike inside 120 of home.
+`air_boss.js:258-264 recall()`: under air attack every escort fighter within 320 u of the carrier with the fuel is
+ordered home, whatever its strike is doing: a wave still forming, or one in its first ~15 s of transit, loses its
+escort and the bombers fly on alone (a plausible, unmeasured consequence: the strike's `breakOff` in
+`air_staff.js:291` then jettisons them for lack of escort). Scoped by the 320 u cap this is S2-S3. 1942 escorts
+stayed with the strike. Fix: recall only escorts of a strike that has not yet departed (forming over the carrier),
+or only the top cover with the strike inside 120 of home.
 
 ### F23. Top cover over the attack orbits the target inside its heavy flak (S2, plane AI) → sanity P9
 
@@ -512,10 +513,11 @@ excepted); `ai_threat.js:70` stamps the AA umbrella at 1.55 x `aa.range` while h
 
 - F4 (`redirSmall`, standard 1 t492: a USN dive bomber of a wave launched at the IJN carrier releases on the destroyer
   Hatsuyuki #16): `fable_audit/smalldrop_1_490_0.jpg` .. `_2.jpg` (the destroyer at the drop, tracers up), and
-  `smalldrop_1_490_wide.jpg`: the whole IJN fleet hugging the Midway atoll at t 490, F18's "fleet steams at the island".
-- F20 (`ringAway`, standard 1 t100: USN destroyer Woodworth #5, ring escort of Enterprise #1, at throttle 1 leaving the
-  ring with no target, bound for a submarine contact): `fable_audit/ringaway_1_100_0.jpg`, `_1.jpg`, `_2.jpg` and
-  `ringaway_1_100_wide.jpg` (the USN task force round the atoll, the destroyer running off on its own).
+  `smalldrop_1_490_wide.jpg`: the IJN fleet round the Midway atoll at t 490 (posture press, bombarding the base).
+- F20 (`ringAway`, standard 1: USN destroyer Woodworth #5, ring escort of Enterprise #1, caught by the probe 156 u out
+  at t 90 running for a submarine contact with no target): `fable_audit/ringaway_1_100_0.jpg`, `_1.jpg`, `_2.jpg` and
+  `ringaway_1_100_wide.jpg` are filmed at t 100, when the shot script found it back at 85 from Enterprise at throttle 1
+  (the excursion out and back took about 20 s; the frames show the return, not the run out).
 
 ### Fix notes where the second read differs
 
