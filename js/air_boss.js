@@ -11,6 +11,7 @@ window.WW = window.WW || {};
   const MIN_B = 4;             // bombers for a strike (fewer: they join the next one, unless no more are coming)
   const RETRY = 2;             // s between strike checks while nothing can go
   const CV_AGE = 120;          // a carrier contact this fresh draws the strike (Midway: the carriers first)
+  const ETA = { form: 40, v: 21, attack: 30, launch: 0.9, trap: 3.5 };   // orderStrike's sunset sum: s, u/s, s, s per plane off, s per plane aboard
   const LOADS = 2;             // deck loads per strike (toy group): the spotted load, then one more up the elevators while it forms up
   const ESCORT_FRAC = { IJN: 0.3, USN: 0.15 }; // escort floor per bomber (doctrine escortFrac overrides)
   const STRIKE_N = [12, 24];   // planes per strike, toy group / full group (TUNE.wing 1: a 1942 deck-load strike of ~25), in as many deck loads as it takes
@@ -19,7 +20,7 @@ window.WW = window.WW || {};
   const FULL = { USN: { fighter: 27, dive: 37, torpedo: 15 }, IJN: { fighter: 18, dive: 27, torpedo: 27 } };
   const TUNE = { wing: 1 };     // full 1942 air groups by default (airperf instancing renders them); ?wing=0 for the toy group
   { const m = typeof location !== 'undefined' && /[?&]wing=([\d.]+)/.exec(location.search); if (m) TUNE.wing = +m[1]; } // ?wing=K (tests: env Q=wing=K)
-  const BS = { strikes: 0, waits: 0, small: 0, cvFirst: 0, cvRetarget: 0, capBatches: 0, capHome: 0, diverts: 0 };
+  const BS = { capLanded: 0, lateHolds: 0, lateCuts: 0, strikes: 0, waits: 0, small: 0, cvFirst: 0, cvRetarget: 0, capBatches: 0, capHome: 0, diverts: 0 };
   const O = () => WW.airOps;
 
   function group(ship, base) {   // ships.js: the hangar a new carrier starts with
@@ -88,8 +89,9 @@ window.WW = window.WW || {};
   // Yorktown, Enterprise's and Hornet's afternoon strike on Hiryu, the 6 June strikes on Mikuma and Mogami. It is
   // released (the strike timer drops to 1 s) when the enemy is beaten: the side pursues, or the enemy's seen fit gun
   // tonnage is below WAVER of all it has seen with a carrier or a cripple of it known (it is about to break); in the
-  // last LATE_T s of the round (no bombs go home); or when an enemy gun ship closes on this carrier (fleet_cmd defend:
-  // self-defence first, a carrier's strikes are its only weapon against a battleship).
+  // last LATE_T s of the round (no bombs go home); when an enemy gun ship closes on this carrier (fleet_cmd defend:
+  // self-defence first, a carrier's strikes are its only weapon against a battleship); or once the side believes the
+  // enemy air group is spent (air_staff.js airSpent: nothing left to keep the bombers back for).
   const WAVER = 0.3, LATE_T = 30;
   const PS = { held: 0, released: 0, why: {} };
   function beaten(B) {
@@ -99,7 +101,7 @@ window.WW = window.WW || {};
     return null;
   }
   function pursuitWhy(cv, B) {
-    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null);
+    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null) || (WW.staff && WW.staff.airSpent && WW.staff.airSpent(cv.nation) ? 'noAir' : null);
   }
   function pursuitHold(cv, B) {     // bombers kept back from this strike: { dive, torpedo }, or null
     const a = cv.ai, frac = B.doctrine.pursuitReserve || 0;
@@ -129,6 +131,16 @@ window.WW = window.WW || {};
       const ST = O().stats; if (s.low) ST.reliefs++; else if (A.near) ST.scrambles++;
       if (need >= E) BS.capBatches++;
       if (WW.emit) WW.emit('airOrder', { carrier: cv, order: s.low && !A.near ? 'relief' : A.near ? 'scramble' : 'cap', n: need, raid: A.near ? { x: A.raidX, z: A.raidZ, d: A.raidD } : null });
+    }
+    // more CAP up than wanted (the enemy air spent, the light failing): the surplus lands by whole elements, the
+    // lowest on fuel first (not while a raid is near; a fighter on a raider or vectored stays)
+    const LL = WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity;
+    if (s.on + s.low > want + E - 1 && !A.near && !A.armed && WW.time.now - A.attackT > 30 && (LL < 1e9 || (WW.staff && WW.staff.airSpent && WW.staff.airSpent(cv.nation)))) {
+      const L = [];
+      for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.kind === 'fighter' && !p.target && !p.search && !p.foe && !p.vec && !p.joined && p.state === 'transit' && !p.deckPh) L.push(p);
+      L.sort((x, y) => x.fuel - y.fuel);
+      const n = Math.min(L.length, Math.floor((s.on + s.low - want) / E) * E);
+      for (let i = 0; i < n; i++) { L[i].state = 'return'; BS.capLanded++; }
     }
     // the relief is on station: the tired element comes home together (not while a raid is near)
     if (s.low && s.on >= want && !A.armed) {
@@ -189,6 +201,19 @@ window.WW = window.WW || {};
       const z = WW.staff.size(cv, tgt, { nd, nt, esc });
       if (!z) { a.strikeT = RETRY * 3; BS.waits++; return; }
       nd = z.nd; nt = z.nt; esc = z.esc;
+    }
+    // back aboard before dark (Coral Sea, 7 May: Hara's dusk strike lost eleven planes trying to land after sunset):
+    // the launch and form-up, out and back at the guide's speed, the attack and the landing (the deck's queue first)
+    // must fit in the light left (daylight.js lightLeft); else a smaller strike that fits, or none.
+    const LL = WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity;
+    if (LL < 1e9) {
+      const D = cv._deck, d = WW.dist(cv.x, cv.z, tgt.x, tgt.z), fix = ETA.form + 2 * d / ETA.v + ETA.attack + (D ? D.lq.length : 0) * ETA.trap;
+      const per = ETA.launch + ETA.trap, room = Math.floor((LL - fix) / per);
+      if (room < nd + nt + esc) {
+        if (room - Math.min(esc, 2) < MIN_B) { a.strikeT = RETRY * 3; BS.lateHolds++; return; }
+        esc = Math.min(esc, 2); const nb = room - esc, fd = nd / Math.max(1, nd + nt);
+        nd = Math.min(nd, Math.round(nb * fd)); nt = Math.min(nt, nb - nd); nd = Math.min(nd, nb - nt); BS.lateCuts++;
+      }
     }
     if (nd + nt < MIN_B) BS.small++;
     for (let i = 0; i < esc; i++) a.queue.push({ kind: 'fighter', target: tgt });

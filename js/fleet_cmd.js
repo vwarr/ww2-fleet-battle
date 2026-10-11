@@ -180,15 +180,25 @@ window.WW = window.WW || {};
     }
     // the enemy's air cover as seen: every enemy carrier seen is sunk or crippled, and an own carrier can fly
     var bare = false;
-    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (q.alive && !q.sinking && q.hp >= WW.fleetGroups.CRIP * q.maxHp) bare = false; }); }
+    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (q.alive && !q.sinking && q.hp >= WW.fleetGroups.CRIP * q.maxHp && airGroup(q) >= COVER_N) bare = false; }); }
     return beaten(fitT, all, B.fitTons, B.startTons, 1, bare);
   }
-  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now; seenBy: only one the side seenBy knows of
+  // the strike planes a carrier still has: in the hangar, being rearmed and in the air (a planeless deck is no air cover)
+  var COVER_N = 6;
+  function airGroup(q) {
+    var h = q.hangar; if (!h) return 0;
+    var k = (h.dive || 0) + (h.torpedo || 0), P = WW.world.planes, i;
+    if (q.rearm) for (i = 0; i < q.rearm.length; i++) if (q.rearm[i].kind !== 'fighter') k++;
+    for (i = 0; i < P.length; i++) if (P[i].alive && P[i].carrier === q && (P[i].kind === 'dive' || P[i].kind === 'torpedo')) k++;
+    return k;
+  }
+  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now, with COVER_N or more strike planes; seenBy: only
+  // one the side seenBy knows of
   function fitCV(n, seenBy) {
     var D = WW.dayNight; if (D && !D.canFly()) return false;
     var S = WW.world.ships;
     for (var i = 0; i < S.length; i++) {
-      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp) continue;
+      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp || airGroup(q) < COVER_N) continue;
       if (!seenBy || seenBy.foeCV.has(q.id)) return true;
     }
     return false;
