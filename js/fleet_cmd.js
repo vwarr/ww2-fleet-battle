@@ -276,16 +276,18 @@ window.WW = window.WW || {};
       if (best) B.strikes.set(cv.id, { target: best, contact: bc, score: bs, hold: !!(B.airRaid && B.airRaid.carrier === cv) });
     }
   }
-  // Pursuit division of labour: the gun ships run down the slow cripples near them; the strikes go for what they
-  // cannot catch, a ship at speed (speedK >= 0.75) with no own gun ship within 150 of its last-known position.
+  // Pursuit division of labour: the gun ships take what they can catch, a ship with an own fit gun ship faster than
+  // it within CATCH_K x that ship's gun range of its last-known position (x0.5: left to them); the strikes go for
+  // the rest, first the slowed cripples nobody is catching (Mikuma at Midway: x2.5), then a ship at speed (x2).
+  var CATCH_K = 2.5;
   function runaway(B, u, c) {
-    if (WW.endgameAI && WW.endgameAI.isCripple(u)) return 1;
-    var ships = WW.world.ships;
+    var ships = WW.world.ships, V = WW.shipSpeed, vu = V ? V.vmax(u) : u.stats.speed;
     for (var i = 0; i < ships.length; i++) {
-      var s = ships[i];
-      if (s.alive && s.nation === B.nation && GUNSHIP[s.type] && WW.dist2(s.x, s.z, c.x, c.z) < 150 * 150) return 1;
+      var s = ships[i], g = s.stats.guns[0];
+      if (!s.alive || s.sinking || s.nation !== B.nation || !GUNSHIP[s.type] || !g || s.hp < WW.fleetGroups.CRIP * s.maxHp) continue;
+      if ((V ? V.vmax(s) : s.stats.speed) > vu * 1.1 && WW.dist2(s.x, s.z, c.x, c.z) < Math.pow(g.range * CATCH_K, 2)) return 0.5;
     }
-    return 2.5;
+    return WW.endgameAI && WW.endgameAI.isCripple(u) ? 2.5 : 2;
   }
   // Scout sectors: how long since an own ship / plane looked there, plus stale contacts; the best one is the
   // search point while nothing is known.

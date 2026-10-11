@@ -7,6 +7,11 @@
 //    there, slows alongside for PICKUP_T s and recovers them ('rescue'). Unreached survivors are lost after a while.
 //  - Scuttle (doctrine.scuttle, IJN): once broken, a slowed cripple with a faster enemy gun ship in range may be
 //    scuttled by her crew ('shipScuttled'); the cripples the side leaves behind when it breaks are "abandoned".
+//  - Hulks (either navy): a ship below HULK_HP that the enemy has not hit for HULK_QUIET s, HULK_T s after she was
+//    wrecked, is given up: the nearest own destroyer with torpedoes (not in a gun fight) closes to TORP_D and sends her
+//    down with a torpedo (ship.scuttle, ai_endgame.js steers; the USN scuttled Lexington, Hornet, Yorktown's
+//    screen tried; the IJN Hiryu, Akagi). With no destroyer to do it, flooding finishes her FOUNDER_T s after she was
+//    wrecked (FOUNDER_HP of her hp a second): no hulk drifts on to the time limit.
 //  - Stats per round (WW.endgame.stats), reset on roundStart.
 window.WW = window.WW || {};
 (function () {
@@ -20,15 +25,16 @@ window.WW = window.WW || {};
   var CREW = { fighter: 1, dive: 2, torpedo: 3, scout: 2, flyingboat: 8 };
   var SCUT_T = 4, SCUT_P = 0.08, SCUT_HP = 0.25, SCUT_K = 0.6, SCUT_GRACE = 30, SCUT_FAST = 1.3; // check interval, chance per check,
                                                   // hp share and speedK below which, s after the break, pursuer speed ratio
+  var HULK_HP = 0.15, HULK_T = 40, HULK_QUIET = 20, SCUT_R = 340, TORP_D = 45, TORP_CD = 25, FOUNDER_T = 110, FOUNDER_HP = 0.006;
   var NATIONS = ['USN', 'IJN'];
   var MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var tasks = [], nextId = 1, tick = 0, scutT = 0, broke = {}, stats = null, last = {};
 
   function per() { return { USN: 0, IJN: 0 }; }
   function reset() {
-    tasks.length = 0; nextId = 1; tick = 0; scutT = 0; broke = {}; last = {};
+    tasks.length = 0; nextId = 1; tick = 0; scutT = 0; broke = {}; last = {}; watchReset();
     stats = { escaped: per(), sunk: per(), scuttled: per(), abandoned: per(), rescues: per(), survivors: per(), lost: per(),
-      pilots: per(), pursuitKills: per(), escTypes: {}, lastEsc: null, brokenAt: per() };
+      pilots: per(), pursuitKills: per(), escTypes: {}, lastEsc: null, brokenAt: per(), scuttledHulks: per(), foundered: per() };
     WW.endgame.stats = stats;
   }
   function side(n) { return WW.fleetCmd ? WW.fleetCmd.side(n) : null; }
@@ -125,6 +131,57 @@ window.WW = window.WW || {};
       s.hp = 0; s.startSinking();
     }
   }
+  // Hulks: give up a wreck the enemy has left alone (see HULK_HP). Runs every second.
+  function hulkCheck(now) {
+    var ships = WW.world.ships, i, s;
+    for (i = 0; i < ships.length; i++) {
+      s = ships[i];
+      if (s.scuttle && (!s.alive || s.escaped || !s.scuttle.alive || s.scuttle.sinking || engaged(s))) { s.scuttle.scuttleBy = null; s.scuttle = null; } // done, or called away to fight
+      if (!s.alive || s.sinking || s.isBase || s.type === 'submarine' || s.type === 'pt') continue;
+      if (s.hp >= HULK_HP * s.maxHp) { s.hulkAt = 0; continue; }
+      if (!s.hulkAt) s.hulkAt = now;
+      if (now - s.hulkAt < HULK_T || now - (s.egHitT || 0) < HULK_QUIET) continue; // the enemy may still finish her
+      var by = s.scuttleBy;
+      if (!by || !by.alive || by.scuttle !== s) { s.scuttleBy = by = scuttler(s); if (by) by.scuttle = s; }
+      if (!by && now - s.hulkAt > FOUNDER_T) s.founder = true;
+    }
+  }
+  function scuttler(h) {
+    var best = null, bd = SCUT_R * SCUT_R, ships = WW.world.ships;
+    for (var k = 0; k < ships.length; k++) {
+      var d = ships[k];
+      if (!d.alive || d.sinking || d.escaped || d.nation !== h.nation || d.type !== 'destroyer' || !d.stats.torpedoes || d.scuttle || d.rescue) continue;
+      if (d.hp < WW.fleetGroups.CRIP * d.maxHp || (WW.supply && WW.supply.torpLeft && !WW.supply.torpLeft(d)) || engaged(d)) continue;
+      var q = WW.dist2(d.x, d.z, h.x, h.z); if (q < bd) { bd = q; best = d; }
+    }
+    return best;
+  }
+  // every step: a scuttler alongside fires; a foundering hulk settles
+  function hulks(dt) {
+    var ships = WW.world.ships, now = WW.time.now;
+    for (var i = 0; i < ships.length; i++) {
+      var s = ships[i];
+      if (s.founder && s.alive && !s.sinking) { s.hp -= FOUNDER_HP * s.maxHp * dt; if (s.hp <= 0) { s.hp = 0; stats.foundered[s.nation]++; s.startSinking(); } continue; }
+      var h = s.scuttle; if (!h || !s.alive || now - (s.scutFired || -1e9) < TORP_CD) continue;
+      var d = WW.dist(s.x, s.z, h.x, h.z); if (d > TORP_D + 8 || !WW.combat || !WW.combat.fireTorpedo) continue;
+      var p = WW.combat.fireTorpedo(s, s.x, s.z, Math.atan2(h.z - s.z, h.x - s.x), s.nation, Math.max(4, d - 2));
+      s.scutFired = now; if (s.ai) s.ai.torpReload = Math.max(s.ai.torpReload || 0, s.stats.torpedoes.reload);
+      if (p) p.scuttleOf = h;
+    }
+  }
+  // The scuttling torpedo reaches the hull (own torpedoes pass own ships: it runs out at her side).
+  WW.on('weaponImpact', function (e) {
+    var h = e && e.proj && e.proj.scuttleOf; if (!h || !stats) return;
+    e.proj.scuttleOf = null;
+    if (!h.alive || h.sinking) return;
+    var a = Math.atan2(h.z - e.z, h.x - e.x);
+    if (WW.fx && WW.fx.torpedoHit) WW.fx.torpedoHit(e.x, e.z, -Math.cos(a), -Math.sin(a), WW.clamp(h.stats.length / 16, 0.9, 1.6)); // visual only
+    WW.emit('shipBoom', { ship: h, x: e.x, y: 1, z: e.z, size: 1.2 });
+    h.scuttled = true; stats.scuttled[h.nation]++; stats.scuttledHulks[h.nation]++;
+    WW.emit('shipScuttled', h);
+    h.hp = 0; h.startSinking();
+  });
+  WW.on('shipHit', function (e) { if (e && e.ship && e.amount > 0) e.ship.egHitT = WW.time.now; });
   // The cripples a side without the rescue doctrine leaves behind when it breaks.
   function breakCheck() {
     for (var i = 0; i < NATIONS.length; i++) {
@@ -139,8 +196,51 @@ window.WW = window.WW || {};
     }
   }
 
+  // ---- round watch (main.js reads it to end a round that has nothing left in it) ----
+  //  - pursuit closing: an enemy fit gun ship got nearer (by CLOSE_D in a WATCH_T sample) to a broken side's ships
+  //    within CLOSE_R, in the last CLOSE_T s: the pursuit is biting, the broken side has not got clear yet
+  //  - subs closing: a submarines-only side got nearer to the enemy (main.js's stall clock waits while it does)
+  //  - night out: dark with no flying for NIGHT_AHEAD s, and neither side has a ship to fight a night action with
+  //    (a fit gun ship or a PT boat): both retire for the night after NIGHT_T s
+  var WATCH_T = 5, CLOSE_D = 4, CLOSE_R = 650, CLOSE_T = 12, NIGHT_AHEAD = 150, NIGHT_T = 20;
+  var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, NIGHT_FIGHT = { battleship: 1, cruiser: 1, destroyer: 1, pt: 1 };
+  var W8 = null;
+  function watchReset() { W8 = { t: 0, best: { USN: 1e9, IJN: 1e9 }, closeT: { USN: -1e9, IJN: -1e9 }, subBest: 1e9, subT: 0, nightT: 0 }; }
+  function fitGun(s) { return s.alive && !s.sinking && !s.escaped && GUN[s.type] && s.hp >= WW.fleetGroups.CRIP * s.maxHp; }
+  function watch(dt) {
+    var rt = WW.game.roundTime, S = WW.world.ships, i, k;
+    W8.nightT = nightDead() ? W8.nightT + dt : 0;
+    W8.t -= dt; if (W8.t > 0) return;
+    W8.t = WATCH_T;
+    for (var q = 0; q < NATIONS.length; q++) {
+      var n = NATIONS[q], dm = 1e9;
+      if (!broken(n)) { W8.best[n] = 1e9; continue; }
+      for (i = 0; i < S.length; i++) {
+        var s = S[i]; if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
+        for (k = 0; k < S.length; k++) if (S[k].nation !== n && fitGun(S[k])) dm = Math.min(dm, WW.dist(s.x, s.z, S[k].x, S[k].z));
+      }
+      if (dm < CLOSE_R && dm < W8.best[n] - CLOSE_D) W8.closeT[n] = rt;
+      W8.best[n] = dm < W8.best[n] ? dm : Math.min(W8.best[n] + 2 * CLOSE_D, dm); // opening: the next closing counts again
+    }
+    var sm = 1e9; // a submarines-only side: its nearest boat to an enemy ship
+    for (i = 0; i < S.length; i++) {
+      var b = S[i]; if (!b.alive || b.type !== 'submarine' || !subOnly(b.nation)) continue;
+      for (k = 0; k < S.length; k++) if (S[k].alive && !S[k].sinking && S[k].nation !== b.nation && !S[k].isBase) sm = Math.min(sm, WW.dist(b.x, b.z, S[k].x, S[k].z));
+    }
+    if (sm < W8.subBest - CLOSE_D) W8.subT = rt;
+    W8.subBest = Math.min(W8.subBest, sm);
+  }
+  function subOnly(n) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].nation === n && S[i].type !== 'submarine') return false; return true; }
+  function nightDead() {
+    var D = WW.dayNight; if (!D || D.canFly() || D.level(D.roundT() + NIGHT_AHEAD) >= D.FLY_MIN) return false;
+    var S = WW.world.ships, has = {};
+    for (var i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && !s.sinking && !s.escaped && !s.isBase && NIGHT_FIGHT[s.type] && (s.type === 'pt' || fitGun(s))) has[s.nation] = true; }
+    return !has.USN && !has.IJN;
+  }
+
   function update(dt) {
     if (!battle()) return;
+    try { watch(dt); } catch (e) { console.error('endgame watch', e); }
     var now = WW.time.now, W = WW.cfg.MAP_W, ships = WW.world.ships;
     if (!(WW.game && WW.game.noRetire)) for (var i = 0; i < ships.length; i++) {
       var s = ships[i];
@@ -149,7 +249,8 @@ window.WW = window.WW || {};
     }
     pickup(dt);
     tick -= dt;
-    if (tick <= 0) { tick = 1; try { breakCheck(); assign(now); } catch (e) { console.error('endgame', e); } }
+    if (tick <= 0) { tick = 1; try { breakCheck(); assign(now); hulkCheck(now); } catch (e) { console.error('endgame', e); } }
+    try { hulks(dt); } catch (e) { console.error('endgame hulks', e); }
     scutT -= dt;
     if (scutT <= 0) { scutT = SCUT_T; try { scuttleCheck(); } catch (e) { console.error('endgame scuttle', e); } }
   }
@@ -180,6 +281,11 @@ window.WW = window.WW || {};
   WW.endgame = {
     update: update, stats: null, EXIT: EXIT,
     broken: broken, homeX: homeX, engaged: engaged,
+    // round watch (main.js): the pursuit of broken side n is closing; when a submarines-only side last got nearer the
+    // enemy; both sides have retired for the night
+    closing: function (n) { return !!W8 && WW.game.roundTime - W8.closeT[n] < CLOSE_T; },
+    subCloseT: function () { return W8 ? W8.subT : 0; },
+    nightOut: function () { return !!W8 && W8.nightT >= NIGHT_T; },
     // how the side's last major ship (CV / BB / CA / DD) left the battle: 'sunk' | 'escaped' | undefined (main.js)
     lastOut: function (n) { return last[n]; },
     tasks: function () { return tasks; }, complete: complete,   // task.air: a Catalina's claim (air_flyingboats.js)

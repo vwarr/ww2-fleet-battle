@@ -144,7 +144,7 @@ window.WW = window.WW || {};
       } else comp = randomComposition();
       game.state = 'battle';  // set before spawn so ships know a battle is live
       spawnComposition(comp);
-      game.hadMajor = { USN: afloat('USN', true) > 0, IJN: afloat('IJN', true) > 0 };
+      game.hadMajor = { USN: afloat('USN', true) > 0, IJN: afloat('IJN', true) > 0 }; game.hadCV = WW.world.ships.some(s => s.type === 'carrier');
       WW.emit('roundStart', { round: WW.stats.round, seed: game.seed });
     },
     // setup mode: fleets placed and waiting for Start (ships do not act in 'setup').
@@ -200,7 +200,14 @@ window.WW = window.WW || {};
   //    (or be caught on the way) so the fleets almost always meet. Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
-  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 15, STALE_T = 30, STALE_AIR = 75;
+  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 10, STALE_T = 40, STALE_AIR = 50;
+  //  - the round is not cut off in the middle of a fight: the limit stretches to ACT_T s after the last attack (a hit,
+  //    a weapon dropped or fired), at most EXT_MAX s past it; in a round with no carrier on either side (no air war
+  //    to fill the approach) the limit runs from first contact, CONTACT_K x ROUND_TIMEOUT after it (same cap).
+  //  - a pursuit that is closing (WW.endgame.closing: an enemy gun ship getting nearer the broken side) keeps the
+  //    broken side from counting as clear; both sides with nothing to fight a night action with end it ('night',
+  //    WW.endgame.nightOut).
+  const ACT_T = 30, CONTACT_K = 0.6;
   const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 }, harmT = { USN: 0, IJN: 0 }, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
   WW.on('shipHit', e => { if (e && e.ship && harmT[e.ship.nation] !== undefined) harmT[e.ship.nation] = game.roundTime; });
   const FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 }; // the surface fleets (not PT pickets, submarines or the island's batteries)
@@ -230,7 +237,7 @@ window.WW = window.WW || {};
   }
   function gotClear(n, dt) {
     const B = WW.fleetCmd && WW.fleetCmd.side(n);
-    if (game.noRetire || game.metT === null || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n)) { clearT[n] = 0; return false; }
+    if (game.noRetire || game.metT === null || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
     clearT[n] += dt;
     return clearT[n] >= CLEAR_T;
   }
@@ -241,10 +248,12 @@ window.WW = window.WW || {};
     return afloat(n, true) === 0;
   }
   function deadline() {
-    let T = WW.cfg.ROUND_TIMEOUT;
+    const T0 = WW.cfg.ROUND_TIMEOUT, MAX = T0 + EXT_MAX;
+    let T = Math.max(T0, Math.min(MAX, (game.lastHit || 0) + ACT_T));
+    if (!game.hadCV && game.contactT !== null) T = Math.max(T, Math.min(MAX, game.contactT + CONTACT_K * T0));
     if (WW.fleetCmd) for (const n of ['USN', 'IJN']) {
       const B = WW.fleetCmd.side(n);
-      if (B && B.brokenAt && afloat(n, true)) T = Math.max(T, Math.min(WW.cfg.ROUND_TIMEOUT + EXT_MAX, B.brokenAt + PURSUE_T));
+      if (B && B.brokenAt && afloat(n, true)) T = Math.max(T, Math.min(MAX, B.brokenAt + PURSUE_T));
     }
     return T;
   }
@@ -256,15 +265,19 @@ window.WW = window.WW || {};
       game.roundTime += dt;
       // A side left with only submarines ends the round when nothing has been sunk, hit or attacked (a weapon dropped or fired) for SUB_STALL s since the
       // sides met (no sub hide-and-seek). The clock starts SUB_CLOSE s after first contact (the big map takes longer
-      // than SUB_STALL to cross) and restarts at every attack; with no contact at all, the round ends after SUB_SEARCH s.
+      // than SUB_STALL to cross) and restarts at every attack and while the boats still get nearer the enemy (WW.endgame
+      // subCloseT: an ambush closing in is no stall); with no contact at all, the round ends after SUB_SEARCH s.
       const subOnly = n => (call('ships', 'alive', n) || []).every(s => s.type === 'submarine');
       const stalled = (subOnly('USN') || subOnly('IJN')) && (game.contactT === null ? game.roundTime > SUB_SEARCH
-        : game.roundTime - Math.max(game.lastSink, game.lastHit || 0, game.contactT + SUB_CLOSE) > SUB_STALL);
+        : game.roundTime - Math.max(game.lastSink, game.lastHit || 0, game.contactT + SUB_CLOSE, WW.endgame ? WW.endgame.subCloseT() : 0) > SUB_STALL);
       const oU = out('USN'), oJ = out('IJN'), gU = gotClear('USN', dt), gJ = gotClear('IJN', dt);
       if (!oU && !oJ && (gU !== gJ)) { const loser = gU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), 'retire', loser); }
       else if (oU || oJ) {
         if (oU && oJ) { const tu = game.tonnage('USN'), tj = game.tonnage('IJN'); game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'kill'); }
         else { const loser = oU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), lastEscaped(loser) ? 'retire' : 'kill', loser); }
+      } else if (WW.endgame && WW.endgame.nightOut()) {
+        const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
+        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'night');
       } else if (game.roundTime >= deadline() || stalled) {
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
         game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, stalled ? 'stall' : 'time');
