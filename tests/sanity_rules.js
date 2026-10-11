@@ -316,7 +316,8 @@ function install(P) {
         if (!p || p.dead || p.kind !== 'torp' || p.nation === s.nation) continue;
         const dx = s.x - p.x, dz = s.z - p.z, along = dx * Math.cos(p.h) + dz * Math.sin(p.h), perp = Math.abs(-dx * Math.sin(p.h) + dz * Math.cos(p.h));
         const par = Math.abs(Math.sin(WW.angleDiff(s.heading, p.h))) < 0.42;   // already combing (bow / stern on, < 25 deg): the right answer
-        if (along > 0 && along < P.ATT_R && perp < s.stats.length && !par) { att = p; tk = true; break; }
+        const H0 = WW.shipAI && WW.shipAI.h;   // ships_ai.js canComb (pure): a ship that cannot come parallel in time holds course by design
+        if (along > 0 && along < P.ATT_R && perp < s.stats.length && !par && (!H0 || !H0.canComb || H0.canComb(s, c, along))) { att = p; tk = true; break; }
       }
       if (att) {
         const hq = R.hist.get(s), i0 = hq.findIndex(r => t - r[0] <= P.EVADE_T);
