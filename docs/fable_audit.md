@@ -314,6 +314,59 @@ carriers all gone): Nagumo's screen did not steam at TF 16 after the four carrie
 And the stern-chase: a pursuer that cannot close at its own speed should be given the carrier's strikes (it was:
 they missed) and give up the chase; the quarry should run (F15).
 
+### F17. A PT boat is a "gun ship" to the carrier: it flees it, won't turn into the wind, and sends its deck load at it (S1, carrier / fleet command)
+
+**The rules.** A PT boat has a gun (`core.js` pt `guns: [{ cal: 'mg', range: 35 }]`), so every "known enemy gun
+ship" test that reads `u.stats.guns.length` includes it:
+- `ai_carrier.js:39-47 fleeFrom()`: flee radius `max(FLEE_MIN 210, 1.5 x 35 + 50)` = 210 — a carrier runs at
+  throttle 1 from a PT boat 200 u away; and line 42 `cvWary` (any gun ship inside WIND_SAFE 320) blocks the turn into
+  the wind for launches and recoveries (line 89-90) for 10 s after each sighting.
+- `fleet_cmd.js:214 defend()`: a PT boat inside DEFEND_R 280 of the carrier is the carrier's "defend" enemy:
+  `assignment()` x 2.5 for every own ship within 380, and `strikes()` `dfd = 3` (line 268): the whole deck load goes
+  for the PT (`SMALL` is bypassed when `dfd > 1`). ARCHITECTURE notes "bombs on PTs 74 per 200 gate rounds".
+- `fleet_groups.js:157-167 cvSafe()`: the carrier's station slides 1.9 x 35 + 20 = 87 away from it.
+- Meanwhile the PT pickets (`ai_pt.js:46-61`) are told to shadow the nearest enemy big ship from 0.85 x their own
+  sighting range (a carrier: 240 x 0.55 x 0.85 = 112 u): the picket sits exactly where it triggers all of the above.
+
+**What a viewer sees.** During the air war a carrier with a picket boat in sight runs at full speed away from a
+24 m boat, cannot launch (no wind turn), and its next strike dives on the boat. (twin probe detectors `ptFlee`,
+`ptDefend`: numbers block.) **Fix.** Define "gun ship" for these tests as battleship / cruiser / destroyer (a
+`GUNSHIP` table exists in fleet_cmd.js already); a PT boat is a torpedo threat inside ~80 (its torpedo range 70),
+handled by the escorts' guns and the carrier's own secondaries, not by the fleet's posture.
+
+### F18. The island base as the only contact turns the search off and aims the fleet at the island (S2, intel / fleet command) → basebattle
+
+The enemy's base is always on the chart (`island_base.js:271 scan()`: `sight(base, base, 'visual')` every tick), so
+for the side facing it `WW.intel.enemyShips()` is never empty and the contact is always fresh: `fleet_cmd.js:109`
+(`!cs.length` → 'search') never fires; `fleet_search.js:33` `B.contactT = rt` every tick → `searchFor` stays 0, no
+sweep, no `ptDeep`, no barrier; `air_search.js:208` `srchWant` (posture 'search' or `searchFor > 45`) is never true:
+NO carrier search flights are launched by a side facing an enemy base until something else finds the enemy fleet;
+`fleet_cmd.js:81-86` `enemyCentre` is the base (weight 1): the axis of advance (`B.axis.h`, line 123) and the whole
+surface force point at the island; `strength.known` carries `base.power`. The dawn flying-boat patrol usually finds
+the fleet anyway, which hides this; when it does not (it is shot down, or the far side's boat), the side steams at
+the island with its search planes aboard. **Fix.** Exclude `isBase` contacts from `cs.length`, `contactT`,
+`enemyCentre` and the strength ratio (the base gets its own objective in `base_ai.js` already).
+
+### F19. The battle line deploys across a lone destroyer (S2, ships movement)
+
+`fleet_formation.js:233-255 battleAim()`: with a known enemy gun ship within 1.5 x the line's main-battery range
+(255 for a battleship line) the guide stops steaming at the enemy and turns across its bearing at the doctrine's
+preferred range (0.84 x 170 = 143), "crossing the T"; BIGG (battleship / cruiser) first, else ANY gun ship, destroyer
+included. A single destroyer picket 250 u ahead therefore makes two battleships and two cruisers turn broadside and
+hold 143 u from a ship whose guns reach 70 and which is faster than they are; `formHold` (`ai_surface.js:135`)
+keeps every line ship on station while `d > pref x 0.5`. The line crawls sideways after a destroyer instead of
+advancing. (twin probe `lineOnDD`.) **Fix.** Deploy only for a battleship / cruiser contact; a destroyer alone is
+the screen's business, the line keeps closing (its secondaries answer).
+
+### F20. The carrier's only escort leaves it to chase a submarine (S2, ships movement)
+
+`ai_surface.js:86`: a destroyer in role `escort` hunts a known sub out to 2 x SUB_HUNT = 200 (`aswRole`) and at any
+range when it has no surface target, and the hunt comes before `ringHold`. In carrier_duel / midway the one or two
+ring destroyers run 200+ u off to a datum (then sit on it: `datumDone`) while the carrier steams on alone; the sub
+contact may be a scout's 30 s old report. (twin probe `ringAway`.) **Fix.** A ring escort hunts only inside the
+ring's reach (~100) or when a torpedo track has been seen; otherwise it reports the datum and keeps station
+(1942 carrier screens did not detach their last destroyer).
+
 ## Contradictions between modules (checked, for the record)
 
 - Strike doctrine SMALL (fleet_cmd) vs the CAG's redirect / retarget / homeward (air_cag, air_ops): F4.
