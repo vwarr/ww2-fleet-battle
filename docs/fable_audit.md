@@ -74,7 +74,10 @@ The spread itself is fired by `torpedoes()` (`ai_surface.js:213-218`) only at `d
 tubes loaded, no pursuit; and ship torpedo spreads by launcher > target) — see the numbers block at the end of this
 file. In the 3-round smoke run: 0 spreads by any destroyer at a carrier, 24 IJN and 16 USN destroyer spreads at
 destroyers, 4 IJN destroyer spreads at battleships, 0 USN. Balance pass 2 recorded IJN 21.8 ship torpedoes a round
-against USN 6.5 and spent two levers on it; this geometry is the cause of the USN half.
+against USN 6.5 and spent two levers on it; this geometry is a contributor to the USN half (the Northampton /
+New Orleans tubes were also removed; the 3-round count above is a sample, not a rate). The probe's `cvDance`
+detector (a destroyer with a carrier target 100-135 off) fired in 0 of 102 rounds: the boats are held beyond 124 by
+`keepOffCarriers` and prefer the escorts, so they never even enter the band (F7).
 
 **Why it breaks fun and doctrine.** The destroyer torpedo attack on a carrier IS 1942 destroyer doctrine
 (Hammann / Hiryu's screen, the Samar charge); a run that turns away short of its own launch point reads as a bug, and
@@ -108,10 +111,14 @@ submerged speed, far longer at `SILENT_THR`; never surface with a known gun ship
 inside `DIVE_AIR`, and let a boat out of battery creep away at silent speed instead. Keep the scuttle. The 25 s
 surfaced recharge can stay for the "sub on the surface" moments but only when nothing is in sight.
 
-### F3. The commander's posture flickers on a fogged strength ratio; the admiral's captions follow (S1, fleet command)
+### F3. The commander's posture changes 4.6 times a side-round on a fogged strength ratio; targets thrash (S2, fleet command)
 
-**What a viewer sees.** "Adm. Fletcher: retire west and save the carriers" … 20 s later "Adm. Fletcher: engage" …
-"make for the enemy" … "retire west" again, while the ships do much the same thing throughout.
+**What a viewer sees.** Measured, the frequent part is not the "retire / engage" caption ping-pong (unbroken-withdraw
+flips are 0.33 a round, 'retire' captions without a break 19 in 102 rounds, mostly pt_vs_bb) but `engage` declared on
+contacts older than 20 s in 47% of rounds (15 s a round, standard 42 s), 4.6 posture changes per side-round, and a
+gun ship's target flipping A → B → A within 10 s with A still in sight in 50% of rounds (2.5 a round; standard 2
+t314: Washington: Haruna → destroyer Hibiki → Haruna). The captions follow each change ("make for the enemy" /
+"engage" every 20 s).
 
 **The rule.** `fleet_cmd.js:107-116` recomputes the posture every 2 s tick from `B.strength.ratio`
 (`fleet_cmd.js:76-85`): `known` sums the POWER of the enemy contacts weighted by contact age (`w = max(0.3,
@@ -300,7 +307,9 @@ The ratio `withdraw` of `fleet_cmd.js:114` (after `metT`, ratio < 0.4-0.45) chan
 (`CV_LO..CV_HI`), and the admiral says "retire". The ships with a target in range keep engaging it (`surfaceRole`
 line 103 `engage()`), orbiting at 1.15 x their preferred range: the fleet does not retire; it circles the enemy a
 little wider. The viewer hears "make smoke and retire" and watches a gun duel. A broken side (`brokenAt`) is the only
-one that leaves. **Fix.** Make a ratio withdraw a real disengagement (steer for the home edge with the guide, fight
+one that leaves. Measured: an unbroken 'withdraw' in 13 / 102 rounds (29 s a round, but pt_vs_bb 450 s a round and
+otherwise rare), with own gun ships firing in range in 5 rounds (midway 5 t346: Vincennes at Nagato while Fletcher
+says 'retire'); 19 'retire' captions without a break. **Fix.** Make a ratio withdraw a real disengagement (steer for the home edge with the guide, fight
 only what closes, break contact for 60 s, then re-evaluate) or stop captioning it as a retirement ("Adm.: open the
 range"). Pairs with F3.
 
@@ -342,8 +351,11 @@ ship" test that reads `u.stats.guns.length` includes it:
   throttle 1 from a PT boat 200 u away; and line 42 `cvWary` (any gun ship inside WIND_SAFE 320) blocks the turn into
   the wind for launches and recoveries (line 89-90) for 10 s after each sighting.
 - `fleet_cmd.js:214 defend()`: a PT boat inside DEFEND_R 280 of the carrier is the carrier's "defend" enemy:
-  `assignment()` x 2.5 for every own ship within 380, and `strikes()` `dfd = 3` (line 268): the whole deck load goes
-  for the PT (`SMALL` is bypassed when `dfd > 1`). ARCHITECTURE notes "bombs on PTs 74 per 200 gate rounds".
+  `assignment()` x 2.5 for every own ship within 380, and `strikes()` `dfd = 3` (line 268): a strike ordered while
+  the boat is in the list goes for the PT with the whole deck load (`SMALL` is bypassed when `dfd > 1`). Measured:
+  a PT boat is in a carrier's defend list in 13 / 30 standard rounds, 10 s a round (probe `ptDefend`); the strike
+  order itself fires only if `strikeT` runs out inside those seconds (not counted; ARCHITECTURE's "bombs on PTs 74
+  per 200 gate rounds" is the proxy). The carrier at throttle 1 with a PT as its nearest "gun ship": 6 / 30 rounds.
 - `fleet_groups.js:157-167 cvSafe()`: the carrier's station slides 1.9 x 35 + 20 = 87 away from it.
 - Meanwhile the PT pickets (`ai_pt.js:46-61`) are told to shadow the nearest enemy big ship from 0.85 x their own
   sighting range (a carrier: 240 x 0.55 x 0.85 = 112 u): the picket sits exactly where it triggers all of the above.
@@ -362,10 +374,15 @@ for the side facing it `WW.intel.enemyShips()` is never empty and the contact is
 sweep, no `ptDeep`, no barrier; `air_search.js:208` `srchWant` (posture 'search' or `searchFor > 45`) is never true:
 NO carrier search flights are launched by a side facing an enemy base until something else finds the enemy fleet;
 `fleet_cmd.js:81-86` `enemyCentre` is the base (weight 1): the axis of advance (`B.axis.h`, line 123) and the whole
-surface force point at the island; `strength.known` carries `base.power`. The dawn flying-boat patrol usually finds
-the fleet anyway, which hides this; when it does not (it is shot down, or the far side's boat), the side steams at
-the island with its search planes aboard. **Fix.** Exclude `isBase` contacts from `cs.length`, `contactT`,
-`enemyCentre` and the strength ratio (the base gets its own objective in `base_ai.js` already).
+surface force point at the island; `strength.known` carries `base.power`. Search flights still fly through the
+second launch path (`air_search.js:211`, pursuit / enemy about to break): the probe counts 2.1 search sorties a
+round for sides facing a base (ijnbase 8, midway 5) against 4.0-4.4 with none, so the claim is the narrower one:
+the pre-contact search (`srchWant`), the PT sweep, the barrier and `ptDeep` can never start for a side facing a base,
+all round. The dawn flying-boat patrol usually finds the fleet anyway, which hides this; when it does not, the side
+steams at the island. Measured: a side has the base as its only contact and is not searching in 80 / 102 rounds
+(84 s a round; midway 174 s, carrier_duel 169), still so after t 60 in 40 rounds. **Fix.** Exclude `isBase`
+contacts from `cs.length`, `contactT`, `enemyCentre` and the strength ratio (the base gets its own objective in
+`base_ai.js`; the axis toward the island is partly that objective's intent, so agree the change with basebattle).
 
 ### F19. The battle line deploys across a lone destroyer (S2, ships movement)
 
@@ -381,9 +398,10 @@ the screen's business, the line keeps closing (its secondaries answer).
 ### F20. The carrier's only escort leaves it to chase a submarine (S2, ships movement)
 
 `ai_surface.js:86`: a destroyer in role `escort` hunts a known sub out to 2 x SUB_HUNT = 200 (`aswRole`) and at any
-range when it has no surface target, and the hunt comes before `ringHold`. In carrier_duel / midway the one or two
-ring destroyers run 200+ u off to a datum (then sit on it: `datumDone`) while the carrier steams on alone; the sub
-contact may be a scout's 30 s old report. (twin probe `ringAway`.) **Fix.** A ring escort hunts only inside the
+range when it has no surface target, and the hunt comes before `ringHold`. In every standard round (30 / 30, the
+fleets with a submarine; 95 s a round) a ring destroyer runs 150+ u off to a datum (then sits on it: `datumDone`)
+while the carrier steams on; the sub contact may be a scout's 30 s old report (probe `ringAway`; standard 1 t90
+Woodworth 156 from Enterprise; screenshots `fable_audit/ringaway_1_100_*.jpg`). **Fix.** A ring escort hunts only inside the
 ring's reach (~100) or when a torpedo track has been seen; otherwise it reports the datum and keeps station
 (1942 carrier screens did not detach their last destroyer).
 
