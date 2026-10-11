@@ -21,7 +21,7 @@ subtle but a real doctrine / knowledge error; **S3** rare or cosmetic.
 |---|---|---|---|---|
 | F1 | S1 | ships movement | destroyers cannot reach their own torpedo launch distance against a carrier (and the USN barely against a battleship): they shuttle in and out at 108-125 u for minutes | ships (none running) |
 | F2 | S1 | ships / sub AI | a submarine must surface after 45-65 s under water, whatever is overhead: it pops up beside the destroyer hunting it and dies | none |
-| F3 | S1 | fleet command | posture flickers every few seconds on a fogged strength ratio; "retire" / "engage" captions chase it | none |
+| F3 | S2 | fleet command | posture changes 4.6 x per side-round on a fogged strength ratio (47% of rounds 'engage' on stale contacts); target thrash A→B→A in 50% of rounds | none |
 | F4 | S1 | plane AI / strikes | the strike leader's redirect sends a 24-plane deck load onto a screen destroyer, against the strike doctrine the commander just applied | → airend (strike sizing) / planes2 |
 | F5 | S2 | intel / knowledge | the commander and the targeting read the TRUE hp, speed and alive state of every enemy ship ever sighted | none |
 | F6 | S1 | ships movement | PT boats spin in circles (27% of rounds) at their lurk spot and on picket | → sanity S8 |
@@ -33,7 +33,12 @@ subtle but a real doctrine / knowledge error; **S3** rare or cosmetic.
 | F12 | S2 | odd fleets | 2 PT boats vs a battleship + cruiser: twelve minutes of nothing (pt_vs_bb 11 / 12 time endings) | → endgame |
 | F13 | S3 | fleet command | the air boss and the commander read the round clock (`B.timeLeft`) to decide strikes and the press | none |
 | F14 | S2 | ships movement | the AA-cover rule pulls cruisers out of the battle line to a point 80 u on the raid side of the carrier and back when the raid passes | → sanity S6 / ships |
-| F15 | S2 | fleet command | the "withdraw" posture of an unbroken side changes nothing a viewer can see: the ships keep fighting at 1.15 x their range | none (with F3) |
+| F15 | S2 | fleet command | the "withdraw" posture of an unbroken side changes nothing a viewer can see: the ships keep fighting at 1.15 x their range; 'retire' captions with no break in 13% of rounds | none (with F3) |
+| F16 | S1 | endgame | a side whose carrier sank cannot break off before the fleets have "met": a lone destroyer steams at a task force for 5 minutes (carrier_duel 23) | → endgame |
+| F17 | S1 | carrier / fleet command | a PT boat counts as a gun ship: the carrier flees it, cannot turn into the wind, and its deck load is sent at it (13% of standard rounds) | none |
+| F18 | S1 | intel / fleet command | the island base as the only contact switches the search off and aims the fleet at the island (78% of rounds have a side in this state, 84 s a round) | → basebattle |
+| F19 | S2 | ships movement | the battle line deploys broadside across a lone destroyer (29% of rounds) | none |
+| F20 | S1 | ships movement | the carrier's ring destroyer leaves it (> 150) to hunt a submarine in 30 / 30 standard rounds, 95 s a round | none |
 
 ## Findings
 
@@ -390,6 +395,43 @@ land checks; the CAG's AA detour and the staff's IP / dogleg routing; the air-wa
 Catalina's landing rules; the island alarm by intel only; the admiral's confusion freezing orders (realistic: the
 formation steams on its last course).
 
-## Numbers block (tests/fable_probe.js, 56 rounds)
+## Numbers block (tests/fable_probe.js, 102 rounds)
 
-(filled in below from the probe's output; see the commit history for the raw run)
+`node tests/fable_probe.js --seeds 20 --workers 2` (node runner, light mode): standard x30, midway / ijnbase /
+carrier_duel / battle_line / surface x12, pt_vs_bb / asw x6; 180 s. "rounds" = rounds in which the detector fired at
+all; "per round" = the total over all 102 rounds / 102 (seconds for time detectors, counts for events).
+
+| detector (finding) | rounds | per round | worst scenarios | example |
+|---|---|---|---|---|
+| baseOnlyNoSearch: the island base is the side's only contact and it is not searching (F18) | 80 (78%) | 84 s | midway 174 s/rd, carrier_duel 169, pt_vs_bb 210 | standard 2 t0 USN 'approach', searchFor 0 |
+| baseOnlyLate: the same after t 60 (F18) | 40 (39%) | 59 s | midway 139 s/rd, carrier_duel 134 | standard 12 t200 IJN 'engage' |
+| carrier search sorties per round (F18) | - | standard 2.9, midway 3.6, carrier_duel 6.2 (vs the base: ~half) | | |
+| ringAway: a ring escort > 150 from its carrier on a sub hunt (F20) | 30 (29%) | 28 s (standard 30/30, 95 s/rd) | standard | standard 1 t90 Woodworth 156 from Enterprise |
+| smallDrop: a bomb / torpedo on a DD or PT while an enemy CV / BB / CA is afloat and seen ≤ 120 s (F4) | 56 (55%) | 8.0 | standard 16/rd, midway 12 | standard 2 t560 IJN dive on DD Chevalier, cruiser Chicago seen 0 s ago |
+| redirSmall: ... and the wave's first target was a capital ship (F4) | 24 (24%) | 1.6 | standard 3/rd, ijnbase 4 | standard 1 t492 USN dive on DD Hatsuyuki, first target a carrier |
+| thrash: a gun ship's target A→B→A within 10 s, A still fresh (F3 / targeting) | 51 (50%) | 2.5 | standard 7/rd | standard 2 t314 Washington: Haruna → DD Hibiki → Haruna |
+| switch: any target change with the old target still fresh | 92 (90%) | 24 | standard 48/rd, surface 38 | |
+| staleEngage: posture 'engage' on contacts > 20 s old only (F3) | 48 (47%) | 15 s | standard 42 s/rd | standard 1 t176 IJN |
+| posture changes per side-round (F3) | - | 4.6 | | pt_vs_bb 3 USN: s a w s w a w p |
+| raidShuttle: a line cruiser steaming to the raided carrier (F14) | 38 (37%) | 6.7 s | standard 13 s/rd, ijnbase 15 | standard 5 t224 Chokai to Akagi from 252 |
+| caVsBB: a cruiser duelling a battleship with no own BB within 250 (F10 note / cruiser doctrine) | 33 (32%) | 12.7 s | battle_line 41 s/rd, midway 20 | standard 5 t456 Augusta vs Hiei at 59 u |
+| lineOnDD: the battle line deployed across a lone destroyer (F19) | 30 (29%) | 4.7 s | standard 12 s/rd | standard 1 t368 IJN line across DD Chevalier |
+| ptSpin: a PT boat turning > 720° in 30 s (F6) | 26 (25%) | 1.8 | pt_vs_bb 6/6 (17/rd), standard 20/30 | standard 5 t176: lurk, 14 from the spot, leg 'back', throttle 0.9, 8.8 u/s |
+| loneDD: a destroyer circling a battleship at 0.9-1.6 L waiting for a flotilla mate (F1 / F7) | 23 (23%) | 3.4 s | surface 10/12 (14 s/rd) | standard 4 t388 Fubuki circling Indiana at 164, L 119 |
+| subUp: a submarine forced up by the dive clock (F2) | 24 (24%) | 0.4 | standard 24/30 | |
+| subUpNear: ... with an enemy gun ship within 120 (F2) | 13 (13%) | 0.2 (18 cases) | standard | standard 2 t402 Grouper up at 14 u from a gun ship after 67 s down; standard 3 t462 Silversides at 12 u |
+| rescueRaid: a rescuer stopped with armed enemy bombers within 150 (F8) | 14 (14%) | 2.5 s | standard 5 s/rd | standard 3 t194 Gwin |
+| ptDefend: a PT boat in the carrier's defend list (F17) | 13 (13%) | 2.9 s | standard 13/30 (10 s/rd) | standard 4 t162 IJN carrier "defends" against PT-36 at 272 |
+| ptFlee: a carrier at throttle 1 with a PT boat as its nearest "gun ship" (F17) | 6 (6%) | 0.7 s | standard | standard 7 t202 Akagi from PT-59 at 222 |
+| ratioWd: posture 'withdraw' by the strength ratio, not broken (F15) | 13 (13%) | 29 s | pt_vs_bb 6/6 (450 s/rd!) | midway 5 t346 USN ratio 0.47 |
+| ratioWdFighting: ... with own gun ships firing in range (F15) | 5 (5%) | 1.5 s | | midway 5 t346 Vincennes at Nagato |
+| retireCap: an admiral 'retire' caption with no break (F15) | 13 (13%) | 0.2 (19) | pt_vs_bb 6/6 | midway 5 t346 Fletcher, ratio 0.47 |
+| unseenSink: an enemy gun ship sank with no contact fresher than 10 s, yet counted in foeBroken (F5) | 10 (10%) | 0.1 (12) | | standard 3 t217 North Carolina, last seen 16 s before |
+| pursueBlind: a 'pursue' order with no contact fresher than 60 s (F5) | 5 (5%) | 0.1 | carrier_duel 5/12 | carrier_duel 2 t357 IJN, no contact at all |
+| cvDance: a destroyer with a carrier target held 100-135 off (F1) | 0 | 0 | | the boats are kept beyond 124 by `keepOffCarriers` and prefer the escorts: see F7 |
+
+Smoke run of the first recorder (3 rounds): ship torpedo spreads by launcher > target: IJN DD > DD 24, IJN CA > DD 16,
+USN DD > DD 16, IJN DD > CA 8, IJN CA > BB 8, IJN DD > BB 4, USN DD > BB 0, any DD > carrier 0.
+
+The PT-vs-battleship round (pt_vs_bb): the PT side is in an unbroken 'withdraw' for 450 s of 720 and its admiral
+captions 'retire' twice a round, while nothing happens (F12, F15).
