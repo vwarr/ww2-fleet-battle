@@ -1,5 +1,7 @@
 // Render-mode screenshots of the endgame (BASE_URL, CHROMIUM as for the other tests): node tests/endgame_shots.js <scene> <seed> [outdir]
-// scenes: cripple (a slowed, listing cripple run down), rescue (a USN DD picking up lifeboats), retreat (IJN fleet running east)
+// scenes: cripple (a slowed, listing cripple run down), rescue (a USN DD picking up lifeboats), retreat (IJN fleet running east),
+//   night (a night round: gun ships or PT boats in action in the dark), scuttle (a destroyer sending down a hulk of
+//   her own side with a torpedo, endgame.js), finale (the director's last-sinking shot at the round's end, camera.js)
 // The seed is a sim_behaviour.js random round (same setup); good ones: cripple 9, rescue 19, retreat 8. STEP=s: sim
 // seconds between the 4 shots (default 3).
 const { chromium } = require('playwright');
@@ -17,6 +19,7 @@ require('fs').mkdirSync(out, { recursive: true });
     __sim.setScale(0.1);
     WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed;
     const comp = G.randomComposition();
+    if (WW.dayNight) WW.dayNight.force = scene === 'night' ? 'night' : null;
     if (WW.aces) WW.aces.reset();
     WW.seedRandom(seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
     G.composition = comp; G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null;
@@ -36,6 +39,21 @@ require('fs').mkdirSync(out, { recursive: true });
           const d = WW.dist(t.by.x, t.by.z, t.x, t.z);
           if (d < t.r + 35 && WW.lifeboats.stats().row > 0) return { x: t.by.x, z: t.by.z, w: 45, who: 'rescuer ' + t.by.type + ' d ' + d.toFixed(0) + ' pick ' + t.pick.toFixed(1) + ' boats ' + JSON.stringify(WW.lifeboats.stats()), subj: t.by };
         }
+      } else if (scene === 'night') {
+        if (WW.daylight > 0.2) return null;
+        for (const s of L) {
+          const t = s.target; if (!t || !t.alive || s.type === 'carrier' || s.type === 'submarine') continue;
+          const d = WW.dist(s.x, s.z, t.x, t.z), g = s.stats.guns[0];
+          if (g && d < g.range && (s.ai.fireT === undefined || true) && WW.game.lastHit > G.roundTime - 3) return { x: (s.x + t.x) / 2, z: (s.z + t.z) / 2, w: Math.max(60, d * 1.4), who: s.nation + ' ' + s.type + ' on ' + t.nation + ' ' + t.type + ' d ' + d.toFixed(0) + ' daylight ' + WW.daylight.toFixed(2), subj: null };
+        }
+      } else if (scene === 'scuttle') {
+        for (const s of L) {
+          const h = s.scuttle; if (!h || !h.alive) continue;
+          const d = WW.dist(s.x, s.z, h.x, h.z);
+          if (d < 70) return { x: (s.x + h.x) / 2, z: (s.z + h.z) / 2, w: 90, who: s.nation + ' ' + s.type + ' scuttling ' + h.type + ' hp ' + (h.hp / h.maxHp).toFixed(2) + ' d ' + d.toFixed(0), subj: null };
+        }
+      } else if (scene === 'finale') {
+        if (G.state === 'victory') return { x: 0, z: 0, w: 0, who: 'victory ' + G.endReason + ' ' + G.winner + ' shot ' + JSON.stringify((WW.cam._shot() || {}).kind) + ' finale ' + !!(WW.cam._shot() || {}).finale, subj: null, keep: true };
       } else if (scene === 'retreat') {
         const B = WW.fleetCmd.side('IJN');
         if (B.brokenAt && WW.time.now - B.brokenAt > 20) {
@@ -48,9 +66,10 @@ require('fs').mkdirSync(out, { recursive: true });
       }
       return null;
     };
-    while (G.state === 'battle' && G.roundTime < 600) {
+    while ((G.state === 'battle' || scene === 'finale') && G.roundTime < 900) {
       __sim.fastForward(0.5);
       const f = ok();
+      if (f && f.keep) { delete f.subj; delete f.keep; f.t = G.roundTime; return f; } // the director films it (finale)
       if (f) { const subj = f.subj; delete f.subj; if (subj && WW.cam.film) WW.cam.film({ kind: 'orbit', subj, r: f.w * 0.55, dur: 20, w: 0.05 }); else __sim.focus(f.x, f.z, f.w, 20); f.t = G.roundTime; return f; }
     }
     return null;
