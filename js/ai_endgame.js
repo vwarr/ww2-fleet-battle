@@ -50,10 +50,24 @@ window.WW = window.WW || {};
     return true;
   }
   // Straight for the home edge at about its own z, away from known guns (risk 0) until close to the edge.
+  // Known enemy gun ships within OPEN_K x their gun range (seen in the last OPEN_AGE s) push the course away, the more
+  // the nearer (OPEN_W at point blank): a retreating ship opens the range from her pursuers, keeping them astern or
+  // abeam, rather than running home past the guns of one that is between her and her edge (a fit IJN carrier closed a
+  // USN cruiser 103 -> 71 on her way home, midway seed 2, and was shot to pieces).
+  const OPEN_K = 2.2, OPEN_AGE = 20, OPEN_W = 3, GUN_T = { battleship: 1, cruiser: 1, destroyer: 1 };
   function homeHeading(ship) {
     const H = WW.cfg.MAP_H, hx = WW.endgame.homeX(ship.nation), tz = WW.clamp(ship.z, 70, H - 70);
-    const want = Math.atan2((tz - ship.z) * 0.5, hx - ship.x);
+    let want = Math.atan2((tz - ship.z) * 0.5, hx - ship.x);
     if (Math.abs(ship.x - hx) < 90 || !WW.threat) return want;
+    if (WW.intel) {
+      let vx = Math.cos(want), vz = Math.sin(want), push = false;
+      for (const c of WW.intel.enemyShips(ship.nation)) {
+        const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || !GUN_T[u.type] || WW.time.now - c.seenAt > OPEN_AGE) continue;
+        const R = u.stats.guns[0].range * OPEN_K, d = WW.dist(ship.x, ship.z, c.x, c.z); if (d >= R || d < 1) continue;
+        const w = OPEN_W * (R - d) / R; vx += (ship.x - c.x) / d * w; vz += (ship.z - c.z) / d * w; push = true;
+      }
+      if (push) want = Math.atan2(vz, vx);
+    }
     return WW.threat.bestHeading(ship, want, 0, { k: 3, edge: 25 });
   }
   // Waiting for survivors: a slow beat up and down HOLD off the edge (not over it).
