@@ -67,9 +67,11 @@ window.WW = window.WW || {};
       const d = w.go && w.dT < 1e8 ? w.dT : WW.dist(w.x, w.z, t.x, t.z);
       const v = w.go && lead.speed > 8 ? lead.speed : GUIDE_V;                 // the leader's own speed (the join-up, the cruise, the let-down)
       const eta = Math.max(0, d - ARRIVE) / v + (w.go ? 0 : 15);
-      const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance);
-      add('strike', lead, t, eta, (1.2 + 0.25 * Math.min(6, n) + (vt ? 0.4 : 0)) * (VALUE[t.type] || 1),
-        sq(lead) + ' strike reaches the ' + kindOf(t), !w.go);
+      // a wave with torpedo planes attacks 4-48 real s after it arrives (the anvil set-up): no honest number; dive bombers
+      // push over within a few seconds of the push-over point
+      const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance), vague = !w.go || vt;
+      add('strike', lead, t, eta + (vt ? 10 : 1), (1.2 + 0.25 * Math.min(6, n) + (vt ? 0.4 : 0)) * (VALUE[t.type] || 1),
+        sq(lead) + (vague && w.go ? ' strike closing on the ' : ' strike reaches the ') + kindOf(t), vague);
     }
     for (const p of WW.world.planes) {
       if (!ok(p) || !p.pt) continue;
