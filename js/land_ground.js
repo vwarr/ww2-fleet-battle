@@ -16,7 +16,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var STRIKE_WAIT = 40, TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
+  var STRIKE_WAIT = 40, STREAM_V = 0.5, TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
   var BLAST_K = 0.9;          // a parked plane inside BLAST_K x the blast radius (+ its own size) is wrecked (was 0.6: ~4 u for a 14-inch shell)
   var SPREAD_T = 8, SPREAD_P = 0.35, SPREAD_GAP = 2.5;   // a burning wreck sets a neighbour within SPREAD_GAP of it alight after SPREAD_T s (fuel, ammunition), with SPREAD_P
   var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
@@ -271,7 +271,8 @@ window.WW = window.WW || {};
   function update(b, dt) {
     var o = b.ops, now = WW.time.now, P = WW.world.planes, outN = 0, inN = 0, wantLaunch = false, wantLand = false, scr = false, i, p;
     if (o.occ && (!o.occ.alive || o.occ.removed || (o.occ.state !== 'takeoff' && o.occ.state !== 'rollout' && !(o.occ.state === 'landing' && o.occ.rwPh === 'final')) ||
-      (o.occ.rwPh === 'climb' && o.occ.y > groundY(b) + 3))) o.occ = null;
+      (o.occ.rwPh === 'climb' && o.occ.y > groundY(b) + 3) ||
+      (o.occ.state === 'takeoff' && o.occ.rwPh === 'roll' && o.occ.speed > o.occ.pt.speed * STREAM_V))) o.occ = null;   // stream take-offs: the next lines up behind a plane well into its roll (ROLL_GAP and the roll's aheadGap check keep them apart)
     if (o.crossOcc && (!o.crossOcc.alive || o.crossOcc.removed)) o.crossOcc = null;
     o.holdQ = o.holdQ.filter(function (q) { return q.alive && !q.removed && q.rwPh === 'hold'; });
     for (i = 0; i < P.length; i++) {
