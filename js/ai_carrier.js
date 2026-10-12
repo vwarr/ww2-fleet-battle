@@ -26,7 +26,10 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
-  const URGENT_D = 170, RUN_D = 140, FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
+  const PI = Math.PI, CV_ORBIT = 90, WIND_RUN = 220, PT_NEAR = 80, DD_FLEE = 1.2, DD_MIN = 160; // the on-station circle's radius (~3.5 carrier lengths)
+  // FLEE_AGE: a contact older than this is a ghost (to GHOST_AGE): kept off the bow, not run from; the carrier ran from 90 s
+  // old reports with flight ops blocked (Fable F25)
+  const URGENT_D = 170, RUN_D = 140, FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 25, GHOST_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
   // Summed repulsion from every known gun ship inside its flee radius (weight (1 - d / radius)^2): the heading
   // away from all of them, or null when none is close.
   const cone = []; // bearings of known gun ships the carrier must not head toward (filled by fleeFrom)
@@ -36,9 +39,15 @@ window.WW = window.WW || {};
     let x = 0, z = 0, n = 0;
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const o = c.unit;
-      if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || o.isBase || WW.time.now - c.seenAt > FLEE_AGE) continue; // an island base: its batteries are in the danger field
+      if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || o.isBase || WW.time.now - c.seenAt > GHOST_AGE) continue; // an island base: its batteries are in the danger field
+      if (o.type === 'pt' && WW.dist(ship.x, ship.z, c.x, c.z) > PT_NEAR) continue; // a PT boat is a torpedo threat close in (the escorts' and secondaries' business), not a gun ship to run from
       const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
-      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / (Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD) * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
+      // a destroyer is run from inside DD_MIN (its guns and torpedoes): further out it is the ring's business
+      // (ai_charge.js sends the escorts); the cruisers and battleships from FLEE_MIN (the carrier ran from a lone DD at 210, ring and all)
+      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), R0 = o.type === 'destroyer' ? Math.max(DD_MIN, r * DD_FLEE + FLEE_PAD) : o.type === 'pt' ? r * DD_FLEE + FLEE_PAD : Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD);
+      const k = d / (R0 * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
+      // a ghost (contact older than FLEE_AGE): never steered toward (the cone), but no run and no hold on flight ops (Fable F25)
+      if (WW.time.now - c.seenAt > FLEE_AGE) { if (d < r * FLEE_K + CONE_PAD) cone.push(Math.atan2(cz - ship.z, cx - ship.x)); continue; }
       if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;
       if (d < (ship.ai.thrD || 1e9) || ship.ai.thrT !== WW.time.now) { ship.ai.thrD = d; ship.ai.thrT = WW.time.now; ship.ai.thrB = Math.atan2(cz - ship.z, cx - ship.x); ship.ai.thrR = r; } // nearest known gun ship's bearing
       if (d < r * FLEE_K + CONE_PAD) cone.push(Math.atan2(cz - ship.z, cx - ship.x)); // never steer toward it (see carrierAI)
@@ -69,9 +78,17 @@ window.WW = window.WW || {};
     // ships, used to override it: a carrier kept its station while a destroyer closed on it in the dark)
     else if (near && a.thrD < RUN_D) { /* want = fl */ }
     else if (o) {
+      // On station the carrier steams a wide, slow circle round it (CV_ORBIT): its operating area. It used to turn
+      // a tight circle on the spot (heading + 0.25 rad), and its ring escorts circled with it (sanity S8c).
       const d = WW.dist(ship.x, ship.z, o.sx, o.sz);
-      if (d > 30) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
-      else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
+      if (d > CV_ORBIT + 40) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
+      else {
+        const r = Math.atan2(ship.z - o.sz, ship.x - o.sx);
+        want = d < CV_ORBIT * 0.5 ? (a.cvOrbH !== undefined ? a.cvOrbH : (a.cvOrbH = ship.heading)) // near the middle: hold the course out
+          : r + a.orbitDir * (PI / 2 + WW.clamp((d - CV_ORBIT) / CV_ORBIT, -0.6, 0.6)); // the tangent, eased in / out to the circle
+        if (d >= CV_ORBIT * 0.5) a.cvOrbH = undefined;
+        ship.throttle = 0.5; calm = true;
+      }
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
       want = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
@@ -86,8 +103,12 @@ window.WW = window.WW || {};
     const here = WW.threat ? WW.threat.danger(ship.nation, ship.x, ship.z) : 0;
     // Into the wind while launching / recovering (air_deck.js), only with no danger near, on (or near) station and
     // clear of the map edges (a long run downwind of the station otherwise ends pinned on the edge).
-    const onStation = !o || WW.dist(ship.x, ship.z, o.sx, o.sz) < 120, wary = WW.time.now - (a.cvWary || -1e9) < 10; // a gun ship known within WIND_SAFE
-    if (WW.airDeck && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) WW.airDeck.steer(ship, false);
+    // Hysteresis: a run into the wind already under way goes on to WIND_RUN from the station before the carrier turns
+    // back (a 120 limit both ways made 30 s legs out and back: circling in place, sanity S8c).
+    const D = ship._deck, ops = !!(D && (D.mode !== 'idle' || D.launchers.length || D.lq.length));
+    const onStation = !o || WW.dist(ship.x, ship.z, o.sx, o.sz) < (a.windOn ? WIND_RUN : 120), wary = WW.time.now - (a.cvWary || -1e9) < 10; // a gun ship known within WIND_SAFE
+    a.windOn = false;
+    if (WW.airDeck && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) { WW.airDeck.steer(ship, false); a.windOn = ops; }
     // An enemy ship closing inside ~90 units: turn away from it (allies are spaced by ships.js SPACE).
     const n = a.near;
     if (n && n.alive && n.nation !== ship.nation && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {

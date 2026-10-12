@@ -23,8 +23,8 @@ window.WW = window.WW || {};
     PEN_RUN: 0.12, PEN_ABORT: 0.16, PEN_LURK: -0.06, // midline limits (x half-map)
     DEEP: { PEN_RUN: 0.95, PEN_ABORT: 1.05, PEN_LURK: 0.85, PEN_HOME: 1.05 }, PEN_HOME: 0.02, // deep: PT_DEEP limits
     GUN_R: 160, GUN_T: 40, GUN_OFF: 18, // skirmish: an enemy PT / surfaced sub this close, at most this long, beam offset
-    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 70, IDLE_THR: 0.7, BACK_T: 14,
-    STALK: 35, BOLD_GATE: 0.8, BOLD_FLEE: 4, BOLD_DASH: 1.8, DARK: 0.35 // BOLD_DASH: x DASH; bold boats: stalk this far outside the guns' reach; run gate x (1 + BOLD_GATE x bold); flee danger
+    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 90, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 70, IDLE_THR: 0.7, BACK_T: 14,
+    STALK: 35, BOLD_GATE: 0.8, BOLD_FLEE: 4, BOLD_DASH: 1.8, DARK: 0.35 // BOLD_DASH: x DASH; bold boats: stalk this far outside the guns' reach; run gate x (1 + BOLD_GATE x bold); flee danger; GHOST_T 90 (Fable F29)
   };
   // Boldness (PT doctrine): 2 once the enemy's escorts are gone (no fit destroyer of its seen this round: nothing
   // left that hunts PT boats; the side has seen the enemy), 1 in the dark (the PT boat's hour: Guadalcanal, Surigao),
@@ -325,7 +325,7 @@ window.WW = window.WW || {};
     }
     // ---- lurk ----
     L.spotT -= dt;
-    if (L.spotT <= 0) { L.spotT = 4; lurkSpot(ship, L); }
+    if (L.spotT <= 0) { L.spotT = L.hot ? 4 : 12; lurkSpot(ship, L); } // a quiet spot is held a while (re-picked every 4 s the boat chased it in circles)
     const pk = picketing(ship, WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(n) : null);
     if (decide && !pk && a.torpReload <= 0 && ship.hp >= ship.maxHp * 0.35) {
       // join the partner's run from the other side, else look for our own opportunity
@@ -349,9 +349,12 @@ window.WW = window.WW || {};
     if (decide) L.hot = !L.stalk && (ghostNear(ship, ship.x, ship.z) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG : 0.3)); // a picket works inside the edge of it; a stalker on purpose
     // At the spot: a patrol leg stern-on to the enemy (a break-off then needs no turn), and a slower leg back.
     const d = WW.dist(ship.x, ship.z, L.lx, L.lz);
-    if (L.hot && d > 8) { L.leg = 'fwd'; L.legT = T; }
+    // ARRIVE: the arrival radius is ~1.5 x the boat's turning circle at speed (11 / 1.2 = 9 u): inside 8 it could never
+    // get there and orbited the spot (Fable F6: PT boats spinning)
+    const ARRIVE = 16;
+    if (L.hot && d > ARRIVE) { L.leg = 'fwd'; L.legT = T; }
     if (L.leg === 'back' && (d > PT.IDLE_R || T - L.legT > PT.BACK_T)) { L.leg = 'fwd'; L.legT = T; } // (land astern: the timer turns it back)
-    else if (L.leg !== 'back' && (d < 8 || (d < 25 && T - L.legT > 25))) { L.leg = 'back'; L.legT = T; }
+    else if (L.leg !== 'back' && (d < ARRIVE || (d < 25 && T - L.legT > 25))) { L.leg = 'back'; L.legT = T; }
     if (L.leg === 'back') {
       const ec = WW.intel && WW.intel.centre ? WW.intel.centre(n) : null;
       ship.desiredHeading = (ec ? Math.atan2(ship.z - ec.z, ship.x - ec.x) : homeX(ship) < 0 ? PI : 0) + 0.3 * Math.sin(T * 0.4 + ship.id);
@@ -359,13 +362,25 @@ window.WW = window.WW || {};
     } else {
       const want = Math.atan2(L.lz - ship.z, L.lx - ship.x);
       ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0.1) : want;
-      ship.throttle = L.hot ? 1 : 0.85;
+      ship.throttle = L.hot ? 1 : d < 35 ? 0.55 : 0.85; // easing in to the spot
     }
     // keep way on: come about in a sweeping turn (a > 1.2 rad helm order halves the speed, ships.js), so a heavy
     // ship that closes unseen finds the boat already moving, ready to bolt
     sweep(ship);
   }
 
-  WW.shipAI.roles.pt = ptAI;
+  // Lurking or on picket, the helm order changes at most HELM_RATE rad/s: the spot and the safest heading are re-picked
+  // every few seconds and the order jumped with them, so the boat turned continuously (Fable F6: PT boats spinning).
+  // A run, a break-off, a flight or a gun fight keep the raw order.
+  const HELM_RATE = 0.5;
+  function ptHelm(ship, dt) {
+    ptAI(ship, dt);
+    const a = ship.ai, L = a.lt;
+    if (!L || L.state !== 'lurk' || L.hot) { a.ptH = undefined; return; }
+    if (a.ptH === undefined) a.ptH = ship.heading;
+    a.ptH += WW.clamp(WW.angleDiff(a.ptH, ship.desiredHeading), -HELM_RATE * dt, HELM_RATE * dt);
+    ship.desiredHeading = a.ptH;
+  }
+  WW.shipAI.roles.pt = ptHelm;
   Object.assign(WW.lightAI, { PT, stats, opportunity });
 })();
