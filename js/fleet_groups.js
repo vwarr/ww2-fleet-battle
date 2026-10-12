@@ -159,7 +159,7 @@ window.WW = window.WW || {};
     var cs = WW.intel.enemyShips(B.nation), now = WW.time.now, H = WW.cfg.MAP_H;
     for (var pass = 0; pass < 2; pass++) for (var i = 0; i < cs.length; i++) {
       var c = cs[i], u = c.unit;
-      if (!u || !u.alive || u.submerged || u.type === 'carrier' || !u.stats.guns.length || now - c.seenAt > 60) continue;
+      if (!u || !u.alive || u.submerged || u.type === 'carrier' || u.type === 'pt' || !u.stats.guns.length || now - c.seenAt > 60) continue; // (a PT boat is no gun ship)
       var R = u.stats.guns[0].range * 1.9 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
       if (d >= R || d < 1) continue;
       p.x = WW.clamp(c.x + (p.x - c.x) / d * R, x0, x1); p.z = WW.clamp(c.z + (p.z - c.z) / d * R, 80, H - 80);
@@ -265,14 +265,19 @@ window.WW = window.WW || {};
     var dr = Math.min(SORTIE_DR, WW.time.now - best.seenAt), sp = best.speed || 0, h = best.heading || 0;
     return { x: best.x + Math.cos(h) * sp * dr, z: best.z + Math.sin(h) * sp * dr };
   }
-  // The sortie: escorts past the first `keep` steam for the enemy (sortieGoal).
+  // The sortie: the escorts other than each carrier's guards (fleet_formation.js tagRing) steam for the enemy
+  // (sortieGoal).
   function sortie(B, G, ncv) {
-    var k = 0, t = sortieGoal(B), n = 0;
-    G.carrier.members.forEach(function (q) { var o = B.orders.get(q.id); if (q.type !== 'carrier' && o && o.role !== 'withdraw') n++; });
-    var keep = Math.min(ncv, n - 1);
+    var t = sortieGoal(B), go = [];
     G.carrier.members.forEach(function (q) {
       var o = B.orders.get(q.id);
-      if (q.type === 'carrier' || !o || o.role === 'withdraw' || k++ < keep) return;
+      if (q.type === 'carrier' || !o || o.role === 'withdraw' || o.guard) return;   // the guards are the ones that stay
+      go.push(o);
+    });
+    // (Fable F10 asked for pairs only; with no sortie a carrier task force never meets the enemy's ships, nothing
+    // breaks and the round runs to time (carrier_duel 6 / 8 to time): the fleets-met rule (fleet_cmd beaten, endgame)
+    // has to change first. So a lone non-guard escort still goes.)
+    go.forEach(function (o) {
       o.role = 'sortie'; o.sx = WW.clamp(t.x, 30, WW.cfg.MAP_W - 30); o.sz = WW.clamp(t.z, 30, WW.cfg.MAP_H - 30);
     });
   }
