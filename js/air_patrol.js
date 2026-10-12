@@ -165,14 +165,14 @@ window.WW = window.WW || {};
   function schedule(dt) {
     if (!battle() || location.search.includes('nopatrol')) return;
     tick -= dt; if (tick > 0) return; tick = 1;
-    var now = WW.game.roundTime, end = WW.game.deadline ? WW.game.deadline() : WW.cfg.ROUND_TIMEOUT;
+    var now = WW.game.roundTime;
     ['USN', 'IJN'].forEach(function (n) {
       var S = sched[n] || (sched[n] = { n: 0, at: 0, up: null, dawn: true });
       if (S.up && (S.up.removed || !S.up.alive)) { var ev = (WW.fleetCmd.doctrine(n) || {}).patrolEvery || 215; S.up = null; S.at = Math.min(S.at > now ? S.at : 1e9, now + WW.randRange(ev * 0.8, ev * 1.2)); }
       // relief on station: a shadower turning for home with the enemy still in its plot sends for the next boat at once
       if (S.up && S.up.alive && S.up.state === 'return' && S.up.shadowT > 30 && !S.relief) { S.relief = true; S.at = now + WW.randRange(RELIEF[0], RELIEF[1]); }
       if (S.up && S.up.state === 'return' && now >= S.at && S.n < MAX_ROUND) S.up = null; // the relief may launch while it heads home
-      if (S.up || S.n >= MAX_ROUND || now < S.at || now > end - 90) return;
+      if (S.up || S.n >= MAX_ROUND || now < S.at) return;   // (FB.launch: none while too dark)
       if (WW.endgame && WW.endgame.broken && WW.endgame.broken(n)) return;   // a beaten side has other worries
       if (FB.count(n) >= (n === 'USN' ? 3 : 2)) return; // a relief may be up while the shadower heads home
       S.up = FB.launch(n, 'patrol', WW.randRange(WW.cfg.MAP_H * 0.2, WW.cfg.MAP_H * 0.8)); if (S.up) S.n++; // null: too dark yet (a dawn round)

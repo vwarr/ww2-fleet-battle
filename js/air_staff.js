@@ -23,6 +23,10 @@
 //  - Break-off (waveTick): a strike caught short of the target by overwhelming fighters with a weak escort, after
 //    losses, jettisons and turns for home; how much it takes rises with doctrine press (the IJN veterans press on).
 //  - Sun and cloud (seeK, intel.js): a plane high in a low sun's glare, or in cloud, is seen visually at a shorter range.
+//  - The enemy air group spent (airSpent): no enemy bomber and no more than a section of fighters (< SPENT_F) seen for SPENT_T s, and every enemy carrier the side
+//    knows of is crippled or proven bare (a strike of ours went in over it and met no fighters: its PRIOR goes too).
+//    Then the strikes go in packets (a division of PACKET_DIV on a small ship, a squadron of PACKET_SQN on a heavy one),
+//    the CAP shrinks to one standing section (ai_carrier.js capWanted) and the pursuit reserve goes (air_boss.js).
 // Events: 'airOrder' { carrier, order: 'breakOff' | 'mauled', wave?, n? }; 'admiralOrder' order 'airDefensive'.
 window.WW = window.WW || {};
 (function () {
@@ -34,13 +38,14 @@ window.WW = window.WW || {};
   const SIZE_K = { carrier: 1, battleship: 1, base: 0.8, cruiser: 0.7, destroyer: 0.4, pt: 0.3, submarine: 0.3 };
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
-  const ST = { plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
+  const ST = { smallDiv: 0, packets: 0, deckHolds: 0, plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
+  const SPENT_F = 4, SPENT_T = 60, BARE_R = 120, PACKET_DIV = 6, PACKET_SQN = 12, DECK_Q = 12, HEAVY = { carrier: 1, battleship: 1, cruiser: 1 };
   const ESC_WAIT = 45;   // s a strike waits for fighters to come back before it goes against a strong CAP without them
   // A/B switches (tests: env Q=staff=route:0,size:0): route (plotted routes), size (sizing, CAP hold, commitment, ledger),
   // brk (break-off), sun (sun / cloud sighting), base (the escort test for a raid on the island)
   const TUNE = { route: 1, size: 1, brk: 1, sun: 1, base: 1, ipb: 1, ftr: 1, bpen: 1, raid: 1 };
   { const m = typeof location !== 'undefined' && /[?&]staff=([^&]*)/.exec(location.search); if (m) decodeURIComponent(m[1]).split(',').forEach(kv => { const q = kv.split(':'); if (q.length === 2) TUNE[q[0]] = +q[1]; }); }
-  let mem = {}, side = {}, acc = 0, raidMem = {};
+  let mem = {}, side = {}, acc = 0, raidMem = {}, seenAir = {}, bare = {};   // seenAir[n]: when n last saw an enemy combat plane; bare[n]: enemy carriers proven bare
 
   const doc = n => { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null, a = d && d.air; return Object.assign({}, DOC[n] || DOC.USN, a || {}); };
   const sideOf = n => side[n] || (side[n] = { escK: 1, defensive: false });
@@ -55,8 +60,11 @@ window.WW = window.WW || {};
       const M = mem[n] || (mem[n] = new Map());
       // a CAP is fighters over the enemy's ships or airfield (escorts seen over our own fleet are not a strongpoint)
       const S = WW.intel.enemyShips(n, { fresh: 120 }).slice(), b = ebase(n);   // (a copy: intel filters into one scratch array)
+      let nf = 0;
       for (const c of WW.intel.enemyPlanes(n)) {
-        const u = c.unit; if (!u || u.kind !== 'fighter') continue;
+        const u = c.unit;
+        if (u && u.alive && now - c.seenAt < 2) { if (u.kind === 'dive' || u.kind === 'torpedo') seenAir[n] = now; else if (u.kind === 'fighter' && ++nf >= SPENT_F) seenAir[n] = now; }   // an air group: a bomber, or more fighters than a section
+        if (!u || u.kind !== 'fighter') continue;
         if ((b && WW.dist2(b.x, b.z, c.x, c.z) < 220 * 220) || S.some(s => WW.dist2(s.x, s.z, c.x, c.z) < 220 * 220)) M.set(u, { x: c.x, z: c.z, t: now });
       }
       M.forEach((e, u) => { if (now - e.t > MEM_T || (!u.alive && now - e.t < 6)) M.delete(u); });   // a fighter seen going down is off the plot
@@ -89,7 +97,7 @@ window.WW = window.WW || {};
     let s = 0;
     if (M) M.forEach(e => { if (WW.dist2(e.x, e.z, x, z) < R2) s += wAge(now - e.t); });
     if (s < 1 && WW.intel) {   // nothing seen there yet: the staff's guess for a known carrier, or an open airfield
-      for (const c of WW.intel.enemyShips(n)) { const u = c.unit; if (u && u.alive && !u.isBase && now - c.seenAt <= 120 && WW.intel.typeOf(c) === 'carrier' && WW.dist2(c.x, c.z, x, z) < R2) s += PRIOR.carrier; }   // (unfiltered: no intel scratch array under a caller's loop)
+      for (const c of WW.intel.enemyShips(n)) { const u = c.unit; if (u && u.alive && !u.isBase && now - c.seenAt <= 120 && WW.intel.typeOf(c) === 'carrier' && !(bare[n] && bare[n].has(u)) && WW.dist2(c.x, c.z, x, z) < R2) s += PRIOR.carrier; }   // (unfiltered: no intel scratch array under a caller's loop)
       const b = ebase(n); if (b && WW.islandBase.runwayOpen() && WW.dist2(b.x, b.z, x, z) < R2) s += PRIOR.base;
     }
     return s;
@@ -227,20 +235,49 @@ window.WW = window.WW || {};
   // after a mauled strike with a thin escort, the side sends more fighters with the next (doctrine air.learn)
   WW.on('airOrder', e => { if (e && e.order === 'breakOff' && e.carrier) sideOf(e.carrier.nation).escK = Math.min(1.8, sideOf(e.carrier.nation).escK + doc(e.carrier.nation).learn); });
 
+  // a strike plane still committed: outbound or in the attack (a bomber armed; an escort with its strike), not one
+  // homebound or in the landing pattern (dropped() leaves p.target set, so the target alone is not the test)
+  const outbound = p => p.target && !p.search && p.kind !== 'scout' && (p.state === 'transit' || p.state === 'attack') && (p.kind === 'fighter' || p.ordnance);
+
+  // ---------- the enemy air group spent ----------
+  // a drop of ours near an enemy carrier with no fighter seen there: that carrier has nothing left to fly
+  function dropSeen(p) {
+    const n = p.nation, M = mem[n], now = WW.time.now;
+    if (!WW.intel || !p.carrier || p.carrier.isBase) return;
+    for (const c of WW.intel.enemyShips(n)) {
+      const u = c.unit; if (!u || !u.alive || u.isBase || u.type !== 'carrier' || WW.dist2(c.x, c.z, p.x, p.z) > BARE_R * BARE_R) continue;
+      let f = 0; if (M) M.forEach(e => { if (now - e.t < 45 && WW.dist2(e.x, e.z, c.x, c.z) < EST_R * EST_R) f++; });
+      if (f < SPENT_F && now - (seenAir[n] || -1e9) > 20) (bare[n] || (bare[n] = new Set())).add(u);
+    }
+  }
+  // does side n believe the enemy's carrier air is gone? (its island base, open and flying, keeps it alive)
+  function airSpent(n) {
+    const now = WW.time.now; if (!WW.game || WW.game.roundTime < 90 || now - (seenAir[n] === undefined ? -1e9 : seenAir[n]) < SPENT_T) return false;
+    const b = ebase(n); if (b && WW.islandBase.runwayOpen() && b.hangar && b.hangar.fighter + b.hangar.dive + b.hangar.torpedo > 0) return false;
+    if (WW.intel) for (const c of WW.intel.enemyShips(n)) {
+      const u = c.unit; if (!u || !u.alive || u.sinking || u.isBase || u.type !== 'carrier') continue;
+      if (u.hp < WW.fleetGroups.CRIP * u.maxHp) continue;   // crippled: its deck is out
+      if (!(bare[n] && bare[n].has(u))) return false;
+    }
+    return true;
+  }
+  WW.on('weaponDropped', e => { try { const p = e && e.plane; if (p && p.kind !== 'fighter' && p.nation) dropSeen(p); } catch (er) { console.error('staff', er); } });
+
   // ---------- strike sizing (air_boss.js orderStrike) ----------
   // In: the planned load { nd, nt, esc } and what the hangar / CAP can give. Out: the load, or null (no strike now).
   function size(cv, tgt, o) {
     if (!TUNE.size) { const J = judge(cv, true); if (WW.emit) WW.emit('airPlan', { carrier: cv, target: tgt, nb: o.nd + o.nt, esc: o.esc, capE: capEst(cv.nation, tgt.x, tgt.z), lastLoss: J.last ? J.lastLoss : null, lastN: J.last ? J.last.n : 0, mauled: false }); return o; }   // A/B: the ledger read, nothing changed
     const n = cv.nation, D = doc(n), S = sideOf(n), J = judge(cv), Lg = led(cv), B = WW.fleetCmd && WW.fleetCmd.side(n);
-    const urgent = tgt.type === 'carrier' || (B && (B.posture === 'pursue' || B.timeLeft < 40 || B.defend.some(q => q.carrier === cv && q.enemy === tgt)));
-    if (Lg.mauled && !urgent) { ST.waits++; return null; }
+    const urgent = tgt.type === 'carrier' || (B && (B.posture === 'pursue' || B.defend.some(q => q.carrier === cv && q.enemy === tgt)));
+    const spent = airSpent(n), heavy = !tgt.isBase && HEAVY[tgt.type], late = WW.dayNight && WW.dayNight.lightLeft && WW.dayNight.lightLeft() < 150;   // the last strike of the day
+    if (Lg.mauled && !urgent && !(heavy && (spent || late))) { ST.waits++; return null; }   // a mauled group: carriers only, or a division on a heavy ship once the enemy air is gone (or late)
     // a heavy loss on the last strike: learn (more escorts) and send a smaller one
     if (J.last && !J.last.judged) { J.last.judged = true; if (J.lastLoss >= 0.3 && J.last.esc < J.last.n * 0.6) { S.escK = Math.min(1.8, S.escK + D.learn); ST.learned++; } }
     let { nd, nt, esc } = o, nb = nd + nt;
     const kt = WW.intel && WW.intel.known(n, tgt) || tgt, capE = capEst(n, kt.x, kt.z), wingF = cv.wingF || 0, hg = cv.hangar;
     // the CAP stays: capHold of the air group's fighters (more when mauled) is not for escorting
     let capUp = 0, out = 0, queued = 0;
-    for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.state !== 'takeoff') { if (p.kind === 'fighter' && !p.target && !p.search) capUp++; if (p.target && !p.search && p.kind !== 'scout') out++; }
+    for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.state !== 'takeoff') { if (p.kind === 'fighter' && !p.target && !p.search) capUp++; if (outbound(p)) out++; }
     for (const q of cv.ai.queue) if (q.target) queued++;
     const hold = Math.round(wingF * (Lg.mauled ? 0.6 : D.capHold));
     const cs = WW.airOps ? WW.airOps.capState(cv) : { on: capUp, coming: 0 }, cw = WW.airOps ? WW.airOps.capWanted(cv) : 0;
@@ -259,6 +296,19 @@ window.WW = window.WW || {};
       cap = Math.min(cap, Math.max(MIN_B, Math.round(cap * 0.6), Math.round(esc * D.bpe)));
     }
     cv.ai.escWait = 0; cv.ai.capE = capE;
+    if (spent && !tgt.isBase) {   // no enemy air: packets, one after another (a steady stream home, not a 100-plane recovery)
+      cap = Math.min(cap, heavy && !Lg.mauled ? PACKET_SQN : PACKET_DIV); esc = 0; ST.packets++;   // and no escort: there is nothing to escort against
+      // the deck turns round what comes home first: the next packet goes when it and the planes on their way home fit
+      // one recovery of DECK_Q (the stack never builds past a squadron)
+      let home = 0; for (const p of WW.world.planes) if (p.alive && p.carrier === cv && (p.state === 'return' || p.state === 'landing')) home++;
+      if (DECK_Q - home < MIN_B) { ST.deckHolds++; return null; }
+      cap = Math.min(cap, DECK_Q - home);
+    }
+    else if (Lg.mauled) cap = Math.min(cap, PACKET_DIV);
+    // a destroyer or PT boat while a carrier, battleship or cruiser is known afloat (self-defence, the pursuit): a
+    // division, not the deck load (Fable audit F4)
+    if (tgt.type === 'submarine') { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }   // a surfaced submarine: a division at most
+    else if (!tgt.isBase && (tgt.type === 'destroyer' || tgt.type === 'pt') && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(n)) { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }
     if (J.lastLoss >= LOSS_HEAVY && !J.last.cut) { J.last.cut = true; cap = Math.min(cap, Math.max(MIN_B, Math.round(J.last.n * (1.2 - J.lastLoss)))); ST.cuts++; }   // smaller than the strike that was mauled
     // the commitment ceiling: strike planes out at once (bombers and escorts) within commit x the air group
     const room = Math.round((cv.wingN || 60) * D.commit * (urgent ? 1.15 : 1)) - out - queued;
@@ -316,10 +366,10 @@ window.WW = window.WW || {};
     return k;
   }
 
-  function reset() { mem = {}; side = {}; acc = 0; raidMem = {}; for (const k in ST) ST[k] = 0; }
+  function reset() { mem = {}; side = {}; acc = 0; raidMem = {}; seenAir = {}; bare = {}; for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
   WW.on('waveGo', e => { try { waveGo(e); } catch (er) { console.error('staff', er); } });
   if (WW.air) { const u0 = WW.air.update; WW.air.update = function (dt) { const r = u0.apply(this, arguments); try { remember(dt); } catch (e) { console.error('staff', e); } return r; }; }
-  WW.staff = { TUNE, capEst, raidsAt, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
+  WW.staff = { TUNE, capEst, airSpent, outbound, raidsAt, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
 })();
