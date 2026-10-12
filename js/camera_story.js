@@ -39,10 +39,10 @@ window.WW = window.WW || {};
   // the push-over: the first of the story's wave to roll into its dive (the leader itself if it is diving); cut to it
   // once per story. A torpedo leader's story cuts away only while its own drop is still TORP_AWAY off (the dive
   // shot then ends with the dive and the story goes back to the run before the drop)
-  const TORP_AWAY = 150;
+  // (the dive shot is held to the bomb's impact by the attack lock, so a torpedo leader already on its run keeps the camera)
   function diveCue() {
-    const L = S.lead, w = L && L.wave, t = L && (L.target || (w && w.target));
-    if (S.dive || !w || (L.kind === 'torpedo' && L.phase === 'run' && t && WW.dist(L.x, L.z, t.x, t.z) < TORP_AWAY)) return null;
+    const L = S.lead, w = L && L.wave;
+    if (S.dive || !w || (L.kind === 'torpedo' && L.phase === 'run') || (WW.cam.locked && WW.cam.locked())) return null;
     if (L.kind === 'dive' && L.phase === 'roll') return L;
     for (const m of w.members) if (ok(m) && m.kind === 'dive' && m.phase === 'roll') return m;
     return null;
@@ -58,7 +58,7 @@ window.WW = window.WW || {};
     return Math.random() < 0.4 && ok(w.cag) ? w.cag : el || (ok(w.cag) ? w.cag : null);
   }
   // how much an imminent finder item is worth as a story: attacks on ships beat fighters closing in
-  const ATTACK = { strike: 1.5, push: 1.6, anvil: 1.6, bandits: 0.8 };
+  const ATTACK = { strike: 1.5, push: 1.6, anvil: 1.6, run: 1.7, bandits: 0.8 };
   function imm(it) { return 10 + 3 * it.score * (ATTACK[it.kind] || 1); } // score = drama x the 10-30 s window: a strike 60 s out loses to one 20 s out
   function bestImminent(not) {
     let b = null;
@@ -180,7 +180,7 @@ window.WW = window.WW || {};
     form: [['side', 3], ['high', 1], ['chase', 2], ['wing', 2]],
     transit: [['chase', 3], ['wing', 3], ['side', 2]],      // the context (the ships) comes from the transit's ship cutaways (pick())
     bandits: [['ots', 4], ['chase', 2], ['wing', 2]],
-    attack: [['chase', 3], ['ots', 3], ['water', 4], ['high', 1]],
+    attack: [['chase', 3], ['ots', 4], ['water', 2]],      // never the high shot: the drop must be in frame (the chase frames the target too)
     after: [['chase', 3], ['side', 2], ['high', 1]],
     home: [['high', 1], ['side', 2], ['chase', 2]],
     rescue: [['side', 3], ['chase', 2], ['high', 1]]      // a Catalina down on the water among the survivors
@@ -247,11 +247,11 @@ window.WW = window.WW || {};
       return { kind: 'orbit', subj: s, r: s.stats.length * 1.5 + 18, dur: CUTAWAY, w: 0.05, story: true, cutaway: true };
     }
     S.cutaway = null;
-    if (S.dive && !S.dive.shown && diving(S.dive.m)) { // the dive: chase the diver down, in slow motion while it dives
-      const m = S.dive.m, away = m !== S.lead && S.lead.kind !== 'dive'; S.dive.shown = true; S.last = 'dive';
-      log.push({ sk: 'dive', kind: 'story', phase: 'attack', at: now, dur: 9, hard: true, lead: m === S.lead ? 'dive lead' : 'dive wing' });
+    if (S.dive && !S.dive.shown && diving(S.dive.m)) { // the dive: chase the diver down, in slow motion while it dives, held to the bomb's impact (camera_lock.js, the hand-off)
+      const m = S.dive.m; S.dive.shown = true; S.last = 'dive';
+      log.push({ sk: 'dive', kind: 'story', phase: 'attack', at: now, dur: 12, hard: true, lead: m === S.lead ? 'dive lead' : 'dive wing' });
       if (WW.camAction && WW.camAction.slowmo) WW.camAction.slowmo(() => diving(m), 10);
-      return { kind: 'story', sk: 'chase', subj: m, group: [m], nation: S.nation, dur: 9, story: true, hard: true, kP: 4.5, kL: 4.5, back: 18, nohand: away, diveOf: away ? m : null }; // a hard cut: no cross-fade over the push-over
+      return { kind: 'story', sk: 'chase', subj: m, group: [m], nation: S.nation, dur: 12, story: true, hard: true, kP: 4.5, kL: 4.5, back: 18 }; // a hard cut: no cross-fade over the push-over
     }
     const L = S.lead;
     if (!ok(L)) { S.ending = 1; return pick(); }
@@ -304,17 +304,23 @@ window.WW = window.WW || {};
       if (a && (a.item ? now - lastEnd >= 40 : now >= nextAt && a.score >= 7)) start(a, false);
       return;
     }
-    const shot = WW.cam._shot();
-    if (!S.begun) { // waiting for the director's current shot to end; an imminent attack cuts in (not into an action / test shot)
+    const shot = WW.cam._shot(), locked = !!(WW.cam.locked && WW.cam.locked()); // the attack lock: no cut of any kind
+    if (!S.begun) { // waiting for the director's current shot to end; an imminent attack cuts in (not into an action / test / locked shot)
       if (!S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
-      if (S.imminent && shot && !shot.stage && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
+      if (S.imminent && shot && !shot.stage && !locked && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
+      return;
+    }
+    // a quiet phase of an automatic story gives way to a big ship / base event (a sinking, a bombardment, hits in a gun
+    // duel): the story ends and the director films it (an imminent attack may start a new story after 40 s)
+    if (!S.user && !locked && (S.phase === 'transit' || S.phase === 'form' || S.phase === 'home') && now - S.t0 > 15 && WW.camScenes && WW.camScenes.bigNow() >= 8) {
+      log.push({ yield: WW.camScenes.bigNow(), at: now }); ST.yielded = (ST.yielded || 0) + 1;
+      end(true); if (shot && shot.story && !shot.stage && shot.t > 2) shot.dur = Math.min(shot.dur, shot.t);
       return;
     }
     if (S.mission === 'strike') {
       diveWatch(rdt);
       const m = !S.fall && !S.ending ? diveCue() : null;
-      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); } // cut now (not a bomb / torpedo hand-off)
-      if (shot && shot.diveOf && !diving(shot.diveOf) && shot.t > 1) shot.dur = Math.min(shot.dur, shot.t + 1.2); // a cut away to the dive: back to the story's own attack
+      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && !locked && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); } // cut now (not a bomb / torpedo hand-off, not a locked attack)
     }
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
       S.regroupT = 2; const g = groupOf(S.lead);
@@ -323,7 +329,7 @@ window.WW = window.WW || {};
     }
     // the leader has landed (taken below): the mission is over, end on a wide shot
     if (!ok(S.lead) && !S.ending && !S.fall && (S.lead.state === 'rollout' || S.lead.state === 'landing')) {
-      S.ending = 1; if (shot && shot.story && !shot.stage) shot.dur = Math.min(shot.dur, shot.t + 2);
+      S.ending = 1; if (shot && shot.story && !shot.stage && !locked) shot.dur = Math.min(shot.dur, shot.t + 2);
     }
     // the leader is down: stay on the fall (in place when we are filming it, no cut), then hand off (pick())
     if (!ok(S.lead) && !S.fall && !S.ending) {
@@ -331,15 +337,15 @@ window.WW = window.WW || {};
       log.push({ fall: S.lead.kind, at: now });
       if (shot && shot.story && !shot.stage && shot.subj === S.lead && shot.kind === 'story' && shot.sk !== 'high') {
         shot.sk = 'fall'; shot.fP = null; shot.dur = shot.t + FALL; S.fall.shown = true;
-      } else if (shot && !shot.stage) shot.dur = Math.min(shot.dur, shot.t); // cut to a fall shot now
+      } else if (shot && !shot.stage && !locked) shot.dur = Math.min(shot.dur, shot.t); // cut to a fall shot now
     }
-    // a new phase (the push-over, the run, bandits, leaving the deck): cut early to a shot that suits it
-    if (shot && shot.story && !shot.stage && !S.fall && !shot.cutaway && ok(S.lead) && shot.t > 2.5) {
+    // a new phase (the push-over, the run, bandits, leaving the deck): cut early to a shot that suits it (never out of a locked attack)
+    if (shot && shot.story && !shot.stage && !locked && !S.fall && !shot.cutaway && ok(S.lead) && shot.t > 2.5) {
       const ph = phaseOf(S.lead);
       if (ph !== S.phase && (ph === 'attack' || ph === 'bandits' || ph === 'after' || S.phase === 'launch')) shot.dur = Math.min(shot.dur, shot.t);
     }
     // an automatic story gives way to a better attack about to happen elsewhere (a CAP circle must not hide a strike)
-    if (!S.user && shot && shot.story && !shot.stage && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 8 && (S.swT = (S.swT || 0) - rdt) <= 0) {
+    if (!S.user && shot && shot.story && !shot.stage && !locked && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 8 && (S.swT = (S.swT || 0) - rdt) <= 0) {
       S.swT = 2;
       const mine = WW.camFinder && WW.camFinder.about(S.lead), my = mine && mine.etaReal >= 0 && mine.etaReal < 60 ? imm(mine) : 0;
       const b = my && now - S.t0 < 20 ? null : bestImminent(p => p === S.lead || S.group.indexOf(p) >= 0 || (p.wave && p.wave === S.lead.wave)); // its own attack coming: 20 s
@@ -350,7 +356,7 @@ window.WW = window.WW || {};
         return;
       }
     }
-    if (S.cutaway && shot && shot.story && !shot.stage && shot.t > 3 && !shot.cutaway && S.phase !== 'attack' && !S.fall) shot.dur = Math.min(shot.dur, shot.t);
+    if (S.cutaway && shot && shot.story && !shot.stage && !locked && shot.t > 3 && !shot.cutaway && S.phase !== 'attack' && !S.fall) shot.dur = Math.min(shot.dur, shot.t);
     // the title card, through the air-caption throttle
     if (S.title && now < S.titleUntil && shot && shot.t > 0.8 && WW.airCaptions && WW.airCaptions.say && WW.airCaptions.say(S.title[0], S.title[1], S.lead)) S.title = null;
   }
@@ -394,6 +400,7 @@ window.WW = window.WW || {};
     // camera_follow.js: start on an arc { lead, mission, item } as the user's story; the running story, if any
     begin(arc) { return start(arc, true); },
     story() { return S ? { lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
+    interrupted(c) { if (S) { S.lastCutaway = wall(); S.cutaway = null; log.push({ interrupt: c.kind, at: wall() }); } }, // camera.js interrupt(): the story resumes after it
     titleOf, anyArc,
     lead() { return S && S.lead; },
     _dbg() { return S ? { phase: S.phase, lead: S.lead && S.lead.kind, shots: S.shots, last: S.last, fall: !!S.fall, ending: S.ending, age: wall() - S.t0 } : null; },

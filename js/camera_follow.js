@@ -22,7 +22,7 @@ window.WW = window.WW || {};
     return o.name || (o.nation + ' ' + (KIND[o.type] || 'ship'));
   }
   const etaText = it => (WW.camFinder ? WW.camFinder.etaText(it) : '');
-  const say = it => it.label + (it.etaReal >= 3 ? ' in ' + etaText(it) : '');
+  const say = it => it.label + (!it.vague && it.etaReal >= 3 ? ' in ' + etaText(it) : ''); // a vague item (the anvil set-up, the wheel, fighters closing) gets no number
   function director() { // the director has the camera: leave map view and the free camera
     if (WW.cam.mode === 'map') WW.cam.toggle();
     if (WW.freecam && WW.freecam.release) WW.freecam.release();
@@ -94,7 +94,7 @@ window.WW = window.WW || {};
       L = WW.world.planes.filter(p => ok(p) && p.kind === 'fighter' && p.state === 'attack' && ok(p.foe))
         .map(p => ({ subj: p, label: nameOf(p) + ' in a dogfight' + (p.foe.kind !== 'fighter' ? ' with ' + (p.foe.squadron ? p.foe.squadron.short : 'bombers') : ''), etaReal: 0, eta: 0 }));
     } else if (which === 'danger') L = WW.camFinder.upcoming(['torps', 'danger']);
-    else L = WW.camFinder.upcoming(['strike', 'push', 'anvil', 'bandits', 'torps']);
+    else L = WW.camFinder.upcoming(['strike', 'push', 'anvil', 'run', 'bandits', 'torps']);
     // one entry per strike wave (its earliest moment: the wave's strike / push / anvil items are one attack), per fighter element and per ship
     const seen = new Set();
     L = L.filter(i => { if (!i.subj || i.subj.removed) return false; const k = i.subj.wave || i.subj.element || i.subj; if (seen.has(k)) return false; seen.add(k); return true; });

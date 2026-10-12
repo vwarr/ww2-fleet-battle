@@ -8,7 +8,25 @@
 // Slow motion only sets WW.time.warp (main.js scales the sim dt by it); everything else is real time.
 window.WW = window.WW || {};
 (function (WW) {
-  const HOLD_HIT = 2.6, HOLD_MISS = 1.3;     // real seconds on the explosion / the empty splash
+  const HOLD_HIT = 2.6, HOLD_MISS = 2.2;     // real seconds on the explosion / the empty splash (the beat after the result)
+  const TORP_MAX = 45;                       // a torpedo stage holds to the impact event; air torpedoes run up to ~41 real s
+  const _n = new THREE.Vector3();
+  // a plane in the frame, within 140 u (a wingman of the filmed group dropping in view: its drop is handed off too)
+  function inFrame(o) {
+    const c = WW.camera; if (!c || !o) return false;
+    if (Math.hypot(c.position.x - o.x, c.position.y - o.y, c.position.z - o.z) > 140) return false;
+    _n.set(o.x, o.y, o.z).project(c); return _n.z < 1 && Math.abs(_n.x) < 0.9 && Math.abs(_n.y) < 0.9;
+  }
+  // the dropping plane is the shot's subject, or a wingman of its group / wave in frame attacking the same target
+  function mineOrWing(ev, shot) {
+    const p = ev.plane, s = shot.subj;
+    if (!p || !p.kind) return false;
+    if (p === s || p === shot.plane) return true;
+    const sub = s && s.pt ? s : shot.plane;
+    if (!sub || !sub.pt) return false;
+    const same = (shot.group && shot.group.indexOf(p) >= 0) || (sub.wave && p.wave === sub.wave) || (sub.element && p.element === sub.element);
+    return !!(same && inFrame(p));
+  }
   const SLOW_GAP = 20;                       // at most one slow motion per 20 real seconds
   const ease = x => x * x * (3 - 2 * x);
   const V = () => new THREE.Vector3();
@@ -36,8 +54,8 @@ window.WW = window.WW || {};
     if (!live || !shot || shot.stage || shot.nohand || !ev || !ev.proj) return; // nohand: a brief cut away (camera_story.js dive) returns to its story
     const p = ev.proj, cur = WW.cam.current();
     if (ev.kind === 'bomb') {
-      const mine = ev.plane && (ev.plane === shot.subj || ev.plane === shot.plane);
-      const onShip = shot.kind === 'orbit' && shot.subj && !shot.subj.diorama && ev.target === shot.subj;
+      const mine = mineOrWing(ev, shot);
+      const onShip = (shot.kind === 'orbit' || shot.kind === 'aa') && shot.subj && !shot.subj.diorama && ev.target === shot.subj;
       if (!mine && !onShip) return;
       const y0 = Math.max(0.5, p.y), tf = Math.sqrt(2 * y0 / 9.8);
       const I = V().set(p.x + p.vx * tf, 0, p.z + p.vz * tf);
@@ -57,10 +75,10 @@ window.WW = window.WW || {};
         P0: cur.P.clone(), L0: cur.L.clone() });
       handFrom(shot);
     } else if (ev.kind === 'torpedo') {
-      if (!ev.plane || ev.plane !== shot.subj || !ev.plane.kind) return; // torpedo bombers only (ships have no .kind)
+      if (!ev.plane || !ev.plane.kind || !mineOrWing(ev, shot)) return; // torpedo bombers only (ships have no .kind)
       const h = p.h, f = V().set(Math.cos(h), 0, Math.sin(h));
       const off = V().copy(cur.P).sub(V().set(p.x, 0, p.z));   // start from where the camera is: no jump
-      Object.assign(shot, { stage: 'torp', proj: p, fwd: f, off, tship: shipOf(ev.plane.target), st: 0, dur: shot.t + 14,
+      Object.assign(shot, { stage: 'torp', proj: p, fwd: f, off, tship: shipOf(ev.plane.target), st: 0, dur: shot.t + TORP_MAX, // the impact ends it
         kP: 4, kL: 5, side: shot.side || 1, aim: V().set(p.x, 0.3, p.z), L0: cur.L.clone() });
       handFrom(shot);
     }
@@ -121,14 +139,16 @@ window.WW = window.WW || {};
   function torp(shot, gP, gL, rdt) {
     const p = shot.proj;
     if (!p || p.dead || p.kind !== 'torp') { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; return hold(shot, gP, gL); }
-    const f = shot.fwd, back = 13, s = shot.tship;
-    // low over the wake, a little to the side; climb as the hull comes near so we never sit beside it
-    let hgt = 5.5;
+    const f = shot.fwd, s = shot.tship;
+    // low over the wake, a little to the side; after the first seconds the camera eases up and back so the wake and
+    // the target hull read together on a long run; climb as the hull comes near so we never sit beside it
+    const far = ease(WW.clamp((shot.st - 6) / 8, 0, 1)), back = 13 + 9 * far;
+    let hgt = 5.5 + 5 * far;
     if (s && !s.removed) {
       const d = Math.hypot(s.x - p.x, s.z - p.z), R = s.stats.length * 0.5 + 7 + back + 10;
       hgt += WW.clamp((R - d) * 0.6, 0, 10);
     }
-    _d.set(-f.x * back - f.z * shot.side * 4, hgt, -f.z * back + f.x * shot.side * 4);
+    _d.set(-f.x * back - f.z * shot.side * (4 + 3 * far), hgt, -f.z * back + f.x * shot.side * (4 + 3 * far));
     shot.off.lerp(_d, 1 - Math.exp(-rdt * 1.6));
     gP.set(p.x + shot.off.x, shot.off.y, p.z + shot.off.z);
     shot.aim.set(p.x + f.x * 5, 0.3, p.z + f.z * 5);

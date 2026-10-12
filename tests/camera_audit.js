@@ -7,11 +7,12 @@
 // Events: every weapon drop and impact with the shot at that instant (attack continuity), torpedo runs that end
 // without a drop, sinkings, magazines, base events, every caption.
 // Metrics (node side, summarize()): M1 promise kept, M2 attack continuity, M3 best-action coverage, M4 variety,
-// M5 dead air, M6 angle quality. Raw per-round JSON goes to tests/shots/camera_audit/raw, so before / after runs
+// M5 dead air, M6 angle quality. Raw per-round JSON goes to tests/shots/camera_audit/raw_<tag>, so before / after runs
 // diff on the same seeds. Math.random is seeded per round (the camera's own dice), so a round replays and
-// --sheet re-renders a window of it as a contact sheet (ImageMagick montage).
+// --sheet re-renders a window of it as a contact sheet (ImageMagick montage); the sheet's shot list (shots.txt) is
+// checked against the survey's raw JSON when it exists.
 // Usage: BASE_URL=http://localhost:8779/ CHROMIUM=... node tests/camera_audit.js [--scen standard,carrier_duel,midway,battle_line,night,dusk,odd]
-//        [--seeds 1,2,3] [--sim 600] [--workers 2] [--out dir] [--summarize] [--sheet SCEN:SEED:from:to[:every]] [--tag name]
+//        [--seeds 1,2,3] [--sim 600] [--workers 2] [--out dir] [--summarize] [--sheet SCEN:SEED:from:to[:every]] [--tag name] [--fast]
 const fs = require('fs'), path = require('path'), cp = require('child_process');
 const { chromium } = require('playwright');
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -19,7 +20,7 @@ const SCENS = arg('--scen', 'standard,carrier_duel,midway,battle_line,night,dusk
 const SEEDS = arg('--seeds', '1,2,3').split(',').map(Number);
 const SIM = +arg('--sim', 600), WORKERS = +arg('--workers', 2), TAG = arg('--tag', 'run');
 const OUT = arg('--out', path.join(__dirname, 'shots', 'camera_audit'));
-const SHEET = arg('--sheet', null), SUMMARIZE = args.includes('--summarize'), SLOW = args.includes('--slow'); // --slow: keep every visual module running (timing check)
+const SHEET = arg('--sheet', null), SUMMARIZE = args.includes('--summarize'), FAST = args.includes('--fast'); // --fast: stub the per-frame visual modules (their event handlers then draw fewer of the camera's dice, so a --sheet replay of a --fast survey shows other shots)
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8779/';
 const FONT = ['/System/Library/Fonts/Supplemental/Arial.ttf', '/System/Library/Fonts/Helvetica.ttc'].find(f => fs.existsSync(f)) || 'Helvetica';
 const rep = (t, n) => Array(n).fill(t);
@@ -36,8 +37,8 @@ const SCEN = {
 };
 function specOf(name, seed) {
   const s = SCEN[name]; if (!s) throw new Error('unknown scenario ' + name);
-  if (s.odd) { const o = ODD[(seed - 1) % ODD.length]; return { name, seed, A: o[1], B: o[2], odd: o[0], aNation: seed % 2 ? 'USN' : 'IJN', fast: !SLOW }; }
-  return Object.assign({ name, seed, aNation: s.aFixed || (seed % 2 ? 'USN' : 'IJN'), fast: !SLOW }, s);
+  if (s.odd) { const o = ODD[(seed - 1) % ODD.length]; return { name, seed, A: o[1], B: o[2], odd: o[0], aNation: seed % 2 ? 'USN' : 'IJN', fast: FAST }; }
+  return Object.assign({ name, seed, aNation: s.aFixed || (seed % 2 ? 'USN' : 'IJN'), fast: FAST }, s);
 }
 
 // ---------------- page side ----------------
@@ -89,9 +90,11 @@ function install(cfg) {
   if (WW.aces) WW.aces.reset();
   WW.seedRandom(cfg.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
   G.baseChoice = cfg.base || null; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
-  // no pixels are drawn: skip the per-frame visual work the camera never reads (particles, crews, water, decals, base props,
-  // audio). A --sheet replay (fast: false) runs them on a SECOND seeded PRNG (window.__prng2), so the camera's own dice
-  // (Math.random) fall the same way in both modes and the replay shows the survey's shots.
+  // --fast: no pixels are drawn, so skip the per-frame visual work the camera never reads (particles, crews, water, decals,
+  // base props, audio). Not the default: those modules' event handlers draw on Math.random (the camera's dice) according
+  // to the state their update builds, so a stubbed round takes other shots (and other slow-motion beats, so other sim
+  // time) than the same seed with everything running; a replay (--sheet) must run the way the survey did. In the full
+  // mode they run on a second seeded PRNG (window.__prng2) so the sheet frames rendered (post.render) do not shift the dice.
   const keep = cfg.keep || []; // modules kept running in fast mode (a probe: which one is coupled to the sim?)
   for (const [m, f] of [['fx', 'update'], ['crew', 'update'], ['water', 'update'], ['lifeboats', 'update'], ['dmgVis', 'pose'], ['dmgVis', 'draw'], ['dmgVis', 'unpose'], ['baseFx', 'update'], ['audio', 'update']]) {
     if (!WW[m] || !WW[m][f] || keep.indexOf(m) >= 0) continue;
@@ -240,7 +243,7 @@ function install(cfg) {
     const sto = WW.camStory.story(), about = sto && WW.camFinder ? WW.camFinder.about(sto.lead) : null;
     const m = /(?:in|within) ~(\d+) s/.exec(label);
     const promise = m && about ? { eta: /within/.test(label) ? +m[1] : about.etaReal, kind: about.kind, s: ref(about.subj), t: ref(about.target) } : null;
-    const finder = WW.camFinder ? WW.camFinder.list().slice(0, 6).map(i => ({ kind: i.kind, s: ref(i.subj), t: ref(i.target), eta: +i.etaReal.toFixed(1), sc: +i.score.toFixed(2) })) : [];
+    const finder = WW.camFinder ? WW.camFinder.list().slice(0, 6).map(i => ({ kind: i.kind, s: ref(i.subj), t: ref(i.target), eta: +i.etaReal.toFixed(1), sc: +i.score.toFixed(2), v: i.vague ? 1 : 0 })) : [];
     // M6: subject and target in frame, occlusion, line of action, the sun
     const c = WW.camera, subj = s && (s.plane || s.subj), isD = subj && subj.diorama;
     let tgt = null;
@@ -349,7 +352,7 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
   const impactsOn = id => R.drops.filter(d => d.imp && d.imp.s && d.imp.s.id === id).map(d => d.imp);
   function eventTimes(it) {
     const s = it.s; if (!s) return [];
-    if (it.kind === 'anvil') return dropsOf(s.id).map(d => d.w).concat(s.wv ? waveDrops(s.wv).map(d => d.w) : []);
+    if (it.kind === 'anvil' || it.kind === 'run') return dropsOf(s.id).map(d => d.w).concat(s.wv ? waveDrops(s.wv).map(d => d.w) : []);
     if (it.kind === 'push') return dropsOf(s.id).map(d => d.w).concat(R.runs.filter(e => e.k === 'dive' && e.p.id === s.id).map(e => e.w));
     if (it.kind === 'strike') return (s.wv ? waveAtt(s.wv).map(e => e.w).concat(waveDrops(s.wv).map(d => d.w)) : dropsOf(s.id).map(d => d.w));
     if (it.kind === 'bandits') return R.runs.filter(e => e.k === 'close' && e.p.id === s.id).map(e => e.w);
@@ -366,7 +369,7 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
   M.promCases = [];
   for (const r of rec) {
     if (r.promise && r.promise.s) { const kept = judge(r.promise, r.w, M.prom, /within ~/.test(r.label)); M.prom.vis++; if (kept) M.prom.visKept++; if (!kept) M.promCases.push({ w: r.w, label: r.label, eta: r.promise.eta, kind: r.promise.kind }); }
-    for (const it of r.finder) if (it.eta >= 3 && it.eta <= 60 && it.s && it.kind !== 'danger') judge(it, r.w, M.fin);
+    for (const it of r.finder) if (it.eta >= 3 && it.eta <= 60 && it.s && it.kind !== 'danger' && !it.v) judge(it, r.w, M.fin); // (a vague item shows no number)
   }
   // big events on camera
   for (const e of R.ev) { const on = e.on || e.on2, key = e.k === 'sunk' ? 'sunk:' + (e.s ? e.s.c : '?') : e.k; M.ev.n++; if (on) M.ev.on++; const k = M.ev.byKind[key] = M.ev.byKind[key] || { n: 0, on: 0 }; k.n++; if (on) k.on++; }
@@ -480,7 +483,13 @@ async function sheet(b, specTxt) {
     console.log(`  ${info.w}s ${info.shot} | ${info.top} | ${info.label} | ${info.cap}`);
   }
   const shots = await p.evaluate(() => window.__audit.shots.map(s => Math.round(s.w0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : '')));
-  fs.writeFileSync(path.join(dir, 'shots.txt'), shots.join('\n')); // the replay's shot list: compare with the survey's raw JSON
+  fs.writeFileSync(path.join(dir, 'shots.txt'), shots.join('\n')); // the replay's shot list, checked against the survey's raw JSON
+  const rawF = path.join(OUT, 'raw_' + TAG, `${name}_${seed}.json`);
+  if (fs.existsSync(rawF)) {
+    const R = JSON.parse(fs.readFileSync(rawF, 'utf8')), ref = R.shots.map(s => Math.round(s.w0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : ''));
+    let i = 0; while (i < shots.length && i < ref.length && shots[i] === ref[i]) i++;
+    console.log(i >= shots.length ? `replay matches the survey (${shots.length} shots)` : `REPLAY DIVERGES from the survey at shot ${i}: ${shots[i]} vs ${ref[i]}`);
+  }
   await p.close();
   const argsM = ['-tile', '4x', '-geometry', '480x270+3+3', '-background', '#222', '-fill', 'white', '-font', FONT, '-pointsize', '13', '-title', `${name} seed ${seed} ${from}-${to}s`];
   for (const f of frames) argsM.push('-label', `${f.info.w}s ${f.info.shot} | ${f.info.top}`.replace(/%/g, '%%'), f.file);

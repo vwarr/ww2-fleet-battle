@@ -152,9 +152,11 @@ Cuts: 5.7 / min overall, 6.8 in carrier_duel (story mode's 6-12 s shots plus the
 - Anvil set-up p90 55 s, max 149 s of real time: the strike circles the target for a long time with the label counting
   down; a cap on the wait (`now − p.anT > 16` is per plane, but the group `go` resets) would help the sim too.
 - Air torpedoes at 8-10 u/s from 82-100 u: 28 s real p50 in the water. A fine spectacle if the camera stays.
-- (Pending the module probe) A visual module changes the sim when it runs per frame: the same seed gives a different
-  battle with `crew / water / lifeboats / dmgVis / baseFx / fx / audio` running than without (seen as a different
-  sinking time in the replay of carrier_duel/1). `tests/determinism.js --cross` cannot see it: it runs no frames.
+- (Checked, not a sim bug.) A replay of a round with the visual modules stubbed took other shots than the same seed
+  with them running. The bisect (crew, dmgVis, baseFx, lifeboats each shift it; fx, water, audio do not) shows the
+  cause: their event handlers draw on `Math.random` (the camera's dice) according to the state their `update` builds,
+  the camera then picks other shots, and the camera's slow motion (`WW.time.warp`) changes how much sim time passes.
+  The sim itself follows `WW.rand` only. The audit therefore runs the survey and the replay in the same full mode.
 
 ## Contact sheets (before)
 - tests/shots/camera_audit/sheets/before_carrier_duel_1_396-432.png: a VF-6 story on a dead fighter (`fall`, `high`
