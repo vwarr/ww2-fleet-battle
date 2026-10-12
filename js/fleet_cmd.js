@@ -353,6 +353,7 @@ window.WW = window.WW || {};
   WW.fleetCmd = {
     TICK: TICK, VALUE: VALUE, TUNE: TUNE, stats: stats, update: update, reset: reset,
     side: side, order: order,
+    bigFoe: function (n) { var B = sides[n]; return !!B && bigFoe(B) && B.posture !== 'pursue'; },   // the SMALL rule's test (air_ops pickTarget near)
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },
     incoming: function (nation, target) { var B = sides[nation]; return (B && B.incoming.get(target)) || 0; },

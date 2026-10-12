@@ -285,6 +285,7 @@ window.WW = window.WW || {};
   function recall(cv) {
     for (const p of WW.world.planes) {
       if (!p.alive || p.carrier !== cv || p.kind !== 'fighter' || !p.target || p.recall || !(p.state === 'transit' || p.state === 'attack') || p.deckPh) continue;
+      if (p.wave && p.wave.go) continue;   // a strike that has left keeps its escort (1942 escorts stayed with the bombers; Fable audit F22)
       const d = WW.dist(p.x, p.z, cv.x, cv.z);
       if (d < 320 && p.fuel > d / p.pt.speed + 25) { p.recall = true; O().stats.recalls++; if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'recall', plane: p, squadron: p.squadron || null }); }
     }

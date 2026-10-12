@@ -38,7 +38,7 @@ window.WW = window.WW || {};
   const SIZE_K = { carrier: 1, battleship: 1, base: 0.8, cruiser: 0.7, destroyer: 0.4, pt: 0.3, submarine: 0.3 };
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
-  const ST = { packets: 0, deckHolds: 0, plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
+  const ST = { smallDiv: 0, packets: 0, deckHolds: 0, plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
   const SPENT_T = 60, BARE_R = 120, PACKET_DIV = 6, PACKET_SQN = 12, DECK_Q = 12, HEAVY = { carrier: 1, battleship: 1, cruiser: 1 };
   const ESC_WAIT = 45;   // s a strike waits for fighters to come back before it goes against a strong CAP without them
   // A/B switches (tests: env Q=staff=route:0,size:0): route (plotted routes), size (sizing, CAP hold, commitment, ledger),
@@ -304,6 +304,9 @@ window.WW = window.WW || {};
       cap = Math.min(cap, DECK_Q - home);
     }
     else if (Lg.mauled) cap = Math.min(cap, PACKET_DIV);
+    // a destroyer or PT boat while a carrier, battleship or cruiser is known afloat (self-defence, the pursuit): a
+    // division, not the deck load (Fable audit F4)
+    if (!tgt.isBase && (tgt.type === 'destroyer' || tgt.type === 'pt') && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(n)) { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }
     if (J.lastLoss >= LOSS_HEAVY && !J.last.cut) { J.last.cut = true; cap = Math.min(cap, Math.max(MIN_B, Math.round(J.last.n * (1.2 - J.lastLoss)))); ST.cuts++; }   // smaller than the strike that was mauled
     // the commitment ceiling: strike planes out at once (bombers and escorts) within commit x the air group
     const room = Math.round((cv.wingN || 60) * D.commit * (urgent ? 1.15 : 1)) - out - queued;

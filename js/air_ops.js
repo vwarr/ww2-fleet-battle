@@ -43,6 +43,10 @@ window.WW = window.WW || {};
   // ---------- strike targets ----------
   // A known target for a strike from `from` (carrier, plane or wave guide): the commander's order if any, else the
   // best intel contact by value, damage, freshness, distance and the AA around it. opts.near: only within that radius.
+  // opts.flight: the bombers that would go; more than SMALL_FLIGHT never go for a destroyer or PT boat while the
+  // commander knows a carrier, battleship or cruiser afloat (fleet_cmd.js SMALL rule; Fable audit F4): a deck load that
+  // loses its target looks for a worthwhile ship, else flies home with its bombs.
+  const SMALL = { destroyer: 1, pt: 1 }, SMALL_FLIGHT = 6;
   function aaAround(nation, x, z, skip) {
     if (WW.threat && WW.threat.danger) return WW.threat.danger(nation, x, z, { air: true });
     let s = 0;
@@ -52,6 +56,7 @@ window.WW = window.WW || {};
   function pickTarget(from, opts) {
     if (!WW.intel) return WW.shipAI && WW.shipAI.pickStrikeTarget ? WW.shipAI.pickStrikeTarget(from) : null;
     const nation = from.nation, now = WW.time.now, near = opts && opts.near;
+    const noSmall = near && opts.flight > SMALL_FLIGHT && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(nation);
     if (!near && from.stats && WW.fleetCmd && WW.fleetCmd.strikeOrder) {
       const o = WW.fleetCmd.strikeOrder(from);
       if (o && o.target && o.target.alive && !o.target.submerged) return o.target;
@@ -65,6 +70,7 @@ window.WW = window.WW || {};
       if (!o || !o.alive || o.submerged || o.sinking) continue;
       const d = WW.dist(from.x, from.z, c.x, c.z);
       if (near && d > near) continue;
+      if (noSmall && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type]) continue;
       const crip = 1 - o.hp / o.maxHp;
       const s = (VALUE[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type] || 0) + crip * (near ? 260 : 120) - (now - c.seenAt) * 2 - d * (near ? 1.5 : 1) - aaAround(nation, c.x, c.z, o) * 3;
       if (s > bs) { bs = s; best = o; }
@@ -207,6 +213,10 @@ window.WW = window.WW || {};
     if (!pl.ordnance || pl.oppDone || pl.search || pl.crippled || pl.phase || pl.hp < pl.maxHp * 0.5 || (pl.kind !== 'dive' && pl.kind !== 'torpedo')) return false;
     const c = pl.carrier; if (!c || c.isBase || !WW.intel) return false;
     const t = pickTarget(pl, { near: OPP_R }); if (!t || !WW.intel.visible(pl.nation, t, 3)) return false;
+    if (SMALL[t.type] && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(pl.nation)) {   // a small flight at most on a destroyer (F4)
+      let k = 0; for (const q of WW.world.planes) if (q.alive && q.nation === pl.nation && q.target === t && q.ordnance && q.kind !== 'fighter') k++;
+      if (k >= 3) return false;
+    }
     if (pl.fuel < WW.dist(pl.x, pl.z, t.x, t.z) / pl.pt.speed + WW.dist(t.x, t.z, c.x, c.z) / pl.pt.speed + OPP_FUEL) return false;
     pl.oppDone = true; pl.opp = 'home'; pl.target = t; pl.wave = null; pl.sk = null; pl.state = 'transit'; ST.homeAttacks++;
     if (WW.emit) WW.emit('airOrder', { carrier: c, order: 'attack', plane: pl, leader: pl, squadron: pl.squadron || null, target: t });

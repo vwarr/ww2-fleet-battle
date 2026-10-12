@@ -25,18 +25,25 @@ window.WW = window.WW || {};
   // until it steps to a nearer one or is cleared to approach.
   const LEVELS = 6, LEVELS_MAX = 12, FUEL_LOW = 12;
   const TRACKS = [[MARSHAL_L, 26], [MARSHAL_L, -66], [7.8, -20], [7.8, 72], [MARSHAL_L, 118], [7.8, -112], [MARSHAL_L, -158], [7.8, 164], [11.6, 26], [11.6, -66]];   // the ovals 90+ u apart
+  const DIVERT_Q = 6;           // a plane this far back in its stack may divert to a sooner deck
   const HOME_R = 110;           // distance at which a returning plane joins the stack (landing state)
   const GATE_L = 2.7, GROOVE = 60;           // the groove starts GATE_L hull lengths astern (carrier local); the whole stack lies behind it
   const gate = c => -(c.stats.length || 26) * GATE_L;
   // placed to go in: far enough astern for its offset from the wake to turn up the groove without overshooting (a
   // plane out on a quarter oval waits for the aft end of its track)
   const placed = (c, D, lx, lz) => lx < gate(c) - 10 - 0.8 * Math.max(0, Math.abs(lz - D.run) - 10);
-  const RS = { diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
+  const RS = { stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
 
   // ---------- the way home and the divert ----------
-  function deckScore(p, c) {     // seconds until this deck could take the plane (lower is better)
+  // seconds until this deck could take the plane (lower is better): the way there, then a trap's TRAP_S for each plane
+  // ahead of it (in its stack, or on the way home and nearer)
+  const TRAP_S = 7;
+  function deckScore(p, c) {
     const D = c._deck; if (!D) return 1e9;
-    let s = WW.dist(p.x, p.z, c.x, c.z) / p.pt.speed + D.lq.length * 7 + (D.mode === 'launch' ? 10 : 0);
+    const d = WW.dist(p.x, p.z, c.x, c.z), i = D.lq.indexOf(p);
+    let ahead = i >= 0 ? i : D.lq.length;
+    if (i < 0) for (const q of WW.world.planes) if (q !== p && q.alive && q.carrier === c && q.state === 'return' && WW.dist2(q.x, q.z, c.x, c.z) < d * d) ahead++;
+    let s = (i >= 0 ? 0 : d / p.pt.speed) + ahead * TRAP_S + (D.mode === 'launch' ? 10 : 0);
     if (c.hp < c.maxHp * 0.45) s += 60;
     if ((c.fireN || 0) >= 3) s += 45;
     return s;
@@ -48,11 +55,12 @@ window.WW = window.WW || {};
       if (s === own || !s.alive || s.sinking || s.isBase || s.type !== 'carrier' || !s.hangar || s.nation !== p.nation) continue;
       const v = deckScore(p, s); if (v < bs) { bs = v; best = s; }
     }
-    if (best === own) return;
+    if (best === own) return false;
     const D = own._deck; if (D) { const i = D.lq.indexOf(p); if (i >= 0) D.lq.splice(i, 1); }
     p.carrier = best; p.diverted = (p.diverted || 0) + 1; RS.diverts++;
     if (WW.airBoss) WW.airBoss.stats.diverts++;
     if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
+    return true;
   }
   // The marshal stack's centre in carrier-local coordinates.
   function stackAt(c, D, k) { const T = TRACKS[k || 0]; return [-(c.stats.length || 26) * T[0], -D.s * T[1]]; }
@@ -116,6 +124,9 @@ window.WW = window.WW || {};
         let nApp = 0;   // at most two on the approach leg, never two side by side
         for (const q of D.lq) if (q !== p && q.deckPh === 'app') { nApp++; if (nApp >= 2 || WW.dist(q.x, q.z, p.x, p.z) < 35 || toLocal(c, q.x, q.z)[0] < gate(c) - 40) inApp = true; }
         if (p.mTrack === undefined) p.mTrack = 0;
+        // well back in a long queue: another deck of the side clearly sooner takes it (its place by p.qKey goes with it)
+        p.dvT = (p.dvT || 0) - dt;
+        if (p.dvT <= 0) { p.dvT = 5; if (D.lq.indexOf(p) >= DIVERT_Q && (!p.diverted || p.diverted < 2) && divert(p)) { p.state = 'return'; p.deckPh = null; p.mTrack = undefined; RS.stackDiverts++; return; } }
         if (p.mTrack > 0) stepIn(p, D);
         const m = stackAt(c, D, p.mTrack), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT);
         to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS_MAX - 1), p.pt.speed * 0.7, 1.5);
