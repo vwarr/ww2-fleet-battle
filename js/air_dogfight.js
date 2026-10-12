@@ -48,7 +48,7 @@ window.WW = window.WW || {};
   // The plane's own element: its leader and wingmen (air_squadrons.js), alive, not itself.
   function elementMates(p) {
     const el = p.element;
-    return el ? el.members.filter(w => w !== p && w.alive && w.kind === 'fighter').concat(el.div && el.div.members[0] && el.div.members[0] !== p ? [el.div.members[0]] : []) : [];
+    return el ? el.members.filter(w => w !== p && w.alive && w.kind === 'fighter').concat(el.div && el.div.members[0] && el.div.members[0] !== p && el.div.members[0].alive ? [el.div.members[0]] : []) : [];
   }
 
   // Energy: climbing bleeds speed, diving builds it, hard turns cost speed; the engine pulls back to cruise.
@@ -324,7 +324,8 @@ window.WW = window.WW || {};
       if (!s.from) return;
       s.jinkPh += dt;
       let dh = Math.sin(s.jinkPh * 2.6) * 0.55 * dt;
-      if (s.mate) dh += WW.clamp(WW.angleDiff(p.heading, bearing(p, s.mate)), -0.35, 0.35) * dt;
+      // s.mate is picked every 0.3 s: one shot down since falls on a Math.random path (air_deaths.js), not a mate to close on
+      if (s.mate && s.mate.alive) dh += WW.clamp(WW.angleDiff(p.heading, bearing(p, s.mate)), -0.35, 0.35) * dt;
       p.heading += dh; p.turn += dh / dt;
       p.vy += Math.sin(s.jinkPh * 1.9 + 1) * 2.5 * dt;
     },

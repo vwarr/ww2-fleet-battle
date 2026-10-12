@@ -44,7 +44,9 @@ window.WW = window.WW || {};
     const c = pl.carrier; if (!c) return null;
     let best = null, bs = -1e9;
     for (const e of trouble(pl.nation)) {
-      if (e.ship.type === 'carrier' && !e.ship.isBase) continue;
+      // the list is cached for 0.5 s: a raider shot down since is falling on a Math.random path (air_deaths.js), and
+      // vectoring onto it made rounds differ between processes (tests/determinism_proc.js)
+      if (!e.raider.alive || (e.ship.type === 'carrier' && !e.ship.isBase)) continue;
       const dc = WW.dist(c.x, c.z, e.x, e.z); if (dc > reach(pl)) continue;
       let on = 0; for (const q of WW.world.planes) if (q !== pl && q.alive && q.nation === pl.nation && (q.foe === e.raider || q.vec === e.raider) && !(q.element && q.element === pl.element)) on++;
       const u = e.raider, s = 160 + (VALUE[e.ship.type] || 30) + (crip(e.ship) ? 40 : 0) + (u.kind === 'torpedo' ? 30 : 0) - on * 90 - WW.dist(pl.x, pl.z, u.x, u.z) * 0.5 - dc * 0.15;
