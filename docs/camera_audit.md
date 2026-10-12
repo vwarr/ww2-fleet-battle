@@ -253,7 +253,9 @@ Rendered by `--sheet` replays of the survey's own rounds (three of four replays 
   FAIL 0 WARN 78, `dive_film.js` 100% (gate 80%), `action_cam.js` errors 0 (max view rotation 0.71 rad/s). The
   `sub_dived_dd 0.80 >= 0.8` FAIL seen before the endgame merge is pre-existing on 7febbee (checked on a snapshot of
   that commit) and gone on the new main. `story_cam.js` timed out twice on page screenshots (60-180 s each) while
-  the machine ran five other agents' surveys (load 30-40); rerun with the fps check once the load drops.
+  the machine ran five other agents' surveys (load 30-40). A control run of the SAME test against the pre-resume
+  camera code (d480969, served from a snapshot) timed out the same way under the same load, so it is the machine, not
+  the camera; rerun it on a quiet machine. `fps.js`: 120 fps (no regression).
 - Known blemishes, not fixed: the drop splash fills the frame for a frame or two right after a torpedo drop filmed
   from the chase; a burning bomber's smoke column fills a third of the over-the-shoulder frame; the anvil set-up is
   rarely filmed and, when it is, the ship is abeam and out of the over-the-shoulder frame (M6 anvil 12%); the
