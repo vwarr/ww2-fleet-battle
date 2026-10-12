@@ -252,10 +252,11 @@ window.WW = window.WW || {};
     if (armed.length && t) { // over the attack: close cover low over the bombers, top cover above the target
       let lx = 0, lz = 0; for (const b of armed) { lx += b.x; lz += b.z; } lx /= armed.length; lz /= armed.length;
       let cx = top ? t.x : lx, cz = top ? t.z : lz;
-      const r = top ? 45 : 25;
+      // top cover circles just outside the target's heavy flak (2.2 x aa.range, in 3D from its height), close cover with the bombers
+      const TY = 56, fr = top && t.stats && t.stats.aa ? t.stats.aa.range * 2.2 + 6 : 0, r = top ? Math.max(45, Math.sqrt(Math.max(0, fr * fr - TY * TY))) : 25;
       [cx, cz] = clearFlak(pl, cx, cz, t, r);
       const a = Math.atan2(pl.z - cz, pl.x - cx) + 0.5;
-      pl.fly(cx + Math.cos(a) * r, cz + Math.sin(a) * r, top ? 56 : 42, dt, pl.pt.speed * 0.9);
+      pl.fly(cx + Math.cos(a) * r, cz + Math.sin(a) * r, top ? TY : 42, dt, pl.pt.speed * 0.9);
       return true;
     }
     const home = B.filter(b => b.state === 'return' && WW.dist(b.x, b.z, pl.carrier.x, pl.carrier.z) > 130);

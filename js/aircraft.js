@@ -6,6 +6,7 @@ window.WW = window.WW || {};
   const tracers = [];         // pooled THREE.Line
   let tracerIdx = 0, v3 = null;
   const REARM = 10;
+  const EDGE = 15;            // u outside the map before a plane turns back in
   const LOITER = 0.6;         // fuel burn of a CAP fighter on station with no foe (economical cruise)
   const PLANE_SCALE = WW.cfg.PLANE_SCALE || 0.82, PK = WW.cfg.PLANE_K || 1, FXK = Math.sqrt(PK); // ~2x true (ship_classes.js; ?planeScale=); FXK: puff sizes
   const DECK_Y = 0.75 * PK;   // fuselage centre above the flight deck (0.75 at the 1.7 tuning scale)
@@ -180,6 +181,9 @@ window.WW = window.WW || {};
         case 'landing': this.landing(dt); break;
         case 'rollout': this.rollout(dt); return;
       }
+      // the map edge: a plane more than EDGE outside turns back toward the middle (a chase or a run-out that drifted off)
+      if (this.alive && this.state !== 'landing' && this.kind !== 'scout' && this.kind !== 'flyingboat' && (this.x < -EDGE || this.z < -EDGE || this.x > WW.cfg.MAP_W + EDGE || this.z > WW.cfg.MAP_H + EDGE))
+        this.turnTo(Math.atan2(WW.cfg.MAP_H / 2 - this.z, WW.cfg.MAP_W / 2 - this.x), dt, 0.8);
       if (this.jink && WW.combatAA) WW.combatAA.applyJink(this, dt); // flak weave (combat_aa.js)
       this.trail(dt, false);
       this.integrate(dt, false);
