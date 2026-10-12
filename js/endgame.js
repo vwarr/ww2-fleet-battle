@@ -229,7 +229,7 @@ window.WW = window.WW || {};
   //  - lull out: a round with a raid force (a side that never had a gun ship: PT boats, carriers alone, submarines)
   //    cannot end by a break; once it has struck, LULL_T s with no further attack (main.js game.lastHit:
   //    a hit or a weapon dropped or fired) and no armed bomber in the air on its way end it: the raid is over
-  var LULL_T = 90, OUTB = { transit: 1, inbound: 1, attack: 1 };
+  var LULL_T = 60, OUTB = { transit: 1, inbound: 1, attack: 1 };
   var WATCH_T = 5, BITE_T = 25, CLOSE_V = 0.3, CLOSE_T = 12, CLOSE_D = 4, NIGHT_AHEAD = 150, NIGHT_T = 20;
   var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var W8 = null;

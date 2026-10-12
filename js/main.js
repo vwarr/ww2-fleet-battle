@@ -172,7 +172,7 @@ window.WW = window.WW || {};
     randomComposition, minSpacing,
     spawnComposition,
     tonnage(nation) { return (call('ships', 'alive', nation) || []).reduce((s, sh) => s + (sh.stats ? sh.stats.tons : 0), 0) + (WW.islandBase ? WW.islandBase.tons(nation) : 0); }, // + an intact island base
-    // reason: 'kill' (a side's surface fleet sunk) | 'retire' (the loser's survivors left the map) | 'time' | 'stall'
+    // reason: 'kill' (a side's surface fleet sunk) | 'retire' (the loser's survivors left the map) | 'time' | 'stall' | 'night' (both retire for the night) | 'lull' (a raid is over)
     endRound(winner, reason, loser) {
       game.state = 'victory'; game.winner = winner; game.victoryTime = 0; game.endReason = reason || 'time';
       WW.emit('victory', { winner, round: WW.stats.round, reason: game.endReason, loser: loser || null });
@@ -197,8 +197,8 @@ window.WW = window.WW || {};
   //    (a stern chase at equal speed out of gun reach is no battle; STALE_AIR while the pursuer has a carrier that can
   //    fly: time to spot and launch a pursuit strike) and no strike bound for it. Only once the surface fleets have
   //    met (game.metT: the first shell between their ships): a side broken by the air war alone must run for home
-  //    (or be caught on the way) so the fleets almost always meet; unless it has no gun ship left to meet them with
-  //    (a lone carrier). Not with game.noRetire (tests).
+  //    (or be caught on the way) so the fleets almost always meet; unless it has no surface force left to meet them
+  //    with (SURFACE_K). Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
   const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 8, STALE_T = 35, STALE_AIR = 42;
@@ -239,13 +239,15 @@ window.WW = window.WW || {};
   }
   function gotClear(n, dt) {
     const B = WW.fleetCmd && WW.fleetCmd.side(n);
-    if (game.noRetire || (game.metT === null && gunAfloat(n)) || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
+    if (game.noRetire || (game.metT === null && B && B.fitTons >= SURFACE_K * B.startTons) || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
     clearT[n] += dt;
     return clearT[n] >= CLEAR_T;
   }
   const MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
-  // the fleets-met gate on the retire (above) holds only a side that still has a gun ship to meet the enemy with
-  const gunAfloat = n => WW.world.ships.some(s => s.alive && !s.sinking && s.nation === n && GUNS[s.type]);
+  // the fleets-met gate on the retire (above) holds only a side that still has a surface force to meet the enemy with:
+  // fit gun tonnage at least SURFACE_K of what it started with (fleet_cmd.js BREAK); a lone carrier or the three
+  // destroyers left of a sunk battle line just go home
+  const SURFACE_K = 0.15;
   const afloat = (n, major) => WW.world.ships.reduce((k, s) => k + (s.alive && s.nation === n && (!major || MAJOR[s.type]) ? 1 : 0), 0);
   function out(n) {
     if (game.noRetire || !game.hadMajor[n]) return afloat(n, false) === 0; // noRetire: tests (the ASW hunt runs on)
@@ -281,7 +283,7 @@ window.WW = window.WW || {};
         else { const loser = oU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), lastEscaped(loser) ? 'retire' : 'kill', loser); }
       } else if (WW.endgame && (WW.endgame.nightOut() || WW.endgame.lullOut())) { // both retire for the night; a raid that is over
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
-        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, WW.endgame.nightOut() ? 'night' : 'time');
+        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, WW.endgame.nightOut() ? 'night' : 'lull');
       } else if (game.roundTime >= deadline() || stalled) {
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
         game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, stalled ? 'stall' : 'time');

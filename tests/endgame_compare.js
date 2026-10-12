@@ -31,7 +31,7 @@ for (const [k, label, test, cut] of P) {
 }
 const len = R => { const l = R.map(r => r.len).sort((x, y) => x - y); return l[l.length >> 1]; };
 console.log(`median round length ${len(A)}` + (B ? ` -> ${len(B)}` : ''));
-const ends = R => ['kill', 'retire', 'time', 'stall', 'cap', 'night'].map(k => k + ' ' + R.filter(r => r.end === k).length).join(' ');
+const ends = R => ['kill', 'retire', 'time', 'stall', 'cap', 'night', 'lull'].map(k => k + ' ' + R.filter(r => r.end === k).length).join(' ');
 console.log(`ends: ${ends(A)}` + (B ? `\n   -> ${ends(B)}` : ''));
 if (LIST) {
   const p = P.find(q => q[0] === LIST); const pick = R => R.filter(p[2]).map(r => `${r.scen}:${r.seed}:${r.tod}:${r.end}@${r.len}`).join(' ');
