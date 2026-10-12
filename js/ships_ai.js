@@ -231,37 +231,9 @@ window.WW = window.WW || {};
     ship.desiredHeading = Math.atan2(sp.z - ship.z, sp.x - ship.x); ship.throttle = 0.75;
   }
 
-  // ---- shared overrides, applied by the core after the role (a role can call them itself and set the flag) ----
-  // Cripple withdrawal: below WW.fleetGroups.CRIP hp (not subs) a ship turns away from the nearest known enemy,
-  // toward its own carrier / group when that is also away, at full speed, through the safest heading.
-  // It keeps shooting (guns run after this) but no longer chases. Returns true when it took over the helm.
-  function withdraw(ship) {
-    const a = ship.ai, crip = WW.fleetGroups ? WW.fleetGroups.CRIP : 0.35;
-    if (ship.type === 'submarine' || ship.hp >= crip * ship.maxHp) return false;
-    let e = null, ed = 1e9;
-    const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], now = WW.time.now;
-    for (const c of cs) {
-      if (!c.unit || !c.unit.alive || c.unit.submerged || now - c.seenAt > 45) continue;
-      if (c.unit.isBase && (!c.unit.stats.guns.length || WW.dist(ship.x, ship.z, c.x, c.z) > c.unit.stats.guns[0].range + 20)) continue; // the island base: only while under its guns
-      const d = WW.dist(ship.x, ship.z, c.x, c.z);
-      if (d < ed) { ed = d; e = c; }
-    }
-    const o = WW.fleetCmd && WW.fleetCmd.order(ship);
-    let want;
-    if (e) {
-      want = Math.atan2(ship.z - e.z, ship.x - e.x);
-      const hx = a.cv && a.cv !== ship && a.cv.alive ? a.cv.x : o ? o.sx : null, hz = a.cv && a.cv !== ship && a.cv.alive ? a.cv.z : o ? o.sz : null;
-      if (hx !== null && WW.dist(ship.x, ship.z, hx, hz) > 40) {
-        const home = Math.atan2(hz - ship.z, hx - ship.x);
-        if (Math.abs(WW.angleDiff(want, home)) < 1.1) want = blend(want, ship, hx, hz, 0.8);
-      }
-    } else if (o) want = Math.atan2(o.sz - ship.z, o.sx - ship.x);
-    else return false;
-    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;
-    ship.throttle = 1;
-    a.withdrawing = true;
-    return true;
-  }
+  // ---- shared overrides, applied by the core after the role ----
+  // (the old cripple withdrawal lived here: every role now handles its own cripples, ai_surface.js crippleHome,
+  // ai_carrier.js, ai_pt.js; subs never withdrew. Removed as dead code: Fable F30.)
   // Torpedo combing: a ship that has seen (WW.intel.torpedoes) a torpedo track heading for it turns parallel to
   // it (bow or stern on, whichever needs less rudder) after a reaction delay by type. Returns true while combing.
   const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 };
@@ -368,7 +340,7 @@ window.WW = window.WW || {};
   const roles = {}; // type -> fn(ship, dt), filled by the role files; 'surface' is the default
   WW.shipAI = {
     roles,
-    h: { bearing, seen, lead, fireSpread, blend, idle, withdraw, comb, canComb, airEvade, EV, sawIt, score, riskOf, unreachable }, // shared helpers for the role files
+    h: { bearing, seen, lead, fireSpread, blend, idle, comb, canComb, airEvade, EV, sawIt, score, riskOf, unreachable }, // shared helpers for the role files
     ROLE_W, VALUE, retarget,
     setup(ship) {
       const st = ship.stats;
@@ -404,7 +376,6 @@ window.WW = window.WW || {};
       a.withdrawing = false;
       if (role) role(ship, dt);
       const eg = WW.endgameAI && WW.endgameAI.steer(ship, dt); // broken side home / rescue (ai_endgame.js)
-      if (!eg && !a.ownWithdraw) withdraw(ship); // a role that handles its own cripples sets ship.ai.ownWithdraw
       if (!a.ownComb) { airEvade(ship); comb(ship); } // the torpedo in the water wins: comb() runs last
       if (a.turrets.length) guns(ship, dt);
     },
