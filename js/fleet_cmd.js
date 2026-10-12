@@ -23,6 +23,7 @@ window.WW = window.WW || {};
   var TUNE = { airCover: 1 };
   var PURSUE_AGE = 120;  // pursuit: strikes on contacts this old, anywhere on the map (PURSUE_STRIKE_R below)
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
+  var ENGAGE_AGE = 30, POST_DWELL = 15; // engage: only on contacts this fresh; a picture posture holds this long
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship (not the PT pickets far out ahead): engage, else approach
   // A stronger side presses "late": PRESS_MET s after the fleets met (the gun fight has shown who is stronger), or
   // PRESS_CONTACT s after first contact, or as the light goes (the day side wants it settled before dark; night_ops
@@ -87,7 +88,7 @@ window.WW = window.WW || {};
       var age = now - c.seenAt, w = Math.max(0.3, 1 - age / 90);
       known += (u.isBase ? u.power : POWER[u.type]) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power
       ex += c.x * w; ez += c.z * w; ew += w;
-      for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine' && s.type !== 'pt') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); }
+      if (age <= ENGAGE_AGE) for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine' && s.type !== 'pt') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); } // 'engage' on a current picture, not a stale report
     }
     B.strength.own = own; B.strength.known = known; B.strength.ratio = own / Math.max(known, 0.3 * own, 0.1);
     B.enemyCentre = ew ? { x: ex / ew, z: ez / ew } : null;
@@ -121,6 +122,11 @@ window.WW = window.WW || {};
     else if (rt > 60 && B.hadFit && B.strength.ratio < d.withdrawRatio && (!fit || !WW.game || WW.game.metT !== null)) B.posture = 'withdraw'; // (a raid force, PT boats or carriers alone, fights on: it never "withdraws")
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
+    // Dwell: a posture taken on the (fogged) strength picture holds POST_DWELL s before another such change (a contact
+    // blinking out of sight flipped withdraw / approach / engage every 2 s tick, captions and all). A break and a
+    // pursuit are taken at once.
+    var hardP = function (p) { return p === 'pursue' || (p === 'withdraw' && B.brokenAt); };
+    if (prev && B.posture !== prev && !hardP(B.posture) && !hardP(prev) && now - (B.postureAt || -1e9) < POST_DWELL) B.posture = prev;
     if (B.posture !== prev) B.postureAt = now;
     if (B.posture === 'withdraw' && !B.brokenAt && WW.game && WW.game.metT !== null && now - B.postureAt >= WD_BREAK) B.brokenAt = now; // F15: a real retirement
     var aw = airWar(B, cs, rt); if (B.airWar && !aw) B.holdEnd = rt; B.airWar = aw; // holdEnd: when the surface force was let go (tests)
@@ -251,7 +257,7 @@ window.WW = window.WW || {};
       var cv = cvs[k], e = null, ed = DEFEND_R; if (cv.type !== 'carrier') continue;
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit;
-        if (!u || !u.alive || u.submerged || !u.stats.guns.length || u.type === 'carrier' || u.isBase || now - c.seenAt > 30) continue; // an island cannot close on a carrier
+        if (!u || !u.alive || u.submerged || !GUNSHIP[u.type] || u.isBase || now - c.seenAt > 30) continue; // an island cannot close on a carrier; a PT boat is no gun ship (no deck load at it)
         var d = WW.dist(cv.x, cv.z, c.x, c.z); if (d < ed) { ed = d; e = u; }
       }
       if (e) B.defend.push({ carrier: cv, enemy: e, d: ed });

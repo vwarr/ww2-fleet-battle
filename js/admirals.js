@@ -168,6 +168,9 @@ window.WW = window.WW || {};
   function after(B) {
     var A = cur[B.nation]; if (!A || B.posture === A.posture) return;
     var p = B.posture, k = POST[p] || 'posture'; A.posture = p;
+    // the caption says what the ships do: an unbroken side's 'withdraw' (the strength picture) only opens the range a
+    // little and fights on (ai_surface.js prefRange x 1.15), so it is not a 'retire' (Fable F15); a break is
+    if (p === 'withdraw' && !B.brokenAt) { order(A, 'posture', A.title + ': open the range', { posture: p }); return; }
     var txt = k === 'press' ? says(A, 'press', 'general attack') : k === 'retire' ? says(A, 'retire', 'withdraw') : k === 'pursue' ? says(A, 'pursue', 'pursue the enemy')
       : A.title + ({ search: ': search for the enemy', approach: ': make for the enemy', engage: ': engage' })[p];
     order(A, k, txt, { posture: p });

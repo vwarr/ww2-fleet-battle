@@ -63,6 +63,8 @@ window.WW = window.WW || {};
     if (WW.dist2(s.x, s.z, t.x, t.z) > Math.pow(t.kind === 'pilot' ? PILOT_R : RESCUE_R, 2)) return false;
     if (br) return true;   // broken: picking up survivors comes first
     if (t.kind === 'pilot' && !lull(s.nation, t)) return false; // F27: a destroyer is not sent off station for an airman mid-battle
+    var o = WW.fleetCmd && WW.fleetCmd.order(s), cv = o && o.guard && o.role === 'escort' && o.ringCv && o.ringCv.alive ? o.ringCv : null; // a carrier's guard (fleet_formation.js tagRing, ships2) picks up only near its carrier
+    if (cv && WW.formation && WW.dist2(cv.x, cv.z, t.x, t.z) > WW.formation.GUARD_R * WW.formation.GUARD_R) return false;
     return !engaged(s) && !(WW.threat && WW.threat.danger(s.nation, t.x, t.z) > SAFE_DPS);
   }
   // a lull for an aircrew pickup: the side is not engaging, pressing or pursuing, and no enemy bomber is within

@@ -129,7 +129,7 @@ window.WW = window.WW || {};
   // Targets come from what the side knows (intel.js): only a fresh contact (a firing solution) can be a target;
   // the threat a carrier runs from and the sub a destroyer hunts may be older last-known positions.
   // Allies (formation centre, carrier, near) stay omniscient: a fleet knows where its own ships are.
-  const THREAT_AGE = 20, SUB_AGE = 30;
+  const THREAT_AGE = 20, SUB_AGE = 30, TARGET_HOLD = 6;
   function retarget(ship) {
     const a = ship.ai, st = ship.stats, ships = WW.world.ships, now = WW.time.now;
     let best = null, bestS = 0, sub = null, subD = 1e9, threat = null, threatD = 1e9, any = null, anyD = 1e9, fb = null, fbD = 1e9;
@@ -143,13 +143,14 @@ window.WW = window.WW || {};
     }
     const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], FRESH = WW.intel ? WW.intel.T.FRESH : 3;
     const W = ROLE_W[ship.type] || ROLE_W.cruiser, R = reach(st), risk = riskOf(ship), old = ship.target;
-    let oldS = -1;
+    let oldS = -1, oldC = null, oldF = false;
     a.subC = null; a.anyC = null;
     for (const c of cs) {
       const o = c.unit;
       if (!o || !o.alive) continue;
       const age = now - c.seenAt, d = WW.dist(ship.x, ship.z, c.x, c.z);
       if (d < anyD) { anyD = d; any = o; a.anyC = c; }
+      if (o === old) oldC = c;
       if (o.type === 'submarine' && age <= SUB_AGE && a.datumDone !== c.seenAt && d < subD) { subD = d; sub = o; a.subC = c; }
       if (age <= THREAT_AGE && !o.submerged && o.stats.guns.length && o.type !== 'carrier' && d < threatD) { threatD = d; threat = o; }
       if (age > FRESH) continue;
@@ -157,10 +158,13 @@ window.WW = window.WW || {};
       if (o.submerged) continue;
       if (o.type === 'submarine' && ship.type === 'submarine' && d < fbD) { fbD = d; fb = o; } // sub vs sub: last resort
       const s = score(ship, o, c, W, R, risk);
-      if (o === old) oldS = s;
+      if (o === old) { oldS = s; oldF = true; }
       if (s > bestS) { bestS = s; best = o; }
     }
     if (old && oldS > 0 && best !== old && bestS <= oldS * STICKY) { best = old; bestS = oldS; } // no target thrash
+    // the old target blinked out of sight (smoke, a squall, a lost plot for a moment): hold it TARGET_HOLD s rather
+    // than swing to another and straight back (the guns hold fire on it meanwhile; the other mounts pick their own)
+    else if (old && old.alive && !old.sinking && !oldF && oldC && now - oldC.seenAt <= TARGET_HOLD && !old.submerged) { best = old; bestS = a.targetScore || bestS; }
     if (!best && W.submarine > 0) best = fb;
     a.targetScore = bestS;
     a.cv = cv; a.near = near; a.nearD = nearD;
@@ -229,37 +233,9 @@ window.WW = window.WW || {};
     ship.desiredHeading = Math.atan2(sp.z - ship.z, sp.x - ship.x); ship.throttle = 0.75;
   }
 
-  // ---- shared overrides, applied by the core after the role (a role can call them itself and set the flag) ----
-  // Cripple withdrawal: below WW.fleetGroups.CRIP hp (not subs) a ship turns away from the nearest known enemy,
-  // toward its own carrier / group when that is also away, at full speed, through the safest heading.
-  // It keeps shooting (guns run after this) but no longer chases. Returns true when it took over the helm.
-  function withdraw(ship) {
-    const a = ship.ai, crip = WW.fleetGroups ? WW.fleetGroups.CRIP : 0.35;
-    if (ship.type === 'submarine' || ship.hp >= crip * ship.maxHp) return false;
-    let e = null, ed = 1e9;
-    const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], now = WW.time.now;
-    for (const c of cs) {
-      if (!c.unit || !c.unit.alive || c.unit.submerged || now - c.seenAt > 45) continue;
-      if (c.unit.isBase && (!c.unit.stats.guns.length || WW.dist(ship.x, ship.z, c.x, c.z) > c.unit.stats.guns[0].range + 20)) continue; // the island base: only while under its guns
-      const d = WW.dist(ship.x, ship.z, c.x, c.z);
-      if (d < ed) { ed = d; e = c; }
-    }
-    const o = WW.fleetCmd && WW.fleetCmd.order(ship);
-    let want;
-    if (e) {
-      want = Math.atan2(ship.z - e.z, ship.x - e.x);
-      const hx = a.cv && a.cv !== ship && a.cv.alive ? a.cv.x : o ? o.sx : null, hz = a.cv && a.cv !== ship && a.cv.alive ? a.cv.z : o ? o.sz : null;
-      if (hx !== null && WW.dist(ship.x, ship.z, hx, hz) > 40) {
-        const home = Math.atan2(hz - ship.z, hx - ship.x);
-        if (Math.abs(WW.angleDiff(want, home)) < 1.1) want = blend(want, ship, hx, hz, 0.8);
-      }
-    } else if (o) want = Math.atan2(o.sz - ship.z, o.sx - ship.x);
-    else return false;
-    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;
-    ship.throttle = 1;
-    a.withdrawing = true;
-    return true;
-  }
+  // ---- shared overrides, applied by the core after the role ----
+  // (the old cripple withdrawal lived here: every role now handles its own cripples, ai_surface.js crippleHome,
+  // ai_carrier.js, ai_pt.js; subs never withdrew. Removed as dead code: Fable F30.)
   // Torpedo combing: a ship that has seen (WW.intel.torpedoes) a torpedo track heading for it turns parallel to
   // it (bow or stern on, whichever needs less rudder) after a reaction delay by type. Returns true while combing.
   const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 };
@@ -303,10 +279,70 @@ window.WW = window.WW || {};
     return false;
   }
 
+  // Air-attack evasion (1942): a ship that sees bombers committed to their attack on her manoeuvres under them at
+  // full speed. Dive bombers (rolling in / diving at her within EV.R): rudder hard over, a turn of EV.LEG rad, then
+  // the next leg: the USN weaves (Yorktown, Enterprise: reversing the turn spoils the next pilot's aim), the IJN
+  // keeps turning the same way (the Kido Butai circled at Midway). Torpedo planes on their run or setting up the
+  // anvil: bow or stern on to the nearest (the less rudder), so a drop runs down her side; once a track is in the
+  // water comb() (above) takes over. Bounded: an episode ends EV.HOLD s after the last attacker, or after EV.MAX s,
+  // then EV.COOL s on course before the next (the ship rejoins her station: the role steers again); never while
+  // combing (comb, ai_surface.js earlyComb). Emits 'shipEvade' { ship, kind } at each episode's start.
+  const EV = { R: 110, RESC: 150, LEG: 1.3, HOLD: 3, MAX: 20, COOL: 5, WEAVE: { USN: true, IJN: false } };
+  function airEvade(ship) {
+    const a = ship.ai, now = WW.time.now;
+    if (ship.submerged || ship.type === 'submarine' || a.combUntil > now || a.earlyCombT === now) return false;
+    let ev = a.airEv;
+    if (ev && (now > ev.until || now - ev.t0 > EV.MAX)) { a.airEvCool = now + EV.COOL; ev = a.airEv = null; }
+    if (!ev && a.airEvCool > now) return false;
+    let dv = null, tp = null, tpD = 1e9;
+    // a ship stopped for survivors gets under way for any bomber attacking near her (Fable F8), and comes back after
+    const P = WW.world.planes, resc = !!(ship.rescue && ship.rescue.by === ship && !ship.rescue.done), r2 = (resc ? EV.RESC : EV.R) * (resc ? EV.RESC : EV.R);
+    for (let i = 0; i < P.length; i++) {
+      const p = P[i];
+      if (!p || !p.alive || !p.ordnance || p.nation === ship.nation || (p.target !== ship && !(resc && (p.kind === 'dive' || p.kind === 'torpedo')))) continue;
+      const dive = p.target !== ship || (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive')), torp = p.kind === 'torpedo' && (p.phase === 'run' || p.sk === 'anvil');
+      if (!dive && !torp) continue;
+      const d2 = WW.dist2(ship.x, ship.z, p.x, p.z);
+      if (d2 > r2 || !seen(ship, p)) continue;
+      if (torp && d2 < tpD) { tpD = d2; tp = p; } else if (dive) dv = p;
+    }
+    if (!dv && !tp) { if (!ev) return false; }
+    else if (!ev || (tp && ev.kind === 'dive')) { // a new episode (a torpedo run outranks a dive: it is the ship killer)
+      const kind = tp ? 'torp' : 'dive';
+      if (!ev) ev = a.airEv = { t0: now, until: 0, kind, h: ship.heading, end: 0, dir: 0, leg: 0 };
+      ev.kind = kind;
+      if (kind === 'dive') {
+        // the first turn away from a friend close aboard, else the other way from the last time (a weave across episodes)
+        let side = 0, nd = 3 * ship.stats.length;
+        for (const o of WW.world.ships) {
+          if (o === ship || !o.alive || o.nation !== ship.nation || o.submerged) continue;
+          const d = WW.dist(ship.x, ship.z, o.x, o.z); if (d >= nd) continue;
+          nd = d; side = Math.sign(-(o.x - ship.x) * Math.sin(ship.heading) + (o.z - ship.z) * Math.cos(ship.heading));
+        }
+        ev.dir = side ? -side : -(a.airEvDir || a.orbitDir || 1);
+        ev.h = ship.heading + ev.dir * EV.LEG; ev.leg = 1;
+      } else {
+        const b = Math.atan2(tp.z - ship.z, tp.x - ship.x);
+        ev.end = Math.abs(WW.angleDiff(ship.heading, b)) < PI / 2 ? 0 : PI;   // bow or stern on: whichever is less rudder
+      }
+      a.airEvDir = ev.dir || a.airEvDir;
+      WW.emit('shipEvade', { ship, kind });
+      if (WW.dstat) WW.dstat('evadeN', ship.nation);
+    }
+    if (dv || tp) ev.until = now + EV.HOLD;
+    if (ev.kind === 'torp' && tp) ev.h = Math.atan2(tp.z - ship.z, tp.x - ship.x) + ev.end; // follows the runner round
+    else if (ev.kind === 'dive' && Math.abs(WW.angleDiff(ship.heading, ev.h)) < 0.2 && (dv || tp)) { // leg done, still under attack
+      if (EV.WEAVE[ship.nation]) ev.dir = -ev.dir; // USN weaves, IJN circles
+      ev.h = ship.heading + ev.dir * EV.LEG; ev.leg++;
+    }
+    ship.desiredHeading = ev.h; ship.throttle = 1;
+    return true;
+  }
+
   const roles = {}; // type -> fn(ship, dt), filled by the role files; 'surface' is the default
   WW.shipAI = {
     roles,
-    h: { bearing, seen, lead, fireSpread, blend, idle, withdraw, comb, canComb, sawIt, score, riskOf, unreachable }, // shared helpers for the role files
+    h: { bearing, seen, lead, fireSpread, blend, idle, comb, canComb, airEvade, EV, sawIt, score, riskOf, unreachable }, // shared helpers for the role files
     ROLE_W, VALUE, retarget,
     setup(ship) {
       const st = ship.stats;
@@ -342,8 +378,7 @@ window.WW = window.WW || {};
       a.withdrawing = false;
       if (role) role(ship, dt);
       const eg = WW.endgameAI && WW.endgameAI.steer(ship, dt); // broken side home / rescue (ai_endgame.js)
-      if (!eg && !a.ownWithdraw) withdraw(ship); // a role that handles its own cripples sets ship.ai.ownWithdraw
-      if (!a.ownComb) comb(ship);
+      if (!a.ownComb) { airEvade(ship); comb(ship); } // the torpedo in the water wins: comb() runs last
       if (a.turrets.length) guns(ship, dt);
     },
     pickStrikeTarget: () => null // ai_carrier.js replaces it
