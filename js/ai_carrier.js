@@ -26,6 +26,7 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
+  const PI = Math.PI, CV_ORBIT = 90, WIND_RUN = 220; // the on-station circle's radius (~3.5 carrier lengths)
   const URGENT_D = 170, RUN_D = 140, FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
   // Summed repulsion from every known gun ship inside its flee radius (weight (1 - d / radius)^2): the heading
   // away from all of them, or null when none is close.
@@ -69,9 +70,17 @@ window.WW = window.WW || {};
     // ships, used to override it: a carrier kept its station while a destroyer closed on it in the dark)
     else if (near && a.thrD < RUN_D) { /* want = fl */ }
     else if (o) {
+      // On station the carrier steams a wide, slow circle round it (CV_ORBIT): its operating area. It used to turn
+      // a tight circle on the spot (heading + 0.25 rad), and its ring escorts circled with it (sanity S8c).
       const d = WW.dist(ship.x, ship.z, o.sx, o.sz);
-      if (d > 30) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
-      else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
+      if (d > CV_ORBIT + 40) { want = Math.atan2(o.sz - ship.z, o.sx - ship.x) + (B && B.zig || 0); ship.throttle = WW.clamp(d / 80, 0.5, 1); } // zigzag on passage (fleet_formation.js)
+      else {
+        const r = Math.atan2(ship.z - o.sz, ship.x - o.sx);
+        want = d < CV_ORBIT * 0.5 ? (a.cvOrbH !== undefined ? a.cvOrbH : (a.cvOrbH = ship.heading)) // near the middle: hold the course out
+          : r + a.orbitDir * (PI / 2 + WW.clamp((d - CV_ORBIT) / CV_ORBIT, -0.6, 0.6)); // the tangent, eased in / out to the circle
+        if (d >= CV_ORBIT * 0.5) a.cvOrbH = undefined;
+        ship.throttle = 0.5; calm = true;
+      }
     } else if (a.cn && WW.dist(ship.x, ship.z, a.cx, a.cz) > 45) {
       want = Math.atan2(a.cz - ship.z, a.cx - ship.x); ship.throttle = 0.7;
     } else { want = ship.heading + 0.25 * a.orbitDir; ship.throttle = 0.45; calm = true; }
@@ -86,8 +95,12 @@ window.WW = window.WW || {};
     const here = WW.threat ? WW.threat.danger(ship.nation, ship.x, ship.z) : 0;
     // Into the wind while launching / recovering (air_deck.js), only with no danger near, on (or near) station and
     // clear of the map edges (a long run downwind of the station otherwise ends pinned on the edge).
-    const onStation = !o || WW.dist(ship.x, ship.z, o.sx, o.sz) < 120, wary = WW.time.now - (a.cvWary || -1e9) < 10; // a gun ship known within WIND_SAFE
-    if (WW.airDeck && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) WW.airDeck.steer(ship, false);
+    // Hysteresis: a run into the wind already under way goes on to WIND_RUN from the station before the carrier turns
+    // back (a 120 limit both ways made 30 s legs out and back: circling in place, sanity S8c).
+    const D = ship._deck, ops = !!(D && (D.mode !== 'idle' || D.launchers.length || D.lq.length));
+    const onStation = !o || WW.dist(ship.x, ship.z, o.sx, o.sz) < (a.windOn ? WIND_RUN : 120), wary = WW.time.now - (a.cvWary || -1e9) < 10; // a gun ship known within WIND_SAFE
+    a.windOn = false;
+    if (WW.airDeck && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) { WW.airDeck.steer(ship, false); a.windOn = ops; }
     // An enemy ship closing inside ~90 units: turn away from it (allies are spaced by ships.js SPACE).
     const n = a.near;
     if (n && n.alive && n.nation !== ship.nation && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {

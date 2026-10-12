@@ -290,10 +290,11 @@ window.WW = window.WW || {};
       var la = Math.max(lead, d * 0.5);
       want = Math.atan2(p.z + sh * la - ship.z, p.x + ch * la - ship.x) + zig * WW.clamp(1.6 - d / 100, 0, 1); ship.throttle = WW.clamp(d / 50, 0.6, 1);
     }
-    else {
-      var along = (p.x - ship.x) * ch + (p.z - ship.z) * sh;
-      want = Math.atan2(p.z + sh * lead - ship.z, p.x + ch * lead - ship.x) + zig;
-      ship.throttle = WW.clamp((g.v + 0.3 * along) / ship.stats.speed, 0.12, 1);
+    else { // on station: the guide's course with a cross-track correction, the place along it by speed (as ringKeep:
+      // a ship ahead of a slow guide slows down instead of turning round to re-cross its station)
+      var along = (p.x - ship.x) * ch + (p.z - ship.z) * sh, cross = -(p.x - ship.x) * sh + (p.z - ship.z) * ch;
+      want = g.h + WW.clamp(cross * XTRACK, -XMAX, XMAX) + zig;
+      ship.throttle = WW.clamp((g.v + along / KEEP_T) / ship.stats.speed, 0.1, 1);
     }
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
     return true;
