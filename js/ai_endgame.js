@@ -135,7 +135,7 @@ window.WW = window.WW || {};
   // planes); no lair or home-waters limits. Cached for 1 s per ship.
   function pursueContact(ship, B) {
     const a = ship.ai, now = WW.time.now;
-    if (a.puT > now) return a.pu && a.pu.unit && a.pu.unit.alive ? a.pu : null;
+    if (a.puT > now) return a.pu && a.pu.unit && a.pu.unit.alive ? homeward(a.pu, now) : null;
     a.puT = now + 1; a.pu = null;
     if (!WW.intel) return null;
     let bd = 1e18;
@@ -147,7 +147,17 @@ window.WW = window.WW || {};
       const d = WW.dist2(ship.x, ship.z, c.x, c.z) * (isCripple(u) ? 0.6 : 1) * (vmax(u) < vmax(ship) * 0.95 ? 1 : 4); // cripples first; what it can catch before what outruns it
       if (d < bd) { bd = d; a.pu = c; }
     }
-    return a.pu;
+    return a.pu ? homeward(a.pu, now) : null;
+  }
+  // A contact of a broken enemy older than RECKON_T s: she is running for her home edge, so the pursuer reckons her
+  // along that course for the whole time since she was seen, at the speed she was making (a 60 s extrapolation of her
+  // last heading left a destroyer trailing a carrier 250 off for two minutes, out of sight)
+  const RECKON_T = 20;
+  function homeward(c, now) {
+    const age = now - c.seenAt, u = c.unit;
+    if (age < RECKON_T || !u || !WW.endgame.broken(u.nation)) return c;
+    const hx = WW.endgame.homeX(u.nation), sp = Math.max(c.speed || 0, 0.6 * vmax(u)), run = Math.min(sp * age, Math.abs(hx - c.x) - 20);
+    return { unit: u, x: c.x + Math.sign(hx - c.x) * Math.max(0, run), z: c.z, heading: hx > c.x ? 0 : Math.PI, speed: sp, seenAt: now };
   }
 
   WW.endgameAI = { steer, fairGame, pursueContact, isCripple, PURSUE_AGE };
