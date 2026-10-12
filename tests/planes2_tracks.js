@@ -120,6 +120,15 @@ function pick() {
     const fr = AA[best.ty] * 2.2, ry = Math.sqrt(Math.max(0, fr * fr - 56 * 56));
     rings.push({ x: sh[5], z: sh[6], r: ry, txt: 'heavy flak at 56 u (' + Math.round(ry) + ' u)', dash: false }, { x: sh[5], z: sh[6], r: 45, txt: 'old top cover orbit (45 u)', dash: true });
     title = `Top cover over the target ${best.ty} (t=${t0.toFixed(0)}-${t1.toFixed(0)})`;
+  } else if (scene === 'climbjump') {
+    // a fighter jumping a bomber climbing out of its field / off its deck ('jumpClimb' event)
+    const L = EV.filter(e => e.k === 'jumpClimb' && (!manual || (e.t >= t0 && e.t <= t1)));
+    const e = +process.env.K ? L[+process.env.K - 1] : L[0]; if (!e) throw new Error('no jumpClimb event');
+    if (!manual) { t0 = e.t - 15; t1 = e.t + 20; }
+    const f = at(planes.get(e.id), e.t), u = at(planes.get(Math.abs(e.tg)), e.t) || f; cx = (f[5] + u[5]) / 2; cz = (f[6] + u[6]) / 2; R = 140;
+    key = [e.id, Math.abs(e.tg)];
+    marks.push({ t: e.t, x: u[5], z: u[6], txt: 'bomber climbing out (y ' + Math.round(u[7]) + ')' });
+    title = `#${e.id} jumps #${Math.abs(e.tg)} climbing out (t=${e.t})`;
   } else if (scene === 'keys') {
     // the given planes over the given window (KEYS=a,b,c, t0 t1): the same moment on another trace
     key = process.env.KEYS.split(',').map(Number);
