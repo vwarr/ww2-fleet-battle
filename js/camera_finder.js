@@ -1,21 +1,25 @@
 // camera_finder.js (camera): WW.camFinder, the "imminent action" finder. It ranks the moments that are about to
 // happen by how soon (eta, sim seconds) and how dramatic, so the director and story mode (camera_story.js) can
 // arrive 10-30 s BEFORE an attack instead of after it, and the keys Tab / Shift+Tab / 8 / 9 (ui.js) can cycle them:
-//   strike   a strike wave closing on its target (eta from the wave's distance to the target, GUIDE_V);
-//   push     dive bombers circling over the target, about to push over (eta <= the VB hold);
-//   anvil    torpedo bombers setting up / flying the anvil run (eta from the distance to the release point);
-//   bandits  fighters closing on bombers (eta from their distance);
+//   strike   a strike wave closing on its target (eta from the wave's distance and the leader's speed; vague while forming);
+//   push     dive bombers running in to the push-over point (eta from the distance), circling to push over (vague),
+//            or diving (eta to the release from the height and the sink rate);
+//   anvil    torpedo bombers setting up the anvil (vague: the set-up takes 10-150 s of real time, no honest number);
+//   run      a torpedo bomber on its run (eta to the drop from the distance to its drop range);
+//   bandits  fighters closing on bombers (vague: the escort decides whether they ever get there);
 //   torps    torpedoes in the water running at a ship (eta = track distance / torpedo speed);
 //   danger   a ship burning / flooding / just hit by a magazine or deck explosion (ship_fires.js, feature-detected).
-// Each item: { kind, subj (plane or ship to film), target, eta, drama, score, label, key }. eta is in sim s; realS()
-// converts with the measured sim rate (time scale, slow motion). Cached for 0.5 s of real time.
+// Each item: { kind, subj (plane or ship to film), target, eta, drama, score, label, key, vague }. eta is in sim s;
+// realS() converts with the measured sim rate (time scale, slow motion). vague: the eta is a guess for the ranking
+// only; the follow label shows no number for it (docs/camera_audit.md M1). Cached for 0.5 s of real time.
 // Visual only: reads the sim, never writes it; no WW.rand.
 window.WW = window.WW || {};
 (function (WW) {
-  const GUIDE_V = 20, ARRIVE = 60, VB_HOLD = 20, TORP_REL = 55, HOT = [10, 30];
+  const GUIDE_V = 20, ARRIVE = 60, DROP_FAR = 100, HOT = [10, 30];
   const wall = () => performance.now() / 1000;
   const ok = p => p && !p.removed && p.alive;
-  const KIND = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
+  const KIND0 = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
+  const kindOf = t => (t && (KIND0[t.type] || (t.isBase ? 'airfield' : null))) || 'target';
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
   const sq = p => (p && p.squadron ? p.squadron.short : p && p.nation === 'IJN' ? 'IJN strike' : 'Strike');
   let cache = [], cacheAt = -1e9, cacheSim = -1e9, rate = 0.5, rW = null, rS = 0, latched = [];
@@ -45,11 +49,12 @@ window.WW = window.WW || {};
 
   function scan() {
     const out = [];
-    const add = (kind, subj, target, eta, drama, label) => {
+    const add = (kind, subj, target, eta, drama, label, vague) => {
       if (!subj) return;
       const er = realS(Math.max(0, eta));
-      out.push({ kind, subj, target, eta, etaReal: er, drama, score: drama * windowW(eta < 0 ? -1 : er), label, key: kind + ':' + (subj.id !== undefined ? subj.id : '') });
+      out.push({ kind, subj, target, eta, etaReal: er, drama, score: drama * windowW(eta < 0 ? -1 : er), label, key: kind + ':' + (subj.id !== undefined ? subj.id : ''), vague: !!vague });
     };
+    const wheelR = WW.strike && WW.strike.wheelR ? WW.strike.wheelR : (pt => (pt.push || 60) / Math.tan(pt.ang || 1.2) + 6);
     // strike waves on their way in
     const waves = WW.strike && WW.strike._waves ? WW.strike._waves() : [];
     for (const w of waves) {
@@ -60,26 +65,33 @@ window.WW = window.WW || {};
       const n = w.members.filter(m => ok(m) && m.ordnance).length;
       if (!n) continue;
       const d = w.go && w.dT < 1e8 ? w.dT : WW.dist(w.x, w.z, t.x, t.z);
-      const eta = Math.max(0, d - ARRIVE) / GUIDE_V + (w.go ? 0 : 15);
-      const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance);
-      add('strike', lead, t, eta, (1.2 + 0.25 * Math.min(6, n) + (vt ? 0.4 : 0)) * (VALUE[t.type] || 1),
-        sq(lead) + ' strike reaches the ' + (KIND[t.type] || 'target'));
+      const v = w.go && lead.speed > 8 ? lead.speed : GUIDE_V;                 // the leader's own speed (the join-up, the cruise, the let-down)
+      const eta = Math.max(0, d - ARRIVE) / v + (w.go ? 0 : 15);
+      // a wave with torpedo planes attacks 4-48 real s after it arrives (the anvil set-up): no honest number; dive bombers
+      // push over within a few seconds of the push-over point
+      const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance), vague = !w.go || vt;
+      add('strike', lead, t, eta + (vt ? 10 : 1), (1.2 + 0.25 * Math.min(6, n) + (vt ? 0.4 : 0)) * (VALUE[t.type] || 1),
+        sq(lead) + (vague && w.go ? ' strike closing on the ' : ' strike reaches the ') + kindOf(t), vague);
     }
     for (const p of WW.world.planes) {
       if (!ok(p) || !p.pt) continue;
       const t = p.target;
-      // dive bombers in the wheel over the target, about to push over
-      if (p.kind === 'dive' && p.ordnance && t && t.alive && p.state === 'attack' && !p.phase && p.wing === 0)
-        add('push', p, t, VB_HOLD * 0.4, 2.6 * (VALUE[t.type] || 1), sq(p) + ' pushes over on the ' + (KIND[t.type] || 'target'));
-      else if (p.kind === 'dive' && p.ordnance && t && t.alive && (p.phase === 'roll' || p.phase === 'dive'))
-        add('push', p, t, 0, 2.2 * (VALUE[t.type] || 1), sq(p) + ' diving on the ' + (KIND[t.type] || 'target'));
-      // torpedo bombers on the anvil / the run
-      else if (p.kind === 'torpedo' && p.ordnance && t && t.alive && (p.sk === 'anvil' || p.phase === 'run') && p.wing === 0)
-        add('anvil', p, t, Math.max(0, WW.dist(p.x, p.z, t.x, t.z) - TORP_REL) / Math.max(10, p.speed || 26), 2.8 * (VALUE[t.type] || 1), sq(p) + ' torpedo run on the ' + (KIND[t.type] || 'target'));
-      // fighters closing on bombers
+      // dive bombers running in to the push-over point (a number), circling to push over (no number), or diving
+      if (p.kind === 'dive' && p.ordnance && t && t.alive && p.state === 'attack' && !p.phase && p.wing === 0) {
+        const R = wheelR(p.pt), dh = WW.dist(p.x, p.z, t.x, t.z), out = dh > R + 16;
+        add('push', p, t, out ? (dh - R) / Math.max(8, p.speed || 20) + 1 : 2.5, 2.6 * (VALUE[t.type] || 1),
+          sq(p) + (out ? ' pushes over on the ' : ' circling to push over on the ') + kindOf(t), !out);
+      } else if (p.kind === 'dive' && p.ordnance && t && t.alive && (p.phase === 'roll' || p.phase === 'dive'))
+        add('push', p, t, p.vy < -1 ? Math.max(0, p.y - (p.relAlt || 18)) / -p.vy : 2, 2.2 * (VALUE[t.type] || 1), sq(p) + ' releases on the ' + kindOf(t));
+      // torpedo bombers on the run (a number: the distance to the drop range) or setting up the anvil (no number)
+      else if (p.kind === 'torpedo' && p.ordnance && t && t.alive && p.phase === 'run' && p.wing === 0)
+        add('run', p, t, Math.max(0, WW.dist(p.x, p.z, t.x, t.z) - (p.dropR || DROP_FAR)) / Math.max(8, (p.speed || 20)), 3 * (VALUE[t.type] || 1), sq(p) + ' drops on the ' + kindOf(t));
+      else if (p.kind === 'torpedo' && p.ordnance && t && t.alive && p.sk === 'anvil' && p.wing === 0)
+        add('anvil', p, t, Math.max(4, 20 - (WW.time.now - (p.anT || WW.time.now))), 2.8 * (VALUE[t.type] || 1), sq(p) + ' sets up its torpedo attack on the ' + kindOf(t), true);
+      // fighters closing on bombers (no number: the escort decides)
       else if (p.kind === 'fighter' && p.state === 'attack' && ok(p.foe) && p.foe.kind !== 'fighter' && p.foe.kind !== 'scout') {
         const d = Math.hypot(p.foe.x - p.x, p.foe.y - p.y, p.foe.z - p.z);
-        add('bandits', p, p.foe, Math.max(0, d - 15) / 12, 1.6 + (p.ace ? 0.6 : 0), (sq(p) + ' fighters on ' + sq(p.foe)).replace('Strike fighters', 'Fighters'));
+        add('bandits', p, p.foe, Math.max(0, d - 15) / 12, 1.6 + (p.ace ? 0.6 : 0), (sq(p) + ' fighters closing on ' + sq(p.foe)).replace('Strike fighters', 'Fighters'), true);
       }
     }
     // torpedoes in the water: project each track onto the hulls ahead of it
@@ -99,7 +111,7 @@ window.WW = window.WW || {};
           if (!b || eta < b.eta) best.set(s, { eta, n: (b ? b.n : 0) + 1 }); else b.n++;
         }
       }
-      for (const [s, b] of best) add('torps', s, s, b.eta, (2.4 + 0.3 * Math.min(4, b.n)) * (VALUE[s.type] || 1), 'Torpedoes running at the ' + (KIND[s.type] || 'ship'));
+      for (const [s, b] of best) add('torps', s, s, b.eta, (2.4 + 0.3 * Math.min(4, b.n)) * (VALUE[s.type] || 1), 'Torpedoes running at the ' + (KIND0[s.type] || 'ship'));
     }
     // ships in danger: fires, flooding, a magazine / deck explosion just now (ship_fires.js, when present)
     const now = WW.time.now;
@@ -113,7 +125,7 @@ window.WW = window.WW || {};
       else if (s.sinking) { d = 2.2; why = 'goes down'; }
       else if (fire >= 3 || (s.avgas && fire >= 2)) { d = 1.4 + 0.15 * fire; why = 'burns'; }
       else if (flood > 0.15 || low > 0.75) { d = 1.3; why = flood > 0.15 ? 'is flooding' : 'is badly hurt'; }
-      if (d) add('danger', s, s, 0, d * (VALUE[s.type] || 1) * 0.8, (s.name || 'The ' + (KIND[s.type] || 'ship')) + ' ' + why);
+      if (d) add('danger', s, s, 0, d * (VALUE[s.type] || 1) * 0.8, (s.name || 'The ' + (KIND0[s.type] || 'ship')) + ' ' + why);
     }
     out.sort((a, b) => b.score - a.score);
     return out;

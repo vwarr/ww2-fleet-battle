@@ -171,8 +171,8 @@ window.WW = window.WW || {};
       if (p.target === b && p.ordnance && WW.dist2(p.x, p.z, b.x, b.z) < 140 * 140) raid = true;
       if (p.carrier === b && (p.rwPh === 'roll' || p.rwPh === 'climb') && p.variant && WW.landAir.VAR[p.variant].model) add(6.5, 'chase', p, { dur: dur(12, 15) });
     }
-    if (raid) add(7.5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 80, dur: dur(14, 18), w: 0.045, hgt: 0.32 });
-    else if (b.facilities.some(f => f.out && WW.time.now - f.outAt < 90)) add(5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 70, dur: dur(13, 17), w: 0.04, hgt: 0.3 });
+    if (raid && !WW.camScenes) add(7.5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 80, dur: dur(14, 18), w: 0.045, hgt: 0.32 }); // (camera_scenes.js: the elevated base shot)
+    else if (!raid && b.facilities.some(f => f.out && WW.time.now - f.outAt < 90)) add(5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 70, dur: dur(13, 17), w: 0.04, hgt: 0.3 });
   });
 
   // ---------- the bombardment on screen: heavy shells throw up earth, the fuel farm goes up in a fireball ----------

@@ -205,7 +205,8 @@ window.WW = window.WW || {};
       var pur = WW.fleetCmd && WW.fleetCmd.side(s.nation) && WW.fleetCmd.side(s.nation).posture === 'pursue';
       if (sc.plane || sc.sorties >= MAX_SORTIES + (pur ? 1 : 0) || g.roundTime < sc.nextT) continue;
       if (WW.dayNight && !WW.dayNight.canFly()) continue; // no flying after dusk (daylight.js)
-      if (!enemyAlive(s.nation) || g.roundTime > (g.deadline ? g.deadline() : WW.cfg.ROUND_TIMEOUT) - SEARCH_T) { sc.sorties = 99; continue; }
+      if (!enemyAlive(s.nation)) { sc.sorties = 99; continue; }
+      if (WW.dayNight && WW.dayNight.lightLeft && WW.dayNight.lightLeft() < SEARCH_T) continue; // not back before dark
       sc.plane = launch(s); sc.sorties++;
     }
   }

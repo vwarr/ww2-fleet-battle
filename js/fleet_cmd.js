@@ -206,15 +206,25 @@ window.WW = window.WW || {};
     }
     // the enemy's air cover as seen: every enemy carrier seen is sunk or crippled, and an own carrier can fly
     var bare = false;
-    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (!knownGone(B, q, now) && knownHp(B, q) >= WW.fleetGroups.CRIP) bare = false; }); }
+    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (!knownGone(B, q, now) && knownHp(B, q) >= WW.fleetGroups.CRIP && !(WW.staff && WW.staff.provenBare && WW.staff.provenBare(B.nation, q))) bare = false; }); }   // as known (F5): a deck our strikes found bare (air_staff.js) is no cover
     return beaten(fitT, all, B.fitTons, B.startTons, 1, bare);
   }
-  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now; seenBy: only one the side seenBy knows of
+  // the strike planes a carrier still has: in the hangar, being rearmed and in the air (a planeless deck is no air cover)
+  var COVER_N = 6;
+  function airGroup(q) {
+    var h = q.hangar; if (!h) return 0;
+    var k = (h.dive || 0) + (h.torpedo || 0), P = WW.world.planes, i;
+    if (q.rearm) for (i = 0; i < q.rearm.length; i++) if (q.rearm[i].kind !== 'fighter') k++;
+    for (i = 0; i < P.length; i++) if (P[i].alive && P[i].carrier === q && (P[i].kind === 'dive' || P[i].kind === 'torpedo')) k++;
+    return k;
+  }
+  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now, with COVER_N or more strike planes; seenBy: only
+  // one the side seenBy knows of
   function fitCV(n, seenBy) {
     var D = WW.dayNight; if (D && !D.canFly()) return false;
     var S = WW.world.ships;
     for (var i = 0; i < S.length; i++) {
-      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp) continue;
+      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp || airGroup(q) < COVER_N) continue;
       if (!seenBy || seenBy.foeCV.has(q.id)) return true;
     }
     return false;
@@ -375,6 +385,7 @@ window.WW = window.WW || {};
   WW.fleetCmd = {
     TICK: TICK, VALUE: VALUE, TUNE: TUNE, stats: stats, update: update, reset: reset,
     side: side, order: order,
+    bigFoe: function (n) { var B = sides[n]; return !!B && bigFoe(B) && B.posture !== 'pursue'; },   // the SMALL rule's test (air_ops pickTarget near)
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },
     incoming: function (nation, target) { var B = sides[nation]; return (B && B.incoming.get(target)) || 0; },
