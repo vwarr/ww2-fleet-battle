@@ -33,6 +33,7 @@ const SCEN = {
   standard: { random: true },
   carrier_duel: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'] },
   midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
+  ijnbase: { A: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'IJN' },
   cvpt: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer', 'pt', 'pt'], B: ['carrier', 'cruiser', 'destroyer', 'destroyer', 'pt', 'pt', 'submarine'] }
 };
 const ODD = ['cv_vs_pt', 'cv2_vs_cv2', 'full_vs_pt2', 'cv_vs_bb'].map(n => FZ.NAMED.find(x => x[0] === n));
@@ -67,7 +68,7 @@ function install() {
   fresh();
   WW.on('roundStart', fresh);
   const ev = (k, o) => { if (S && S.tr) S.tr.ev.push(Object.assign({ t: +now().toFixed(1), k }, o)); };
-  WW.on('airOrder', e => { try { if (S && e) { if (e.order === 'escortHome') S.esc++; if (e.order === 'ditchBy') S.dby++; } if (S && e && (e.order === 'alert' || e.order === 'escortHome' || e.order === 'ditchBy' || e.order === 'coverShip' || e.order === 'preempt')) ev(e.order, { id: e.plane ? id(e.plane) : 0, fr: e.from ? id(e.from) : 0, n: e.carrier ? e.carrier.nation : null, tg: e.target ? -id(e.target) : 0, x: e.plane ? +e.plane.x.toFixed(0) : 0, z: e.plane ? +e.plane.z.toFixed(0) : 0 }); } catch (er) { R.err++; } });
+  WW.on('airOrder', e => { try { if (S && e) { if (e.order === 'escortHome') S.esc++; if (e.order === 'ditchBy') S.dby++; } if (S && e && (e.order === 'alert' || e.order === 'escortHome' || e.order === 'ditchBy' || e.order === 'coverShip' || e.order === 'preempt' || e.order === 'jumpClimb')) ev(e.order, { id: e.plane ? id(e.plane) : 0, fr: e.from ? id(e.from) : 0, n: e.carrier ? e.carrier.nation : null, tg: e.target ? -id(e.target) : 0, x: e.plane ? +e.plane.x.toFixed(0) : 0, z: e.plane ? +e.plane.z.toFixed(0) : 0 }); } catch (er) { R.err++; } });
   WW.on('weaponDropped', e => {
     try {
       const p = e && e.plane; if (!S || !p) return;
@@ -203,7 +204,7 @@ function install() {
     if (S.tr) {
       const half = S.k % 2 === 0;
       if (half) for (const p of planes) {
-        if (!p.alive || p.removed || p.state === 'rollout' || p.state === 'takeoff' && p.deckPh !== 'climb') continue;
+        if (!p.alive || p.removed || p.state === 'rollout' || p.state === 'takeoff' && p.deckPh !== 'climb' && p.rwPh !== 'climb' && p.y < 2.5) continue;
         const st = p.state[0] + (p.search ? 's' : '') + (p.target ? 'x' : '') + (p.foe ? 'f' : '') + (p.vec ? 'v' : '') + (p.escortHome ? 'e' : '') + (p.alert ? 'a' : '') + (p.deckPh === 'marshal' ? 'm' : '');
         S.tr.rows.push([+t.toFixed(2), id(p), p.nation === 'USN' ? 'U' : 'J', p.kind[0], st, +p.x.toFixed(1), +p.z.toFixed(1), +p.y.toFixed(1), +p.heading.toFixed(3), +(p.roll || 0).toFixed(3), +(p.hp / p.maxHp).toFixed(2), +p.speed.toFixed(1), p.foe ? id(p.foe) : 0, p.target ? -id(p.target) : 0]);
       }
