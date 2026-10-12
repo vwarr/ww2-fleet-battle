@@ -32,7 +32,7 @@ window.WW = window.WW || {};
   // placed to go in: far enough astern for its offset from the wake to turn up the groove without overshooting (a
   // plane out on a quarter oval waits for the aft end of its track)
   const placed = (c, D, lx, lz) => lx < gate(c) - 10 - 0.8 * Math.max(0, Math.abs(lz - D.run) - 10);
-  const RS = { flakDetours: 0, stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
+  const RS = { flakSteps: 0, flakDetours: 0, stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
 
   // ---------- the way home and the divert ----------
   // seconds until this deck could take the plane (lower is better): the way there, then a trap's TRAP_S for each plane
@@ -68,11 +68,25 @@ window.WW = window.WW || {};
   // bombers) and then by when the plane first joined a stack (p.qKey: kept through a divert).
   const rank = q => (q.fuel < FUEL_LOW ? 0 : q.kind === 'fighter' ? 1 : 2);
   function counts(D) { const n = TRACKS.map(() => 0); for (const q of D.lq) if (q.deckPh === 'marshal' && q.mTrack !== undefined) n[q.mTrack]++; return n; }
+  // the ovals under a known enemy heavy ship's flak (an enemy gun line near the carrier): none of the stack there
+  // while another oval is clear (sanity P9). Per deck, re-plotted every 2 s.
+  function flakTracks(D) {
+    const c = D.c, now = WW.time.now;
+    if (D.fkT !== undefined && now < D.fkT) return D.fk;
+    D.fkT = now + 2; D.fk = TRACKS.map(() => false);
+    if (!WW.intel) return D.fk;
+    const L = [];
+    for (const ct of WW.intel.enemyShips(c.nation)) { const o = ct.unit; if (o && o.alive && !o.sinking && !o.isBase && HEAVY_AA[o.type] && o.stats.aa) L.push([ct.x, ct.z, o.stats.aa.range * FLAK_K + FLAK_PAD]); }
+    if (!L.length) return D.fk;
+    for (let k = 0; k < TRACKS.length; k++) { const m = stackAt(c, D, k), w = c.toWorld(m[0], m[1]); D.fk[k] = L.some(e => WW.dist(w[0], w[1], e[0], e[1]) < e[2] + RT + 22); }
+    if (D.fk.every(v => v)) D.fk = TRACKS.map(() => false);   // nowhere clear: the stack as it is
+    return D.fk;
+  }
   function enter(p, D) {
     if (D.lq.indexOf(p) >= 0) return;
     if (p.qKey === undefined) p.qKey = WW.time.now;
-    const n = counts(D);
-    let k = n.findIndex(v => v < LEVELS); if (k < 0) k = n.indexOf(Math.min(...n));
+    const n = counts(D), fk = flakTracks(D);
+    let k = n.findIndex((v, i) => v < LEVELS && !fk[i]); if (k < 0) k = n.findIndex((v, i) => v < LEVELS_MAX && !fk[i]); if (k < 0) k = n.indexOf(Math.min(...n));
     p.mTrack = k;
     const r = rank(p);
     let i = D.lq.findIndex(q => q.deckPh === 'marshal' && (rank(q) > r || (rank(q) === r && q.qKey > p.qKey)));
@@ -85,8 +99,8 @@ window.WW = window.WW || {};
     if (WW.time.now < (p.mStepAt || 0)) return;
     p.mStepAt = WW.time.now + 2;
     for (const q of D.lq) { if (q === p) break; if (q.deckPh === 'marshal' && q.mTrack === p.mTrack) return; }
-    const n = counts(D);
-    for (let k = 0; k < p.mTrack; k++) if (n[k] < LEVELS) { p.mTrack = k; RS.steps++; return; }
+    const n = counts(D), fk = flakTracks(D);
+    for (let k = 0; k < p.mTrack; k++) if (n[k] < LEVELS && !fk[k]) { p.mTrack = k; RS.steps++; return; }
   }
   // The way home round the heavy flak (2.2 x aa.range, combat_aa.js) of a known enemy battleship, cruiser or carrier
   // that lies across it: a point abeam of the ship, on the plane's side, just outside the flak. Re-plotted every 2 s.
@@ -148,7 +162,11 @@ window.WW = window.WW || {};
         // well back in a long queue: another deck of the side clearly sooner takes it (its place by p.qKey goes with it)
         p.dvT = (p.dvT || 0) - dt;
         if (p.dvT <= 0) { p.dvT = 5; if (D.lq.indexOf(p) >= DIVERT_Q && (!p.diverted || p.diverted < 2) && divert(p)) { p.state = 'return'; p.deckPh = null; p.mTrack = undefined; RS.stackDiverts++; return; } }
-        if (p.mTrack > 0) stepIn(p, D);
+        if (flakTracks(D)[p.mTrack] && WW.time.now >= (p.mStepAt || 0)) {   // its oval under enemy flak: across to a clear one
+          p.mStepAt = WW.time.now + 2;
+          const n = counts(D), fk = D.fk; let k = n.findIndex((v, i) => v < LEVELS && !fk[i]); if (k < 0) k = n.findIndex((v, i) => v < LEVELS_MAX && !fk[i]);
+          if (k >= 0) { p.mTrack = k; RS.flakSteps++; }
+        } else if (p.mTrack > 0) stepIn(p, D);
         const m = stackAt(c, D, p.mTrack), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT);
         to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS_MAX - 1), p.pt.speed * 0.7, 1.5);
         const groove = !ahead || (D.k.tdX - toLocal(c, ahead.x, ahead.z)[0]) < GROOVE;   // the plane ahead is well into its final
