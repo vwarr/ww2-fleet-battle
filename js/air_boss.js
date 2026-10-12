@@ -11,7 +11,7 @@ window.WW = window.WW || {};
   const MIN_B = 4;             // bombers for a strike (fewer: they join the next one, unless no more are coming)
   const RETRY = 2;             // s between strike checks while nothing can go
   const CV_AGE = 120;          // a carrier contact this fresh draws the strike (Midway: the carriers first)
-  const ETA = { form: 40, v: 21, attack: 30, launch: 0.9, trap: 3.5 };   // orderStrike's sunset sum: s, u/s, s, s per plane off, s per plane aboard
+  const ETA = { form: 40, v: 21, attack: 30, launch: 0.9, trap: 7 };   // orderStrike's sunset sum: s, u/s, s, s per plane off, s per plane aboard (the measured recovery rate, wave-offs and launch windows included)
   const LOADS = 2;             // deck loads per strike (toy group): the spotted load, then one more up the elevators while it forms up
   const ESCORT_FRAC = { IJN: 0.3, USN: 0.15 }; // escort floor per bomber (doctrine escortFrac overrides)
   const STRIKE_N = [12, 24];   // planes per strike, toy group / full group (TUNE.wing 1: a 1942 deck-load strike of ~25), in as many deck loads as it takes
@@ -23,6 +23,7 @@ window.WW = window.WW || {};
   const BS = { capLanded: 0, lateHolds: 0, lateCuts: 0, strikes: 0, waits: 0, small: 0, cvFirst: 0, cvRetarget: 0, capBatches: 0, capHome: 0, diverts: 0 };
   const O = () => WW.airOps;
 
+  function homeN(cv) { let k = 0; for (const p of WW.world.planes) if (p.alive && p.carrier === cv && (p.state === 'return' || p.state === 'landing')) k++; return k; }   // planes to land before a new strike's
   function group(ship, base) {   // ships.js: the hangar a new carrier starts with
     const F = FULL[ship.nation], k = TUNE.wing;
     if (base) { ship.wingF = base.fighter; ship.wingN = base.fighter + base.dive + base.torpedo; }
@@ -207,7 +208,7 @@ window.WW = window.WW || {};
     // must fit in the light left (daylight.js lightLeft); else a smaller strike that fits, or none.
     const LL = WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity;
     if (LL < 1e9) {
-      const D = cv._deck, d = WW.dist(cv.x, cv.z, tgt.x, tgt.z), fix = ETA.form + 2 * d / ETA.v + ETA.attack + (D ? D.lq.length : 0) * ETA.trap;
+      const D = cv._deck, d = WW.dist(cv.x, cv.z, tgt.x, tgt.z), fix = ETA.form + 2 * d / ETA.v + ETA.attack + homeN(cv) * ETA.trap;
       const per = ETA.launch + ETA.trap, room = Math.floor((LL - fix) / per);
       if (room < nd + nt + esc) {
         if (room - Math.min(esc, 2) < MIN_B) { a.strikeT = RETRY * 3; BS.lateHolds++; return; }
