@@ -17,7 +17,8 @@ const SC = {
   pt_vs_bb: { A: ['pt', 'pt'], B: ['battleship', 'cruiser'] },
   cv_vs_pt: { A: rep('carrier', 3), B: rep('pt', 10) },
   ijnbase: { A: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'cruiser', 'destroyer', 'destroyer'], base: 'IJN', aFixed: 'USN' },
-  bb4_vs_bb4: { A: rep('battleship', 4), B: rep('battleship', 4) }
+  bb4_vs_bb4: { A: rep('battleship', 4), B: rep('battleship', 4) },
+  dd_vs_dd: { A: ['destroyer'], B: ['destroyer'] }, ss_vs_ss: { A: rep('submarine', 3), B: rep('submarine', 3) }, dd6_vs_ss6: { A: rep('destroyer', 6), B: rep('submarine', 6) }
 };
 (async () => {
   const b = await HL.launch(), p = await b.newPage();
