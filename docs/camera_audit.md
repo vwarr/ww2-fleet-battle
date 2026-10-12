@@ -228,7 +228,21 @@ What changed the numbers:
   when it is, the circling bomber's over-the-shoulder shot cannot hold a ship abeam; structural, left as is.
 
 ## Contact sheets (after; tests/shots/camera_audit/sheets/after_*.png, looked at)
-(filled in below once rendered)
+Rendered by `--sheet` replays of the survey's own rounds (three of four replays match the survey's shot list exactly;
+`dusk:5` drifts by 3 s at shot 5 but shows the same attack).
+- after_carrier_duel_1_530-570.png: a Kate of the Akagi attack unit on its run, Enterprise ahead in frame (547-551 s,
+  caption "Akagi attack unit begins its run"), the drop (553), the wake followed low from behind to the hull (555-569,
+  the carrier growing in frame), the hit held (571, "Torpedo hit · Enterprise · Akagi attack unit"), then the next
+  shot. One blemish: the drop splash fills the frame for a frame or two at 553.
+- after_battle_line_1_624-644.png: the duel shot at dusk, over the firing battleship's quarter with the enemy line and
+  their splashes beyond (631-643, hits and straddles scored on it), then the orbit on the straddled ship with the
+  shells in the air (645-649).
+- after_battle_line_1_542-562.png: the base under bombardment, elevated over the field looking toward the bombarding
+  cruiser: shells in the air, bursts and fires on the revetments, "A plane caught on the ground · Midway" (551-563),
+  then the straddled ship at sunset.
+- after_dusk_5_264-306.png: a VT-6 story at dusk: the over-the-shoulder of a damaged Devastator trailing smoke on its
+  run ("drops on the destroyer in ~5 s", kept), the drop, the wake to Mikuma (282-303), the hit (306), the profile of
+  the sinking with the boats (309-312). Blemish: the burning plane's own smoke column fills a third of the frame.
 
 ## Status / handoff
 - 2026-10-11 22:00: Phase 2 items 1 (attack lock) and 2 (honest labels, outcome captions), ship / base scenes and
