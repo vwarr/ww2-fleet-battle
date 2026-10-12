@@ -245,25 +245,19 @@ Rendered by `--sheet` replays of the survey's own rounds (three of four replays 
   the sinking with the boats (309-312). Blemish: the burning plane's own smoke column fills a third of the frame.
 
 ## Status / handoff
-- 2026-10-11 22:00: Phase 2 items 1 (attack lock) and 2 (honest labels, outcome captions), ship / base scenes and
-  interrupts, interrupt cadence: DONE (commits 6f5d632 .. d480969). Interim 6-round `standard` check (summary_raw_after.md
-  at that point): M1 67%, M2 97%, M3 44 / 56, M5 10%, base 1%, snaps 5.9 / min (regression: bomb hand-offs from the
-  deck shot, the over-the-shoulder turn rate).
-- Resumed 2026-10-11 (camera3 on origin/main with planes2 rounds 1-2 and basebattle merged). TO DO: item 3 (one director
-  score with hysteresis, story mode yielding from an unlocked attack phase), item 4 (director angles: run / dive / gun),
-  the snap sources, then the 42-round AFTER survey, the before / after table and the contact sheets.
-- Note for the AFTER table: origin/main's sim changed under the camera between the baseline and the after survey
-  (planes2 bombers-first pre-emption, basebattle bombardment). M1 / M2 / M6 are camera-internal; M3 / M4 / M5 compare
-  the camera on a sim with more base action than the baseline had.
-- 2026-10-11 (usage limit hit mid-step): item 3 is in (camera_score.js, commits 8b2a850 .. 089d00a), item 4's director
-  angles too (plane chase = story chase framing, duel for ships closing, dives chased / from the deck, deck bomb stays
-  put, view turn capped at 1 rad/s: snaps 5.9 -> 0.0 / min). Smoke (raw_smoke3, standard 1 + midway 1, 300 sim s):
-  M3 56 / 69 (interim 44 / 56), M5 7%, base 5%, cuts 5.9 / min, M1 100% of 5. REGRESSION TO FIX FIRST: M2 42% of 12
-  filmed drops (6 cut before the release): the re-evaluation recuts a shot whose subject is about to attack but is not
-  yet locked (e.g. "chase 6.8 -> chase 8.5", "ots 7.0 -> aa 8.7" in the raw_smoke3 score.log). Fix idea: in
-  camera_score.js free(), refuse a recut while the finder's item about the shot's subject (camFinder.about) promises its
-  drop / dive within ~12 real s, or while the subject is a bomber in state 'attack' with ordnance; then re-smoke, then the
-  42-round AFTER survey (--seeds 1,2,3,4,5,6 --sim 600 --tag after --workers 2), the before / after table, sheets
-  (torpedo attack to impact, gun duel, base bombardment), tests (determinism --cross 1 200, sim_behaviour, dive_film,
-  story_cam, action_cam, fps once). Server: serve a snapshot of the tree (scratchpad/snap) on 8779 so edits do not mix
-  into a running survey.
+- 2026-10-12: Phase 2 COMPLETE on branch camera3 (head after this commit; not merged to main, not deployed). Items 1-4
+  in, the AFTER survey measured (table above), the sheets looked at. origin/main at 98042b3 (endgame) is merged in;
+  the finale orbit / coda (pr 99) is left alone by the director score.
+- Tests on the merged tree: camera_audit smoke (standard / midway / carrier_duel seed 1, 300 sim s: M2 100% of 14, no
+  page errors), `determinism.js --cross 1 200` PASS (render / browser / node identical), `sim_behaviour.js` PASS 342
+  FAIL 0 WARN 78, `dive_film.js` 100% (gate 80%), `action_cam.js` errors 0 (max view rotation 0.71 rad/s). The
+  `sub_dived_dd 0.80 >= 0.8` FAIL seen before the endgame merge is pre-existing on 7febbee (checked on a snapshot of
+  that commit) and gone on the new main. `story_cam.js` timed out twice on page screenshots (60-180 s each) while
+  the machine ran five other agents' surveys (load 30-40); rerun with the fps check once the load drops.
+- Known blemishes, not fixed: the drop splash fills the frame for a frame or two right after a torpedo drop filmed
+  from the chase; a burning bomber's smoke column fills a third of the over-the-shoulder frame; the anvil set-up is
+  rarely filmed and, when it is, the ship is abeam and out of the over-the-shoulder frame (M6 anvil 12%); the
+  diving `push` ETA ("releases in ~N s", from the height and sink rate) was 0 of 10 label-seconds kept in the merged
+  smoke (small sample; worth a look in the next pass).
+- Sim-side findings for planes2 (P6) stand: 17% of runs abort without a drop (87 of 502 in the after survey), the
+  anvil set-up p90 55 s of real time.
