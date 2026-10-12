@@ -10,6 +10,7 @@
 //        survivors are aboard (the side leaves the map last with its rescuers and escorts).
 //    A carrier leaves at once (its planes still up go with it, endgame.js).
 //  - Any posture, USN: a destroyer with a rescue task steams to the survivors and slows alongside (endgame.js).
+//  - Any posture, either navy: a destroyer sent to scuttle a hulk (ship.scuttle, endgame.js) closes on her beam.
 //  - Pursuing side (posture 'pursue'): ai_surface.js reads pursueContact() and fairGame() (below).
 window.WW = window.WW || {};
 (function () {
@@ -25,6 +26,7 @@ window.WW = window.WW || {};
     if (ship.type === 'submarine' || !WW.fleetCmd || !WW.endgame) return false;
     const B = WW.fleetCmd.side(ship.nation), d = B && B.doctrine;
     if (!B) return false;
+    if (ship.scuttle) return scuttleSteer(ship, B);                         // a hulk to send down (endgame.js)
     if (WW.endgame.broken(ship.nation) && !(WW.game && WW.game.noRetire)) return retreat(ship, B, d); // noRetire: tests, no leaving
     if (WW.charge && WW.charge.steer(ship, dt)) { ship.escapeEdge = 0; return true; } // escorts charging to save a carrier (ai_charge.js)
     ship.escapeEdge = 0; // (a broken side that turns to pursue a worse-broken enemy, fleet_cmd.js)
@@ -91,6 +93,17 @@ window.WW = window.WW || {};
     return true;
   }
 
+  // ---- a hulk to scuttle: close to SCUT_D off her beam and lie there slow; endgame.js fires the torpedo ----
+  const SCUT_D = 40;
+  function scuttleSteer(ship, B) {
+    const h = ship.scuttle, d = WW.dist(ship.x, ship.z, h.x, h.z), want = Math.atan2(h.z - ship.z, h.x - ship.x);
+    ship.escapeEdge = 0;
+    if (d > SCUT_D + 25) { ship.throttle = 1; ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk.destroyer || 0.45) : want; }
+    else if (d < SCUT_D - 12) { ship.desiredHeading = want + Math.PI; ship.throttle = 0.4; }  // too close for the warhead: open out
+    else { ship.desiredHeading = want + Math.PI / 2; ship.throttle = 0.25; }                 // beam on, slow
+    return true;
+  }
+
   // ---- survivors: to the sinking position, slow alongside (endgame.js counts the pickup) ----
   function rescueSteer(ship, B) {
     const t = ship.rescue, d = WW.dist(ship.x, ship.z, t.x, t.z), want = Math.atan2(t.z - ship.z, t.x - ship.x);
@@ -118,10 +131,11 @@ window.WW = window.WW || {};
     return true;
   }
   // Pursuing with nothing in sight: the nearest last-known enemy (up to PURSUE_AGE s, moved along its course for up
-  // to 40 s), carriers included when fair game; no lair or home-waters limits. Cached for 1 s per ship.
+  // to 40 s), carriers included when fair game, slower ships first (a stern chase of a ship as fast is left to the
+  // planes); no lair or home-waters limits. Cached for 1 s per ship.
   function pursueContact(ship, B) {
     const a = ship.ai, now = WW.time.now;
-    if (a.puT > now) return a.pu && a.pu.unit && a.pu.unit.alive ? a.pu : null;
+    if (a.puT > now) return a.pu && a.pu.unit && a.pu.unit.alive ? homeward(a.pu, now) : null;
     a.puT = now + 1; a.pu = null;
     if (!WW.intel) return null;
     let bd = 1e18;
@@ -130,10 +144,20 @@ window.WW = window.WW || {};
       if (!u || !u.alive || u.submerged || u.isBase || u.type === 'submarine' || now - c.seenAt > PURSUE_AGE) continue; // not the island base (island_base.js)
       if (ship.type === 'battleship' && u.type === 'pt') continue;
       if (u.type === 'carrier' && !fairGame(ship, u, B)) continue;
-      const d = WW.dist2(ship.x, ship.z, c.x, c.z) * (isCripple(u) ? 0.6 : 1);   // cripples first
+      const d = WW.dist2(ship.x, ship.z, c.x, c.z) * (isCripple(u) ? 0.6 : 1) * (vmax(u) < vmax(ship) * 0.95 ? 1 : 4); // cripples first; what it can catch before what outruns it
       if (d < bd) { bd = d; a.pu = c; }
     }
-    return a.pu;
+    return a.pu ? homeward(a.pu, now) : null;
+  }
+  // A contact of a broken enemy older than RECKON_T s: she is running for her home edge, so the pursuer reckons her
+  // along that course for the whole time since she was seen, at the speed she was making (a 60 s extrapolation of her
+  // last heading left a destroyer trailing a carrier 250 off for two minutes, out of sight)
+  const RECKON_T = 20;
+  function homeward(c, now) {
+    const age = now - c.seenAt, u = c.unit;
+    if (age < RECKON_T || !u || !WW.endgame.broken(u.nation)) return c;
+    const hx = WW.endgame.homeX(u.nation), sp = Math.max(c.speed || 0, 0.6 * vmax(u)), run = Math.min(sp * age, Math.abs(hx - c.x) - 20);
+    return { unit: u, x: c.x + Math.sign(hx - c.x) * Math.max(0, run), z: c.z, heading: hx > c.x ? 0 : Math.PI, speed: sp, seenAt: now };
   }
 
   WW.endgameAI = { steer, fairGame, pursueContact, isCripple, PURSUE_AGE };

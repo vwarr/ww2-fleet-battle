@@ -177,7 +177,7 @@ window.WW = window.WW || {};
     add(e.text, pri === undefined ? 1 : pri, e.nation, { kind: 'admiral', order: e.order });
   });
   on('victory', d => {
-    const how = d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : d.reason === 'kill' ? 'enemy fleet destroyed' : d.reason === 'stall' ? 'only submarines remain' : 'night falls on the action';
+    const how = d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : d.reason === 'kill' ? 'enemy fleet destroyed' : d.reason === 'stall' ? 'only submarines remain' : d.reason === 'lull' ? 'the raid is spent' : 'night falls on the action';
     add('Action ends: ' + how + '. ' + (d.winner ? d.winner + ' victory' : 'No decision') + '.', 3, d.winner, { kind: 'victory' });
   });
 

@@ -254,11 +254,16 @@ window.WW = window.WW || {};
   // members of group g not withdrawing (a crippled screen destroyer heading home is no surface force)
   function fitN(B, g) { var n = 0; g.members.forEach(function (q) { var o = B.orders.get(q.id); if (!o || o.role !== 'withdraw') n++; }); return n; }
   // the sortie's goal: the freshest known enemy surface ship (the one the planes are striking; a centre of old
-  // contacts may be empty sea by now), else the enemy's known centre, else the search point
+  // contacts may be empty sea by now) seen in the last SORTIE_AGE s, moved along its last course for up to SORTIE_DR s
+  // (a night sortie steered for where the enemy was two minutes ago and found nothing), else the enemy's known
+  // centre, else the search point
+  var SORTIE_AGE = 90, SORTIE_DR = 45;
   function sortieGoal(B) {
-    var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], best = null, bt = -1e9;
+    var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], best = null, bt = WW.time.now - SORTIE_AGE;
     for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && u.alive && !u.submerged && !u.isBase && cs[i].seenAt > bt) { bt = cs[i].seenAt; best = cs[i]; } }
-    return best || B.enemyCentre || B.searchPoint;
+    if (!best) return B.enemyCentre || B.searchPoint;
+    var dr = Math.min(SORTIE_DR, WW.time.now - best.seenAt), sp = best.speed || 0, h = best.heading || 0;
+    return { x: best.x + Math.cos(h) * sp * dr, z: best.z + Math.sin(h) * sp * dr };
   }
   // The sortie: escorts past the first `keep` steam for the enemy (sortieGoal).
   function sortie(B, G, ncv) {
