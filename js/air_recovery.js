@@ -2,9 +2,12 @@
 // divert to another friendly deck, the marshal stack, the groove, the trap and the taxi forward to the park.
 // - Return: a plane flies to its marshal stack. It diverts to another friendly carrier of the side (never the island
 //   base) when that deck is clearly sooner: nearer, a shorter queue, or its own carrier damaged / burning.
-// - Marshal: racetracks MARSHAL_L hull lengths astern of the carrier (TRACKS: a second and a third oval for a big
-//   returning strike), with long straight legs; each plane holds its own level (stacked 4 u apart, at most LEVELS on
-//   a track). Fighters queue ahead of the bombers. The stack moves with the ship.
+// - Marshal: racetracks astern of the carrier and out on its quarters (TRACKS, nearest first: a big returning strike
+//   spreads over more ovals, not up), with long straight legs; each plane holds its own level, STACK_DY apart (a
+//   couple of hundred feet at the PLANE_REVIEW 3.3 height scale), at most LEVELS on a track (LEVELS_MAX when every
+//   oval is full). As the stack lands, the lowest plane on a far oval steps across to a nearer one with room. Queue
+//   order: a plane short of fuel first, then the fighters (the CAP lands first), then by the time the plane first
+//   joined a stack (a divert keeps its place in the new queue). The stack moves with the ship.
 // - Groove: in recovery mode the first plane in the queue is cleared to approach (it turns up the wake from wherever
 //   it is on its track) once the plane ahead is near the gate, so two or three are in the groove at a time and traps
 //   come about every 2.5-4 s. Final: the runway centreline (PD on the drift), wave-off when the deck is foul or the ship swings,
@@ -15,20 +18,32 @@ window.WW = window.WW || {};
   if (!WW.airDeck) return;
   const K = WW.airDeck._k, PI = Math.PI;
   const { deckOf, toLocal, lenOf, colFor, newEntry, pack, clearAft, P } = K;
-  const MARSHAL_L = 4.0, LEG = 56, RT = 15, STACK0 = 15, STACK_DY = 4; // stack centre (hull lengths astern), leg length, turn radius, lowest level, spacing
-  // Racetracks (TRACKS: along the wake in hull lengths astern, across in u, x the side away from the island), at most
-  // LEVELS planes stacked on each: a returning deck-load strike holds as two to five tidy ovals astern, not as a ring
-  // round the ship. A plane keeps its track (p.mTrack) until it is cleared to approach.
-  const LEVELS = 12, TRACKS = [[MARSHAL_L, 26], [MARSHAL_L, -66], [9.5, -20], [9.5, 72], [9.5, -112]];   // the ovals 60+ u apart
+  const MARSHAL_L = 4.0, LEG = 56, RT = 15, STACK0 = 15, STACK_DY = 2.5; // stack centre (hull lengths astern), leg length, turn radius, lowest level, spacing
+  // Racetracks (TRACKS: along the wake in hull lengths astern, across in u, x the side away from the island; nearest
+  // first), at most LEVELS planes stacked on each: a returning deck-load strike holds as tidy ovals astern and on the
+  // quarters, a few levels high, not as a ring round the ship or a tall column. A plane keeps its track (p.mTrack)
+  // until it steps to a nearer one or is cleared to approach.
+  const LEVELS = 6, LEVELS_MAX = 12, FUEL_LOW = 12;
+  const TRACKS = [[MARSHAL_L, 26], [MARSHAL_L, -66], [7.8, -20], [7.8, 72], [MARSHAL_L, 118], [7.8, -112], [MARSHAL_L, -158], [7.8, 164], [11.6, 26], [11.6, -66]];   // the ovals 90+ u apart
+  const DIVERT_Q = 6;           // a plane this far back in its stack may divert to a sooner deck
   const HOME_R = 110;           // distance at which a returning plane joins the stack (landing state)
   const GATE_L = 2.7, GROOVE = 60;           // the groove starts GATE_L hull lengths astern (carrier local); the whole stack lies behind it
   const gate = c => -(c.stats.length || 26) * GATE_L;
-  const RS = { diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, why: {} };
+  // placed to go in: far enough astern for its offset from the wake to turn up the groove without overshooting (a
+  // plane out on a quarter oval waits for the aft end of its track)
+  const placed = (c, D, lx, lz) => lx < gate(c) - 10 - 0.8 * Math.max(0, Math.abs(lz - D.run) - 10);
+  const RS = { flakSteps: 0, flakDetours: 0, stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
 
   // ---------- the way home and the divert ----------
-  function deckScore(p, c) {     // seconds until this deck could take the plane (lower is better)
+  // seconds until this deck could take the plane (lower is better): the way there, then a trap's TRAP_S for each plane
+  // ahead of it (in its stack, or on the way home and nearer)
+  const TRAP_S = 7;
+  function deckScore(p, c) {
     const D = c._deck; if (!D) return 1e9;
-    let s = WW.dist(p.x, p.z, c.x, c.z) / p.pt.speed + D.lq.length * 7 + (D.mode === 'launch' ? 10 : 0);
+    const d = WW.dist(p.x, p.z, c.x, c.z), i = D.lq.indexOf(p);
+    let ahead = i >= 0 ? i : D.lq.length;
+    if (i < 0) for (const q of WW.world.planes) if (q !== p && q.alive && q.carrier === c && q.state === 'return' && WW.dist2(q.x, q.z, c.x, c.z) < d * d) ahead++;
+    let s = (i >= 0 ? 0 : d / p.pt.speed) + ahead * TRAP_S + (D.mode === 'launch' ? 10 : 0);
     if (c.hp < c.maxHp * 0.45) s += 60;
     if ((c.fireN || 0) >= 3) s += 45;
     return s;
@@ -40,32 +55,82 @@ window.WW = window.WW || {};
       if (s === own || !s.alive || s.sinking || s.isBase || s.type !== 'carrier' || !s.hangar || s.nation !== p.nation) continue;
       const v = deckScore(p, s); if (v < bs) { bs = v; best = s; }
     }
-    if (best === own) return;
+    if (best === own) return false;
     const D = own._deck; if (D) { const i = D.lq.indexOf(p); if (i >= 0) D.lq.splice(i, 1); }
     p.carrier = best; p.diverted = (p.diverted || 0) + 1; RS.diverts++;
     if (WW.airBoss) WW.airBoss.stats.diverts++;
     if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
+    return true;
   }
   // The marshal stack's centre in carrier-local coordinates.
   function stackAt(c, D, k) { const T = TRACKS[k || 0]; return [-(c.stats.length || 26) * T[0], -D.s * T[1]]; }
-  // Into the stack: a track with room (else the emptiest); fighters ahead of the bombers (the CAP refuels first).
+  // Into the stack: the nearest track with room (else the emptiest); the queue place by rank (short of fuel, fighters,
+  // bombers) and then by when the plane first joined a stack (p.qKey: kept through a divert).
+  const rank = q => (q.fuel < FUEL_LOW ? 0 : q.kind === 'fighter' ? 1 : 2);
+  function counts(D) { const n = TRACKS.map(() => 0); for (const q of D.lq) if (q.deckPh === 'marshal' && q.mTrack !== undefined) n[q.mTrack]++; return n; }
+  // the ovals under a known enemy heavy ship's flak (an enemy gun line near the carrier): none of the stack there
+  // while another oval is clear (sanity P9). Per deck, re-plotted every 2 s.
+  function flakTracks(D) {
+    const c = D.c, now = WW.time.now;
+    if (D.fkT !== undefined && now < D.fkT) return D.fk;
+    D.fkT = now + 2; D.fk = TRACKS.map(() => false);
+    if (!WW.intel) return D.fk;
+    const L = [];
+    for (const ct of WW.intel.enemyShips(c.nation)) { const o = ct.unit; if (o && o.alive && !o.sinking && !o.isBase && HEAVY_AA[o.type] && o.stats.aa) L.push([ct.x, ct.z, o.stats.aa.range * FLAK_K + FLAK_PAD]); }
+    if (!L.length) return D.fk;
+    for (let k = 0; k < TRACKS.length; k++) { const m = stackAt(c, D, k), w = c.toWorld(m[0], m[1]); D.fk[k] = L.some(e => WW.dist(w[0], w[1], e[0], e[1]) < e[2] + RT + 22); }
+    if (D.fk.every(v => v)) D.fk = TRACKS.map(() => false);   // nowhere clear: the stack as it is
+    return D.fk;
+  }
   function enter(p, D) {
     if (D.lq.indexOf(p) >= 0) return;
-    const n = TRACKS.map(() => 0); for (const q of D.lq) if (q.deckPh === 'marshal' && q.mTrack !== undefined) n[q.mTrack]++;
-    let k = n.findIndex(v => v < LEVELS); if (k < 0) k = n.indexOf(Math.min(...n));
+    if (p.qKey === undefined) p.qKey = WW.time.now;
+    const n = counts(D), fk = flakTracks(D);
+    let k = n.findIndex((v, i) => v < LEVELS && !fk[i]); if (k < 0) k = n.findIndex((v, i) => v < LEVELS_MAX && !fk[i]); if (k < 0) k = n.indexOf(Math.min(...n));
     p.mTrack = k;
-    let i = D.lq.length;
-    if (p.kind === 'fighter') { i = D.lq.findIndex(q => q.deckPh === 'marshal' && q.kind !== 'fighter'); if (i < 0) i = D.lq.length; }
+    const r = rank(p);
+    let i = D.lq.findIndex(q => q.deckPh === 'marshal' && (rank(q) > r || (rank(q) === r && q.qKey > p.qKey)));
+    if (i < 0) i = D.lq.length;
     D.lq.splice(i, 0, p);
+    if (p.diverted && i < D.lq.length - 1) RS.keptPlace++;
+  }
+  // the lowest plane of its oval steps across to a nearer oval with room (the stack drains toward the ship)
+  function stepIn(p, D) {
+    if (WW.time.now < (p.mStepAt || 0)) return;
+    p.mStepAt = WW.time.now + 2;
+    for (const q of D.lq) { if (q === p) break; if (q.deckPh === 'marshal' && q.mTrack === p.mTrack) return; }
+    const n = counts(D), fk = flakTracks(D);
+    for (let k = 0; k < p.mTrack; k++) if (n[k] < LEVELS && !fk[k]) { p.mTrack = k; RS.steps++; return; }
+  }
+  // The way home round the heavy flak (2.2 x aa.range, combat_aa.js) of a known enemy battleship, cruiser or carrier
+  // that lies across it: a point abeam of the ship, on the plane's side, just outside the flak. Re-plotted every 2 s.
+  const FLAK_K = 2.2, FLAK_PAD = 25, HEAVY_AA = { battleship: 1, cruiser: 1, carrier: 1 };
+  function flakAround(p, wx, wz) {
+    if (!WW.intel || WW.time.now < (p.fkT || 0)) return p.fk || null;
+    p.fkT = WW.time.now + 2; p.fk = null;
+    const dx = wx - p.x, dz = wz - p.z, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+    if (p.fuel < L / p.pt.speed * 1.5 + 20 || p.ditchTo) return null;   // short of fuel: straight home
+    let best = null, bt = 1e9;
+    for (const ct of WW.intel.enemyShips(p.nation)) {
+      const o = ct.unit; if (!o || !o.alive || o.sinking || o.isBase || !HEAVY_AA[o.type] || !o.stats.aa) continue;
+      const R = o.stats.aa.range * FLAK_K + FLAK_PAD, ox = ct.x - p.x, oz = ct.z - p.z, along = ox * ux + oz * uz;
+      if (along < 0 || along > L || ox * ox + oz * oz < R * R * 0.8) continue;   // behind, beyond home, or already inside (fly on out)
+      const off = ox * uz - oz * ux;
+      if (Math.abs(off) < R && along < bt) { bt = along; const s = off > 0 ? -1 : 1; best = [ct.x + uz * s * R * 1.15, ct.z - ux * s * R * 1.15]; }
+    }
+    p.fk = best; if (best) RS.flakDetours++;
+    return best;
   }
   function goHome(p, dt) {
     p.foe = null;
     p.dvT = (p.dvT || 0) - dt;
     if (p.dvT <= 0) { p.dvT = 3; if (!p.diverted || p.diverted < 2) divert(p); }
     const c = p.carrier, D = deckOf(c), m = stackAt(c, D), w = c.toWorld(m[0], m[1]), d = WW.dist(p.x, p.z, w[0], w[1]);
+    const a = d > HOME_R ? flakAround(p, w[0], w[1]) : null;   // round a known enemy heavy ship's flak on the way (sanity P9)
+    if (a) { if (WW.airFlight) WW.airFlight.home(p, a[0], a[1], 25, dt); else p.fly(a[0], a[1], 25, dt, p.pt.speed); return; }
     if (WW.airFlight) WW.airFlight.home(p, w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt);   // economic cruise, fuel-aware route (air_flight.js)
     else p.fly(w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt, p.pt.speed);
-    if (d < HOME_R) { p.state = 'landing'; p.deckPh = 'marshal'; p.phT = 0; p.lqT = WW.time.now; enter(p, D); RS.marshal++; }
+    if (d < HOME_R) { p.state = 'landing'; p.deckPh = 'marshal'; p.phT = 0; enter(p, D); p.lqT = p.qKey; RS.marshal++; }
   }
 
   // ---------- marshal, groove, trap ----------
@@ -78,7 +143,7 @@ window.WW = window.WW || {};
   }
   function landing(p, dt) {
     const c = p.carrier, D = deckOf(c), ps = -D.s, L = toLocal(c, p.x, p.z), lx = L[0], lz = L[1];
-    if (D.lq.indexOf(p) < 0) { enter(p, D); if (p.lqT === undefined) p.lqT = WW.time.now; }
+    if (D.lq.indexOf(p) < 0) { enter(p, D); if (p.lqT === undefined) p.lqT = p.qKey; }
     p.phT = (p.phT || 0) + dt;
     const to = (ax, az, alt, spd, rate) => { const w = c.toWorld(ax, az); return p.fly(w[0], w[1], alt, dt, spd, rate); };
     switch (p.deckPh) {
@@ -87,23 +152,31 @@ window.WW = window.WW || {};
         let lvl = 0, ahead = null, inApp = false, first = true;   // first: no plane below it in the stack is placed to go in
         for (const q of D.lq) {
           if (q === p) break;
-          if (q.deckPh === 'marshal') { if (toLocal(c, q.x, q.z)[0] < gate(c) - 10) first = false; if (q.mTrack === p.mTrack) lvl++; }   // the first in the queue placed astern goes first; levels per track
+          if (q.deckPh === 'marshal') { const Q = toLocal(c, q.x, q.z); if (placed(c, D, Q[0], Q[1])) first = false; if (q.mTrack === p.mTrack) lvl++; }   // the first in the queue placed astern goes first; levels per track
           else if (q.deckPh === 'app') inApp = true;
           else if (q.deckPh === 'final') ahead = q;
         }
         let nApp = 0;   // at most two on the approach leg, never two side by side
         for (const q of D.lq) if (q !== p && q.deckPh === 'app') { nApp++; if (nApp >= 2 || WW.dist(q.x, q.z, p.x, p.z) < 35 || toLocal(c, q.x, q.z)[0] < gate(c) - 40) inApp = true; }
         if (p.mTrack === undefined) p.mTrack = 0;
+        // well back in a long queue: another deck of the side clearly sooner takes it (its place by p.qKey goes with it)
+        p.dvT = (p.dvT || 0) - dt;
+        if (p.dvT <= 0) { p.dvT = 5; if (D.lq.indexOf(p) >= DIVERT_Q && (!p.diverted || p.diverted < 2) && divert(p)) { p.state = 'return'; p.deckPh = null; p.mTrack = undefined; RS.stackDiverts++; return; } }
+        if (flakTracks(D)[p.mTrack] && WW.time.now >= (p.mStepAt || 0)) {   // its oval under enemy flak: across to a clear one
+          p.mStepAt = WW.time.now + 2;
+          const n = counts(D), fk = D.fk; let k = n.findIndex((v, i) => v < LEVELS && !fk[i]); if (k < 0) k = n.findIndex((v, i) => v < LEVELS_MAX && !fk[i]);
+          if (k >= 0) { p.mTrack = k; RS.flakSteps++; }
+        } else if (p.mTrack > 0) stepIn(p, D);
         const m = stackAt(c, D, p.mTrack), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT);
-        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS + 3), p.pt.speed * 0.7, 1.5);
+        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS_MAX - 1), p.pt.speed * 0.7, 1.5);
         const groove = !ahead || (D.k.tdX - toLocal(c, ahead.x, ahead.z)[0]) < GROOVE;   // the plane ahead is well into its final
         // the lowest plane placed to go in (a wave-off still up ahead lets the next one through first)
-        if (first && D.mode === 'recover' && !D.closing && !inApp && groove && lx < gate(c) - 10) { p.deckPh = 'app'; p.phT = 0; }   // the app leg turns it up the wake from wherever it is on the racetrack
+        if (first && D.mode === 'recover' && !D.closing && !inApp && groove && placed(c, D, lx, lz)) { p.deckPh = 'app'; p.phT = 0; }   // the app leg turns it up the wake from wherever it is on the racetrack
         break;
       }
       case 'app': // straight in from astern (the stack lies behind the gate) onto the centreline, descending to the groove
         if (D.mode !== 'recover') { p.deckPh = 'marshal'; p.phT = 0; break; }
-        to(Math.min(lx + 30, D.k.tdX - 12), D.run, 7, p.pt.speed * (lx < gate(c) - 15 ? 1 : 0.85), 1.8);        // a point up the centreline ahead of it
+        to(Math.min(lx + Math.max(30, 1.3 * Math.abs(lz - D.run)), D.k.tdX - 12), D.run, 7, p.pt.speed * (lx < gate(c) - 15 ? 1 : 0.85), 1.8);        // a point up the centreline ahead of it
         if (lx > D.k.tdX - 15) { p.deckPh = 'marshal'; p.phT = 0; RS.why.overshoot = (RS.why.overshoot || 0) + 1; break; }          // overshot the groove: round again from the stack
         if ((lx > gate(c) && lx < D.k.tdX - 15 && Math.abs(lz - D.run) < 6 && Math.abs(WW.angleDiff(p.heading, c.heading)) < 0.6) || p.phT > 25) { RS.appT = (RS.appT || 0) + p.phT; RS.appN = (RS.appN || 0) + 1; p.deckPh = 'final'; p.phT = 0; p._lz = undefined; }
         break;
@@ -141,7 +214,7 @@ window.WW = window.WW || {};
     RS.finT = (RS.finT || 0) + p.phT; RS.finN = (RS.finN || 0) + 1;
     p.state = 'rollout'; p.deckPh = 'trap'; p.t = 0; p.lx = Math.min(lx, D.k.tdX + 1); p.lz = lz;
     p.rel = WW.clamp(p.speed - c.speed, 6, 16); p.vy = 0; p.turn = 0;
-    D.lq.splice(D.lq.indexOf(p), 1); D.recN++;
+    D.lq.splice(D.lq.indexOf(p), 1); D.recN++; p.qKey = undefined;
     const w = c.toWorld(p.lx, p.lz); p.x = w[0]; p.z = w[1]; p.y = D.dy + P().deckY;
     // A bad trap (ship swinging, crippled plane, forced in after wave-offs) can go over the side (deaths agent).
     const nr = WW.dayNight ? WW.dayNight.landRisk() : 0; // a night landing (daylight.js)

@@ -20,7 +20,7 @@
 // metric blamed carriers for steaming toward ships they could not know about. cv_min_dist / cv_in_gun stay raw.
 // End reasons per round (G.endReason): kill (a side's surface fleet sunk), retire (main.js: a broken side's survivors left
 // the map over its home edge), time (the limit, stretched for a pursuit; a sub stall counts here), cap (still running).
-// Carrier checks (cv_min_dist, cv_in_gun, cv_closing) skip the samples while the carrier's own side is broken (fleet_cmd
+// Carrier checks (cv_min_dist, cv_in_gun, cv_closing) skip the samples while the carrier's own side is broken, and a crippled carrier (hp < CRIP or <= CRIP_V u/s) once its side has broken (fleet_cmd
 // brokenAt, posture 'withdraw'): it is then running for its edge and is fair game for the pursuer; those samples are
 // reported as cv_brk_min / cv_brk_gun (info).
 // Endgame (endgame.js stats, info): wipeout (a kill with no CV / BB / CA / DD of the loser escaped earlier), carriers
@@ -82,7 +82,7 @@ const P = {
   CRIP_HP: 0.35, CRIP_WIN: 30,
   TORP_PASS: 15, TORP_PAR: 30, // torpedo passes within 15u; heading within 30 deg of the track = parallel
   BROAD_LO: 45, BROAD_HI: 135,
-  CV_CLOSE_DEG: 70, CV_THREAT_K: 1.5
+  CV_CLOSE_DEG: 70, CV_THREAT_K: 1.5, CRIP_V: 4
 };
 const CHECKS = [
   // carrier
@@ -386,7 +386,11 @@ function install(P) {
     for (const s of L) {
       const en = enemies(s), sp = s.speed / (s.stats.speed * (s.speedK || 1)); // share of what it can make now (damage slows ships)
       // ---- carriers ----
-      const brk = B.broken(s.nation);
+      // a crippled carrier (hp < CRIP, or making <= CRIP_V u/s) once its side has broken is the cripple left behind and
+      // run down (Hornet at Santa Cruz, Hiryu): out of the carrier checks, like the samples while the side is broken;
+      // a fit carrier stays judged strictly
+      const FS = WW.fleetCmd && WW.fleetCmd.side(s.nation);
+      const brk = B.broken(s.nation) || (s.type === 'carrier' && FS && FS.brokenAt && (s.hp < WW.fleetGroups.CRIP * s.maxHp || s.speed <= P.CRIP_V));
       if (s.type === 'carrier') {
         let dmin = 1e9, inGun = false, thr = null, thrK = 1e9;
         for (const o of en) {

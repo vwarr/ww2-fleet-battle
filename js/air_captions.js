@@ -2,13 +2,16 @@
 // is filming (WW.cam._shot(): its subject, or the plane of a dive-bomb orbit). "VT-8 begins its run",
 // "Lt. Cmdr. Thach leads VB-6 in", "Strike away: VF-6, VB-6, VT-6", "CAP vectored to raid, 040, 25 miles",
 // an ace's kill. At most one air caption every GAP s of real time, none in free camera / map view or while
-// another caption (the victory card) is showing. Also adds camera candidates for squadron moments (WW.camHooks).
+// another caption (the victory card) is showing. OUTCOMES of the filmed attack ("Torpedo hit", "Torpedo missed
+// astern", "Run aborted", "Bomb misses wide") pass the throttle: they are the payoff of the label's promise
+// (docs/camera_audit.md M1). Also adds camera candidates for squadron moments (WW.camHooks).
 // Visual only: wall clock and Math.random, never WW.rand; reads the sim, never writes it. Load after camera.js (it wraps WW.cam.update).
 window.WW = window.WW || {};
 (function () {
   const GAP = 15, SECS = 4.5, KEEP = 20;     // s between air captions, caption hold, how long a moment stays fresh
-  let moments = [], lastCap = -1e9, lastShot = null, said = new Set(), checkT = 0;
-  const ST = { shown: 0 };
+  const OUT_GAP = 2.5, OUT_SECS = 3.5;       // outcomes: their own short gap, a shorter hold
+  let moments = [], lastCap = -1e9, lastOut = -1e9, lastShot = null, said = new Set(), checkT = 0;
+  const ST = { shown: 0, outcomes: 0 };
   const wall = () => performance.now() / 1000;
   const sqName = p => (p && p.squadron ? p.squadron.short : null);
   const who = p => (WW.squadrons ? WW.squadrons.rank(p) : null);
@@ -95,11 +98,43 @@ window.WW = window.WW || {};
     if (s.state === 'bomb' && s.bombAt) return once('bomb', ['Mavis bombing run', 'on a lone ' + (KIND[s.bombAt.type] || 'ship')]);
     return null;
   }
+  // ---- outcomes of the attack on screen ----
+  const live = () => WW.cam && WW.ui && WW.ui.caption && WW.game && WW.game.state === 'battle' && WW.cam.mode === 'director' && !(WW.freecam && WW.freecam.active());
+  function outcome(main, sub) {
+    if (!live() || wall() - lastOut < OUT_GAP || (WW.ui.captionOn && WW.ui.captionOn() && wall() - lastCap > SECS)) return; // never over the victory card
+    WW.ui.caption(main, sub || '', OUT_SECS, true);
+    lastOut = wall(); lastCap = Math.max(lastCap, wall() - GAP + 6); ST.outcomes++; ST.last = [main, sub];
+  }
+  const filmedPlane = p => { const s = WW.cam && WW.cam._shot && WW.cam._shot(); if (!s || !p) return false; const sub = s.plane || s.subj; return p === sub || (s.group && s.group.indexOf(p) >= 0 && !!s.stage); };
+  WW.on('weaponImpact', e => {
+    if (!e || !e.proj || !live()) return;
+    const s = WW.cam._shot(); if (!s || !s.stage || s.proj !== e.proj) return;   // the hand-off followed this one
+    const p = e.proj.owner || e.proj.plane || s.subj, sq = p && p.pt ? sqName(p) : null, t = e.ship, ts = s.tship || (p && p.pt && p.outTgt) || null;
+    if (e.kind === 'torpedo') {
+      if (t) outcome(e.dud ? 'Torpedo hit: a dud' : 'Torpedo hit', (t.name || 'the ' + (KIND[t.type] || 'ship')) + (sq ? ' · ' + sq : ''));
+      else { // astern or ahead of the ship it ran at
+        let where = '';
+        if (ts && !ts.removed) { const fx = Math.cos(ts.heading), fz = Math.sin(ts.heading), al = (e.x - ts.x) * fx + (e.z - ts.z) * fz; where = Math.abs(al) > ts.stats.length * 0.3 ? (al < 0 ? ' astern' : ' ahead') : ' under the keel'; }
+        outcome('Torpedo missed' + where, sq ? sq + (ts && !ts.removed ? ' on ' + (ts.name || 'the ' + (KIND[ts.type] || 'ship')) : '') : '');
+      }
+    } else if (e.kind === 'bomb') {
+      if (t) outcome('Direct hit', (t.name || 'the ' + (KIND[t.type] || 'ship')) + (sq ? ' · ' + sq : ''));
+      else { let near = false; for (const o of WW.world.ships) if (o.alive && WW.dist2(o.x, o.z, e.x, e.z) < (o.stats.length * 0.5 + 8) ** 2) { near = true; break; } outcome(near ? 'Near miss' : 'Bomb misses wide', sq || ''); }
+    }
+  });
+  const runs = new WeakMap(); // the filmed torpedo bomber's last phase: a run that ends with the torpedo still aboard was aborted
+  function aborts(s) {
+    if (!s || !s.pt || s.kind !== 'torpedo') return;
+    const prev = runs.get(s);
+    if (prev === 'run' && s.phase === 'out' && s.ordnance) outcome('Run aborted', (sqName(s) || 'The torpedo bomber') + ' comes round again');
+    runs.set(s, s.phase);
+  }
   function tick() {
     if (!WW.cam || !WW.ui || !WW.ui.caption) return;
     const st = WW.game && WW.game.state;
     if (st !== 'battle' || WW.cam.mode !== 'director' || (WW.freecam && WW.freecam.active())) return;
     const shot = WW.cam._shot && WW.cam._shot();
+    if (shot) aborts(shot.plane || shot.subj);
     if (!shot || shot.t < 0.6) return;                       // let the cut settle first
     if (wall() - lastCap < GAP || (WW.ui.captionOn && WW.ui.captionOn())) return;
     const s = filmed(shot);

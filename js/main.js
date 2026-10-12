@@ -222,6 +222,7 @@ window.WW = window.WW || {};
   function clear(n) {
     const S = WW.world.ships, P = WW.world.planes, mine = q => q && q.nation === n && q.alive;
     for (const p of P) if (p.alive && p.nation !== n && p.ordnance && OUT[p.state] && (p.kind === 'dive' || p.kind === 'torpedo') && (mine(p.target) || mine(p.wave && p.wave.target))) return false;
+    for (const p of P) if (p.alive && (p.kind === 'dive' || p.kind === 'torpedo') && p.ordnance && (p.state === 'attack' || p.phase) && !(p.target && (!p.target.alive || p.target.sinking))) return false;   // an attack under way (either side's, on a ship still afloat) drops before the card
     const B = WW.fleetCmd && WW.fleetCmd.side(n);
     if (B && game.roundTime - Math.max(harmT[n], B.brokenAt) >= (canStrike(WW.enemyOf(n)) ? STALE_AIR : STALE_T)) return true; // the pursuit is not biting
     for (const s of S) {
