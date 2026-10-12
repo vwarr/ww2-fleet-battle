@@ -16,7 +16,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
+  var STRIKE_WAIT = 40, STREAM_V = 0.5, TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
   var BLAST_K = 0.9;          // a parked plane inside BLAST_K x the blast radius (+ its own size) is wrecked (was 0.6: ~4 u for a 14-inch shell)
   var SPREAD_T = 8, SPREAD_P = 0.35, SPREAD_GAP = 2.5;   // a burning wreck sets a neighbour within SPREAD_GAP of it alight after SPREAD_T s (fuel, ammunition), with SPREAD_P
   var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
@@ -120,13 +120,21 @@ window.WW = window.WW || {};
     p.rwPh = 'warm'; p.rwT = 0; p.warm = fast ? WARM_FAST : WARM; p.fast = !!fast; p.waitT = 0; p.pi = 0;
     p.path = WW.airfieldLayout.outPath(b.layout, slot.spot, b.ops.dir);
   }
-  // One plane at a time on a row lane and its column (they meet head-on at the column otherwise): the token is held from
-  // the revetment to the parallel taxiway (path point 3); a scrambling fighter waiting for the same column goes first.
+  // The column token: planes from both sides of a column would meet head-on on their row lane, so a plane waits while
+  // one from the other side of the same row lane is still on its way to the parallel taxiway (path point 3). Planes
+  // going the same way follow one another (move() keeps the gap), and planes joining from another row merge down the
+  // column (in launch mode its traffic is one-way): a strike taxis out in a stream, as at Henderson Field, not one by
+  // one. A scrambling fighter waiting for the same column goes first.
   function colFree(p, b) {
-    var key = p.path.lanes[1], P = WW.world.planes;
+    var key = p.path.lanes[1], P = WW.world.planes, a = p.path[1], c = p.path[2];
     for (var i = 0; i < P.length; i++) {
       var q = P[i]; if (q === p || q.carrier !== b || !q.alive || q.removed || q.state !== 'takeoff' || !q.path || q.path.lanes[1] !== key) continue;
-      if (q.rwPh === 'taxi' && q.pi <= 3) return false;
+      if (q.rwPh === 'taxi' && q.pi <= 3) {
+        if (q.path.lanes[0] !== p.path.lanes[0]) continue;   // another row: merges down the column
+        var qa = q.path[1], qc = q.path[2];
+        if ((c.x - a.x) * (qc.x - qa.x) + (c.z - a.z) * (qc.z - qa.z) < 0) return false;   // head-on on the row lane
+        continue;   // the same way: follow
+      }
       if (q.rwPh === 'warm' && q.fast && !p.fast && q.rwT >= q.warm) return false;
     }
     return true;
@@ -271,7 +279,8 @@ window.WW = window.WW || {};
   function update(b, dt) {
     var o = b.ops, now = WW.time.now, P = WW.world.planes, outN = 0, inN = 0, wantLaunch = false, wantLand = false, scr = false, i, p;
     if (o.occ && (!o.occ.alive || o.occ.removed || (o.occ.state !== 'takeoff' && o.occ.state !== 'rollout' && !(o.occ.state === 'landing' && o.occ.rwPh === 'final')) ||
-      (o.occ.rwPh === 'climb' && o.occ.y > groundY(b) + 3))) o.occ = null;
+      (o.occ.rwPh === 'climb' && o.occ.y > groundY(b) + 3) ||
+      (o.occ.state === 'takeoff' && o.occ.rwPh === 'roll' && o.occ.speed > o.occ.pt.speed * STREAM_V))) o.occ = null;   // a stream take-off: the next lines up behind a plane well into its roll (ROLL_GAP and the roll's aheadGap check keep them apart)
     if (o.crossOcc && (!o.crossOcc.alive || o.crossOcc.removed)) o.crossOcc = null;
     o.holdQ = o.holdQ.filter(function (q) { return q.alive && !q.removed && q.rwPh === 'hold'; });
     for (i = 0; i < P.length; i++) {
@@ -283,18 +292,21 @@ window.WW = window.WW || {};
     // Turns, like a carrier deck. A mode keeps the field while its planes move; with none moving it keeps it for
     // TURN_WAIT s while it still has demand; otherwise the side served longer ago gets it (a scramble always does).
     // Once the other side waits and the mode is TURN_WAIT old, no new movers start in it (yield / hold), so it drains.
+    // a strike on its way out (armed planes with a target warming up or taxiing) keeps the runway for STRIKE_WAIT s before
+    // the circuit gets it: the deck load goes together (the circuit holds a little longer)
+    var strike = false; for (i = 0; i < P.length && !strike; i++) { p = P[i]; if (p.carrier === b && p.alive && !p.removed && p.state === 'takeoff' && p.target && p.ordnance && p.rwPh !== 'climb') strike = true; }
     var prev = o.mode, age = now - o.modeT;
     if (o.mode === 'launch') o.lastL = now; else if (o.mode === 'recover') o.lastR = now;
     if (o.mode === 'launch' && outN) { /* keep */ }
     else if (o.mode === 'recover' && inN) { /* keep */ }
     else if (scr) o.mode = 'launch';
-    else if (o.mode === 'launch' && wantLaunch && (!wantLand || age < TURN_WAIT)) { /* keep */ }
+    else if (o.mode === 'launch' && wantLaunch && (!wantLand || age < (strike ? STRIKE_WAIT : TURN_WAIT))) { /* keep */ }
     else if (o.mode === 'recover' && wantLand && (!wantLaunch || age < TURN_WAIT * 1.5)) { /* keep */ }
     else if (wantLaunch && (!wantLand || o.lastL <= o.lastR)) o.mode = 'launch';
     else if (wantLand) o.mode = 'recover';
     else if (!outN && !inN) o.mode = 'idle';
     if (o.mode !== prev) { ST.modeSwitches++; o.modeT = now; age = 0; }
-    o.yield = o.mode === 'launch' && !scr && wantLand && age > TURN_WAIT;
+    o.yield = o.mode === 'launch' && !scr && wantLand && age > (strike ? STRIKE_WAIT : TURN_WAIT);
     o.hold = o.mode === 'recover' && wantLaunch && (scr || age > TURN_WAIT * 3);   // a long recovery window: the circuit empties
     // slots: rearmed planes are ready; a plane lost in the air leaves its spot empty
     for (i = 0; i < b.slots.length; i++) {
