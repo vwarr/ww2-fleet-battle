@@ -33,6 +33,7 @@ const SCEN = {
   standard: { random: true },
   carrier_duel: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'] },
   midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
+  ijnbase: { A: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'IJN' },
   cvpt: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer', 'pt', 'pt'], B: ['carrier', 'cruiser', 'destroyer', 'destroyer', 'pt', 'pt', 'submarine'] }
 };
 const ODD = ['cv_vs_pt', 'cv2_vs_cv2', 'full_vs_pt2', 'cv_vs_bb'].map(n => FZ.NAMED.find(x => x[0] === n));

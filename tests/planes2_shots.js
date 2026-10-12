@@ -4,6 +4,8 @@
 //   alert   a ready deck alert plane (plane.alert) on its way out or in its attack
 //   escort  a wingman (plane.escortHome) on the wing of a damaged plane going home
 //   preempt a fighter that has just broken off a dogfight onto an armed bomber (air_dogfight.js pick, 'preempt' event)
+//   baseclimb a fighter on a bomber climbing out of the island field
+//   overfly  an enemy plane over the field under the base's AA, with a base fighter on it (from the field, looking up)
 //   cap     the CAP on station round a carrier, from the side (heights a few hundred feet apart, not a ladder)
 // Writes tests/shots/planes2/render_<kind>_<seed>_<t>.png.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/planes2_shots.js [seed=4] [maxT=600] [kinds=cover,alert,escort,cap]
@@ -41,6 +43,7 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
     G.noRetire = false; G.baseChoice = null; G.composition = comp; G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     __render = false;
     // the subject finders: return { a: subject plane, b: second plane / ship to frame } or null
+    window.__aaB = new Map(); const aaB = e => { if (e && e.ship && (e.ship.isBase || e.ship.isBasePit) && e.target) window.__aaB.set(e.target, WW.game.roundTime); }; WW.on('aaHeavyFired', aaB); WW.on('aaLightFired', aaB);
     WW.on('airOrder', e => { if (e && e.order === 'preempt') window.__pre = { t: WW.game.roundTime, plane: e.plane, target: e.target }; });
     window.__find = {
       cover: () => { for (const f of WW.world.planes) { const u = f.foe; if (!f.alive || f.kind !== 'fighter' || !u || !u.alive || !u.ordnance || !u.target || u.target.type === 'carrier' || u.target.isBase || u.target.nation !== f.nation) continue;
@@ -49,6 +52,10 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
       escort: () => { for (const q of WW.world.planes) { const d = q.escortHome; if (q.alive && d && d.alive && WW.dist(q.x, q.z, d.x, d.z) < 30) return { a: q, b: d }; } return null; },
       preempt: () => { const e = window.__pre; if (!e || WW.game.roundTime - e.t > 1.2) return null; const f = e.plane, u = e.target;
         return f.alive && u.alive && f.foe === u && WW.dist(f.x, f.z, u.x, u.z) < 60 ? { a: f, b: u } : null; },
+      baseclimb: () => { for (const f of WW.world.planes) { const u = f.foe; if (f.alive && f.kind === 'fighter' && u && u.alive && u.carrier && u.carrier.isBase && WW.airFlight.climbing(u) && WW.dist(f.x, f.z, u.x, u.z) < 50) return { a: f, b: u }; } return null; },
+      overfly: () => { const B = WW.islandBase && WW.islandBase.base; if (!B) return null; const t = WW.game.roundTime;
+        for (const [q, ta] of window.__aaB || []) if (q.alive && t - ta < 0.6 && WW.dist(q.x, q.z, B.x, B.z) < 90 && WW.world.planes.some(f => f.alive && f.nation === B.nation && f.kind === 'fighter' && f.foe === q)) return { a: q, b: B, base: B };
+        return null; },
       cap: () => WW.game.roundTime > 70 ? { cv: WW.world.ships.find(s => s.alive && s.type === 'carrier' && !s.isBase) } : null
     };
   }, SEED);
@@ -59,7 +66,9 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
         __sim.fastForward(1);
         const s = F(); if (!s) continue;
         window.__subj = s;
-        if (kind === 'cap') {
+        if (kind === 'overfly') {
+          window.__look = () => { const q = __subj.a, B = __subj.base, h = Math.atan2(q.z - B.z, q.x - B.x); return { x: B.x - Math.cos(h) * 40, y: 8, z: B.z - Math.sin(h) * 40, tx: q.x, ty: q.y, tz: q.z }; };
+        } else if (kind === 'cap') {
           window.__look = () => { const c = __subj.cv, n = c.heading + Math.PI / 2; return { x: c.x + Math.cos(n) * 210, y: 34, z: c.z + Math.sin(n) * 210, tx: c.x, ty: 42, tz: c.z }; };
         } else {
           // behind the subject's quarter, a little above, looking past it at the second plane / ship
