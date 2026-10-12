@@ -113,7 +113,7 @@ function install(cfg) {
     _v.set(x, y || 0, z).project(c); return _v.z < 1 && Math.abs(_v.x) < 1 && Math.abs(_v.y) < 1;
   }
   const near = (x, z, o) => o && !o.removed && Math.hypot(o.x - x, o.z - z) < 25;
-  function filming(o) { const s = WW.cam._shot(); return !!(s && o && (s.subj === o || s.plane === o || s.tship === o || (s.subj && s.subj.diorama && near(s.subj.x, s.subj.z, o)))); }
+  function filming(o) { const s = WW.cam._shot(); return !!(s && o && (s.subj === o || s.plane === o || s.tship === o || (s.kind === 'aa' && s.att === o) || (s.subj && s.subj.diorama && near(s.subj.x, s.subj.z, o)))); } // the deck shot films the attacker it looks at
   WW.on('shellFired', e => { if (e && e.ship && e.proj && e.proj.target && (e.cal === 'big' || e.cal === 'med')) fire.set(e.ship, { w: wall(), tg: e.proj.target }); });
   WW.on('shellLanded', e => {
     if (!e) return;

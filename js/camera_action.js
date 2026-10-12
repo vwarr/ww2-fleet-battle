@@ -27,7 +27,11 @@ window.WW = window.WW || {};
     const same = (shot.group && shot.group.indexOf(p) >= 0) || (sub.wave && p.wave === sub.wave) || (sub.element && p.element === sub.element);
     if (!same || !inFrame(p)) return false;
     const L = WW.camLock && WW.camLock.state(shot);   // the subject about to drop itself keeps the camera
-    return !(L && L.release);
+    if (L && L.release) return false;
+    // a torpedo bomber on its run drops within ~8 real s of its drop range + 80 u: a wingman's bomb (1 s fall + the beat) would end the
+    // shot just before the subject's own release (docs/camera_audit.md, the midway/1 VT-6 case)
+    if (sub.kind === 'torpedo' && sub.phase === 'run' && sub.target && WW.dist(sub.x, sub.z, sub.target.x, sub.target.z) < (sub.dropR || 100) + 80) return false;
+    return true;
   }
   const SLOW_GAP = 20;                       // at most one slow motion per 20 real seconds
   const ease = x => x * x * (3 - 2 * x);
@@ -165,7 +169,16 @@ window.WW = window.WW || {};
       shot.to = shot.to || shot.aim.clone(); shot.aim.copy(shot.to); settle(shot, 0.5);
     }
     gL.copy(shot.aim);
-    if (shot.st >= shot.hold) shot.t = shot.dur; // the director cuts to the next shot
+    if (shot.st >= shot.hold) { // the beat is over
+      const s = shot.subj;
+      if (s && s.pt && s.alive && !s.removed && s.ordnance && (s.phase === 'run' || s.phase === 'roll' || s.phase === 'dive')) {
+        // the shot's own subject is still committed to its attack (a wingman's result was a beat inside it): back to the chase, no cut
+        shot.stage = null; shot.proj = null; shot.from = null; shot.fromObj = null; shot.lastP = null; shot.to = null;
+        shot.dur = Math.max(shot.dur, shot.t + 8); shot.kP = 4; shot.kL = 4;
+        return;
+      }
+      shot.t = shot.dur; // the director cuts to the next shot
+    }
   }
   // over the shoulder of an attacking fighter, framing its target ahead
   function ots(shot, gP, gL, rdt) {
