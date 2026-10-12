@@ -196,3 +196,15 @@ Cuts: 5.7 / min overall, 6.8 in carrier_duel (story mode's 6-12 s shots plus the
 - Note for the AFTER table: origin/main's sim changed under the camera between the baseline and the after survey
   (planes2 bombers-first pre-emption, basebattle bombardment). M1 / M2 / M6 are camera-internal; M3 / M4 / M5 compare
   the camera on a sim with more base action than the baseline had.
+- 2026-10-11 (usage limit hit mid-step): item 3 is in (camera_score.js, commits 8b2a850 .. 089d00a), item 4's director
+  angles too (plane chase = story chase framing, duel for ships closing, dives chased / from the deck, deck bomb stays
+  put, view turn capped at 1 rad/s: snaps 5.9 -> 0.0 / min). Smoke (raw_smoke3, standard 1 + midway 1, 300 sim s):
+  M3 56 / 69 (interim 44 / 56), M5 7%, base 5%, cuts 5.9 / min, M1 100% of 5. REGRESSION TO FIX FIRST: M2 42% of 12
+  filmed drops (6 cut before the release): the re-evaluation recuts a shot whose subject is about to attack but is not
+  yet locked (e.g. "chase 6.8 -> chase 8.5", "ots 7.0 -> aa 8.7" in the raw_smoke3 score.log). Fix idea: in
+  camera_score.js free(), refuse a recut while the finder's item about the shot's subject (camFinder.about) promises its
+  drop / dive within ~12 real s, or while the subject is a bomber in state 'attack' with ordnance; then re-smoke, then the
+  42-round AFTER survey (--seeds 1,2,3,4,5,6 --sim 600 --tag after --workers 2), the before / after table, sheets
+  (torpedo attack to impact, gun duel, base bombardment), tests (determinism --cross 1 200, sim_behaviour, dive_film,
+  story_cam, action_cam, fps once). Server: serve a snapshot of the tree (scratchpad/snap) on 8779 so edits do not mix
+  into a running survey.
