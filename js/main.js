@@ -237,9 +237,22 @@ window.WW = window.WW || {};
     if (D && !D.canFly()) return false;
     return WW.world.ships.some(s => s.alive && !s.sinking && s.nation === n && s.type === 'carrier' && s.hp >= WW.fleetGroups.CRIP * s.maxHp);
   }
+  // The pursuit is spent: nothing of broken side n sunk for SPENT_T s since it broke (or since its last loss), no hit
+  // on it for SPENT_HIT s, and no bomber of the enemy on its drop (attacking, within SPENT_AIR) at one of its ships: the side retires even
+  // though enemy guns or strikes are still about (a pursuit that scores only the odd hit is no finish; the tail after
+  // the climax was 2-3 minutes)
+  const SPENT_T = 60, SPENT_HIT = 20, SPENT_AIR = 200, lostT = { USN: 0, IJN: 0 };
+  WW.on('shipSunk', s => { if (s && lostT[s.nation] !== undefined && game.state === 'battle') lostT[s.nation] = game.roundTime; });
+  WW.on('roundStart', () => { lostT.USN = lostT.IJN = 0; });
+  function spent(n, B) {
+    const t = game.roundTime;
+    if (t - Math.max(B.brokenAt, lostT[n]) < SPENT_T || t - harmT[n] < SPENT_HIT) return false;
+    for (const p of WW.world.planes) if (p.alive && p.nation !== n && p.ordnance && p.state === 'attack' && p.target && p.target.nation === n && WW.dist2(p.x, p.z, p.target.x, p.target.z) < SPENT_AIR * SPENT_AIR) return false;
+    return true;
+  }
   function gotClear(n, dt) {
     const B = WW.fleetCmd && WW.fleetCmd.side(n);
-    if (game.noRetire || (game.metT === null && B && B.fitTons >= SURFACE_K * B.startTons) || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
+    if (game.noRetire || (game.metT === null && B && B.fitTons >= SURFACE_K * B.startTons) || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || (!clear(n) && !spent(n, B)) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
     clearT[n] += dt;
     return clearT[n] >= CLEAR_T;
   }
