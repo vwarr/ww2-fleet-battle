@@ -21,6 +21,7 @@ const SIM = +arg('--sim', 600), WORKERS = +arg('--workers', 2), TAG = arg('--tag
 const OUT = arg('--out', path.join(__dirname, 'shots', 'camera_audit'));
 const SHEET = arg('--sheet', null), SUMMARIZE = args.includes('--summarize'), SLOW = args.includes('--slow'); // --slow: keep every visual module running (timing check)
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8779/';
+const FONT = ['/System/Library/Fonts/Supplemental/Arial.ttf', '/System/Library/Fonts/Helvetica.ttc'].find(f => fs.existsSync(f)) || 'Helvetica';
 const rep = (t, n) => Array(n).fill(t);
 const ODD = [['cv_vs_pt', rep('carrier', 3), rep('pt', 10)], ['cv3_vs_bb2ca2', rep('carrier', 3), ['battleship', 'battleship', 'cruiser', 'cruiser']],
   ['dd_swarm_vs_bb', rep('destroyer', 8), ['battleship']], ['bb4_vs_bb4', rep('battleship', 4), rep('battleship', 4)]];
@@ -88,8 +89,14 @@ function install(cfg) {
   if (WW.aces) WW.aces.reset();
   WW.seedRandom(cfg.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
   G.baseChoice = cfg.base || null; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
-  if (cfg.fast) { // no pixels are drawn: skip the per-frame visual work the camera never reads (particles, crews, water, decals, base props, audio)
-    for (const [m, f] of [['fx', 'update'], ['crew', 'update'], ['water', 'update'], ['lifeboats', 'update'], ['dmgVis', 'pose'], ['dmgVis', 'draw'], ['dmgVis', 'unpose'], ['baseFx', 'update'], ['audio', 'update']]) if (WW[m] && WW[m][f]) WW[m][f] = () => {};
+  // no pixels are drawn: skip the per-frame visual work the camera never reads (particles, crews, water, decals, base props,
+  // audio). A --sheet replay (fast: false) runs them on a SECOND seeded PRNG (window.__prng2), so the camera's own dice
+  // (Math.random) fall the same way in both modes and the replay shows the survey's shots.
+  const keep = cfg.keep || []; // modules kept running in fast mode (a probe: which one is coupled to the sim?)
+  for (const [m, f] of [['fx', 'update'], ['crew', 'update'], ['water', 'update'], ['lifeboats', 'update'], ['dmgVis', 'pose'], ['dmgVis', 'draw'], ['dmgVis', 'unpose'], ['baseFx', 'update'], ['audio', 'update']]) {
+    if (!WW[m] || !WW[m][f] || keep.indexOf(m) >= 0) continue;
+    if (cfg.fast) WW[m][f] = () => {};
+    else { const o = WW[m][f]; WW[m][f] = function () { const mr = Math.random; Math.random = window.__prng2; try { return o.apply(this, arguments); } finally { Math.random = mr; } }; }
   }
   A.tod = WW.dayNight ? WW.dayNight.kind : 'day'; A.comp = comp.map(c => c.nation[0] + ':' + c.type).join(' ');
 
@@ -111,7 +118,8 @@ function install(cfg) {
     for (const s of WW.world.ships) if (s.alive && WW.dist2(s.x, s.z, e.x, e.z) < 20 * 20) { (strad.get(s) || strad.set(s, []).get(s)).push(wall()); break; }
   });
   WW.on('shipHit', e => { if (e && e.ship) hitAny.set(e.ship, { w: wall(), k: e.kind }); });
-  WW.on('shipSunk', s => { if (s) A.ev.push({ k: 'sunk', w: wall(), sim: WW.time.now, s: ref(s), shot: shotNow(), on: filming(s) || inFrame(s.x, 2, s.z, 300) }); });
+  const sinking = []; // sunk events still in their sink window: did the camera get there?
+  WW.on('shipSunk', s => { if (s) { const e = { k: 'sunk', w: wall(), sim: WW.time.now, s: ref(s), shot: shotNow(), on: filming(s) || inFrame(s.x, 2, s.z, 300), _s: s }; A.ev.push(e); sinking.push(e); } });
   WW.on('magazine', e => { if (e && e.ship) { latch.set(e.ship, { w: wall(), why: 'magazine' }); A.ev.push({ k: 'magazine', w: wall(), s: ref(e.ship), shot: shotNow(), on: filming(e.ship) || inFrame(e.ship.x, 2, e.ship.z, 300) }); } });
   WW.on('deckHit', e => { if (e && e.ship) { latch.set(e.ship, { w: wall(), why: 'deck' }); A.ev.push({ k: 'deckHit', w: wall(), s: ref(e.ship), shot: shotNow(), on: filming(e.ship) || inFrame(e.ship.x, 2, e.ship.z, 300) }); } });
   WW.on('baseEvent', e => { if (!e) return; if (e.kind === 'bombard') baseBomb = wall(); if (e.kind === 'alarm') baseAlarm = wall(); A.ev.push({ k: 'base:' + e.kind, w: wall(), shot: shotNow(), on: inFrame(e.x, 2, e.z, 350) }); });
@@ -181,7 +189,7 @@ function install(cfg) {
     return inFrame(a.x, a.y, a.z, a.kind === 'bombard' || a.kind === 'raid' || a.kind === 'alarm' ? 320 : 240);
   }
   // ---- per frame: shots, hand-off stages, smoothness ----
-  let frames = 0, lastDir = null, maxRot = 0, snaps = 0, cur = null;
+  let frames = 0, lastDir = null, maxRot = 0, snaps = 0, cur = null, grace = 0;
   const origAR = WW.cam.afterRender;
   WW.cam.afterRender = function () {
     origAR.call(this);
@@ -193,8 +201,9 @@ function install(cfg) {
         alarm: !!s.alarm, cutaway: !!s.cutaway, hard: !!s.hard, stages: [], loaFlips: 0, cls: '' };
       A.shots.push(cur);
       if (A.shots.length > 1) A.shots[A.shots.length - 2].w1 = now;
-      lastDir = null;
+      lastDir = null; grace = 3;
     }
+    if (grace > 0) { grace--; lastDir = null; }
     if (s && cur && s.stage && (!cur.stages.length || cur.stages[cur.stages.length - 1].st !== s.stage)) cur.stages.push({ st: s.stage, w: now });
     _f.set(0, 0, -1).applyQuaternion(c.quaternion);
     if (lastDir) { const ang = Math.acos(Math.min(1, lastDir.dot(_f))) * 30; if (ang > maxRot) maxRot = ang; if (ang > 1.2) snaps++; }
@@ -205,6 +214,11 @@ function install(cfg) {
   const seen = new WeakMap(); // plane -> last phase seen (runs / aborts / dive starts)
   function sample(now, s) {
     if (G.state !== 'battle') return;
+    for (let i = sinking.length - 1; i >= 0; i--) { // the camera reaches a sinking ship while it still sinks
+      const e = sinking[i], o = e._s;
+      if (WW.time.now - e.sim > 9 || !o || o.removed) { delete e._s; sinking.splice(i, 1); continue; }
+      if (!e.on && !e.on2 && (filming(o) || inFrame(o.x, 2, o.z, 300))) { e.on2 = true; e.lag = +(now - e.w).toFixed(1); }
+    }
     // attack phases (for the promises and the run / abort count)
     for (const p of WW.world.planes) {
       if (!ok(p) || !p.pt) continue;
@@ -224,8 +238,8 @@ function install(cfg) {
     // the follow label's promise and the finder's items
     const label = WW.camFollow ? WW.camFollow.labelText() : '';
     const sto = WW.camStory.story(), about = sto && WW.camFinder ? WW.camFinder.about(sto.lead) : null;
-    const m = / in ~(\d+) s/.exec(label);
-    const promise = m && about ? { eta: about.etaReal, kind: about.kind, s: ref(about.subj), t: ref(about.target) } : null;
+    const m = /(?:in|within) ~(\d+) s/.exec(label);
+    const promise = m && about ? { eta: /within/.test(label) ? +m[1] : about.etaReal, kind: about.kind, s: ref(about.subj), t: ref(about.target) } : null;
     const finder = WW.camFinder ? WW.camFinder.list().slice(0, 6).map(i => ({ kind: i.kind, s: ref(i.subj), t: ref(i.target), eta: +i.etaReal.toFixed(1), sc: +i.score.toFixed(2) })) : [];
     // M6: subject and target in frame, occlusion, line of action, the sun
     const c = WW.camera, subj = s && (s.plane || s.subj), isD = subj && subj.diorama;
@@ -237,6 +251,8 @@ function install(cfg) {
     if (subj) {
       const sy = subj.y !== undefined ? subj.y : 2;
       q.sIn = inFrame(subj.x, sy, subj.z, 1e9); q.sD = Math.round(Math.hypot(c.position.x - subj.x, c.position.y - sy, c.position.z - subj.z));
+      q.ph = isD ? 'diorama' : subj.stats ? (subj.sinking ? 'sinking' : tgt && WW.dist(subj.x, subj.z, tgt.x, tgt.z) < 200 ? 'gun' : 'ship') : (subj.phase || subj.sk || subj.state || '');
+      q.tD = tgt ? Math.round(WW.dist(subj.x, subj.z, tgt.x, tgt.z)) : null;
       q.tIn = tgt ? inFrame(tgt.x, tgt.y !== undefined ? tgt.y : 2, tgt.z, 1e9) : null;
       // occlusion: terrain above the sight line, another hull on it, the camera under the water
       let occ = '';
@@ -251,9 +267,13 @@ function install(cfg) {
       q.occ = occ;
       if (tgt && cur) { // line of action: which side of the subject -> target line the camera is on
         const sg = Math.sign((tgt.x - subj.x) * (c.position.z - subj.z) - (tgt.z - subj.z) * (c.position.x - subj.x));
-        const tid = idOf(tgt);
+        const tid = idOf(tgt), sid2 = idOf(subj);
         if (cur.loa !== undefined && sg && cur.loa && sg !== cur.loa && cur.loaTgt === tid) cur.loaFlips++;
-        if (sg) { cur.loa = sg; cur.loaTgt = tid; }
+        if (sg && cur.loa === undefined) { // the shot's first side: a cut that lands on the other side of the previous shot's line
+          const prev = A.shots[A.shots.length - 2];
+          if (prev && prev.loa && prev.loaTgt === tid && prev.loaSubj === sid2 && prev.loa !== sg && now - prev.w1 < 2) cur.cutFlip = true;
+        }
+        if (sg) { cur.loa = sg; cur.loaTgt = tid; cur.loaSubj = sid2; }
       }
     }
     let sun = null;
@@ -282,9 +302,10 @@ function install(cfg) {
 const pct = (a, b) => (b ? (100 * a / b).toFixed(0) + '%' : '-');
 const med = arr => { if (!arr.length) return 0; const s = arr.slice().sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 const q = (arr, f) => { if (!arr.length) return 0; const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(f * s.length))]; };
+const ATT_PH = { run: 'run', anvil: 'anvil', roll: 'dive', dive: 'dive', out: 'out', attack: 'attack' };
 function analyse(R) { // one round's record -> its metrics and its worst cases
   const M = { secs: 0, act: 0, on1: 0, on3: 0, dead: 0, deadSpells: [], cls: {}, cuts: 0, lens: [], prom: { n: 0, kept: 0, happened: 0, byKind: {}, vis: 0, visKept: 0 }, fin: { n: 0, kept: 0 },
-    att: { filmed: 0, held: 0, cutBefore: 0, cutAfter: 0, cases: [] }, runs: 0, aborts: 0, anvils: 0, drops: 0, hitsOf: 0, q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, shots: 0, rotMax: [] }, ev: { n: 0, on: 0, byKind: {} } };
+    att: { filmed: 0, held: 0, cutBefore: 0, cutAfter: 0, cases: [] }, runs: 0, aborts: 0, anvils: 0, drops: 0, hitsOf: 0, q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, cutFlips: 0, shots: 0, rotMax: [], att: {}, flipsBy: {} }, ev: { n: 0, on: 0, byKind: {} } };
   const rec = R.rec, byW = new Map(); for (const r of rec) byW.set(r.w, r);
   let spell = null;
   for (const r of rec) {
@@ -293,12 +314,16 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     if (topS >= 3) { M.act++; if (r.on1) M.on1++; if (r.on3) M.on3++; }
     const dead = topS >= 6 && !r.onAny;
     if (dead) { M.dead++; if (!spell) { spell = { w: r.w, n: 0, top: r.top[0], shot: r.shot, cls: r.cls }; M.deadSpells.push(spell); } spell.n++; } else spell = null;
-    if (r.q && r.subj) { M.q.s++; if (r.q.sIn) M.q.sIn++; if (r.q.tIn !== null && r.q.tIn !== undefined) { M.q.t++; if (r.q.tIn) M.q.tIn++; } if (r.q.occ) { M.q.occ++; M.q[r.q.occ]++; } }
+    if (r.q && r.subj) {
+      M.q.s++; if (r.q.sIn) M.q.sIn++; if (r.q.tIn !== null && r.q.tIn !== undefined) { M.q.t++; if (r.q.tIn) M.q.tIn++; } if (r.q.occ) { M.q.occ++; M.q[r.q.occ]++; }
+      const ph = ATT_PH[r.q.ph] || (r.q.ph === 'gun' ? 'gun' : null); // the attack phases: the target is near enough to be in frame
+      if (ph && r.q.tIn !== null && r.q.tIn !== undefined) { const a = M.q.att[ph] = M.q.att[ph] || { n: 0, tIn: 0 }; a.n++; if (r.q.tIn) a.tIn++; }
+    }
     if (r.sun !== null && r.elev > 2) { M.q.sunN++; if (r.sun > 0.75) M.q.sunIn++; }
     M.q.snaps += r.snaps; M.q.rotMax.push(r.rot);
   }
   // shots
-  for (const s of R.shots) { if (s.w1) M.lens.push(+(s.w1 - s.w0).toFixed(1)); M.q.shots++; if (s.loaFlips) M.q.flips++; }
+  for (const s of R.shots) { if (s.w1) M.lens.push(+(s.w1 - s.w0).toFixed(1)); M.q.shots++; const k = s.story ? 'story/' + s.sk : s.kind, f = M.q.flipsBy[k] = M.q.flipsBy[k] || { n: 0, f: 0 }; f.n++; if (s.loaFlips) { M.q.flips++; f.f++; } if (s.cutFlip) M.q.cutFlips++; }
   M.cuts = R.shots.length;
   // attacks: runs / aborts / drops
   for (const e of R.runs) { if (e.k === 'run') M.runs++; else if (e.k === 'abort') M.aborts++; else if (e.k === 'anvil') M.anvils++; }
@@ -331,25 +356,25 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     if (it.kind === 'torps') return impactsOn(s.id).map(i => i.w);
     return [];
   }
-  const judge = (it, w, slot) => {
+  const judge = (it, w, slot, within) => {
     const T = w + it.eta, ev = eventTimes(it);
-    const kept = ev.some(x => Math.abs(x - T) <= 5), happened = ev.some(x => x >= w && x <= T + 60);
+    const kept = within ? ev.some(x => x >= w - 1 && x <= T + 5) : ev.some(x => Math.abs(x - T) <= 5), happened = ev.some(x => x >= w && x <= T + 60);
     slot.n++; if (kept) slot.kept++; if (happened) slot.happened = (slot.happened || 0) + 1;
     const k = slot.byKind && (slot.byKind[it.kind] = slot.byKind[it.kind] || { n: 0, kept: 0, happened: 0 }); if (k) { k.n++; if (kept) k.kept++; if (happened) k.happened++; }
     return kept;
   };
   M.promCases = [];
   for (const r of rec) {
-    if (r.promise && r.promise.s) { const kept = judge(r.promise, r.w, M.prom); M.prom.vis++; if (kept) M.prom.visKept++; if (!kept) M.promCases.push({ w: r.w, label: r.label, eta: r.promise.eta, kind: r.promise.kind }); }
+    if (r.promise && r.promise.s) { const kept = judge(r.promise, r.w, M.prom, /within ~/.test(r.label)); M.prom.vis++; if (kept) M.prom.visKept++; if (!kept) M.promCases.push({ w: r.w, label: r.label, eta: r.promise.eta, kind: r.promise.kind }); }
     for (const it of r.finder) if (it.eta >= 3 && it.eta <= 60 && it.s && it.kind !== 'danger') judge(it, r.w, M.fin);
   }
   // big events on camera
-  for (const e of R.ev) { M.ev.n++; if (e.on) M.ev.on++; const k = M.ev.byKind[e.k] = M.ev.byKind[e.k] || { n: 0, on: 0 }; k.n++; if (e.on) k.on++; }
+  for (const e of R.ev) { const on = e.on || e.on2, key = e.k === 'sunk' ? 'sunk:' + (e.s ? e.s.c : '?') : e.k; M.ev.n++; if (on) M.ev.on++; const k = M.ev.byKind[key] = M.ev.byKind[key] || { n: 0, on: 0 }; k.n++; if (on) k.on++; }
   return M;
 }
 function merge(all) { // sum the per-round metrics
   const T = { secs: 0, act: 0, on1: 0, on3: 0, dead: 0, cls: {}, lens: [], cuts: 0, prom: { n: 0, kept: 0, happened: 0, vis: 0, visKept: 0, byKind: {} }, fin: { n: 0, kept: 0, happened: 0 }, att: { filmed: 0, held: 0, cutBefore: 0, cutAfter: 0 }, runs: 0, aborts: 0, anvils: 0, drops: 0, hitsOf: 0,
-    q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, shots: 0, rotMax: [] }, ev: { n: 0, on: 0, byKind: {} }, spells: [] };
+    q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, cutFlips: 0, shots: 0, rotMax: [], att: {}, flipsBy: {} }, ev: { n: 0, on: 0, byKind: {} }, spells: [] };
   for (const M of all) {
     for (const k of ['secs', 'act', 'on1', 'on3', 'dead', 'cuts', 'runs', 'aborts', 'anvils', 'drops', 'hitsOf']) T[k] += M[k];
     for (const k in M.cls) T.cls[k] = (T.cls[k] || 0) + M.cls[k];
@@ -358,7 +383,9 @@ function merge(all) { // sum the per-round metrics
     for (const k in M.prom.byKind) { const a = T.prom.byKind[k] = T.prom.byKind[k] || { n: 0, kept: 0, happened: 0 }; for (const f in a) a[f] += M.prom.byKind[k][f] || 0; }
     for (const k of ['n', 'kept', 'happened']) T.fin[k] += M.fin[k] || 0;
     for (const k of ['filmed', 'held', 'cutBefore', 'cutAfter']) T.att[k] += M.att[k];
-    for (const k in T.q) if (k !== 'rotMax') T.q[k] += M.q[k]; T.q.rotMax.push(...M.q.rotMax);
+    for (const k in T.q) if (k !== 'rotMax' && k !== 'att' && k !== 'flipsBy') T.q[k] += M.q[k]; T.q.rotMax.push(...M.q.rotMax);
+    for (const k in M.q.att) { const a = T.q.att[k] = T.q.att[k] || { n: 0, tIn: 0 }; a.n += M.q.att[k].n; a.tIn += M.q.att[k].tIn; }
+    for (const k in M.q.flipsBy) { const a = T.q.flipsBy[k] = T.q.flipsBy[k] || { n: 0, f: 0 }; a.n += M.q.flipsBy[k].n; a.f += M.q.flipsBy[k].f; }
     T.ev.n += M.ev.n; T.ev.on += M.ev.on;
     for (const k in M.ev.byKind) { const a = T.ev.byKind[k] = T.ev.byKind[k] || { n: 0, on: 0 }; a.n += M.ev.byKind[k].n; a.on += M.ev.byKind[k].on; }
   }
@@ -374,7 +401,9 @@ function report(T, title) {
   const tot = T.secs || 1;
   L.push(`M4 variety: screen time ` + Object.keys(T.cls).sort((a, b) => T.cls[b] - T.cls[a]).map(k => `${k} ${pct(T.cls[k], tot)}`).join(', ') + `; shot length p10/p50/p90 ${q(T.lens, 0.1)}/${med(T.lens)}/${q(T.lens, 0.9)} s; ${(60 * T.cuts / tot).toFixed(1)} cuts/min`);
   L.push(`M5 dead air: ${pct(T.dead, tot)} of the time (${T.dead} s) on nothing while a big action (score >= 6) ran elsewhere`);
-  L.push(`M6 angle: subject in frame ${pct(T.q.sIn, T.q.s)}, target in frame ${pct(T.q.tIn, T.q.t)} (of ${T.q.t} s with a target), occluded ${pct(T.q.occ, T.q.s)} (land ${T.q.land}, hull ${T.q.hull}, sea ${T.q.sea}), into the sun ${pct(T.q.sunIn, T.q.sunN)}, line-of-action flips in ${pct(T.q.flips, T.q.shots)} of shots, snap frames (>1.2 rad/s) ${(60 * T.q.snaps / tot).toFixed(1)}/min, view rate p90 ${q(T.q.rotMax, 0.9)} rad/s`);
+  const att = Object.keys(T.q.att).map(k => `${k} ${pct(T.q.att[k].tIn, T.q.att[k].n)}/${T.q.att[k].n}`).join(', ');
+  const fl = Object.keys(T.q.flipsBy).filter(k => T.q.flipsBy[k].f).sort((a, b) => T.q.flipsBy[b].f - T.q.flipsBy[a].f).map(k => `${k} ${T.q.flipsBy[k].f}/${T.q.flipsBy[k].n}`).join(', ');
+  L.push(`M6 angle: subject in frame ${pct(T.q.sIn, T.q.s)}, target in frame ${pct(T.q.tIn, T.q.t)} (of ${T.q.t} s with a target); IN THE ATTACK (subject + target in frame): ${att}; occluded ${pct(T.q.occ, T.q.s)} (land ${T.q.land}, hull ${T.q.hull}, sea ${T.q.sea}), into the sun ${pct(T.q.sunIn, T.q.sunN)}, line-of-action: cuts that flip sides ${T.q.cutFlips} (${pct(T.q.cutFlips, T.q.shots)} of shots), in-shot crossings in ${pct(T.q.flips, T.q.shots)} of shots (${fl}), snap frames (>1.2 rad/s, cuts excluded) ${(60 * T.q.snaps / tot).toFixed(1)}/min, view rate p90 ${q(T.q.rotMax, 0.9)} rad/s`);
   L.push(`Big events on camera: ${pct(T.ev.on, T.ev.n)} of ${T.ev.n}: ` + Object.keys(T.ev.byKind).map(k => `${k} ${T.ev.byKind[k].on}/${T.ev.byKind[k].n}`).join(', '));
   return L.join('\n');
 }
@@ -405,7 +434,8 @@ function summarize(dir) {
 const INIT = (seed) => `window.__raf = []; window.__fakeT = 0; window.__render = false;
   window.requestAnimationFrame = cb => { __raf.push(cb); return __raf.length; };
   window.__step = n => { for (let i = 0; i < n; i++) { __fakeT += 1000 / 30; const cbs = __raf.splice(0); cbs.forEach(cb => cb(__fakeT)); } };
-  (function () { let a = (${seed} * 2654435761) >>> 0; Math.random = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
+  window.__mk = s0 => { let a = s0 >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+  Math.random = __mk(${seed} * 2654435761); window.__prng2 = __mk(${seed} * 40503 + 99991);`;
 async function openRound(b, spec) {
   const p = await b.newPage({ viewport: { width: 960, height: 540 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
@@ -413,7 +443,7 @@ async function openRound(b, spec) {
   await p.goto(BASE_URL + 'index.html?auto');
   await p.waitForTimeout(1500);
   const comp = await p.evaluate(([install, cfg]) => {
-    const pr = WW.post.render.bind(WW.post); WW.post.render = (a, b) => { if (window.__render) pr(a, b); };
+    const pr = WW.post.render.bind(WW.post); WW.post.render = (a, b) => { if (!window.__render) return; const mr = Math.random; Math.random = window.__prng2; try { pr(a, b); } finally { Math.random = mr; } };
     const t0 = performance.now(); performance.now = () => t0 + __fakeT;
     __step(5);
     return (new Function('return ' + install)())(cfg);
@@ -425,7 +455,7 @@ async function survey(b, spec, dir) {
   const t0 = Date.now();
   let t = 0;
   while (true) { t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
-  const R = await p.evaluate(() => { const A = window.__audit; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs }; });
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs }; });
   R.errs = errs.slice(0, 5);
   fs.writeFileSync(path.join(dir, `${spec.name}_${spec.seed}.json`), JSON.stringify(R));
   const M = analyse(R);
@@ -449,14 +479,17 @@ async function sheet(b, specTxt) {
     frames.push({ file, info });
     console.log(`  ${info.w}s ${info.shot} | ${info.top} | ${info.label} | ${info.cap}`);
   }
+  const shots = await p.evaluate(() => window.__audit.shots.map(s => Math.round(s.w0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : '')));
+  fs.writeFileSync(path.join(dir, 'shots.txt'), shots.join('\n')); // the replay's shot list: compare with the survey's raw JSON
   await p.close();
-  const argsM = ['-tile', '4x', '-geometry', '480x270+3+3', '-background', '#222', '-fill', 'white', '-pointsize', '13', '-title', `${name} seed ${seed} ${from}-${to}s`];
+  const argsM = ['-tile', '4x', '-geometry', '480x270+3+3', '-background', '#222', '-fill', 'white', '-font', FONT, '-pointsize', '13', '-title', `${name} seed ${seed} ${from}-${to}s`];
   for (const f of frames) argsM.push('-label', `${f.info.w}s ${f.info.shot} | ${f.info.top}`.replace(/%/g, '%%'), f.file);
   const outPng = path.join(OUT, 'sheets', `${TAG}_${name}_${seed}_${from}-${to}.png`);
   cp.spawnSync('montage', argsM.concat([outPng]), { stdio: 'inherit' });
   console.log('sheet', outPng);
 }
-(async () => {
+module.exports = { install, INIT, specOf, openRound, analyse, merge, report, SCEN };
+if (require.main === module) (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const dir = path.join(OUT, 'raw_' + TAG); fs.mkdirSync(dir, { recursive: true });
   if (SUMMARIZE) return summarize(dir);
