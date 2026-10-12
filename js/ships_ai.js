@@ -282,12 +282,13 @@ window.WW = window.WW || {};
   // Air-attack evasion (1942): a ship that sees bombers committed to their attack on her manoeuvres under them at
   // full speed. Dive bombers (rolling in / diving at her within EV.R): rudder hard over, a turn of EV.LEG rad, then
   // the next leg: the USN weaves (Yorktown, Enterprise: reversing the turn spoils the next pilot's aim), the IJN
-  // keeps turning the same way (the Kido Butai circled at Midway). Torpedo planes on their run or setting up the
-  // anvil: bow or stern on to the nearest (the less rudder), so a drop runs down her side; once a track is in the
-  // water comb() (above) takes over. Bounded: an episode ends EV.HOLD s after the last attacker, or after EV.MAX s,
+  // keeps turning the same way (the Kido Butai circled at Midway). A torpedo plane on its run (seen for the
+  // type's reaction time REACT): one turn bow or stern on to it (the less rudder), so its drop runs down her side (a
+  // plane from the other bow of an anvil may still find her beam: turning helped, it did not halve the hits); once
+  // a track is in the water comb() (above) takes over. Bounded: an episode ends EV.HOLD s after the last attacker, or after EV.MAX s,
   // then EV.COOL s on course before the next (the ship rejoins her station: the role steers again); never while
   // combing (comb, ai_surface.js earlyComb). Emits 'shipEvade' { ship, kind } at each episode's start.
-  const EV = { R: 110, RESC: 150, LEG: 1.3, HOLD: 3, MAX: 20, COOL: 5, WEAVE: { USN: true, IJN: false } };
+  const EV = { R: 110, RESC: 150, TP_REACT: 0.6, LEG: 1.3, HOLD: 3, MAX: 20, COOL: 5, WEAVE: { USN: true, IJN: false } };
   function airEvade(ship) {
     const a = ship.ai, now = WW.time.now;
     if (ship.submerged || ship.type === 'submarine' || a.combUntil > now || a.earlyCombT === now) return false;
@@ -300,12 +301,20 @@ window.WW = window.WW || {};
     for (let i = 0; i < P.length; i++) {
       const p = P[i];
       if (!p || !p.alive || !p.ordnance || p.nation === ship.nation || (p.target !== ship && !(resc && (p.kind === 'dive' || p.kind === 'torpedo')))) continue;
-      const dive = p.target !== ship || (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive')), torp = p.kind === 'torpedo' && (p.phase === 'run' || p.sk === 'anvil');
+      const dive = p.target !== ship || (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive')), torp = p.kind === 'torpedo' && p.phase === 'run';
       if (!dive && !torp) continue;
       const d2 = WW.dist2(ship.x, ship.z, p.x, p.z);
       if (d2 > r2 || !seen(ship, p)) continue;
       if (torp && d2 < tpD) { tpD = d2; tp = p; } else if (dive) dv = p;
     }
+    // a torpedo plane on its run is answered only after the type's reaction time (REACT, as comb(): the captain sees
+    // the plane settle on its run, then orders the rudder) and with one fixed turn, not by following it round
+    if (tp) { if (!a.tpRun || a.tpRun.p !== tp) a.tpRun = { p: tp, t0: now }; if (now - a.tpRun.t0 < (REACT[ship.type] || 1) * EV.TP_REACT) tp = null; }
+    else a.tpRun = null;
+    // the same for the dive bombers: the rudder goes over the reaction time after the first one pushes over (a big ship
+    // answers slowly; the leader's bomb is already on its way)
+    if (dv) { if (!a.dvT0) a.dvT0 = now; a.dvSeen = now; if (now - a.dvT0 < (REACT[ship.type] || 1)) dv = null; }
+    else if (!(a.dvSeen > now - 3)) a.dvT0 = 0;
     if (!dv && !tp) { if (!ev) return false; }
     else if (!ev || (tp && ev.kind === 'dive')) { // a new episode (a torpedo run outranks a dive: it is the ship killer)
       const kind = tp ? 'torp' : 'dive';
@@ -324,14 +333,14 @@ window.WW = window.WW || {};
       } else {
         const b = Math.atan2(tp.z - ship.z, tp.x - ship.x);
         ev.end = Math.abs(WW.angleDiff(ship.heading, b)) < PI / 2 ? 0 : PI;   // bow or stern on: whichever is less rudder
+        ev.h = b + ev.end;
       }
       a.airEvDir = ev.dir || a.airEvDir;
       WW.emit('shipEvade', { ship, kind });
       if (WW.dstat) WW.dstat('evadeN', ship.nation);
     }
     if (dv || tp) ev.until = now + EV.HOLD;
-    if (ev.kind === 'torp' && tp) ev.h = Math.atan2(tp.z - ship.z, tp.x - ship.x) + ev.end; // follows the runner round
-    else if (ev.kind === 'dive' && Math.abs(WW.angleDiff(ship.heading, ev.h)) < 0.2 && (dv || tp)) { // leg done, still under attack
+    if (ev.kind === 'dive' && Math.abs(WW.angleDiff(ship.heading, ev.h)) < 0.2 && (dv || tp)) { // leg done, still under attack
       if (EV.WEAVE[ship.nation]) ev.dir = -ev.dir; // USN weaves, IJN circles
       ev.h = ship.heading + ev.dir * EV.LEG; ev.leg++;
     }

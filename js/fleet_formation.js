@@ -57,8 +57,14 @@ window.WW = window.WW || {};
     });
     // A carrier task force on its own (no battle line, screen or flotilla) has no guards: its escorts are its only
     // surface force and go out to meet the enemy (fleet_groups.js sortie; held back, carrier rounds ran to time)
+    // Nor once the enemy has no flight deck left (its carriers sunk or gone, its island base knocked out):
+    // with no air attack to come, the screen joins the surface fight (it held back the late action otherwise).
     var G = B.groups, surf = G.main.members.length + G.screen.members.length + G.flotilla.members.length, g = {};
-    list.forEach(function (o) { var id = o.ringCv.id, n = g[id] = (g[id] || 0) + 1; o.guard = surf > 0 && n <= (tot[id] >= 3 ? GUARD_N : 1); });
+    // (the admirals assume the enemy's decks until they are seen to go: a carrier sunk is known to both sides)
+    var air = false, S = WW.world.ships, eb = WW.islandBase && WW.islandBase.base;
+    for (var i = 0; i < S.length && !air; i++) { var u = S[i]; if (u.nation !== B.nation && u.type === 'carrier' && u.alive && !u.sinking && !u.escaped) air = true; }
+    if (eb && eb.nation && eb.nation !== B.nation && !eb.neutralized) air = true;
+    list.forEach(function (o) { var id = o.ringCv.id, n = g[id] = (g[id] || 0) + 1; o.guard = surf > 0 && air && n <= (tot[id] >= 3 ? GUARD_N : 1); });
   }
   // The station of ring escort o: live point { x, z } (null when it has no carrier)
   function ringPoint(o, out) {

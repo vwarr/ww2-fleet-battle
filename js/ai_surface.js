@@ -140,13 +140,16 @@ window.WW = window.WW || {};
   // A carrier's AA-ring escort (doctrine ringR) keeps the ring whatever it is shooting at, while its carrier lives
   // and the side is not pressing, pursuing or withdrawing (fleet_formation.js; the escort charge is ai_charge.js).
   // A carrier's guard (fleet_formation.js tagRing: its first one or two escorts) holds the ring (USN) or its loose
-  // station (IJN) in every posture but the pursuit: the carrier is not left alone while it has an escort. (A carrier
+  // station (IJN) in every posture but the pursuit, and in the press only while a raid is on the plot for its carrier
+  // (the press is the late surface fight: held back, the escorts cost it action): the carrier is not left alone under air attack. (A carrier
   // task force on its own has no guards: fleet_formation.js tagRing.)
   function ringHold(o, B) {
     if (!(o && B && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking)) return false;
-    if (o.guard && (o.ringR > 0 || o.looseR > 0) && B.posture !== 'pursue') return true; // (a pursuit of a broken enemy takes every ship)
+    if (o.guard && (o.ringR > 0 || o.looseR > 0) && B.posture !== 'pursue' && (B.posture !== 'press' || raided(B, o.ringCv))) return true; // (a pursuit takes every ship; the press too, unless a raid is on the plot for that carrier)
     return o.ringR > 0 && B.posture !== 'press' && B.posture !== 'pursue' && B.posture !== 'withdraw';
   }
+  // an armed raid on the side's plot for this carrier (fleet_formation.js threatAxis: within its RAID_R, held RAID_HOLD s)
+  function raided(B, cv) { const r = B.raidAx && B.raidAx[cv.id]; return !!(r && r.raid); }
   // A carrier's escort hunts a sub only inside ESC_SUB of its carrier (a periscope near the carrier, or the datum of a
   // torpedo at it); a contact farther off is reported and the escort keeps its station (1942 carrier screens did not
   // detach their destroyers to chase a datum; the screen / ASW group does that).
