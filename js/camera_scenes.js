@@ -43,7 +43,7 @@ window.WW = window.WW || {};
   function interrupt(c) {
     if (!WW.cam || !WW.cam.interrupt) return;
     const now = wall();
-    if (c.pr < 11 && now - lastInt < 12) return;        // at most one interrupt per 12 s, unless it is the biggest kind
+    if (c.pr < 11 && now - lastInt < 15) return;        // at most one interrupt per 15 s, unless it is the biggest kind
     if (WW.cam.interrupt(c)) { lastInt = now; ST.interrupts++; }
   }
   WW.on('shipSunk', s => {
