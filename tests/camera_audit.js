@@ -12,7 +12,7 @@
 // --sheet re-renders a window of it as a contact sheet (ImageMagick montage); the sheet's shot list (shots.txt) is
 // checked against the survey's raw JSON when it exists.
 // Usage: BASE_URL=http://localhost:8779/ CHROMIUM=... node tests/camera_audit.js [--scen standard,carrier_duel,midway,battle_line,night,dusk,odd]
-//        [--seeds 1,2,3] [--sim 600] [--workers 2] [--out dir] [--summarize] [--sheet SCEN:SEED:from:to[:every]] [--tag name] [--fast]
+//        [--seeds 1,2,3] [--sim 600] [--workers 2] [--out dir] [--summarize] [--windows] [--sheet SCEN:SEED:from:to[:every]] [--tag name] [--fast]
 const fs = require('fs'), path = require('path'), cp = require('child_process');
 const { chromium } = require('playwright');
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -502,11 +502,35 @@ async function sheet(b, specTxt) {
   cp.spawnSync('montage', argsM.concat([outPng]), { stdio: 'inherit' });
   console.log('sheet', outPng);
 }
-module.exports = { install, INIT, specOf, openRound, analyse, merge, report, SCEN };
+// --windows: contact-sheet windows worth looking at in a survey's raw data (wall seconds relative to the first shot, as --sheet
+// takes them): torpedo attacks the camera held from the run to the impact, gun-duel shots on a ship that was hit, base shots
+// under bombardment, dives held to the bomb
+function windows(dir) {
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort()) {
+    const R = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')), t0 = R.shots[0] ? R.shots[0].w0 : 0, tag = f.replace('.json', '').replace(/_(\d+)$/, ':$1');
+    const rel = w => Math.round(w - t0), out = [];
+    const shotAt = w => R.shots.find(s => s.w0 <= w && (s.w1 === undefined || s.w1 > w));
+    for (const d of R.drops) {
+      if (!d.on || !d.imp) continue;
+      const s0 = shotAt(d.w - 4), s1 = shotAt(d.imp.w + 1);
+      if (s0 && s1 && (s0.sid === s1.sid || (s1.subj && d.t && s1.subj.id === d.t.id))) out.push(`${d.kind} ${d.p.sq || d.p.c} -> ${d.t ? d.t.c : '?'} ${d.imp.hit ? 'HIT' : 'miss'}: --sheet ${tag}:${rel(d.w) - 8}:${rel(d.imp.w) + 3}`);
+    }
+    for (const s of R.shots) {
+      if (!s.w1) continue;
+      const secs = R.rec.filter(r => r.w >= s.w0 && r.w < s.w1), top = secs.map(r => r.top[0]).filter(Boolean);
+      if (s.kind === 'duel' && top.some(t => (t.kind === 'hit' || t.kind === 'duel' || t.kind === 'straddled') && t.on)) out.push(`gun duel ${s.subj ? s.subj.c : ''}: --sheet ${tag}:${rel(s.w0)}:${rel(s.w1)}`);
+      if (s.kind === 'base' && top.some(t => t.kind === 'bombard' && t.on)) out.push(`base bombarded: --sheet ${tag}:${rel(s.w0)}:${rel(s.w1)}`);
+      if (s.kind === 'profile') out.push(`sinking ${s.subj ? s.subj.c : ''}: --sheet ${tag}:${rel(s.w0)}:${rel(s.w1)}`);
+    }
+    if (out.length) console.log(`## ${f}\n  ` + out.join('\n  '));
+  }
+}
+module.exports = { install, INIT, specOf, openRound, analyse, merge, report, SCEN, windows };
 if (require.main === module) (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const dir = path.join(OUT, 'raw_' + TAG); fs.mkdirSync(dir, { recursive: true });
   if (SUMMARIZE) return summarize(dir);
+  if (args.includes('--windows')) return windows(dir);
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   if (SHEET) { for (const s of SHEET.split(',')) await sheet(b, s); await b.close(); return; }
   const jobs = []; for (const sc of SCENS) for (const sd of SEEDS) jobs.push(specOf(sc, sd));
