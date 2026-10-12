@@ -145,14 +145,16 @@ window.WW = window.WW || {};
     WW.cam.update = function (rdt) { const r = u.apply(this, arguments); try { label(rdt || 0); } catch (e) { /* the label never breaks the camera */ } return r; };
   }
 
-  // the director's own candidates: an attack 0-35 s away (the finder knows it before it happens)
+  // the director's own candidates: an attack 0-35 s away (the finder knows it before it happens), on the score ladder
+  // of camera_score.js (capped at 8: an attack about to happen never beats one under way or a ship being hit)
+  const prOf = it => (WW.camScore ? WW.camScore.prOf(it) : Math.min(8, 5.5 + it.score * 0.6));
   (WW.camHooks = WW.camHooks || []).push(function (add, dur) {
     if (!WW.camFinder) return;
     for (const it of WW.camFinder.list()) {
       if (it.etaReal > 35 || !it.subj || it.subj.removed) continue;
-      if (isPlane(it.subj)) { if (ok(it.subj)) add(7.5 + it.drama, 'chase', it.subj, { dur: dur(12, 15) }); }
-      else if (it.kind === 'torps') add(8 + it.drama, 'orbit', it.subj, { r: it.subj.stats.length * 1.5 + 20, dur: dur(12, 16), w: 0.05, hgt: 0.3 });
-      else if (it.kind === 'danger') add(4 + it.drama, 'orbit', it.subj, { r: it.subj.stats.length * 1.4 + 18, dur: dur(12, 16), w: 0.045 });
+      if (isPlane(it.subj)) { if (ok(it.subj)) add(prOf(it), 'chase', it.subj, { dur: dur(12, 15), target: it.target && it.target.stats ? it.target : null, item: it.kind }); }
+      else if (it.kind === 'torps') add(prOf(it), 'orbit', it.subj, { r: it.subj.stats.length * 1.5 + 20, dur: dur(12, 16), w: 0.05, hgt: 0.3, item: 'torps' });
+      else if (it.kind === 'danger') add(prOf(it), 'orbit', it.subj, { r: it.subj.stats.length * 1.4 + 18, dur: dur(12, 16), w: 0.045, item: 'danger' });
     }
   });
   WW.on('roundStart', () => { cur = null; });

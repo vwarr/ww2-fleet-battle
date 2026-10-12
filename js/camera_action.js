@@ -67,7 +67,8 @@ window.WW = window.WW || {};
       u.normalize();
       const C = I.clone().addScaledVector(u, 24); C.y = 11;
       const s = shipOf(ev.target) || shipOf(shot.subj);
-      if (s) { // broadside on the target, on the camera's side, a little toward where the camera was along the hull
+      if (shot.deck) C.copy(cur.P); // from the deck (camera_scenes.js aa): stay there and watch the bomb come down
+      else if (s) { // broadside on the target, on the camera's side, a little toward where the camera was along the hull
         const fx = Math.cos(s.heading), fz = Math.sin(s.heading), nx = -fz, nz = fx, L = s.stats.length;
         const sg = (cur.P.x - s.x) * nx + (cur.P.z - s.z) * nz >= 0 ? 1 : -1;
         const al = WW.clamp((cur.P.x - s.x) * fx + (cur.P.z - s.z) * fz, -L * 0.6, L * 0.6), off = L * 0.5 + 18;
@@ -156,7 +157,7 @@ window.WW = window.WW || {};
     shot.aim.set(p.x + f.x * 5, 0.3, p.z + f.z * 5);
     settle(shot, 0.9);
     gL.set(p.x + f.x * 10, 0.5, p.z + f.z * 10);
-    gL.lerpVectors(shot.L0, gL, ease(WW.clamp(shot.st / 0.9, 0, 1))); // turn from the plane to the wake gently
+    gL.lerpVectors(shot.L0, gL, ease(WW.clamp(shot.st / 1.5, 0, 1))); // turn from the plane to the wake gently
   }
   function hold(shot, gP, gL) {
     if (shot.lastP) gP.copy(shot.lastP); else gP.copy(WW.cam.current().P);
@@ -222,7 +223,7 @@ window.WW = window.WW || {};
         else if (shot.stage === 'torp') torp(shot, gP, gL, rdt);
         else hold(shot, gP, gL);
         if (shot.stage !== 'hold') shot.lastP = (shot.lastP || V()).copy(gP);
-        lift(gP, shot, 16, rdt); // (also while holding: a ship steaming into a still camera lifts it, rather than shoving it)
+        if (!shot.deck) lift(gP, shot, 16, rdt); // (also while holding: a ship steaming into a still camera lifts it, rather than shoving it; not a deck camera off its own hull)
         return true;
       }
       if (shot.kind === 'ots') {

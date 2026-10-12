@@ -2,7 +2,8 @@
 // sinking, a torpedo run, a dive-bomb attack, a carrier launch, a dogfight, a battleship firing) and
 // films it with a slow, eased orbit / chase / fly-by / wide shot of 6-12 s, then cuts to the next one.
 // One drama scale ranks every candidate (planes here and in the hooks, ships and the base in camera_scenes.js,
-// imminent attacks in camera_follow.js); a shot committed to an attack is LOCKED (camera_lock.js) until its result,
+// imminent attacks in camera_follow.js; the ladder in camera_score.js, which also re-evaluates the running shot once a
+// second and takes the camera to a bigger action elsewhere); a shot committed to an attack is LOCKED (camera_lock.js) until its result,
 // and a sinking or a magazine explosion cuts in through interrupt(). Setup mode (and 'map' mode, key C) uses a
 // high overview of the whole map.
 window.WW = window.WW || {};
@@ -93,7 +94,7 @@ window.WW = window.WW || {};
     }
   }
   function candidates() {
-    const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr: pr + Math.random() * 2, kind, subj }, extra || {}));
+    const out = [], add = (pr, kind, subj, extra) => out.push(Object.assign({ pr, jit: Math.random() * 2, kind, subj }, extra || {})); // pr: the drama (camera_score.js ladder); jit: the pick's dice
     shipShots(add);
     const scenes = !!WW.camScenes; // the sinking, the gun duel, the straddle, the base: camera_scenes.js (the hooks)
     for (const s of WW.world.ships) {
@@ -102,17 +103,21 @@ window.WW = window.WW || {};
       if (!s.alive) continue;
       if (s.hp < s.maxHp * 0.5 && s.type !== 'pt') add(5, 'orbit', s, { r: shipR(s, 0.38), dur: dur(13, 18), w: 0.045, hgt: 0.2, loa: s.target }); // burning
       const t = s.target, d = t ? WW.dist(s.x, s.z, t.x, t.z) : 1e9;
-      if (s.type === 'battleship' && t && d < 170) add(scenes ? 4.5 : 6, 'flyby', s, { dur: dur(15, 20) });
-      else if (s.type === 'cruiser' && t && d < 120) add(scenes ? 3.5 : 4.5, 'chase', s, { dur: dur(13, 17) });
-      else if ((s.type === 'destroyer' || s.type === 'pt') && t && d < 90) add(scenes ? 3 : 4, 'chase', s, { dur: dur(12, 15) });
+      // a ship closing on its target: over its turrets toward the target (camera_scenes.js duel; the scenes add the firing duel itself)
+      if (s.type === 'battleship' && t && d < 170) add(scenes ? 4.5 : 6, scenes ? 'duel' : 'flyby', s, { dur: dur(15, 20), target: t });
+      else if (s.type === 'cruiser' && t && d < 120) add(scenes ? 3.5 : 4.5, scenes ? 'duel' : 'chase', s, { dur: dur(13, 17), target: t });
+      else if ((s.type === 'destroyer' || s.type === 'pt') && t && d < 90) add(scenes ? 3 : 4, scenes ? 'duel' : 'chase', s, { dur: dur(12, 15), target: t });
       if (s.type === 'carrier' && WW.world.planes.some(p => p.carrier === s && p.state === 'takeoff')) add(6.5, 'flyby', s, { dur: dur(15, 20) });
       if (s.type === 'submarine' && s.ai && s.ai.evadeT > 7) add(5, 'chase', s, { dur: dur(12, 15) });
     }
     for (const p of WW.world.planes) {
       if (!p.alive) continue;
       const ace = (p.ace ? 3 : 0) + Math.min(2, (+p.kills || 0) * 0.5); // aces (if the game tracks them) draw the eye
-      if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8 + ace, 'chase', p, { dur: dur(12, 14) });
-      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add(7.5 + ace, 'orbit', p.target, { r: shipR(p.target, 0.34, 6), dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
+      // an attack UNDER WAY: the run low beside the plane with the ship ahead (the story chase framing), the dive from above and
+      // behind the diver looking down at the deck, or from the deck looking up through the flak (camera_scenes.js aa)
+      if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8.5 + ace, 'chase', p, { dur: dur(12, 14), target: p.target });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive && (p.phase === 'roll' || p.phase === 'dive')) add(8.2 + ace, 'chase', p, { dur: dur(10, 13), target: p.target, back: 18 });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add((scenes ? 6.5 : 7.5) + ace, scenes && Math.random() < 0.5 ? 'aa' : 'orbit', p.target, { r: shipR(p.target, 0.34, 6), dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
       else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(6.5 + ace, 'ots', p, { dur: dur(10, 13) }); // over the shoulder (camera_action.js)
       else if (p.state === 'transit' && p.ordnance) add(3 + ace, 'chase', p, { dur: dur(12, 15) });
     }
@@ -127,9 +132,9 @@ window.WW = window.WW || {};
     const opening = shotCount === 1 && WW.game && WW.game.state === 'battle';
     const planes = recentCls.length >= 3 && recentCls.every(k => k === 'plane'), ships = recentCls.length >= 3 && recentCls.every(k => k !== 'plane');
     if (!opening) for (const c of candidates()) {
-      let s = c.pr;
+      let s = c.pr + c.jit;
       if (c.kind === lastKind) s -= 2.5;
-      if (c.subj && recent.indexOf(c.subj) >= 0) s -= 5; // no repeats back-to-back
+      if (c.subj && c.pr < 7 && recent.indexOf(c.subj) >= 0) s -= 5; // no repeats back-to-back (an action is allowed back)
       const cls = clsOf(c);
       if (planes && cls !== 'plane') s += 1.5; else if (ships && cls === 'plane') s += 1; // variety: three of a kind in a row tips the next pick
       if (!best || s > best.score) { best = c; best.score = s; }
@@ -226,6 +231,7 @@ window.WW = window.WW || {};
       }
       case 'chase': {
         const h = s.heading !== undefined ? s.heading : 0, isPlane = sp.y > 0.5;
+        if (isPlane && s.pt && WW.storyShots && WW.storyShots.chase) { WW.storyShots.chase(shot, gP, gL, rdt); break; } // the run / dive framing (plane AND target in frame)
         const back = isPlane ? 20 * PFK : (s.stats ? s.stats.length : 10) * 1.2 + 10;
         if (shot.t === 0 || shot.sideT === undefined) { // choose the quarter with open water once
           shot.sideT = 1;
@@ -310,6 +316,20 @@ window.WW = window.WW || {};
     }
   }
 
+  // the director's view never turns faster than TURN_MAX (rad/s): a plane passing close or a hand-off turning onto
+  // the wake pans the camera, it does not snap it (the subject may leave the frame for a moment)
+  const TURN_MAX = 1.0, _d0 = new THREE.Vector3(), _d1 = new THREE.Vector3(), _qq = new THREE.Quaternion(), _qI = new THREE.Quaternion();
+  function capTurn(rdt) {
+    _d1.copy(L).sub(P);
+    const len = _d1.length(), l0 = _d0.length();
+    if (len < 1e-3 || l0 < 1e-3) return;
+    _d1.multiplyScalar(1 / len); _d0.multiplyScalar(1 / l0);
+    const ang = _d0.angleTo(_d1), max = TURN_MAX * rdt;
+    if (ang <= max) return;
+    _qq.setFromUnitVectors(_d0, _d1); _qI.identity(); _qI.slerp(_qq, max / ang);
+    _d0.applyQuaternion(_qI).normalize();
+    L.copy(P).addScaledVector(_d0, len);
+  }
   // Composition: aim so the subject sits in the middle band (slightly below centre, rule of thirds),
   // which also lifts the view enough for the horizon to show in most shots.
   const probe = new THREE.PerspectiveCamera(), _s = new THREE.Vector3(), _up = new THREE.Vector3(), _rt = new THREE.Vector3();
@@ -390,7 +410,17 @@ window.WW = window.WW || {};
     // test hook: film a given candidate now, e.g. film({ kind: 'chase', subj: plane, dur: 14 })
     film(c) { forced = true; startShot(Object.assign({ pr: 99, dur: 12 }, c)); },
     _shot() { return shot; },
+    _candidates: candidates,
+    forced() { return !!forced; },
     locked,
+    // camera_score.js: a bigger action elsewhere takes the camera now (a soft cut); an automatic story ends for it
+    recut(c) {
+      if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
+      if (shot && (shot.user || shot.pr >= 99 || shot.stage || locked())) return false;
+      if (WW.camStory && WW.camStory.active() && !WW.camStory.yieldTo(c)) return false;
+      c.recut = true; startShot(c);
+      return true;
+    },
     // a big event cuts in now (camera_scenes.js: a sinking, a magazine), unless the running shot is locked against it
     interrupt(c) {
       if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
@@ -430,8 +460,10 @@ window.WW = window.WW || {};
       else {
         // heavy easing for the director, crisp for the user; action shots set their own (crisper) rates
         const soft = manual && WW.freecam.soft ? WW.freecam.soft() : 1; // eased right after the user takes over
+        if (!manual) _d0.copy(L).sub(P);
         P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 * soft : (shot && shot.kP) || 0.9)));
         L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 * soft : (shot && shot.kL) || 1.3)));
+        if (!manual && rdt > 0) capTurn(rdt); // smooth moves, never snaps: the view turns at most TURN_MAX rad/s
         // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)
         if (!manual && !cam.isOverview() && P.y < 14) { _c.copy(P); clearHulls(_c, 14, shot && shot.deck ? shot.subj : null); P.lerp(_c, (1 - Math.exp(-rdt * 6)) * Math.min(1, (14 - P.y) / 4)); }
       }

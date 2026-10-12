@@ -460,11 +460,11 @@ async function survey(b, spec, dir) {
   const t0 = Date.now();
   let t = 0;
   while (true) { t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
-  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs }; });
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null }; });
   R.errs = errs.slice(0, 5);
   fs.writeFileSync(path.join(dir, `${spec.name}_${spec.seed}.json`), JSON.stringify(R));
   const M = analyse(R);
-  console.log(`${spec.name}/${spec.seed} (${spec.odd || ''}${R.tod}): sim ${t < 0 ? 'round over' : t.toFixed(0) + ' s'}, ${R.rec.length} s filmed, ${R.shots.length} shots, drops ${R.drops.length}, M1 ${pct(M.prom.kept, M.prom.n)}/${M.prom.n} M2 ${M.att.held}/${M.att.filmed} M3 ${pct(M.on1, M.act)} M5 ${pct(M.dead, M.secs)} [${((Date.now() - t0) / 1000).toFixed(0)}s]` + (errs.length ? ' ERRORS ' + errs.slice(0, 2).join(' | ') : ''));
+  console.log(`${spec.name}/${spec.seed} (${spec.odd || ''}${R.tod}): sim ${t < 0 ? 'round over' : t.toFixed(0) + ' s'}, ${R.rec.length} s filmed, ${R.shots.length} shots, drops ${R.drops.length}, M1 ${pct(M.prom.kept, M.prom.n)}/${M.prom.n} M2 ${M.att.held}/${M.att.filmed} M3 ${pct(M.on1, M.act)} M5 ${pct(M.dead, M.secs)} recuts ${R.score ? R.score.stats.recuts : '-'} yields ${R.story ? R.story.yielded || 0 : '-'} [${((Date.now() - t0) / 1000).toFixed(0)}s]` + (errs.length ? ' ERRORS ' + errs.slice(0, 2).join(' | ') : ''));
   await p.close();
 }
 // --sheet SCEN:SEED:from:to[:every]: replay the round, render frames in the wall-time window, montage them

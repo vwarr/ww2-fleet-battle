@@ -156,28 +156,34 @@ window.WW = window.WW || {};
           shot.kP = 1.5; shot.kL = 4;
           break;
         }
-        default: { // chase: behind, above and a little to the side of the leader
-          const T = tgtOf(L), diving = L.kind === 'dive' && (L.phase === 'roll' || L.phase === 'dive') && T;
-          if (diving) { // the dive: above and behind the bomber along its dive line, looking down at the deck (plane and ship in frame)
-            _f.set(Math.cos(L.heading) * Math.max(1, L.speed || 10), Math.min(-2, L.vy || 0), Math.sin(L.heading) * Math.max(1, L.speed || 10)).normalize();
-            if (!shot.dS) shot.dS = _f.clone(); else shot.dS.lerp(_f, 1 - Math.exp(-rdt * 2)).normalize();
-            const d = shot.dS, back = 16 * FK; _r.set(-d.z, 0, d.x).normalize();
-            gP.set(L.x - d.x * back + _r.x * shot.side * 5 * FK, Math.max(ly - d.y * back + 3 * FK, 6), L.z - d.z * back + _r.z * shot.side * 5 * FK);
-            gL.set(WW.lerp(L.x, T.x, 0.55), 1, WW.lerp(L.z, T.z, 0.55));
-            shot.aim.set(WW.lerp(L.x, T.x, 0.3), ly * 0.7, WW.lerp(L.z, T.z, 0.3));
-            break;
-          }
-          const h = smoothH(shot, L.heading, rdt, 1.3);
-          _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
-          const run = L.kind === 'torpedo' && L.phase === 'run' && T, back = (shot.back || 22) * FK;
-          gP.set(L.x - _f.x * back + _r.x * shot.side * (run ? 8 : 6) * FK, ly + (run ? 4.5 : 6.5) * FK, L.z - _f.z * back + _r.z * shot.side * (run ? 8 : 6) * FK);
-          if (run) gL.set(WW.lerp(L.x, T.x, 0.35), 1, WW.lerp(L.z, T.z, 0.35)); // the run: the ship ahead in frame
-          else gL.set(L.x + _f.x * 18, Math.max(1, ly - 2), L.z + _f.z * 18);
-          shot.aim.set(L.x, ly, L.z);
-        }
+        default: chase(shot, gP, gL, rdt);
       }
       return true;
     }
   };
+  // the chase (also the director's plane chase, camera.js): behind, above and a little to the side of the plane; on a
+  // torpedo run the ship ahead stays in frame; a dive is framed from above and behind the diver looking down at the deck
+  function chase(shot, gP, gL, rdt) {
+    const L = shot.subj, ly = L.y || 0;
+    shot.aim = shot.aim || V();
+    const T = tgtOf(L), diving = L.kind === 'dive' && (L.phase === 'roll' || L.phase === 'dive') && T;
+    if (diving) { // the dive: above and behind the bomber along its dive line, looking down at the deck (plane and ship in frame)
+      _f.set(Math.cos(L.heading) * Math.max(1, L.speed || 10), Math.min(-2, L.vy || 0), Math.sin(L.heading) * Math.max(1, L.speed || 10)).normalize();
+      if (!shot.dS) shot.dS = _f.clone(); else shot.dS.lerp(_f, 1 - Math.exp(-rdt * 2)).normalize();
+      const d = shot.dS, back = 16 * FK; _r.set(-d.z, 0, d.x).normalize();
+      gP.set(L.x - d.x * back + _r.x * shot.side * 5 * FK, Math.max(ly - d.y * back + 3 * FK, 6), L.z - d.z * back + _r.z * shot.side * 5 * FK);
+      gL.set(WW.lerp(L.x, T.x, 0.55), 1, WW.lerp(L.z, T.z, 0.55));
+      shot.aim.set(WW.lerp(L.x, T.x, 0.3), ly * 0.7, WW.lerp(L.z, T.z, 0.3));
+      return;
+    }
+    const h = smoothH(shot, L.heading, rdt, 1.3);
+    _f.set(Math.cos(h), 0, Math.sin(h)); _r.set(-_f.z, 0, _f.x);
+    const run = L.kind === 'torpedo' && L.phase === 'run' && T, back = (shot.back || 22) * FK;
+    gP.set(L.x - _f.x * back + _r.x * shot.side * (run ? 8 : 6) * FK, ly + (run ? 4.5 : 6.5) * FK, L.z - _f.z * back + _r.z * shot.side * (run ? 8 : 6) * FK);
+    if (run) gL.set(WW.lerp(L.x, T.x, 0.35), 1, WW.lerp(L.z, T.z, 0.35)); // the run: the ship ahead in frame
+    else gL.set(L.x + _f.x * 18, Math.max(1, ly - 2), L.z + _f.z * 18);
+    shot.aim.set(L.x, ly, L.z);
+  }
+  S.chase = chase;
   WW.storyShots = S;
 })(window.WW);

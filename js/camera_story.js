@@ -304,22 +304,33 @@ window.WW = window.WW || {};
       checkT = 1;
       if (WW.game.roundTime !== undefined && WW.game.roundTime < 20) return;
       const a = bestArc();
-      // an imminent attack may start after a short rest; anything else waits for the long one
-      if (a && (a.item ? now - lastEnd >= 40 : now >= nextAt && a.score >= 7)) start(a, false);
+      // an imminent attack may start after a short rest (if it beats what the director films now: camera_score.js); anything
+      // else waits for the long one
+      if (a && (a.item ? now - lastEnd >= 40 && (!WW.camScore || WW.camScore.beats(a.item)) : now >= nextAt && a.score >= 7)) start(a, false);
       return;
     }
     const shot = WW.cam._shot(), locked = !!(WW.cam.locked && WW.cam.locked()); // the attack lock: no cut of any kind
     if (!S.begun) { // waiting for the director's current shot to end; an imminent attack cuts in (not into an action / test / locked shot)
-      if (!S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
+      if (!S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b && (!WW.camScore || WW.camScore.beats(b))) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
       if (S.imminent && shot && !shot.stage && !locked && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
       return;
     }
-    // a quiet phase of an automatic story gives way to a big ship / base event (a sinking, a bombardment, hits in a gun
-    // duel): the story ends and the director films it (an imminent attack may start a new story after 40 s)
-    if (!S.user && !locked && (S.phase === 'transit' || S.phase === 'form' || S.phase === 'home') && now - S.t0 > 15 && WW.camScenes && WW.camScenes.bigNow() >= 8) {
-      log.push({ yield: WW.camScenes.bigNow(), at: now }); ST.yielded = (ST.yielded || 0) + 1;
-      end(true); if (shot && shot.story && !shot.stage && shot.t > 2) shot.dur = Math.min(shot.dur, shot.t);
-      return;
+    // an automatic story not locked in an attack gives way to a bigger action elsewhere (a sinking, a bombardment, hits in
+    // a gun duel, a dive or a run under way) on the director's one scale (camera_score.js yields(): the story's own worth
+    // plus hysteresis against the best other candidate); the story ends and the director cuts to it. A quiet phase (transit
+    // / form / home) also yields to a big ship / base event the old way (bigNow); the unlocked attack phase (the anvil
+    // set-up: 10-150 real s of circling; the wheel) yields through the score, not through the phase name
+    if (!S.user && !locked && now - S.t0 > 15 && shot && shot.story && !shot.stage && (S.ydT = (S.ydT || 0) - rdt) <= 0) {
+      S.ydT = 1;
+      const quiet = S.phase === 'transit' || S.phase === 'form' || S.phase === 'home';
+      const big = quiet && WW.camScenes && WW.camScenes.bigNow() >= 8;
+      const y = !big && WW.camScore && WW.camScore.yields(shot);
+      if (big || y) {
+        log.push({ yield: big ? WW.camScenes.bigNow() : y.kind + ' ' + y.pr.toFixed(1), phase: S.phase, at: now }); ST.yielded = (ST.yielded || 0) + 1;
+        end(true); if (shot.t > 2) shot.dur = Math.min(shot.dur, shot.t);
+        if (y && WW.cam.recut) WW.cam.recut(y);
+        return;
+      }
     }
     if (S.mission === 'strike') {
       diveWatch(rdt);
@@ -405,6 +416,8 @@ window.WW = window.WW || {};
     begin(arc) { return start(arc, true); },
     story() { return S ? { lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
     interrupted(c) { if (S) { S.lastCutaway = wall(); S.cutaway = null; log.push({ interrupt: c.kind, at: wall() }); } }, // camera.js interrupt(): the story resumes after it
+    // camera.js recut(): a bigger action elsewhere takes the camera; an automatic story ends for it (the user's does not)
+    yieldTo(c) { if (!S) return true; if (S.user) return false; log.push({ yield: c.kind + ' ' + (c.pr || 0).toFixed(1), phase: S.phase, at: wall() }); ST.yielded = (ST.yielded || 0) + 1; end(true); return true; },
     titleOf, anyArc,
     lead() { return S && S.lead; },
     _dbg() { return S ? { phase: S.phase, lead: S.lead && S.lead.kind, shots: S.shots, last: S.last, fall: !!S.fall, ending: S.ending, age: wall() - S.t0 } : null; },
