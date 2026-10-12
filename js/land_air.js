@@ -36,7 +36,7 @@ window.WW = window.WW || {};
   };
   for (const k in VAR) if (VAR[k].gear) VAR[k].gear *= WW.cfg.PLANE_K || 1;   // gear heights above were measured at the 1.7 plane scale
   const KATE = { alt: 40, bombs: 1 };
-  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0 };
+  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0, defence: 0, defStrikes: 0 };
 
   const groundY = b => b.site.padH;
   const gearOf = p => (p.variant && VAR[p.variant].gear) || WW.air._pool.deckY;
@@ -68,6 +68,20 @@ window.WW = window.WW || {};
     }
     return { on, coming };
   }
+  // The enemy warship that threatens the island most: a fresh contact within DEF_R of it, a ship shelling it (_bombT,
+  // island_base.js) or a gun ship counting double; null when the sea round the island is clear.
+  const DEF_R = 300, DEF_V = { battleship: 9, cruiser: 6, carrier: 8, destroyer: 3, pt: 1.2, submarine: 1.5 };
+  function defTarget(b) {
+    if (!WW.intel) return null;
+    let best = null, bs = 0; const now = WW.time.now;
+    for (const c of WW.intel.enemyShips(b.nation, { fresh: true })) {
+      const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase) continue;
+      const d = WW.dist(b.x, b.z, c.x, c.z); if (d > DEF_R) continue;
+      const sc = (DEF_V[u.type] || 1) * (now - (u._bombT || -1e9) < 60 ? 2 : 1) / (1 + d / 150);
+      if (sc > bs) { bs = sc; best = u; }
+    }
+    return best;
+  }
   function variants(b, kind) { const L = []; for (const s of b.slots) if (VAR[s.v].kind === kind && !VAR[s.v].level && L.indexOf(s.v) < 0) L.push(s.v); return L; }
   function pick(b, kind) { for (const v of variants(b, kind)) if (G().ready(b, v) > 0) return v; return null; }
   function canLaunch(b) { return G().opsOpen(b) && !(WW.dayNight && WW.daylight < 0.53); }
@@ -90,10 +104,14 @@ window.WW = window.WW || {};
       if (raid && now - a.scrT > 60 && canLaunch(b) && a.queue.some(q => q.fast)) { a.scrT = now; ST.scrambles++; WW.emit('baseEvent', { kind: 'scramble', base: b, nation: b.nation, x: b.x, z: b.z }); }
     }
     a.strikeT -= dt;
+    const def = defTarget(b);   // self-defence first: warships off the island (the Cactus Air Force after the bombardment)
+    if (def && def !== a.defFor) { a.defFor = def; a.strikeT = Math.min(a.strikeT, 4); ST.defence++; }
     if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
       a.strikeT = WW.randRange(55, 75);
-      const t = WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null;
+      const t = def || (WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null);
+      if (t && !canLaunch(b) && def) a.strikeT = 5;   // runway cratered / dark: the strike goes the moment it can (at dawn)
       if (t && WW.dist(b.x, b.z, t.x, t.z) < STRIKE_R && canLaunch(b)) {
+        if (t === def) ST.defStrikes++;
         const wave = [], avail = {};
         for (const s of b.slots) if (s.state === 'parked' && s.readyAt <= now && !s.moved) avail[s.v] = (avail[s.v] || 0) + 1;
         for (const k in avail) {
@@ -184,7 +202,7 @@ window.WW = window.WW || {};
     if (!R) { // nowhere to land: hold over the island, then divert (carrier types) or ditch by a friendly ship
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
-      p.rwPh = 'circuit'; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
+      p.rwPh = 'circuit'; p.cleared = false; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
       if (p.holdT > (b.neutralized ? LEAVE_T : HOLD_MAX)) { p.leaving = true; return; }
       stack(p, b, i, dt); return;
     }
@@ -192,17 +210,21 @@ window.WW = window.WW || {};
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); } // the circuit clears the hills
-      const clear = R.main ? o.mode === 'recover' && !o.occ && !o.hold : !o.crossOcc;
-      if (i > 0 || !clear) { stack(p, b, i, dt); p.apOut = false; return; }
+      // cleared to approach: the first in the stack (the second once the first is on final) while the field recovers;
+      // a cleared approach is never cancelled by the field changing mode (only a closed runway sends it round)
+      const clear = R.main ? o.mode === 'recover' && !o.hold : !o.crossOcc;
+      const next = i === 0 || (i === 1 && a.lq[0] && a.lq[0].rwPh === 'final');
+      if (!(p.cleared && p.clearedMain === R.main) && (!next || !clear)) { stack(p, b, i, dt); p.apOut = false; return; }
+      p.cleared = true; p.clearedMain = R.main;
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
       const ox = R.x - c * 150, oz = R.z - s * 150;
       if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
       const d = WW.dist(p.x, p.z, fx, fz);
       p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
-      if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7) {
+      if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7 && (R.main ? !o.occ : !o.crossOcc)) {   // the runway free: on final (else round the gate again)
         p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = R.x; p.rwZ = R.z; p.emergency = !R.main;
         if (R.main) o.occ = p; else { o.crossOcc = p; ST.emergency++; }
-      }
+      } else if (d < 14) p.apOut = false;
       return;
     }
     // final: down the centreline (PD on the cross-track drift), descending to the touchdown point
@@ -210,7 +232,7 @@ window.WW = window.WW || {};
     const along = dx * ch + dz * sh, cross = -dx * sh + dz * ch, vc = dt > 0 && p._cr !== undefined ? (cross - p._cr) / dt : 0; p._cr = cross;
     const togo = -along; p.togo = togo; p.hd = WW.angleDiff(p.heading, h);
     if (R.h !== h || R.main === !!p.emergency || p.rwT > 25) { // the runway closed under it: go round
-      p.rwPh = 'circuit'; p._cr = undefined; p.apOut = false; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
+      p.rwPh = 'circuit'; p._cr = undefined; p.apOut = false; p.cleared = false; if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null; return;
     }
     const want = h - WW.clamp(cross * 0.12 + vc * 0.1, -0.7, 0.7), dd = WW.angleDiff(p.heading, want);
     if (Math.abs(dd) > 2.4) { p.finSign = p.finSign || Math.sign(dd) || 1; p.heading += p.finSign * 1.8 * dt; } // far off: one committed turn
@@ -221,8 +243,8 @@ window.WW = window.WW || {};
     if (togo < 1) { // touchdown
       p.state = 'rollout'; p.y = groundY(b) + gearOf(p); p.vy = 0; p.heading = h; p.t = 0; p._cr = undefined;
       a.lq.splice(a.lq.indexOf(p), 1); WW.stats.planesLanded++; ST.landings++;
-      G().touchdown(p, b);
-      if (p.hp < p.maxHp * 0.5) WW.emit('baseEvent', { kind: 'crashLanding', base: b, nation: b.nation, x: p.x, z: p.z, plane: p });
+      if (p.hp < p.maxHp * 0.5) { G().crash(p, b); WW.emit('baseEvent', { kind: 'crashLanding', base: b, nation: b.nation, x: p.x, z: p.z, plane: p }); } // a wreck (land_ground.js crash)
+      else G().touchdown(p, b);
     }
   }
   function rollout(p, dt) { return G().inbound(p, dt); }

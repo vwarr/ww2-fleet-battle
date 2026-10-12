@@ -19,8 +19,8 @@ window.WW = window.WW || {};
   var PICK_T = { pilot: 9, ship: 16 }, SHIP_WAIT = 30, PILOT_WAIT = 5, MAX_UP = 2, MAX_RESCUE = 4;
   if (WW.PLANE_TYPES && !WW.PLANE_TYPES.flyingboat) WW.PLANE_TYPES.flyingboat = { hp: 34, speed: 22, range: 4000 };
   var pool = {}, base = WW.Plane.prototype, stats = null;
-  var OWN = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, alight: 1, afloat: 1, liftoff: 1, 'return': 1 };
-  var WATER = { afloat: 1, liftoff: 1 };
+  var OWN = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, alight: 1, afloat: 1, liftoff: 1, 'return': 1, depart: 1, alightHome: 1, taxiIn: 1 };
+  var WATER = { afloat: 1, liftoff: 1, depart: 1, taxiIn: 1 };   // depart / alightHome / taxiIn: the island's seaplane ramp (seaplane_base.js)
 
   function per() { return { USN: 0, IJN: 0 }; }
   function reset() {
@@ -65,14 +65,17 @@ window.WW = window.WW || {};
 
   class FlyingBoat extends WW.Plane {
     constructor(nation, mission, z, m) {
-      var home = { x: edgeX(nation), z: z, y: 0, heading: nation === 'USN' ? 0 : Math.PI, speed: 0, alive: true, nation: nation,
+      var R = WW.seaplaneBase ? WW.seaplaneBase.ramp(nation) : null;   // the own island's seaplane ramp, else the map edge
+      var home = { x: R ? R.wx : edgeX(nation), z: R ? R.wz : z, y: 0, heading: R ? R.h + Math.PI : nation === 'USN' ? 0 : Math.PI, speed: 0, alive: true, nation: nation,
         stats: { length: 0 }, model: {}, base: true };
       super('flyingboat', nation, home, null, m);
+      this.ramp = R;
       this.boatType = nation === 'USN' ? 'PBY' : 'H6K'; this.mission = mission; this.props = m.props;
-      this.x = home.x; this.z = z; this.y = mission === 'rescue' ? ALT_R + 6 : 30; this.heading = home.heading; this.speed = this.pt.speed;
+      this.x = home.x; this.z = home.z; this.y = mission === 'rescue' ? ALT_R + 6 : 30; this.heading = home.heading; this.speed = this.pt.speed;
       this.vy = 0; this.state = 'inbound'; this.ordnance = false; this.fuel = 1e9; this.t = 0; this.stT = 0;
+      if (R) { this.y = WATER_Y; this.speed = 0; this.state = 'depart'; }   // afloat at the ramp foot: run-up, taxi out, take off
       this.task = null; this.boarded = 0; this.waterT = 0; this.holdT = 0; this.shadowOf = null; this.legs = null; this.leg = 0;
-      m.floats.set(0); this.floatA = 0;
+      m.floats.set(R ? 1 : 0); this.floatA = R ? 1 : 0;
       this.sync(0);
     }
     setState(s) { if (this.state !== s) { this.state = s; this.stT = 0; } }
@@ -82,6 +85,7 @@ window.WW = window.WW || {};
       for (var i = 0; i < m.props.length; i++) { m.props[i].rotation.x += dt * (fast ? 37 : 6 + this.speed * 2); m.discs[i].visible = fast; m.blades[i].visible = !fast; }
       if (dt > 0) {   // PBY floats: down on the water and on the approach (visual; the sim never reads them)
         var want = WATER[this.state] || this.state === 'alight' || !this.alive ? 1 : 0;
+        if (this.state === 'depart' || this.state === 'taxiIn' || (this.state === 'alightHome' && this.y < 12)) want = 1;
         if (this.floatA !== want) { this.floatA = WW.clamp(this.floatA + WW.clamp(want - this.floatA, -dt * 0.5, dt * 0.5), 0, 1); m.floats.set(this.floatA); }
       }
     }
@@ -99,8 +103,11 @@ window.WW = window.WW || {};
     update(dt) {
       if (!OWN[this.state] || this.deathMode) { base.update.call(this, dt); return; }
       this.t += dt; this.stT += dt;
-      var free = WATER[this.state] || this.state === 'alight';
+      var free = WATER[this.state] || this.state === 'alight' || this.state === 'alightHome';
       switch (this.state) {
+        case 'depart': WW.seaplaneBase.depart(this, dt); break;
+        case 'alightHome': WW.seaplaneBase.alightHome(this, dt); break;
+        case 'taxiIn': WW.seaplaneBase.taxiIn(this, dt); break;
         case 'circle': this.circle(dt); break;
         case 'alight': this.alight(dt); break;
         case 'afloat': this.afloat(dt); break;
@@ -118,6 +125,14 @@ window.WW = window.WW || {};
     }
     // ---- shared flight: off the map to its own edge ----
     goHome(dt) {
+      var R = WW.seaplaneBase && WW.seaplaneBase.home(this);
+      if (R) { // home to the lagoon: routed round the AA / CAP, then the landing
+        var rh = WW.search && WW.search.homeHeading ? WW.search.homeHeading(this, R.wx, R.wz) : { h: Math.atan2(R.wz - this.z, R.wx - this.x), low: false };
+        var dr = WW.dist(this.x, this.z, R.wx, R.wz);
+        this.fly(this.x + Math.cos(rh.h) * 60, this.z + Math.sin(rh.h) * 60, dr < 200 ? 16 : rh.low ? 12 : 24, dt, this.pt.speed, 0.5);
+        if (dr < 170) this.setState('alightHome');
+        return;
+      }
       var hx = edgeX(this.nation) + (this.nation === 'USN' ? -10 : 10), low = hunted(this, 90), h = null;
       if (WW.search && WW.search.homeHeading) { var r = WW.search.homeHeading(this, hx, this.z); h = r.h; low = low || (r.low && this.mission === 'patrol'); } // routed round AA / CAP (air_search.js)
       if (h === null) h = Math.atan2(0, hx - this.x);
