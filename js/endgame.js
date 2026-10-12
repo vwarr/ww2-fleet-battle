@@ -219,7 +219,8 @@ window.WW = window.WW || {};
 
   // ---- round watch (main.js reads it to end a round that has nothing left in it) ----
   //  - pursuit closing: an enemy fit gun ship outside its gun range of a broken side's ship, closing at more than
-  //    CLOSE_V u/s, that will have her in range within BITE_T s (in the last CLOSE_T s): the pursuit is about to bite,
+  //    CLOSE_V u/s (an equal-speed stern chase only jitters round 0), that will have her in range within BITE_T s (in the
+  //    last CLOSE_T s): the pursuit is about to bite,
   //    the broken side has not got clear yet (a stern chase that gains a knot an hour is no battle)
   //  - subs closing: a submarines-only side got nearer to the enemy (main.js's stall clock waits while it does)
   //  - night out: dark with no flying for NIGHT_AHEAD s, and neither side has business in the dark: a ship to fight a
@@ -230,7 +231,7 @@ window.WW = window.WW || {};
   //    cannot end by a break; once it has struck, LULL_T s with no further attack (main.js game.lastHit:
   //    a hit or a weapon dropped or fired) and no armed bomber in the air on its way end it: the raid is over
   var LULL_T = 60, OUTB = { transit: 1, inbound: 1, attack: 1 };
-  var WATCH_T = 5, BITE_T = 25, CLOSE_V = 0.3, CLOSE_T = 12, CLOSE_D = 4, NIGHT_AHEAD = 150, NIGHT_T = 20;
+  var WATCH_T = 5, BITE_T = 25, CLOSE_V = 0.6, CLOSE_T = 12, CLOSE_D = 4, NIGHT_AHEAD = 150, NIGHT_T = 20;
   var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var W8 = null;
   function watchReset() { W8 = { t: 0, gap: new Map(), closeT: { USN: -1e9, IJN: -1e9 }, subBest: 1e9, subT: 0, nightT: 0 }; }
