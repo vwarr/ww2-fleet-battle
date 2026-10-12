@@ -16,7 +16,7 @@ const HL = require(path + 'headless'), SB = require(path + 'sim_behaviour');
     const U0 = WW.air.update;
     WW.air.update = function () { const r = U0.apply(this, arguments); const t = WW.game.roundTime; if (t >= next) { next += 1;
       for (const s of WW.world.ships) { if (!s.alive || s.sinking || s.type !== 'carrier' || s.isBase) continue;
-        let dm = 1e9, o0 = null; for (const o of WW.world.ships) { if (!o.alive || o.sinking || o.nation === s.nation || (o.type !== 'battleship' && o.type !== 'cruiser' && o.type !== 'destroyer')) continue; const d = WW.dist(s.x, s.z, o.x, o.z); if (d < dm) { dm = d; o0 = o; } }
+        let dm = 1e9, o0 = null; for (const o of WW.world.ships) { if (!o.alive || o.sinking || o.nation === s.nation || (o.type !== 'battleship' && o.type !== 'cruiser' && o.type !== 'destroyer')) continue; const d = WW.dist(s.x, s.z, o.x, o.z); if (o.type === 'destroyer' && !(o.target === s || ((!o.target || WW.dist(o.target.x, o.target.z, s.x, s.z) < 80) && Math.abs(WW.angleDiff(o.heading, Math.atan2(s.z - o.z, s.x - o.x))) < 0.52) || (s.speed > 0.5 && Math.abs(WW.angleDiff(s.heading, Math.atan2(o.z - s.z, o.x - s.x))) < Math.PI / 2))) continue; if (d < dm) { dm = d; o0 = o; } }   // the suite's cv_min_dist rule
         if (!o0) continue;
         const FS = WW.fleetCmd.side(s.nation), brg = Math.atan2(o0.z - s.z, o0.x - s.x), toward = Math.abs(WW.angleDiff(s.heading, brg)) < 1.2;
         const known = WW.intel.known(s.nation, o0);

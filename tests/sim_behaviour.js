@@ -82,7 +82,7 @@ const P = {
   CRIP_HP: 0.35, CRIP_WIN: 30,
   TORP_PASS: 15, TORP_PAR: 30, // torpedo passes within 15u; heading within 30 deg of the track = parallel
   BROAD_LO: 45, BROAD_HI: 135,
-  CV_CLOSE_DEG: 70, CV_THREAT_K: 1.5, CRIP_V: 4
+  CV_CLOSE_DEG: 70, CV_THREAT_K: 1.5, DD_AT: 0.52, DD_SCREEN: 80, CRIP_V: 4
 };
 const CHECKS = [
   // carrier
@@ -399,6 +399,11 @@ function install(P) {
           if (!g || o.type === 'submarine') continue;
           if (d <= g.range) inGun = true;
           if (!GUN[o.type]) continue;
+          // a destroyer counts only if it is coming at the carrier (its target is the carrier; or, with no target or one in the
+          // carrier's screen (DD_SCREEN), its course is within DD_AT of the carrier) or the carrier is closing on it: a fit carrier running flat out, passed by a faster DD bound for another ship,
+          // is not a carrier closing on gun ships (midway seed 2 after the base-launch change). BB / CA count always.
+          if (o.type === 'destroyer' && !(o.target === s || ((!o.target || WW.dist(o.target.x, o.target.z, s.x, s.z) < P.DD_SCREEN) && Math.abs(WW.angleDiff(o.heading, Math.atan2(s.z - o.z, s.x - o.x))) < P.DD_AT) ||
+            (s.speed > 0.5 && Math.abs(WW.angleDiff(s.heading, Math.atan2(o.z - s.z, o.x - s.x))) < Math.PI / 2))) continue;
           dmin = Math.min(dmin, d);
           // cv_closing judges the carrier on what its side knows (WW.intel contact, last-known position), not on
           // raw positions: with raw positions a battleship at 241-255 (inside 1.5 x 170) that the carrier cannot
