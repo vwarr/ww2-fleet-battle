@@ -279,7 +279,7 @@ window.WW = window.WW || {};
   }
   // Strike orders: per carrier, the best detected / last-known target within STRIKE_R (value, freshness,
   // distance, AA around it). No contact in range: no order (a strike needs a reason).
-  var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 1, pt: 0.5 }; // a surfaced sub is worth a strike
+  var STRIKE_V = { carrier: 12, battleship: 9, cruiser: 5, destroyer: 2, submarine: 0, pt: 0.5 }; // no deck load at a sub: a surfaced sub near the fleet is the ready alert's (CAP / ASW patrol) job
   // Destroyers and PT boats are no target for a deck-load strike while the side knows of bigger game afloat (an enemy
   // carrier, battleship or cruiser seen this round): 1942 strike doctrine went for the carriers, then the heavy ships
   // (Midway, Santa Cruz); a destroyer still draws one in self-defence (closing on a carrier) and in the pursuit, and an

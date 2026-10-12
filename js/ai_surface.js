@@ -195,12 +195,13 @@ window.WW = window.WW || {};
     let h;
     ship.throttle = 1;
     if (a.runOut > now) h = b + PI + a.orbitDir * 0.5;                       // spread away: open out
-    else if (a.torpReload > 0 || (!mate(ship, t, L * 1.8) && !(WW.endgameAI && WW.endgameAI.isCripple(t)))) { /* a cripple: no need to wait for a second boat */ const R = L * 1.35; h = b + a.orbitDir * (d > R ? 0.6 : d < R * 0.85 ? 2.2 : PI / 2); ship.throttle = 0.85; }
+    else if (a.torpReload > 0 || (!mate(ship, t, L * 1.8) && mate(ship, ship, MATE_R) && !(WW.endgameAI && WW.endgameAI.isCripple(t)))) { /* a cripple: no need to wait for a second boat; a lone boat (no other within MATE_R) goes alone */ const R = L * 1.35; h = b + a.orbitDir * (d > R ? 0.6 : d < R * 0.85 ? 2.2 : PI / 2); ship.throttle = 0.85; }
     else if (d > L) h = b + a.orbitDir * 0.45;                               // run in from the flank
     else h = b + a.orbitDir * PI / 2;                                        // beam on: torpedoes() launches
     if (d < minD) h = b + PI + a.orbitDir * 0.6;
     ship.desiredHeading = WW.threat && B ? WW.threat.bestHeading(ship, h, B.doctrine.risk.destroyer || 0.5, { k: 0.6 }) : h;
   }
+  const MATE_R = 400; // endgame: a destroyer with no other own destroyer this near has no one to wait for (dd_vs_dd orbited 250 off for minutes)
   // another own destroyer (fit, not hunting a sub) within r of the quarry: the flotilla attacks together
   function mate(ship, t, r) {
     for (const s of WW.world.ships) {
