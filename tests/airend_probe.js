@@ -34,7 +34,7 @@ function install() {
   const R = window.__ap = { err: 0, force: null };
   const isAir = p => p.kind === 'fighter' || p.kind === 'dive' || p.kind === 'torpedo';
   let S = null;
-  const fresh = () => { S = { waits: [], mDay: 0, mDark: 0, lq: [], col: [], hy: [], dv: { n: 0, kept: 0, back: 0 }, eg: { USN: null, IJN: null }, egRole: { USN: {}, IJN: {} }, egCap: [], mMode: {}, blk: {}, ti: [], gap: {}, sp: [0, 0, 0], inEg: {}, lqE: [], hid: [0, 0, 0], p9: {}, found: new Map(), struck: [], forced: false, nextS: 0 }; };
+  const fresh = () => { S = { waits: [], mDay: 0, mDark: 0, lq: [], col: [], hy: [], dv: { n: 0, kept: 0, back: 0 }, eg: { USN: null, IJN: null }, egRole: { USN: {}, IJN: {} }, egCap: [], mMode: {}, blk: {}, ti: [], gap: {}, sp: [0, 0, 0], inEg: {}, lqE: [], hid: [0, 0, 0], p9: {}, bomb: {}, found: new Map(), struck: [], forced: false, nextS: 0 }; };
   fresh(); WW.on('roundStart', fresh);
   const hangN = n => { let k = 0; for (const s of WW.world.ships) if (s.alive && s.nation === n && s.hangar && !s.isBase) k += s.hangar.fighter + s.hangar.dive + s.hangar.torpedo + (s.rearm ? s.rearm.length : 0); return k; };
   const st = new WeakMap();   // per plane: { ph, t0, c }
@@ -45,6 +45,11 @@ function install() {
       const k = S.found.get(t); if (k && k[p.nation] && k[p.nation].drop === undefined) k[p.nation].drop = WW.game.roundTime;
     } catch (er) { R.err++; R.last = String(er.stack); }
   });
+  // dive-bomb accuracy by target type: drops, hits on the target, miss distance (bomb impact to the target's centre)
+  const bombOf = new WeakMap();
+  WW.on('weaponDropped', e => { try { if (!S || !e || e.kind !== 'bomb' || !e.plane || e.plane.kind !== 'dive' || !e.target || !e.target.stats) return; bombOf.set(e.proj, { t: e.target, ty: e.target.type, y: e.plane.y, eg: S.inEg[e.plane.nation] !== undefined && WW.game.roundTime - S.inEg[e.plane.nation] < 6 }); } catch (er) { R.err++; } });
+  WW.on('weaponImpact', e => { try { if (!S || !e || e.kind !== 'bomb') return; const b = bombOf.get(e.proj); if (!b) return; bombOf.delete(e.proj);
+    const k = S.bomb[b.ty] || (S.bomb[b.ty] = [0, 0, [], []]); k[0]++; if (e.ship === b.t) k[1]++; k[2].push(+WW.dist(e.x, e.z, b.t.x, b.t.z).toFixed(1)); k[3].push(+b.y.toFixed(0)); } catch (er) { R.err++; } });
   const u0 = WW.air.update;
   WW.air.update = function (dt) {
     const r = u0.apply(this, arguments);
@@ -163,7 +168,7 @@ function install() {
   R.flush = function () {
     const f = []; S.found.forEach((k, s) => { for (const n in k) f.push([n, k[n].type, k[n].t, k[n].drop === undefined ? null : +(k[n].drop - k[n].t).toFixed(0), s.alive && !s.sinking ? 1 : 0]); });
     const RS = WW.airDeck && WW.airDeck.recovery;
-    return { why: RS ? Object.assign({ waveoffs: RS.waveoffs, bolters: RS.bolters, marshal: RS.marshal, appT: RS.appT || 0, appN: RS.appN || 0, steps: RS.steps || 0, kept: RS.keptPlace || 0 }, RS.why) : {}, mMode: S.mMode, blk: S.blk, ti: S.ti, gap: S.gap, sp: S.sp, st: Object.assign({}, WW.staff.stats), waits: S.waits, mDay: S.mDay, mDark: S.mDark, lq: S.lq, lqE: S.lqE, hid: S.hid, p9: S.p9, col: S.col, hy: S.hy, dv: S.dv, eg: S.eg, egRole: S.egRole, egCap: S.egCap, found: f, err: R.err, last: R.last || null };
+    return { why: RS ? Object.assign({ waveoffs: RS.waveoffs, bolters: RS.bolters, marshal: RS.marshal, appT: RS.appT || 0, appN: RS.appN || 0, steps: RS.steps || 0, kept: RS.keptPlace || 0 }, RS.why) : {}, mMode: S.mMode, blk: S.blk, ti: S.ti, gap: S.gap, sp: S.sp, st: Object.assign({}, WW.staff.stats), waits: S.waits, mDay: S.mDay, mDark: S.mDark, lq: S.lq, lqE: S.lqE, hid: S.hid, p9: S.p9, bomb: S.bomb, col: S.col, hy: S.hy, dv: S.dv, eg: S.eg, egRole: S.egRole, egCap: S.egCap, found: f, err: R.err, last: R.last || null };
   };
   return true;
 }
@@ -219,6 +224,8 @@ function report(R) {
   say(`diverts while queued: ${dv.n} (place kept ${dv.kept}, at the back ${dv.back})`);
   const p9 = {}; for (const r of R) for (const k in r.rec.p9 || {}) p9[k] = (p9[k] || 0) + r.rec.p9[k];
   say(`P9 plane-s in non-target heavy flak per round, by role: ${Object.entries(p9).sort((a, b) => b[1] - a[1]).map(e => e[0] + ' ' + (e[1] / R.length).toFixed(0)).join(', ')}`);
+  const bm = {}; for (const r of R) for (const k in r.rec.bomb || {}) { const a = bm[k] || (bm[k] = [0, 0, [], []]), b = r.rec.bomb[k]; a[0] += b[0]; a[1] += b[1]; a[2].push(...b[2]); a[3].push(...b[3]); }
+  say(`dive bombs by target: ${Object.entries(bm).map(e => e[0] + ' ' + e[1][1] + '/' + e[1][0] + ' (' + pc(e[1][1], e[1][0]) + ', miss p50 ' + q(e[1][2], .5) + 'u, release y p50 ' + q(e[1][3], .5) + ')').join('; ')}`);
   const hdn = R.reduce((s, r) => s.map((v, i) => v + (r.rec.hid ? r.rec.hid[i] : 0)), [0, 0, 0]);
   say(`F28: side-s with an enemy carrier never found (by day): ${hdn[0]} (${(hdn[0] / R.length).toFixed(0)}/round); carrier search wanted ${pc(hdn[1], hdn[0])}, a searcher or scout up ${pc(hdn[2], hdn[0])}`);
   const eg = R.filter(r => r.rec.eg.USN !== null || r.rec.eg.IJN !== null);

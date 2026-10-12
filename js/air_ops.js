@@ -47,6 +47,8 @@ window.WW = window.WW || {};
   // commander knows a carrier, battleship or cruiser afloat (fleet_cmd.js SMALL rule; Fable audit F4): a deck load that
   // loses its target looks for a worthwhile ship, else flies home with its bombs.
   const SMALL = { destroyer: 1, pt: 1 }, SMALL_FLIGHT = 6;
+  // opts.noBase: a strike sent at ships does not settle for the island base when it loses them (a pursuit's bombs on
+  // the airfield while the enemy's ships get away); a submarine is never a target for more than a division
   function aaAround(nation, x, z, skip) {
     if (WW.threat && WW.threat.danger) return WW.threat.danger(nation, x, z, { air: true });
     let s = 0;
@@ -71,6 +73,8 @@ window.WW = window.WW || {};
       const d = WW.dist(from.x, from.z, c.x, c.z);
       if (near && d > near) continue;
       if (noSmall && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type]) continue;
+      if (near && opts.flight > SMALL_FLIGHT && o.type === 'submarine') continue;
+      if (near && opts.noBase && o.isBase) continue;
       const crip = 1 - o.hp / o.maxHp;
       const s = (VALUE[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type] || 0) + crip * (near ? 260 : 120) - (now - c.seenAt) * 2 - d * (near ? 1.5 : 1) - aaAround(nation, c.x, c.z, o) * 3;
       if (s > bs) { bs = s; best = o; }
