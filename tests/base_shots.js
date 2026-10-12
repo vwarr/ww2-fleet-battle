@@ -7,6 +7,9 @@
 //   closed         the main runway cratered and closed, a repair gang and a roller at a crater
 //   reopened       the craters filled: the runway open again and the launches resumed
 //   crash_truck    a damaged plane's landing, the crash truck racing out
+//   crash_wreck    the crash-landed plane a burning wreck where it stopped, the crash trucks beside it
+//   pby_takeoff / pby_alight / pby_ramp   the island's flying boat: the take-off run in the lagoon, touching down
+//                  on the way home, hauled up the ramp onto the apron (seaplane_base.js)
 //   burning        hangars and fuel tanks burning after a raid
 // The camp and its people (base life; the life is stepped with the sim, __ff):
 //   camp / camp_wide   the huts, tents, mess and sick bay, the motor pool, water tower, radio masts, trenches, pits
@@ -97,6 +100,24 @@ const SHOTS = [
     const p = __ev.crashLanding.plane, x = p && p.alive ? p.x : __ev.crashLanding.x, z = p && p.alive ? p.z : __ev.crashLanding.z;
     return [x + 26, 16, z + 26, x, 0.5, z];
   }],
+  ['crash_wreck', () => {
+    const ok = __until(() => { const p = WW.world.planes.find(p => p.carrier === B && p.alive && p.state === 'landing' && p.rwPh === 'circuit'); if (p && p.hp > p.maxHp * 0.4) p.hp = p.maxHp * 0.35; return __ev.crashWreck; }, 400);
+    if (!ok) return null;
+    __ff(5);
+    const w = __ev.crashWreck.wreck; return [w.x + 20, 10, w.z + 16, w.x, 0.5, w.z];
+  }],
+  ['pby_takeoff', () => {
+    const p = __pby(); if (!p || !__until(() => p.state === 'depart' && p.speed > 12, 120)) return null;
+    const c = Math.cos(p.heading), s = Math.sin(p.heading); return [p.x + c * 22 - s * 14, 5, p.z + s * 22 + c * 14, p.x, 1, p.z];
+  }],
+  ['pby_alight', () => {
+    const p = __pby(true); if (!p || !__until(() => p.state === 'taxiIn' || (p.state === 'alightHome' && !p.app && p.y < 2.5), 200)) return null;
+    const c = Math.cos(p.heading), s = Math.sin(p.heading); return [p.x - c * 26 + s * 10, 6, p.z - s * 26 - c * 10, B.seaplane.wx, 1, B.seaplane.wz];   // from behind it: the ramp ahead
+  }],
+  ['pby_ramp', () => {
+    const p = __pby(true); if (!p || !__until(() => p.upT && WW.time.now - p.upT > 5, 400)) return null;
+    const R = B.seaplane, c = Math.cos(R.h), s = Math.sin(R.h); return [R.ax - c * 26 - s * 12, 7, R.az - s * 26 + c * 12, R.lx, 0.8, R.lz];   // from the water side
+  }],
   ['burning', () => {
     const en = WW.enemyOf(B.nation);
     for (const f of B.facilities) if (f.kind === 'hangar' || f.kind === 'fuel') WW.islandBase.impact(en, f.x, f.z, 900, 'bomb');
@@ -124,13 +145,17 @@ const SHOTS = [
     WW.seedRandom(seed); window.__comp = WW.game.randomComposition();
     WW.on('baseEvent', e => { if (window.B && e.base === B && !__ev[e.kind]) __ev[e.kind] = e; });
     window.__camp = eval(camp);
+    // a flying boat of the base's owner at its ramp (or, home: 160 u out on the way back, alighting in the lagoon)
+    window.__pby = home => { const R = B.seaplane; if (!R) return null; const p = WW.flyingBoats.launch(B.nation, 'patrol', R.wz); if (!p) return null;
+      if (home) { const a = Math.atan2(R.wz - B.z, R.wx - B.x); p.x = R.wx + Math.cos(a) * 160; p.z = R.wz + Math.sin(a) * 160; p.y = 16; p.vy = 0; p.speed = p.pt.speed; p.heading = a + Math.PI; p.setState('alightHome'); }
+      return p; };
     // sim time with the base's visual life stepped along (as frames would): the camera parked over the base
     window.__ff = secs => { for (let t = 0; t < secs - 1e-6; t += 0.1) { __sim.fastForward(0.1); if (window.B) { WW.camera.position.set(B.x, 40, B.z); WW.baseFx.update(0.1); } } };
     window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __ff(0.1); } return !!f(); };
   }, [SEED, OWNER, CAMP]);
   const done = [];
   for (const [name, fn] of SHOTS) {
-    if (ONLY && name !== ONLY) continue;
+    if (ONLY && !ONLY.split(',').includes(name)) continue;
     const cam = await p.evaluate(([src, night]) => {
       window.__night = night; __fresh();
       const v = eval('(' + src + ')')();
