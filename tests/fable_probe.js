@@ -36,11 +36,24 @@ const SCEN = {
   battle_line: { A: ['battleship', 'battleship', 'cruiser', 'cruiser'], B: ['battleship', 'battleship', 'cruiser', 'cruiser'], n: 0.6 },
   surface: { A: ['battleship', 'battleship', 'cruiser', 'cruiser', ...rep('destroyer', 3)], B: ['battleship', 'battleship', 'cruiser', 'cruiser', ...rep('destroyer', 3)], n: 0.6 },
   pt_vs_bb: { A: ['pt', 'pt'], B: ['battleship', 'cruiser'], n: 0.3 },
-  asw: { A: ['destroyer', 'destroyer', 'cruiser'], B: ['submarine', 'submarine', 'cruiser'], n: 0.3 }
+  asw: { A: ['destroyer', 'destroyer', 'cruiser'], B: ['submarine', 'submarine', 'cruiser'], n: 0.3 },
+  // wave 2: the same random fleets at dusk and by night (daylight.js force), for the time-of-day detectors
+  standard_dusk: { random: true, tod: 'dusk', n: 0.7 },
+  standard_night: { random: true, tod: 'night', n: 0.35 },
+  standard_weather: { random: true, wx: 'line', n: 0.5 },
+  // wave 2: the battle-line time endings and the odd-fleet endgames
+  bb4_vs_bb4: { A: rep('battleship', 4), B: rep('battleship', 4), n: 0.4 },
+  cv2_vs_cv2: { A: rep('carrier', 2), B: rep('carrier', 2), n: 0.3 },
+  sub_vs_cv: { A: rep('submarine', 4), B: rep('carrier', 2), n: 0.2 },
+  pt_vs_pt: { A: rep('pt', 8), B: rep('pt', 8), n: 0.3 },
+  ss_vs_ss: { A: rep('submarine', 3), B: rep('submarine', 3), n: 0.15 },
+  cv_vs_bb: { A: ['carrier'], B: ['battleship'], n: 0.2 }
 };
 function specFor(name, sc, seed) {
   const s = sc.random ? { seed, random: true, light: true } :
     { seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: -1, base: sc.base || null, light: true };
+  if (sc.tod) s.tod = sc.tod;
+  if (sc.wx) s.wx = sc.wx;
   s.scen = name; return s;
 }
 
@@ -48,7 +61,7 @@ function specFor(name, sc, seed) {
 function install() {
   const R = window.__fp = { err: 0 }, DT = 2;
   let S = null;
-  const fresh = () => { S = { next: 0, m: {}, ex: {}, post: { USN: [], IJN: [] }, waves: new WeakMap(), prev: new Map(), hist: new Map(), subs: new Map(), ptH: new Map(), raids: new Map(), srch: new Set() }; };
+  const fresh = () => { S = { next: 0, m: {}, ex: {}, post: { USN: [], IJN: [] }, waves: new WeakMap(), prev: new Map(), hist: new Map(), subs: new Map(), ptH: new Map(), raids: new Map(), srch: new Set(), axis: {}, sh: new Map(), lastNear: 1e9 }; };
   const ebase = n => { const b = WW.islandBase && WW.islandBase.base; return b && b.nation !== n ? b : null; };
   fresh(); WW.on('roundStart', fresh);
   const t = () => +WW.game.roundTime.toFixed(0);
@@ -76,11 +89,37 @@ function install() {
       }
     }
   } catch (er) { R.err++; R.last = String(er.stack); } });
+  // wave 2 detectors: torpedoes / bombs on PT boats, friendly hits, dusk strikes, base strikes on small craft
+  WW.on('weaponDropped', e => { try {
+    if (!live() || !e || !e.plane || !e.plane.kind || !e.plane.target || !e.plane.target.type) return;
+    const p = e.plane, tg = p.target;
+    if (tg.type === 'pt') add(e.kind === 'torpedo' ? 'torpOnPT' : 'bombOnPT', 1, { who: p.nation + ' ' + p.kind + ' on ' + who(tg), big: bigSeen(p.nation) ? 1 : 0 });
+  } catch (er) { R.err++; R.last = String(er.stack); } });
+  WW.on('weaponImpact', e => { try {
+    if (!live() || !e || !e.ship || !e.proj || !e.proj.nation || e.ship.nation !== e.proj.nation || !(e.amount > 0 || e.kind === 'torpedo')) return;
+    add('friendlyHit', 1, { who: who(e.ship) + ' by own ' + (e.kind || e.proj.kind) + (e.proj.owner ? ' from ' + who(e.proj.owner) : e.proj.src ? ' (' + e.proj.src + ')' : '') });
+  } catch (er) { R.err++; R.last = String(er.stack); } });
+  WW.on('waveGo', e => { try {
+    if (!live() || !e || !e.carrier) return;
+    const n = e.nation, tg = e.target, D = WW.dayNight;
+    if (e.carrier.isBase && tg && SMALL[tg.type] && bigSeen(n)) add('baseStrikeSmall', 1, { who: n + ' base strike on ' + who(tg) });
+    if (D && D.kind === 'dusk' && WW.daylight < 0.75 && tg) add('duskStrike', 1, { who: n + ' strike on ' + (tg.isBase ? 'base' : who(tg)), daylight: +WW.daylight.toFixed(2), d: +WW.dist(e.carrier.x, e.carrier.z, tg.x, tg.z).toFixed(0) });
+  } catch (er) { R.err++; R.last = String(er.stack); } });
   WW.on('shipSunk', s => { try {
     if (!live() || !s || !GUN[s.type]) return;
     const n = WW.enemyOf(s.nation), a = age(n, s), B = WW.fleetCmd.side(n);
     if (B && B.foeSeen && B.foeSeen.has(s.id) && a > 10) add('unseenSink', 1, { who: who(s), age: a > 1e8 ? 'never' : +a.toFixed(0) });
     for (const [k, v] of S.subs) if (k === s && v.upAt !== undefined && WW.time.now - v.upAt < 40 && v.near) add('subUpDeath', 1, { who: who(s), after: +(WW.time.now - v.upAt).toFixed(0) });
+  } catch (er) { R.err++; R.last = String(er.stack); } });
+  // wave 2: depth charges on nothing, submarine spreads by target type
+  WW.on('dcDropped', e => { try {
+    if (!live() || !e || !e.ship) return;
+    add('dc'); let d = 1e9; for (const q of WW.world.ships) if (q.alive && q.type === 'submarine' && q.nation !== e.ship.nation) d = Math.min(d, WW.dist(q.x, q.z, e.x, e.z));
+    if (d > 40) add('dcWaste', 1, { who: who(e.ship), nearestSub: d < 1e8 ? +d.toFixed(0) : null });
+  } catch (er) { R.err++; R.last = String(er.stack); } });
+  WW.on('weaponDropped', e => { try {
+    if (!live() || !e || e.kind !== 'torpedo' || !e.plane || !e.plane.stats || e.plane.type !== 'submarine') return;
+    const tg = e.proj && e.proj.target; add('subTorp'); if (tg && tg.type === 'destroyer') add('subAtDD', 1, { who: who(e.plane) + ' at ' + who(tg) });
   } catch (er) { R.err++; R.last = String(er.stack); } });
   WW.on('admiralOrder', e => { try {
     if (!live() || !e) return;
@@ -99,6 +138,29 @@ function install() {
     const now = WW.time.now, ships = WW.world.ships, planes = WW.world.planes, I = WW.intel;
     if (WW.strike && WW.strike._waves) for (const w of WW.strike._waves()) if (w.target && !S.waves.has(w)) S.waves.set(w, { t0: w.target.type });
     for (const p of planes) if (p.alive && p.search && !S.srch.has(p)) { S.srch.add(p); add('searchSortie_' + p.nation + (ebase(p.nation) ? '_vsBase' : '_noBase')); }
+    // wave 2: planes through hulls, dusk recalls with ordnance, flying boats landing / shadowing in reach
+    const TOP = { carrier: 6.4, battleship: 7.2, cruiser: 5.2, destroyer: 3.7, submarine: 0.7, pt: 2.0 }, FLY = { transit: 1, attack: 1, 'return': 1 };
+    for (const p of planes) {
+      if (!p.alive || p.removed) continue;
+      if (p.kind !== 'flyingboat' && p.kind !== 'scout' && FLY[p.state] && !p.deckPh && p.y < 8) {
+        for (const q of ships) {
+          if (!q.alive || q.submerged || q.isBase || p.y >= (TOP[q.type] || 6)) continue;
+          const dx = p.x - q.x, dz = p.z - q.z; if (dx * dx + dz * dz > 400) continue;
+          const c = Math.cos(q.heading), sn = Math.sin(q.heading), al = dx * c + dz * sn, ac = -dx * sn + dz * c;
+          if (Math.abs(al) < q.stats.length * 0.5 && Math.abs(ac) < (q.beam || 3) * 0.5 + 0.5) { add('planeThruShip', DT, { who: p.nation + ' ' + p.kind + ' y' + p.y.toFixed(1) + ' through ' + who(q), state: p.state + '/' + (p.phase || p.sk || '-') }); break; }
+        }
+      }
+      if (p.nightRecall && p.ordnance && !S.srch.has(p) && p.kind !== 'fighter') { S.srch.add(p); add('duskWaste', 1, { who: p.nation + ' ' + p.kind + ' recalled armed', daylight: +WW.daylight.toFixed(2) }); }
+      if (p.kind === 'flyingboat') {
+        if ((p.state === 'alight' || p.state === 'afloat') && !S.srch.has(p)) {
+          S.srch.add(p); let en = 1e9, ef = 1e9;
+          for (const q of ships) if (q.alive && q.nation !== p.nation && !q.submerged && q.stats.guns.length) en = Math.min(en, WW.dist(q.x, q.z, p.x, p.z));
+          for (const q of planes) if (q.alive && q.nation !== p.nation && q.kind === 'fighter') ef = Math.min(ef, WW.dist(q.x, q.z, p.x, p.z));
+          add('catLand'); if (en < 150 || ef < 150) add('catLandHot', 1, { who: p.nation + ' ' + p.boatType + ' ' + p.mission, gunShip: en < 1e8 ? +en.toFixed(0) : null, fighter: ef < 1e8 ? +ef.toFixed(0) : null });
+        }
+        if (p.state === 'shadow') for (const q of ships) if (q.alive && q.nation !== p.nation && !q.submerged && q.stats.aa && WW.dist(q.x, q.z, p.x, p.z) < q.stats.aa.range * 2.2) { add('patrolInAA', DT, { who: p.nation + ' ' + p.boatType + ' over ' + who(q), d: +WW.dist(q.x, q.z, p.x, p.z).toFixed(0) }); break; }
+      }
+    }
     for (const n of ['USN', 'IJN']) {
       const B = WW.fleetCmd.side(n); if (!B) continue;
       const P = S.post[n]; if (!P.length || P[P.length - 1][1] !== B.posture) P.push([t(), B.posture, B.brokenAt ? 1 : 0]);
@@ -116,9 +178,21 @@ function install() {
         for (const s of ships) if (s.alive && s.nation === n && GUN[s.type] && s.target && s.target.alive && s.stats.guns[0] && WW.dist(s.x, s.z, s.target.x, s.target.z) <= s.stats.guns[0].range) { add('ratioWdFighting', DT, { who: who(s) + ' at ' + who(s.target) }); break; }
       }
       if (B.battle && B.battle.c && B.battle.c.type === 'destroyer') add('lineOnDD', DT, { who: n + ' line across ' + who(B.battle.c) });
+      // wave 2: the 'search' snap when the contacts expire (SHIP_TTL), the formation axis swinging with it
+      const ax = S.axis[n]; if (ax !== undefined && B.posture === 'search' && P.length > 1 && P[P.length - 1][1] === 'search' && P[P.length - 1][0] === t() && now > 60) add('searchSnap', 1, { who: n, from: P[P.length - 2][1], axisTurnDeg: +(Math.abs(WW.angleDiff(ax, B.axis.h)) * 180 / Math.PI).toFixed(0) });
+      S.axis[n] = B.axis.h;
+      if (WW.admirals && WW.admirals.confused(n)) { add('confused', DT); for (const s of ships) if (s.alive && s.nation === n && GUN[s.type]) { let hot = false; for (const e of ships) if (e.alive && e.nation !== n && GUN[e.type] && WW.dist2(s.x, s.z, e.x, e.z) < 200 * 200) { hot = true; break; } if (hot) { add('confusedUnderFire', DT, { who: n }); break; } } }
+      // the battle lines: nearest BB / CA pair range against the main-battery reach, pressing or not
+      { let R0 = 0, dmin = 1e9, mine = false, theirs = false;
+        for (const s of ships) if (s.alive && s.nation === n && (s.type === 'battleship' || s.type === 'cruiser')) { mine = true; R0 = Math.max(R0, s.stats.guns[0].range); for (const e of ships) if (e.alive && e.nation !== n && (e.type === 'battleship' || e.type === 'cruiser')) { theirs = true; dmin = Math.min(dmin, WW.dist(s.x, s.z, e.x, e.z)); } }
+        if (mine && theirs && n === 'USN') { const k = dmin / R0; add(k > 1.5 ? 'lineFar' : k > 0.95 ? 'lineKite' : 'lineInRange', DT, { d: +dmin.toFixed(0), R: R0, press: [B.posture, WW.fleetCmd.side('IJN').posture].join('/') }); if (B.posture === 'press' || WW.fleetCmd.side('IJN').posture === 'press') add('linePress', DT); }
+      }
+      // carriers: a strike queued on deck in the dark
+      for (const s of ships) if (s.alive && s.nation === n && s.type === 'carrier' && s.ai && s.ai.queue && s.ai.queue.some(q => q.target) && WW.dayNight && !WW.dayNight.canFly()) { add('strikeWaitsDark', DT, { who: who(s), daylight: +WW.daylight.toFixed(2) }); break; }
       if (B.airRaid && B.airRaid.carrier) { const cv = B.airRaid.carrier; const k = S.raids.get(cv) || 0; if (!k) add('raids'); S.raids.set(cv, now); }
       for (const q of B.defend) if (q.enemy && q.enemy.type === 'pt') add('ptDefend', DT, { who: n + ' carrier defends against ' + who(q.enemy), d: +q.d.toFixed(0) });
     }
+    if (now > 480) { let d = 1e9; for (const s of ships) if (s.alive && s.nation === 'USN' && !s.isBase) for (const e of ships) if (e.alive && e.nation === 'IJN' && !e.isBase) d = Math.min(d, WW.dist(s.x, s.z, e.x, e.z)); if (d < S.lastNear) S.lastNear = d; }
     for (const s of ships) {
       if (!s.alive || s.sinking || s.isBase) continue;
       const n = s.nation, B = WW.fleetCmd.side(n), d = B && B.doctrine, o = WW.fleetCmd.order(s), tg = s.target;
@@ -179,12 +253,36 @@ function install() {
         }
         S.subs.set(s, v);
       }
+      // wave 2: shuttle episodes (duration, late arrival), stale datum hunts, idle subs, PT boats apart, the dark
+      if (s.type === 'cruiser') {
+        const E = S.sh.get(s), on = !!(S.m.raidShuttle !== undefined && S.ex.raidShuttle && B && B.airRaid && B.airRaid.carrier && o && o.role === 'line' && WW.dist(s.x, s.z, B.airRaid.carrier.x, B.airRaid.carrier.z) <= 300 && Math.abs(WW.angleDiff(s.heading, Math.atan2(B.airRaid.carrier.z - s.z, B.airRaid.carrier.x - s.x))) < 0.5);
+        if (on && !E) S.sh.set(s, { t0: now, cv: B.airRaid.carrier, d0: WW.dist(s.x, s.z, B.airRaid.carrier.x, B.airRaid.carrier.z) });
+        else if (!on && E) { const dur = now - E.t0, raidOn = !!(B && B.airRaid && B.airRaid.carrier === E.cv); S.sh.delete(s); add('shuttleTrip', 1, { who: who(s), dur: +dur.toFixed(0), d0: +E.d0.toFixed(0) }); if (!raidOn) add('shuttleLate', 1, { who: who(s), dur: +dur.toFixed(0), d0: +E.d0.toFixed(0) }); if (dur < 12) add('shuttleAbort'); }
+      }
+      if (s.type === 'destroyer' && s.ai.sub && s.ai.subC && (s.ai.dcLeft > 0 || s.ai.dcSub || s.ai.subD < 200 || !tg || tg.type === 'submarine') && age(n, s.ai.sub) > 10) add('ddStaleHunt', DT, { who: who(s) + ' after ' + who(s.ai.sub), age: +age(n, s.ai.sub).toFixed(0), d: +s.ai.subD.toFixed(0) });
+      if (s.type === 'submarine' && s.ai.ls && !s.ai.ls.amb) {
+        for (const c of I.enemyShips(n)) { const u = c.unit; if (u && u.alive && !u.isBase && BIG[u.type] && now - c.seenAt <= 30 && WW.dist(s.x, s.z, c.x, c.z) < 400) { add('subIdle', DT, { who: who(s) + ' with ' + who(u) + ' known at ' + WW.dist(s.x, s.z, c.x, c.z).toFixed(0) }); break; } }
+      }
+      if (s.type === 'submarine' && !s.submerged && !(s.ai.forcedT > 0) && WW.daylight < 0.3) { for (const q of ships) if (q.alive && q.nation !== n && GUN[q.type] && WW.dist2(q.x, q.z, s.x, s.z) < 120 * 120) { add('subNightSurfaced', DT, { who: who(s) + ' near ' + who(q) }); break; } }
+      if (s.type === 'pt' && n === 'USN') { let d = 1e9; for (const q of ships) if (q.alive && q.nation !== n && q.type === 'pt') d = Math.min(d, WW.dist(q.x, q.z, s.x, s.z)); if (d < 1e8) { if (d > 400) add('ptApart', DT, { d: +d.toFixed(0) }); else add('ptNear', DT); } }
+      if (GUN[s.type] && WW.daylight < 0.3 && n === 'USN') for (const q of ships) if (q.alive && q.nation !== n && GUN[q.type] && WW.dist2(q.x, q.z, s.x, s.z) < 100 * 100 && age(n, q) > 3 && age(q.nation, s) > 3) { add('nightBlindClose', DT, { who: who(s) + ' and ' + who(q), d: +WW.dist(q.x, q.z, s.x, s.z).toFixed(0) }); break; }
       if (s.type === 'destroyer' && s.rescue && s.speed < 1.6) {
         for (const p of planes) if (p.alive && p.nation !== n && p.ordnance && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(p.x, p.z, s.x, s.z) < 150 * 150) { add('rescueRaid', DT, { who: who(s) }); break; }
       }
     }
   }
-  R.flush = () => ({ m: S.m, ex: S.ex, post: S.post, searchSorties: WW.search ? WW.search.stats.sorties : null, base: WW.islandBase && WW.islandBase.base ? WW.islandBase.base.nation : null, err: R.err, last: R.last || null });
+  R.flush = () => { try {
+    const F = (pre, o, keys) => { if (!o) return; for (const k of keys) { const v = o[k]; if (typeof v === 'number' && v) S.m[pre + k] = v; else if (v && typeof v === 'object') for (const q in v) if (typeof v[q] === 'number' && v[q]) S.m[pre + k + '_' + q] = v[q]; } };
+    F('st_day_', WW.dayNight && WW.dayNight.stats, ['launchesDark', 'blocked', 'recalls', 'nightLandings', 'nightLandingLoss', 'struckBelow']);
+    F('st_wx_', WW.weather && WW.weather.stats, ['diveHolds', 'diveAborts', 'shelter']);
+    F('st_night_', WW.nightOps && WW.nightOps.stats, ['starShells', 'searchlights', 'radarSights']);
+    F('st_fb_', WW.flyingBoats && WW.flyingBoats.stats, ['dispatched', 'landed', 'rescues', 'aborted', 'waited', 'catLost', 'patrols', 'lost', 'bombs', 'bombHits', 'evades']);
+    F('st_base_', WW.landAir && WW.landAir.stats, ['launches', 'ditched', 'diverted', 'holds', 'emergency', 'closedLaunches', 'strikes', 'levelDrops']);
+    F('st_intel_', WW.intel && WW.intel.stats, ['wrongStrikes', 'wrongRedirects', 'misid']);
+    F('st_adm_', WW.admirals && WW.admirals.stats, ['flagLost', 'transfers', 'confusionSec']);
+    if (S.lastNear < 1e8) S.m.lastThirdNearest = +S.lastNear.toFixed(0);
+  } catch (e) { R.err++; R.last = String(e.stack); }
+  return { m: S.m, ex: S.ex, post: S.post, tod: WW.dayNight ? WW.dayNight.kind : null, searchSorties: WW.search ? WW.search.stats.sorties : null, base: WW.islandBase && WW.islandBase.base ? WW.islandBase.base.nation : null, err: R.err, last: R.last || null }; };
   return true;
 }
 
