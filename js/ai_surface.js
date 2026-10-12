@@ -62,7 +62,7 @@ window.WW = window.WW || {};
   const PRESS_AGE = 60;
   const HOME_K = 0.35;     // ... nor into the enemy's home waters (its carrier band: 0.15-0.35 W from its edge)    // a pressing ship with nothing in sight steams for last-known (non-carrier) contacts this old
   const SUB_HELP = 70, SUB_HELP_R = 250; // a DD answers a known sub this close to an ally, from this far away
-  const RAID_R = 300, RAID_CLOSE = 80;   // AA cover: cruisers (and the carrier group's battleship) close to a point this far out on the raid's side of a raided carrier (outside the ring: was 45, inside it)
+  const RAID_R = 300, RAID_CLOSE = 80, RAID_NEAR = 120;   // AA cover: cruisers (and the carrier group's battleship) close to a point this far out on the raid's side of a raided carrier (outside the ring: was 45, inside it)
   const GUIDED = { line: 1, asw: 1, torpedo: 1 }; // roles that keep station on the formation guide (fleet_formation.js)
   const TDIR_T = 20;       // s between crossing-the-T orbit side choices (a battleship turns slowly)
   const BAND = 0.1;        // +-10% of the preferred range: hold a pure broadside there
@@ -81,10 +81,10 @@ window.WW = window.WW || {};
     // A lost sub: run to its last-known position (datum) and give it up there if sonar finds nothing.
     // A sub already under attack stays the quarry while sonar holds it (re-attack, don't switch contacts).
     // Mutual support: a sub known close to an ally is hunted from SUB_HELP_R away.
-    const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) &&
-      WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
     const go = WW.fleetCmd ? WW.fleetCmd.order(ship) : null;
-    if (st.depthCharges && (a.dcLeft > 0 || ds || (!guardOut(ship, go) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
+    const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) && !subTooFar(go, a.dcSub) &&
+      WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
+    if (st.depthCharges && (a.dcLeft > 0 || ds || (!subTooFar(go, a.subC) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
       a.dcReload -= dt;
       if (a.dcLeft > 0) { dcPattern(ship, a, dt); return; }
       const fresh = !!ds || seen(ship, a.sub), s = ds || (fresh ? a.sub : a.subC);
@@ -145,10 +145,13 @@ window.WW = window.WW || {};
     if (o.guard && (o.ringR > 0 || o.looseR > 0)) return true;
     return o.ringR > 0 && B.posture !== 'press' && B.posture !== 'pursue' && B.posture !== 'withdraw';
   }
-  // a guard more than GUARD_R from its carrier: back to the ring before hunting a sub there
-  function guardOut(ship, o) {
-    return !!(o && o.guard && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking && WW.formation &&
-      WW.dist2(ship.x, ship.z, o.ringCv.x, o.ringCv.z) > WW.formation.GUARD_R * WW.formation.GUARD_R);
+  // A carrier's escort hunts a sub only inside ESC_SUB of its carrier (a periscope near the carrier, or the datum of a
+  // torpedo at it); a contact farther off is reported and the escort keeps its station (1942 carrier screens did not
+  // detach their destroyers to chase a datum; the screen / ASW group does that).
+  const ESC_SUB = 110;
+  function subTooFar(o, c) {
+    const cv = o && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking ? o.ringCv : null;
+    return !!(cv && c && WW.dist2(cv.x, cv.z, c.x, c.z) > ESC_SUB * ESC_SUB);
   }
   // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range). Pressing
   // closes in by the doctrine's close-quarters style (IJN closer), a withdrawing side opens out. Never inside
@@ -195,10 +198,20 @@ window.WW = window.WW || {};
   // run in from the flank (alternate sides by flotilla slot, so the pair come from different angles), launch
   // beam-on at the doctrine's launch distance, then turn away for RUN_OUT s. Never inside the capital ship's
   // secondaries, never inside CV_KEEP of a carrier: no ram-closing.
+  // The launch distance (doctrine torpedo emphasis x range, longer at night) and the closest a run goes (inside the
+  // target's secondaries: never). A destroyer's run on a carrier is not held off by CV_KEEP (it is faster than the
+  // carrier: CV_KEEP keeps the big gun ships from cornering one); the launch point always lies outside the turn-away
+  // (minD + 8, within the torpedo's range): before, a USN boat (L ~67) could never get inside CV_KEEP 108 to fire.
+  function launch(ship, t, B) {
+    const tp = ship.stats.torpedoes, k0 = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8, k = B && WW.nightOps ? WW.nightOps.torpK(B, k0) : k0;
+    const sec = t.stats.guns[1] || t.stats.guns[0], gunR = sec ? sec.range : 60;
+    let L = tp.range * k;
+    const big = CAPITAL[t.type] && ship.type === 'destroyer', minD = big ? Math.max(L * 0.8, gunR + 8) : L * 0.8;
+    if (big) L = Math.min(tp.range, Math.max(L, minD + 8, gunR + 15));
+    return { L, minD };
+  }
   function torpedoRun(ship, t, o, B, d, b) {
-    const a = ship.ai, tp = ship.stats.torpedoes, now = WW.time.now;
-    const L = tp.range * (B && WW.nightOps ? WW.nightOps.torpK(B, 0.6 + 0.3 * B.doctrine.torpedo) : B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8), sec = t.stats.guns[1] || t.stats.guns[0];
-    const minD = Math.max(L * 0.8, (sec ? sec.range : 60) + 8, t.type === 'carrier' && !fair(ship, t, B) ? CV_KEEP : 0);
+    const a = ship.ai, now = WW.time.now, lc = launch(ship, t, B), L = lc.L, minD = lc.minD;
     if (o && o.group === 'flotilla') a.orbitDir = o.slot % 2 ? -1 : 1;
     let h;
     ship.throttle = 1;
@@ -222,8 +235,8 @@ window.WW = window.WW || {};
   function torpedoes(ship, t, B) {
     const st = ship.stats, a = ship.ai;
     if (!st.torpedoes || a.torpReload > 0 || t.submerged || t.type === 'submarine') return; // a sub is depth-charged or shot, not torpedoed
-    const d = WW.dist(ship.x, ship.z, t.x, t.z), k0 = B ? 0.6 + 0.3 * B.doctrine.torpedo : 0.8, k = B && WW.nightOps ? WW.nightOps.torpK(B, k0) : k0; // night: longer reach
-    if (d < st.torpedoes.range * k && d > 12 && seen(ship, t) && H.fireSpread(ship, t) && ship.type === 'destroyer') a.runOut = WW.time.now + RUN_OUT;
+    const d = WW.dist(ship.x, ship.z, t.x, t.z), L = launch(ship, t, B).L; // night: longer reach
+    if (d < L && d > 12 && seen(ship, t) && H.fireSpread(ship, t) && ship.type === 'destroyer') a.runOut = WW.time.now + RUN_OUT;
   }
 
   // ---- press, support and safety layers ----
@@ -268,8 +281,9 @@ window.WW = window.WW || {};
   function aaCover(ship, t, o, B) {
     const R = B && B.airRaid, cv = R && R.carrier;
     if (!cv || !cv.alive || ship.type === 'destroyer' || (ship.type === 'battleship' && !(o && o.group === 'carrier'))) return false;
+    if (o && GUIDED[o.role]) return false;   // a line ship stays in the line (it steamed to the carrier and back with each raid: Fable F14)
     const d = WW.dist(ship.x, ship.z, cv.x, cv.z);
-    if (d > RAID_R) return false;
+    if (d > (o && o.group === 'carrier' ? RAID_R : RAID_NEAR)) return false;
     if (t && WW.dist(ship.x, ship.z, t.x, t.z) <= ship.stats.guns[0].range) return false;
     // the cover point: RAID_CLOSE out from the carrier on the raid's side (fleet_formation.js threatAxis), outside its ring
     const th = WW.formation && WW.formation.threatAxis ? WW.formation.threatAxis(B, cv) : Math.atan2(ship.z - cv.z, ship.x - cv.x);
@@ -363,6 +377,7 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const u = c.unit;
       if (!u || u.type !== 'carrier' || !u.alive || now - c.seenAt > 10 || fair(ship, u, B)) continue;
+      if (ship.type === 'destroyer' && ship.target === u && ship.stats.torpedoes && !(WW.supply && !WW.supply.torpLeft(ship))) continue; // its torpedo run (torpedoRun keeps it outside the secondaries)
       const age = WW.time.now - c.seenAt, px = c.x + Math.cos(c.heading) * c.speed * age, pz = c.z + Math.sin(c.heading) * c.speed * age;
       const d = WW.dist(ship.x, ship.z, px, pz);
       if (d < CV_KEEP * 1.15) ship.desiredHeading = blend(ship.desiredHeading, ship, 2 * ship.x - px, 2 * ship.z - pz, d < CV_KEEP ? 6 : 1.5);

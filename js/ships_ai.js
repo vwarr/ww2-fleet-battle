@@ -127,7 +127,7 @@ window.WW = window.WW || {};
   // Targets come from what the side knows (intel.js): only a fresh contact (a firing solution) can be a target;
   // the threat a carrier runs from and the sub a destroyer hunts may be older last-known positions.
   // Allies (formation centre, carrier, near) stay omniscient: a fleet knows where its own ships are.
-  const THREAT_AGE = 20, SUB_AGE = 30;
+  const THREAT_AGE = 20, SUB_AGE = 30, TARGET_HOLD = 6;
   function retarget(ship) {
     const a = ship.ai, st = ship.stats, ships = WW.world.ships, now = WW.time.now;
     let best = null, bestS = 0, sub = null, subD = 1e9, threat = null, threatD = 1e9, any = null, anyD = 1e9, fb = null, fbD = 1e9;
@@ -141,13 +141,14 @@ window.WW = window.WW || {};
     }
     const cs = WW.intel ? WW.intel.enemyShips(ship.nation) : [], FRESH = WW.intel ? WW.intel.T.FRESH : 3;
     const W = ROLE_W[ship.type] || ROLE_W.cruiser, R = reach(st), risk = riskOf(ship), old = ship.target;
-    let oldS = -1;
+    let oldS = -1, oldC = null, oldF = false;
     a.subC = null; a.anyC = null;
     for (const c of cs) {
       const o = c.unit;
       if (!o || !o.alive) continue;
       const age = now - c.seenAt, d = WW.dist(ship.x, ship.z, c.x, c.z);
       if (d < anyD) { anyD = d; any = o; a.anyC = c; }
+      if (o === old) oldC = c;
       if (o.type === 'submarine' && age <= SUB_AGE && a.datumDone !== c.seenAt && d < subD) { subD = d; sub = o; a.subC = c; }
       if (age <= THREAT_AGE && !o.submerged && o.stats.guns.length && o.type !== 'carrier' && d < threatD) { threatD = d; threat = o; }
       if (age > FRESH) continue;
@@ -155,10 +156,13 @@ window.WW = window.WW || {};
       if (o.submerged) continue;
       if (o.type === 'submarine' && ship.type === 'submarine' && d < fbD) { fbD = d; fb = o; } // sub vs sub: last resort
       const s = score(ship, o, c, W, R, risk);
-      if (o === old) oldS = s;
+      if (o === old) { oldS = s; oldF = true; }
       if (s > bestS) { bestS = s; best = o; }
     }
     if (old && oldS > 0 && best !== old && bestS <= oldS * STICKY) { best = old; bestS = oldS; } // no target thrash
+    // the old target blinked out of sight (smoke, a squall, a lost plot for a moment): hold it TARGET_HOLD s rather
+    // than swing to another and straight back (the guns hold fire on it meanwhile; the other mounts pick their own)
+    else if (old && old.alive && !old.sinking && !oldF && oldC && now - oldC.seenAt <= TARGET_HOLD && !old.submerged) { best = old; bestS = a.targetScore || bestS; }
     if (!best && W.submarine > 0) best = fb;
     a.targetScore = bestS;
     a.cv = cv; a.near = near; a.nearD = nearD;
@@ -309,20 +313,20 @@ window.WW = window.WW || {};
   // water comb() (above) takes over. Bounded: an episode ends EV.HOLD s after the last attacker, or after EV.MAX s,
   // then EV.COOL s on course before the next (the ship rejoins her station: the role steers again); never while
   // combing (comb, ai_surface.js earlyComb). Emits 'shipEvade' { ship, kind } at each episode's start.
-  const EV = { R: 110, LEG: 1.3, HOLD: 3, MAX: 20, COOL: 5, WEAVE: { USN: true, IJN: false } };
+  const EV = { R: 110, RESC: 150, LEG: 1.3, HOLD: 3, MAX: 20, COOL: 5, WEAVE: { USN: true, IJN: false } };
   function airEvade(ship) {
     const a = ship.ai, now = WW.time.now;
     if (ship.submerged || ship.type === 'submarine' || a.combUntil > now || a.earlyCombT === now) return false;
-    if (ship.rescue && ship.rescue.by === ship && !ship.rescue.done) return false;
     let ev = a.airEv;
     if (ev && (now > ev.until || now - ev.t0 > EV.MAX)) { a.airEvCool = now + EV.COOL; ev = a.airEv = null; }
     if (!ev && a.airEvCool > now) return false;
     let dv = null, tp = null, tpD = 1e9;
-    const P = WW.world.planes, r2 = EV.R * EV.R;
+    // a ship stopped for survivors gets under way for any bomber attacking near her (Fable F8), and comes back after
+    const P = WW.world.planes, resc = !!(ship.rescue && ship.rescue.by === ship && !ship.rescue.done), r2 = (resc ? EV.RESC : EV.R) * (resc ? EV.RESC : EV.R);
     for (let i = 0; i < P.length; i++) {
       const p = P[i];
-      if (!p || !p.alive || p.target !== ship || !p.ordnance || p.nation === ship.nation) continue;
-      const dive = p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive'), torp = p.kind === 'torpedo' && (p.phase === 'run' || p.sk === 'anvil');
+      if (!p || !p.alive || !p.ordnance || p.nation === ship.nation || (p.target !== ship && !(resc && p.state === 'attack' && (p.kind === 'dive' || p.kind === 'torpedo')))) continue;
+      const dive = p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive' || p.target !== ship), torp = p.kind === 'torpedo' && (p.phase === 'run' || p.sk === 'anvil');
       if (!dive && !torp) continue;
       const d2 = WW.dist2(ship.x, ship.z, p.x, p.z);
       if (d2 > r2 || !seen(ship, p)) continue;

@@ -260,7 +260,9 @@ window.WW = window.WW || {};
       if ((hv && !big) || ((hv === big) && d2 < bd)) { bd = d2; best = cs[i]; big = hv; }
     }
     var d = Math.sqrt(bd);
-    if (!best || d > R * BATTLE_K) { B.battle = null; return null; }
+    // only a battleship or cruiser is worth deploying the line for: a destroyer alone is the screen's business and the
+    // line keeps closing, its secondaries answering (it deployed broadside across a lone picket: Fable F19)
+    if (!best || !big || d > R * BATTLE_K) { B.battle = null; return null; }
     var pref = R * B.doctrine.rangeFrac * (B.posture === 'press' ? 0.85 : 1), b = Math.atan2(best.z - g.z, best.x - g.x), bt = B.battle;
     if (!bt || now > bt.t || bt.c !== best.unit) {
       var toBow = WW.angleDiff(b + PI, best.heading), side;

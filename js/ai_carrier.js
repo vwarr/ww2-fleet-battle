@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
-  const PI = Math.PI, CV_ORBIT = 90, WIND_RUN = 220; // the on-station circle's radius (~3.5 carrier lengths)
+  const PI = Math.PI, CV_ORBIT = 90, WIND_RUN = 220, PT_NEAR = 80, DD_FLEE = 1.2; // the on-station circle's radius (~3.5 carrier lengths)
   const URGENT_D = 170, RUN_D = 140, FLEE_K = 1.5, FLEE_PAD = 50, FLEE_MIN = 210, FLEE_AGE = 90, WIND_SAFE = 320, CONE_PAD = 150, CONE = 1.4, EDGE_BAND = 160; // CONE: half-angle (80 deg) kept clear around a threat's bearing // a destroyer (fast) is run from as soon as it is seen
   // Summed repulsion from every known gun ship inside its flee radius (weight (1 - d / radius)^2): the heading
   // away from all of them, or null when none is close.
@@ -38,8 +38,12 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const o = c.unit;
       if (!o || !o.alive || o.submerged || !o.stats.guns.length || o.type === 'carrier' || o.isBase || WW.time.now - c.seenAt > FLEE_AGE) continue; // an island base: its batteries are in the danger field
+      if (o.type === 'pt' && WW.dist(ship.x, ship.z, c.x, c.z) > PT_NEAR) continue; // a PT boat is a torpedo threat close in (the escorts' and secondaries' business), not a gun ship to run from
       const age = Math.min(20, WW.time.now - c.seenAt), cx = c.x + Math.cos(c.heading) * c.speed * age, cz = c.z + Math.sin(c.heading) * c.speed * age; // where it may be now
-      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), k = d / (Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD) * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
+      // a destroyer is run from inside DD_FLEE x its gun reach (+ its torpedoes' threat): further out it is the ring's business
+      // (ai_charge.js sends the escorts); the cruisers and battleships from FLEE_MIN (the carrier ran from a lone DD at 210, ring and all)
+      const r = o.stats.guns[0].range, d = WW.dist(ship.x, ship.z, cx, cz), R0 = o.type === 'destroyer' || o.type === 'pt' ? r * DD_FLEE + FLEE_PAD : Math.max(FLEE_MIN, r * FLEE_K + FLEE_PAD);
+      const k = d / (R0 * (WW.nightOps ? WW.nightOps.cvFleeK() : 1)); // a wider berth in the dark
       if (d < WIND_SAFE) ship.ai.cvWary = WW.time.now;
       if (d < (ship.ai.thrD || 1e9) || ship.ai.thrT !== WW.time.now) { ship.ai.thrD = d; ship.ai.thrT = WW.time.now; ship.ai.thrB = Math.atan2(cz - ship.z, cx - ship.x); ship.ai.thrR = r; } // nearest known gun ship's bearing
       if (d < r * FLEE_K + CONE_PAD) cone.push(Math.atan2(cz - ship.z, cx - ship.x)); // never steer toward it (see carrierAI)

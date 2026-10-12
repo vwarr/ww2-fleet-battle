@@ -159,7 +159,7 @@ window.WW = window.WW || {};
     var cs = WW.intel.enemyShips(B.nation), now = WW.time.now, H = WW.cfg.MAP_H;
     for (var pass = 0; pass < 2; pass++) for (var i = 0; i < cs.length; i++) {
       var c = cs[i], u = c.unit;
-      if (!u || !u.alive || u.submerged || u.type === 'carrier' || !u.stats.guns.length || now - c.seenAt > 60) continue;
+      if (!u || !u.alive || u.submerged || u.type === 'carrier' || u.type === 'pt' || !u.stats.guns.length || now - c.seenAt > 60) continue; // (a PT boat is no gun ship)
       var R = u.stats.guns[0].range * 1.9 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
       if (d >= R || d < 1) continue;
       p.x = WW.clamp(c.x + (p.x - c.x) / d * R, x0, x1); p.z = WW.clamp(c.z + (p.z - c.z) / d * R, 80, H - 80);
@@ -260,15 +260,17 @@ window.WW = window.WW || {};
     for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && u.alive && !u.submerged && !u.isBase && cs[i].seenAt > bt) { bt = cs[i].seenAt; best = cs[i]; } }
     return best || B.enemyCentre || B.searchPoint;
   }
-  // The sortie: escorts past the first `keep` steam for the enemy (sortieGoal); a carrier's guards (fleet_formation.js
-  // tagRing) never go.
+  // The sortie: the escorts other than each carrier's guards (fleet_formation.js tagRing) steam for the enemy
+  // (sortieGoal), two or more together.
   function sortie(B, G, ncv) {
-    var k = 0, t = sortieGoal(B), n = 0;
-    G.carrier.members.forEach(function (q) { var o = B.orders.get(q.id); if (q.type !== 'carrier' && o && o.role !== 'withdraw') n++; });
-    var keep = Math.min(ncv, n - 1);
+    var t = sortieGoal(B), go = [];
     G.carrier.members.forEach(function (q) {
       var o = B.orders.get(q.id);
-      if (q.type === 'carrier' || !o || o.role === 'withdraw' || o.guard || k++ < keep) return;
+      if (q.type === 'carrier' || !o || o.role === 'withdraw' || o.guard) return;   // the guards are the ones that stay
+      go.push(o);
+    });
+    if (go.length < 2) return; // a sortie goes as a group of two or more, never one destroyer alone across the map (Fable F10)
+    go.forEach(function (o) {
       o.role = 'sortie'; o.sx = WW.clamp(t.x, 30, WW.cfg.MAP_W - 30); o.sz = WW.clamp(t.z, 30, WW.cfg.MAP_H - 30);
     });
   }
