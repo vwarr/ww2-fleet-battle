@@ -268,8 +268,8 @@ window.WW = window.WW || {};
   function size(cv, tgt, o) {
     if (!TUNE.size) { const J = judge(cv, true); if (WW.emit) WW.emit('airPlan', { carrier: cv, target: tgt, nb: o.nd + o.nt, esc: o.esc, capE: capEst(cv.nation, tgt.x, tgt.z), lastLoss: J.last ? J.lastLoss : null, lastN: J.last ? J.last.n : 0, mauled: false }); return o; }   // A/B: the ledger read, nothing changed
     const n = cv.nation, D = doc(n), S = sideOf(n), J = judge(cv), Lg = led(cv), B = WW.fleetCmd && WW.fleetCmd.side(n);
-    const urgent = tgt.type === 'carrier' || (B && (B.posture === 'pursue' || B.timeLeft < 40 || B.defend.some(q => q.carrier === cv && q.enemy === tgt)));
-    const spent = airSpent(n), heavy = !tgt.isBase && HEAVY[tgt.type], late = B && B.timeLeft < 150;
+    const urgent = tgt.type === 'carrier' || (B && (B.posture === 'pursue' || B.defend.some(q => q.carrier === cv && q.enemy === tgt)));
+    const spent = airSpent(n), heavy = !tgt.isBase && HEAVY[tgt.type], late = WW.dayNight && WW.dayNight.lightLeft && WW.dayNight.lightLeft() < 150;   // the last strike of the day
     if (Lg.mauled && !urgent && !(heavy && (spent || late))) { ST.waits++; return null; }   // a mauled group: carriers only, or a division on a heavy ship once the enemy air is gone (or late)
     // a heavy loss on the last strike: learn (more escorts) and send a smaller one
     if (J.last && !J.last.judged) { J.last.judged = true; if (J.lastLoss >= 0.3 && J.last.esc < J.last.n * 0.6) { S.escK = Math.min(1.8, S.escK + D.learn); ST.learned++; } }

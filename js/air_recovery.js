@@ -32,7 +32,7 @@ window.WW = window.WW || {};
   // placed to go in: far enough astern for its offset from the wake to turn up the groove without overshooting (a
   // plane out on a quarter oval waits for the aft end of its track)
   const placed = (c, D, lx, lz) => lx < gate(c) - 10 - 0.8 * Math.max(0, Math.abs(lz - D.run) - 10);
-  const RS = { stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
+  const RS = { flakDetours: 0, stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
 
   // ---------- the way home and the divert ----------
   // seconds until this deck could take the plane (lower is better): the way there, then a trap's TRAP_S for each plane
@@ -88,11 +88,32 @@ window.WW = window.WW || {};
     const n = counts(D);
     for (let k = 0; k < p.mTrack; k++) if (n[k] < LEVELS) { p.mTrack = k; RS.steps++; return; }
   }
+  // The way home round the heavy flak (2.2 x aa.range, combat_aa.js) of a known enemy battleship, cruiser or carrier
+  // that lies across it: a point abeam of the ship, on the plane's side, just outside the flak. Re-plotted every 2 s.
+  const FLAK_K = 2.2, FLAK_PAD = 25, HEAVY_AA = { battleship: 1, cruiser: 1, carrier: 1 };
+  function flakAround(p, wx, wz) {
+    if (!WW.intel || WW.time.now < (p.fkT || 0)) return p.fk || null;
+    p.fkT = WW.time.now + 2; p.fk = null;
+    const dx = wx - p.x, dz = wz - p.z, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+    if (p.fuel < L / p.pt.speed * 1.5 + 20 || p.ditchTo) return null;   // short of fuel: straight home
+    let best = null, bt = 1e9;
+    for (const ct of WW.intel.enemyShips(p.nation)) {
+      const o = ct.unit; if (!o || !o.alive || o.sinking || o.isBase || !HEAVY_AA[o.type] || !o.stats.aa) continue;
+      const R = o.stats.aa.range * FLAK_K + FLAK_PAD, ox = ct.x - p.x, oz = ct.z - p.z, along = ox * ux + oz * uz;
+      if (along < 0 || along > L || ox * ox + oz * oz < R * R * 0.8) continue;   // behind, beyond home, or already inside (fly on out)
+      const off = ox * uz - oz * ux;
+      if (Math.abs(off) < R && along < bt) { bt = along; const s = off > 0 ? -1 : 1; best = [ct.x + uz * s * R * 1.15, ct.z - ux * s * R * 1.15]; }
+    }
+    p.fk = best; if (best) RS.flakDetours++;
+    return best;
+  }
   function goHome(p, dt) {
     p.foe = null;
     p.dvT = (p.dvT || 0) - dt;
     if (p.dvT <= 0) { p.dvT = 3; if (!p.diverted || p.diverted < 2) divert(p); }
     const c = p.carrier, D = deckOf(c), m = stackAt(c, D), w = c.toWorld(m[0], m[1]), d = WW.dist(p.x, p.z, w[0], w[1]);
+    const a = d > HOME_R ? flakAround(p, w[0], w[1]) : null;   // round a known enemy heavy ship's flak on the way (sanity P9)
+    if (a) { if (WW.airFlight) WW.airFlight.home(p, a[0], a[1], 25, dt); else p.fly(a[0], a[1], 25, dt, p.pt.speed); return; }
     if (WW.airFlight) WW.airFlight.home(p, w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt);   // economic cruise, fuel-aware route (air_flight.js)
     else p.fly(w[0], w[1], d > 120 ? 25 : STACK0 + 4, dt, p.pt.speed);
     if (d < HOME_R) { p.state = 'landing'; p.deckPh = 'marshal'; p.phT = 0; enter(p, D); p.lqT = p.qKey; RS.marshal++; }

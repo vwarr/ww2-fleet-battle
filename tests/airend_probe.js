@@ -18,6 +18,7 @@ const SCEN = {
   standard: { random: true },
   carrier_duel: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'] },
   midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
+  cv2_vs_cv2: { A: ['carrier', 'carrier'], B: ['carrier', 'carrier'] },
   panel: { A: ['carrier', 'battleship', 'cruiser', 'cruiser', 'destroyer', 'submarine', 'pt', 'pt'], B: ['carrier', 'cruiser', 'destroyer'], aFixed: 'USN', base: 'none', force: 'IJN' }
 };
 function specFor(name, seed) {
@@ -33,7 +34,7 @@ function install() {
   const R = window.__ap = { err: 0, force: null };
   const isAir = p => p.kind === 'fighter' || p.kind === 'dive' || p.kind === 'torpedo';
   let S = null;
-  const fresh = () => { S = { waits: [], mDay: 0, mDark: 0, lq: [], col: [], hy: [], dv: { n: 0, kept: 0, back: 0 }, eg: { USN: null, IJN: null }, egRole: { USN: {}, IJN: {} }, egCap: [], mMode: {}, blk: {}, ti: [], gap: {}, sp: [0, 0, 0], inEg: {}, lqE: [], found: new Map(), struck: [], forced: false, nextS: 0 }; };
+  const fresh = () => { S = { waits: [], mDay: 0, mDark: 0, lq: [], col: [], hy: [], dv: { n: 0, kept: 0, back: 0 }, eg: { USN: null, IJN: null }, egRole: { USN: {}, IJN: {} }, egCap: [], mMode: {}, blk: {}, ti: [], gap: {}, sp: [0, 0, 0], inEg: {}, lqE: [], hid: [0, 0, 0], p9: {}, found: new Map(), struck: [], forced: false, nextS: 0 }; };
   fresh(); WW.on('roundStart', fresh);
   const hangN = n => { let k = 0; for (const s of WW.world.ships) if (s.alive && s.nation === n && s.hangar && !s.isBase) k += s.hangar.fighter + s.hangar.dive + s.hangar.torpedo + (s.rearm ? s.rearm.length : 0); return k; };
   const st = new WeakMap();   // per plane: { ph, t0, c }
@@ -97,6 +98,19 @@ function install() {
       S.blk[k] = (S.blk[k] || 0) + m * dt;
       if (D.mode === 'recover' && Math.abs(c.turnRate || 0) > 0.2) S.blk.swinging = (S.blk.swinging || 0) + m * dt;
     }
+    // P9 (tests/sanity_rules.js): a plane (not attacking) inside the heavy-flak reach of an enemy BB / CA / CV that is
+    // neither its target nor within 150 of it; plane-s by role
+    for (const p of WW.world.planes) {
+      if (!p.alive || !isAir(p) || p.state === 'attack' || (p.y || 0) < 10 || p.state === 'takeoff' || p.state === 'rollout') continue;
+      if (p.kind === 'fighter' && !p.target && !p.search && p.state !== 'return' && p.state !== 'landing') continue;   // CAP (its leash rule)
+      const tg = p.target || (p.wave && p.wave.target);
+      for (const o of WW.world.ships) {
+        if (!o.alive || o.sinking || o.nation === p.nation || !(o.type === 'battleship' || o.type === 'cruiser' || o.type === 'carrier') || o.isBase || !o.stats.aa || o === tg) continue;
+        if (Math.hypot(p.x - o.x, p.y, p.z - o.z) > o.stats.aa.range * 2.2 * 0.9 || (tg && WW.dist(tg.x, tg.z, o.x, o.z) < 150)) continue;
+        const ro = p.alert ? 'alert' : p.search ? 'search' : p.state === 'return' ? (p.fk ? 'homeDetour' : 'home') : p.state === 'landing' ? 'landing' : p.kind === 'fighter' ? (p.wave ? (p.wave.go ? 'escort' : 'escortForming') : 'ftrNoWave') : p.wave ? (p.wave.go ? 'strikeGo' : 'forming') : p.opp ? 'opp' : 'bomberNoWave';
+        S.p9[ro] = (S.p9[ro] || 0) + dt; break;
+      }
+    }
     if (t < S.nextS) return;
     S.nextS = t + 5;
     // landing queues, columns, the stack's height spread
@@ -106,6 +120,17 @@ function install() {
       const tr = {}; let lo = 1e9, hi = -1e9;
       for (const q of D.lq) if (q.deckPh === 'marshal') { const k = q.mTrack === undefined ? -1 : q.mTrack; tr[k] = (tr[k] || 0) + 1; lo = Math.min(lo, q.y); hi = Math.max(hi, q.y); }
       const v = Object.values(tr); if (v.length) { S.col.push(Math.max(...v)); S.hy.push(+(hi - lo).toFixed(1)); }
+    }
+    // F28: an enemy carrier afloat the side has never found, while it has a carrier that could search: is the search on?
+    if (!WW.dayNight || WW.dayNight.canFly()) for (const n of ['USN', 'IJN']) {
+      const mine = WW.world.ships.filter(s => s.alive && s.nation === n && s.type === 'carrier' && s.hangar && s.ai && !s.isBase);
+      if (!mine.length) continue;
+      const hid = WW.world.ships.some(s => s.alive && !s.sinking && s.nation !== n && s.type === 'carrier' && !s.isBase && !(WW.intel && WW.intel.known(n, s)));
+      const anyCV = WW.world.ships.some(s => s.alive && !s.sinking && s.nation !== n && s.type === 'carrier' && !s.isBase && WW.intel && WW.intel.known(n, s));
+      if (!hid || anyCV) continue;
+      S.hid[0] += 5; if (mine.some(c => c.ai.srchWant || c.ai.cvHunt)) S.hid[1] += 5;
+      let up = 0; for (const p of WW.world.planes) if (p.alive && p.nation === n && (p.search || p.kind === 'scout') && p.state !== 'return' && p.state !== 'landing') up++;
+      if (up) S.hid[2] += 5;
     }
     // the endgame
     for (const n of ['USN', 'IJN']) {
@@ -138,7 +163,7 @@ function install() {
   R.flush = function () {
     const f = []; S.found.forEach((k, s) => { for (const n in k) f.push([n, k[n].type, k[n].t, k[n].drop === undefined ? null : +(k[n].drop - k[n].t).toFixed(0), s.alive && !s.sinking ? 1 : 0]); });
     const RS = WW.airDeck && WW.airDeck.recovery;
-    return { why: RS ? Object.assign({ waveoffs: RS.waveoffs, bolters: RS.bolters, marshal: RS.marshal, appT: RS.appT || 0, appN: RS.appN || 0, steps: RS.steps || 0, kept: RS.keptPlace || 0 }, RS.why) : {}, mMode: S.mMode, blk: S.blk, ti: S.ti, gap: S.gap, sp: S.sp, st: Object.assign({}, WW.staff.stats), waits: S.waits, mDay: S.mDay, mDark: S.mDark, lq: S.lq, lqE: S.lqE, col: S.col, hy: S.hy, dv: S.dv, eg: S.eg, egRole: S.egRole, egCap: S.egCap, found: f, err: R.err, last: R.last || null };
+    return { why: RS ? Object.assign({ waveoffs: RS.waveoffs, bolters: RS.bolters, marshal: RS.marshal, appT: RS.appT || 0, appN: RS.appN || 0, steps: RS.steps || 0, kept: RS.keptPlace || 0 }, RS.why) : {}, mMode: S.mMode, blk: S.blk, ti: S.ti, gap: S.gap, sp: S.sp, st: Object.assign({}, WW.staff.stats), waits: S.waits, mDay: S.mDay, mDark: S.mDark, lq: S.lq, lqE: S.lqE, hid: S.hid, p9: S.p9, col: S.col, hy: S.hy, dv: S.dv, eg: S.eg, egRole: S.egRole, egCap: S.egCap, found: f, err: R.err, last: R.last || null };
   };
   return true;
 }
@@ -192,6 +217,10 @@ function report(R) {
   say(`recovery per round: ${Object.entries(wy).map(e => e[0] + ' ' + (e[1] / R.length).toFixed(1)).join(', ')}; approach leg mean ${(wy.appT / Math.max(1, wy.appN)).toFixed(1)} s`);
   const dv = R.reduce((s, r) => { s.n += r.rec.dv.n; s.kept += r.rec.dv.kept; s.back += r.rec.dv.back; return s; }, { n: 0, kept: 0, back: 0 });
   say(`diverts while queued: ${dv.n} (place kept ${dv.kept}, at the back ${dv.back})`);
+  const p9 = {}; for (const r of R) for (const k in r.rec.p9 || {}) p9[k] = (p9[k] || 0) + r.rec.p9[k];
+  say(`P9 plane-s in non-target heavy flak per round, by role: ${Object.entries(p9).sort((a, b) => b[1] - a[1]).map(e => e[0] + ' ' + (e[1] / R.length).toFixed(0)).join(', ')}`);
+  const hdn = R.reduce((s, r) => s.map((v, i) => v + (r.rec.hid ? r.rec.hid[i] : 0)), [0, 0, 0]);
+  say(`F28: side-s with an enemy carrier never found (by day): ${hdn[0]} (${(hdn[0] / R.length).toFixed(0)}/round); carrier search wanted ${pc(hdn[1], hdn[0])}, a searcher or scout up ${pc(hdn[2], hdn[0])}`);
   const eg = R.filter(r => r.rec.eg.USN !== null || r.rec.eg.IJN !== null);
   say(`\nENDGAME (enemy air <= 4): ${eg.length} / ${R.length} rounds`);
   const role = {}; for (const r of eg) for (const n of ['USN', 'IJN']) for (const k in r.rec.egRole[n]) role[k] = (role[k] || 0) + r.rec.egRole[n][k];

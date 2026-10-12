@@ -90,10 +90,11 @@ window.WW = window.WW || {};
   // Yorktown, Enterprise's and Hornet's afternoon strike on Hiryu, the 6 June strikes on Mikuma and Mogami. It is
   // released (the strike timer drops to 1 s) when the enemy is beaten: the side pursues, or the enemy's seen fit gun
   // tonnage is below WAVER of all it has seen with a carrier or a cripple of it known (it is about to break); in the
-  // last LATE_T s of the round (no bombs go home); when an enemy gun ship closes on this carrier (fleet_cmd defend:
+  // last LATE_L s of flying light (the last strike of the day); when an enemy gun ship closes on this carrier (fleet_cmd defend:
   // self-defence first, a carrier's strikes are its only weapon against a battleship); or once the side believes the
   // enemy air group is spent (air_staff.js airSpent: nothing left to keep the bombers back for).
-  const WAVER = 0.3, LATE_T = 30;
+  const WAVER = 0.3, LATE_L = 150;   // s of flying light left: the last strike of the day (no bombers kept back for the next)
+  const lightLeft = () => (WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity);
   const PS = { held: 0, released: 0, why: {} };
   function beaten(B) {
     if (B.posture === 'pursue') return 'pursue';
@@ -102,7 +103,7 @@ window.WW = window.WW || {};
     return null;
   }
   function pursuitWhy(cv, B) {
-    return beaten(B) || (B.timeLeft < LATE_T ? 'late' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null) || (WW.staff && WW.staff.airSpent && WW.staff.airSpent(cv.nation) ? 'noAir' : null);
+    return beaten(B) || (lightLeft() < LATE_L ? 'dusk' : null) || (B.defend.some(q => q.carrier === cv) ? 'defend' : null) || (WW.staff && WW.staff.airSpent && WW.staff.airSpent(cv.nation) ? 'noAir' : null);
   }
   function pursuitHold(cv, B) {     // bombers kept back from this strike: { dive, torpedo }, or null
     const a = cv.ai, frac = B.doctrine.pursuitReserve || 0;
@@ -177,13 +178,12 @@ window.WW = window.WW || {};
     if (tgt && tgt.type !== 'carrier') { const k = cvContact(cv.nation, cv.x, cv.z); if (k) { tgt = k; cvf = true; } } // the carriers first
     if (!tgt || hg.dive + hg.torpedo <= 0) { a.strikeT = RETRY; return; }
     const SB = WW.fleetCmd && WW.fleetCmd.side(cv.nation);
-    if (SB && SB.timeLeft < 30 + WW.dist(cv.x, cv.z, tgt.x, tgt.z) / 22) { a.strikeT = RETRY; return; } // it could not get there before the end
     let hold = reserveHold(cv, tgt);
     const ph = SB ? pursuitHold(cv, SB) : null;    // the larger of the two reserves stays aboard
     if (ph) hold = { dive: Math.min(hg.dive, Math.max(hold.dive, ph.dive)), torpedo: Math.min(hg.torpedo, Math.max(hold.torpedo, ph.torpedo)) };
     if (WW.airAlert) { const al = WW.airAlert.hold(cv); hold = { dive: Math.min(hg.dive, hold.dive + al.dive), torpedo: Math.min(hg.torpedo, hold.torpedo + al.torpedo) }; }   // the ready deck alert (air_alert.js)
     let nd = Math.max(0, hg.dive - hold.dive), nt = Math.max(0, hg.torpedo - hold.torpedo);
-    if (nd + nt < MIN_B && (owned(cv, 'dive') + owned(cv, 'torpedo') > 0 || hold.dive + hold.torpedo > 0) && !(SB && SB.timeLeft < LATE_T)) {
+    if (nd + nt < MIN_B && (owned(cv, 'dive') + owned(cv, 'torpedo') > 0 || hold.dive + hold.torpedo > 0) && !(lightLeft() < LATE_L)) {
       a.strikeT = RETRY; BS.waits++; return;        // too few for a strike: wait for the rest to come back and rearm
     }
     if (nd + nt <= 0) { a.strikeT = RETRY; return; }
