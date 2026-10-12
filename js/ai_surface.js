@@ -140,10 +140,11 @@ window.WW = window.WW || {};
   // A carrier's AA-ring escort (doctrine ringR) keeps the ring whatever it is shooting at, while its carrier lives
   // and the side is not pressing, pursuing or withdrawing (fleet_formation.js; the escort charge is ai_charge.js).
   // A carrier's guard (fleet_formation.js tagRing: its first one or two escorts) holds the ring (USN) or its loose
-  // station (IJN) in every posture but the press and the pursuit: the carrier is not left alone while it has an escort.
+  // station (IJN) in every posture but the pursuit: the carrier is not left alone while it has an escort. (A carrier
+  // task force on its own has no guards: fleet_formation.js tagRing.)
   function ringHold(o, B) {
     if (!(o && B && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking)) return false;
-    if (o.guard && (o.ringR > 0 || o.looseR > 0) && B.posture !== 'pursue' && B.posture !== 'press') return true; // (the press and the pursuit take every ship: held back, the fleets never met and carrier rounds ran to time)
+    if (o.guard && (o.ringR > 0 || o.looseR > 0) && B.posture !== 'pursue') return true; // (a pursuit of a broken enemy takes every ship)
     return o.ringR > 0 && B.posture !== 'press' && B.posture !== 'pursue' && B.posture !== 'withdraw';
   }
   // A carrier's escort hunts a sub only inside ESC_SUB of its carrier (a periscope near the carrier, or the datum of a
