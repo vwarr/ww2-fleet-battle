@@ -20,7 +20,7 @@ const spec = (sc, seed) => sc === 'standard' ? { seed, random: true, light: true
 function install() {
   const R = window.__ba = {};
   let S = null, next = 0;
-  const fresh = () => { S = { aa: new Map(), climbS: 0, climbNear: 0, climbEng: 0, fBy: 0, ex: [], over: { fighter: [0, 0], bomber: [0, 0], other: [0, 0] }, overF: 0 }; next = 0; };
+  const fresh = () => { S = { aa: new Map(), climbS: 0, climbNear: 0, climbEng: 0, fBy: 0, bNear: 0, bEng: 0, bBy: 0, bBusyF: 0, bBusyB: 0, ex: [], over: { fighter: [0, 0], bomber: [0, 0], other: [0, 0] }, overF: 0 }; next = 0; };
   fresh(); WW.on('roundStart', fresh);
   const aaHit = e => { if (e && e.ship && (e.ship.isBase || e.ship.isBasePit) && e.target) S.aa.set(e.target, WW.game.roundTime); };
   WW.on('aaHeavyFired', aaHit); WW.on('aaLightFired', aaHit);
@@ -40,8 +40,9 @@ function install() {
       S.climbS += 0.5;
       const near = F.filter(f => f.nation !== b.nation && WW.dist(f.x, f.z, b.x, b.z) < 120);
       if (!near.length) continue;
-      S.climbNear += 0.5;
-      if (near.some(f => f.foe === b)) S.climbEng += 0.5;
+      S.climbNear += 0.5; const bs = b.carrier.isBase; if (bs) S.bNear += 0.5;
+      if (near.some(f => f.foe === b)) { S.climbEng += 0.5; if (bs) S.bEng += 0.5; }
+      if (bs) for (const f of near) { if (!f.foe) S.bBy += 0.5; else if (f.foe.kind === 'fighter') S.bBusyF += 0.5; else S.bBusyB += 0.5; }
       for (const f of near) if (!f.foe) { S.fBy += 0.5; if (S.ex.length < 6 && !S.ex.some(x => x.t > t - 10)) S.ex.push({ t: +t.toFixed(1), f: f.nation + ' ' + (f.target ? 'escort' : 'cap') + ' ' + f.state, b: b.nation + ' ' + b.kind + ' ' + b.state + ' y' + Math.round(b.y) + (b.carrier.isBase ? ' base' : ' cv'), d: Math.round(WW.dist(f.x, f.z, b.x, b.z)) }); }
     }
     const B = WW.islandBase && WW.islandBase.base;
@@ -52,7 +53,7 @@ function install() {
       S.over[k][0] += 0.5; if (eng) S.over[k][1] += 0.5;
     }
   }
-  R.flush = () => { const o = { climbS: S.climbS, climbNear: S.climbNear, climbEng: S.climbEng, fBy: S.fBy, ex: S.ex, over: S.over }; fresh(); return o; };
+  R.flush = () => { const o = { bNear: S.bNear, bEng: S.bEng, bBy: S.bBy, bBusyF: S.bBusyF, bBusyB: S.bBusyB, climbS: S.climbS, climbNear: S.climbNear, climbEng: S.climbEng, fBy: S.fBy, ex: S.ex, over: S.over }; fresh(); return o; };
 }
 
 (async () => {
@@ -75,6 +76,7 @@ function install() {
     const L = sc === 'ALL' ? res : res.filter(r => r.scen === sc), N = L.length || 1, sum = k => L.reduce((s, r) => s + r[k], 0);
     const ov = k => [L.reduce((s, r) => s + r.over[k][0], 0), L.reduce((s, r) => s + r.over[k][1], 0)];
     const of = ov('fighter'), ob = ov('bomber');
+    console.log(`${sc.padEnd(9)} FROM THE BASE: bomber-s with an enemy fighter within 120 ${(sum('bNear') / N).toFixed(1)}/rd, engaged ${pc(sum('bEng'), sum('bNear'))}; those fighters: no foe ${(sum('bBy') / N).toFixed(1)}, on a fighter ${(sum('bBusyF') / N).toFixed(1)}, on a bomber ${(sum('bBusyB') / N).toFixed(1)} fighter-s/rd`);
     console.log(`${sc.padEnd(9)} climb-out bomber-s ${(sum('climbS') / N).toFixed(1)}/rd, with an enemy fighter within 120: ${(sum('climbNear') / N).toFixed(1)}/rd, engaged ${pc(sum('climbEng'), sum('climbNear'))}; fighters flying by (no foe) ${(sum('fBy') / N).toFixed(1)} fighter-s/rd | over the field: enemy fighters ${(of[0] / N).toFixed(1)} s/rd engaged ${pc(of[1], of[0])}, bombers ${(ob[0] / N).toFixed(1)} s/rd engaged ${pc(ob[1], ob[0])}`);
   }
   console.log('fly-by examples: ' + res.flatMap(r => r.ex.map(e => `${r.scen}:${r.seed} t=${e.t} ${e.f} by ${e.b} at ${e.d}u`)).slice(0, 10).join(' | '));

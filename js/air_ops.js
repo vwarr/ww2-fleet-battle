@@ -157,7 +157,9 @@ window.WW = window.WW || {};
         const w = pl.wave, onWay = esc && w && w.go && !w.done && w.dT > 220, u = onWay ? null : WW.airFlight.opp(pl);
         if (u && (esc || WW.dist(u.x, u.z, c.x, c.z) <= leashOf(pl).leash2)) best = u;
       }
+      const f0 = pl.foe;
       pl.foe = WW.dogfight ? WW.dogfight.pick(pl, best) : best;
+      if (pl.foe && pl.foe !== f0 && WW.airFlight && WW.airFlight.climbing(pl.foe) && WW.emit) WW.emit('airOrder', { carrier: c, order: 'jumpClimb', plane: pl, target: pl.foe });
     }
     if (pl.foe && !esc && !leashed(pl, pl.foe)) { pl.foe = null; ST.leashDrops++; }
     if (pl.foe && esc && pl.recall) pl.foe = pl.foe.foe === pl ? pl.foe : null;   // recalled: only self-defence on the way

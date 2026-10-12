@@ -36,7 +36,7 @@ window.WW = window.WW || {};
   const CLIMB_Y = 22, CLIMB_R = 200, OPP_R = 130, OPP_DY = 40;
   function climbing(q) {
     if (!q.alive || q.removed || q.deathMode || (q.kind !== 'dive' && q.kind !== 'torpedo') || !q.carrier || q.y < 2.5) return false;
-    if (q.state === 'takeoff') return q.rwPh === 'climb' || q.deckPh === 'climb' || q.y > 4;
+    if (q.state === 'takeoff') return q.rwPh === 'climb' || q.deckPh === 'climb';   // off the runway / past the bow, not on the deck
     return q.state === 'transit' && q.y < CLIMB_Y && (q.vy || 0) > 0.3 && WW.dist(q.x, q.z, q.carrier.x, q.carrier.z) < CLIMB_R;
   }
   // the climbing enemy bomber this fighter should jump (on the side's picture, within OPP_R and OPP_DY), or null
@@ -167,7 +167,7 @@ window.WW = window.WW || {};
         // a fighter on its way home with fuel and ammunition to spare jumps a bomber climbing out below it
         if (this.kind === 'fighter' && !this.nightRecall && this.hp > this.maxHp * 0.6 && (this.oppChk = (this.oppChk || 0) - dt) <= 0) {
           this.oppChk = 1;
-          if (this.fuel > 8 && !bingo(this)) { const u = opp(this); if (u) { this.state = 'transit'; this.foe = u; ST.oppHome++; return; } }
+          if (this.fuel > 8 && !bingo(this)) { const u = opp(this); if (u) { this.state = 'transit'; this.foe = u; ST.oppHome++; if (WW.emit) WW.emit('airOrder', { carrier: this.carrier, order: 'jumpClimb', plane: this, target: u }); return; } }
         }
       }
       return g0.apply(this, arguments);
