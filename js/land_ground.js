@@ -16,7 +16,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
+  var STRIKE_WAIT = 40, TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
   var BLAST_K = 0.9;          // a parked plane inside BLAST_K x the blast radius (+ its own size) is wrecked (was 0.6: ~4 u for a 14-inch shell)
   var SPREAD_T = 8, SPREAD_P = 0.35, SPREAD_GAP = 2.5;   // a burning wreck sets a neighbour within SPREAD_GAP of it alight after SPREAD_T s (fuel, ammunition), with SPREAD_P
   var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
@@ -283,18 +283,21 @@ window.WW = window.WW || {};
     // Turns, like a carrier deck. A mode keeps the field while its planes move; with none moving it keeps it for
     // TURN_WAIT s while it still has demand; otherwise the side served longer ago gets it (a scramble always does).
     // Once the other side waits and the mode is TURN_WAIT old, no new movers start in it (yield / hold), so it drains.
+    // a strike on its way out (armed planes with a target warming up or taxiing) keeps the runway for STRIKE_WAIT s before
+    // the circuit gets it: the strike goes together (the circuit holds a little longer)
+    var strike = false; for (i = 0; i < P.length && !strike; i++) { p = P[i]; if (p.carrier === b && p.alive && !p.removed && p.state === 'takeoff' && p.target && p.ordnance && p.rwPh !== 'climb') strike = true; }
     var prev = o.mode, age = now - o.modeT;
     if (o.mode === 'launch') o.lastL = now; else if (o.mode === 'recover') o.lastR = now;
     if (o.mode === 'launch' && outN) { /* keep */ }
     else if (o.mode === 'recover' && inN) { /* keep */ }
     else if (scr) o.mode = 'launch';
-    else if (o.mode === 'launch' && wantLaunch && (!wantLand || age < TURN_WAIT)) { /* keep */ }
+    else if (o.mode === 'launch' && wantLaunch && (!wantLand || age < (strike ? STRIKE_WAIT : TURN_WAIT))) { /* keep */ }
     else if (o.mode === 'recover' && wantLand && (!wantLaunch || age < TURN_WAIT * 1.5)) { /* keep */ }
     else if (wantLaunch && (!wantLand || o.lastL <= o.lastR)) o.mode = 'launch';
     else if (wantLand) o.mode = 'recover';
     else if (!outN && !inN) o.mode = 'idle';
     if (o.mode !== prev) { ST.modeSwitches++; o.modeT = now; age = 0; }
-    o.yield = o.mode === 'launch' && !scr && wantLand && age > TURN_WAIT;
+    o.yield = o.mode === 'launch' && !scr && wantLand && age > (strike ? STRIKE_WAIT : TURN_WAIT);
     o.hold = o.mode === 'recover' && wantLaunch && (scr || age > TURN_WAIT * 3);   // a long recovery window: the circuit empties
     // slots: rearmed planes are ready; a plane lost in the air leaves its spot empty
     for (i = 0; i < b.slots.length; i++) {
