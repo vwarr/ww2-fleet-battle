@@ -32,7 +32,7 @@ function install() {
       if (p.phase === 'run') { if (E.run === null) E.run = t; E.wasRun = true; }
       if (E.wasRun && p.phase !== 'run' && p.ordnance) { E.wasRun = false; if (off(p)) E.offMap++; else if (p.phase === 'out') E.passes++; }
       if (!p.alive || p.removed || p.state === 'ditch' || p.deathMode) { E.end = p.ordnance ? 'shot down' : 'drop'; E.tEnd = t; continue; }
-      if ((p.state === 'landing' || p.state === 'rollout' || p.deckPh) && p.ordnance) { E.end = p.nightRecall ? 'landed armed (night recall)' : 'landed armed'; E.tEnd = t; continue; }
+      if (p.state === 'landing' || p.state === 'rollout' || p.deckPh) { E.end = p.nightRecall ? 'landed, no drop (night recall)' : 'landed, no drop'; E.tEnd = t; continue; }
       if (p.state === 'return' && p.ordnance) {
         const tg = p.target;
         E.end = S.jet.has(p) ? 'jettison' : p.nightRecall ? 'night recall' : !tg || !tg.alive || tg.sinking ? 'target gone' : p.fuel < 30 ? 'bingo / fuel' : 'home armed (other)'; E.tEnd = t;
