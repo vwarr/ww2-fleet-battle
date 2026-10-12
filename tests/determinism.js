@@ -1,4 +1,6 @@
 // Determinism check: the same seed must give the same round, whatever ran before and in any page.
+// One process only: a Math.random leak into the sim (visual randomness read by sim code) shows when another process replays
+// the seed, and rarely here; tests/determinism_proc.js checks fresh processes and prior rounds in the same worker.
 // In one page: run seed S, run S again, run another seed then S. Then run S in a fresh page.
 // Each run records a trace every EVERY sim seconds (positions/hp of all ships and live planes, plus WW.stats deltas);
 // all traces must match the first. On a mismatch it prints the first divergent time and entity.

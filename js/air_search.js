@@ -166,7 +166,7 @@ window.WW = window.WW || {};
   }
   function begin(pl) {
     ST.sorties++;
-    pl.search = true; pl.target = null; pl.srchDir = (pl.carrier.id + WW.world.planes.length) & 1 ? -1 : 1;
+    pl.search = true; pl.target = null; pl.srchDir = (pl.carrier.id + WW.world.planes.reduce((n, q) => n + (q.alive ? 1 : 0), 0)) & 1 ? -1 : 1;   // live planes: wrecks linger a Math.random time (air_deaths.js)
     if (pl.ordnance && !(pl.kind === 'dive' && armedDoc(pl.nation))) pl.dropped();   // unarmed search (no raid alarm, no bomb on the deck)
     const el = pl.element;                         // fly alone: leave the CAP element the launch put it in
     if (el) { el.members = el.members.filter(m => m !== pl); el.members.forEach((m, i) => { m.wing = i; m.leader = i ? el.members[0] : null; }); }
