@@ -62,7 +62,17 @@ window.WW = window.WW || {};
     if (s.hp < WW.fleetGroups.CRIP * s.maxHp || (s.ai && (s.ai.dcLeft > 0 || s.ai.dcSub))) return false; // a cripple runs home
     if (WW.dist2(s.x, s.z, t.x, t.z) > Math.pow(t.kind === 'pilot' ? PILOT_R : RESCUE_R, 2)) return false;
     if (br) return true;   // broken: picking up survivors comes first
+    if (t.kind === 'pilot' && !lull(s.nation, t)) return false; // F27: a destroyer is not sent off station for an airman mid-battle
     return !engaged(s) && !(WW.threat && WW.threat.danger(s.nation, t.x, t.z) > SAFE_DPS);
+  }
+  // a lull for an aircrew pickup: the side is not engaging, pressing or pursuing, and no enemy bomber is within
+  // PILOT_AIR of the men in the water (the rest wait for a Catalina, air_flyingboats.js, or the end of the action)
+  var PILOT_AIR = 400, BUSY = { engage: 1, press: 1, pursue: 1 };
+  function lull(n, t) {
+    var B = side(n); if (B && BUSY[B.posture]) return false;
+    var P = WW.world.planes;
+    for (var i = 0; i < P.length; i++) { var p = P[i]; if (p.alive && p.nation !== n && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(p.x, p.z, t.x, t.z) < PILOT_AIR * PILOT_AIR) return false; }
+    return true;
   }
   function assign(now) {
     var ships = WW.world.ships;

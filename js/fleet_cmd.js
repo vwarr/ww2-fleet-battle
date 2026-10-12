@@ -24,7 +24,14 @@ window.WW = window.WW || {};
   var PURSUE_AGE = 120;  // pursuit: strikes on contacts this old, anywhere on the map (PURSUE_STRIKE_R below)
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship (not the PT pickets far out ahead): engage, else approach
-  var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
+  // A stronger side presses "late": PRESS_MET s after the fleets met (the gun fight has shown who is stronger), or
+  // PRESS_CONTACT s after first contact, or as the light goes (the day side wants it settled before dark; night_ops
+  // makes the night-fighting side readier after dark). Not the round clock: an admiral did not know when the game ends
+  // (Fable F13). B.timeLeft stays for the air staff's own use.
+  var PRESS_MET = 30, PRESS_CONTACT = 300, DUSK_AHEAD = 90;
+  // A side that turns away on the strength picture (posture withdraw, not broken) for WD_BREAK s after the fleets met
+  // breaks off for real (brokenAt: ai_endgame.js takes it home) rather than idling in a 'withdraw' caption (Fable F15).
+  var WD_BREAK = 45;
   // strikes: on contacts this fresh and within STRIKE_R of the carrier (0.6 W, ~6x a big ship's visual range), else
   // anything known out to STRIKE_FAR (the whole width: the 1942 strikes flew 8-12x visual range); DIST_K: the
   // distance at which a target's score halves (it scales with the map so near and far keep the old balance)
@@ -86,7 +93,7 @@ window.WW = window.WW || {};
     B.enemyCentre = ew ? { x: ex / ew, z: ez / ew } : null;
     // ---- posture ----
     var T = WW.cfg.ROUND_TIMEOUT, rt = WW.game ? WW.game.roundTime : 0, prev = B.posture;
-    B.timeLeft = T - rt; B.late = rt > T * LATE;
+    B.timeLeft = T - rt; B.late = lateNow(B, rt);
     // Broken: the fit battleship / cruiser / destroyer tonnage (hp >= CRIP) is below BREAK of what the side started
     // with. The side breaks off for home whatever the (fogged) strength ratio says (ai_endgame.js); main.js ends the
     // round when its ships have left the map ("retires") or are all sunk.
@@ -111,10 +118,11 @@ window.WW = window.WW || {};
     // (beaten) does, or when it has no fit gun ship to fight with: before that the admiral's picture of the enemy
     // surface force is a set of scout reports, and both navies' doctrine sought the decisive surface action (balance
     // pass, Oct 2026: a side that lost its carrier ran for home at once and the fleets never met)
-    else if (rt > 60 && B.strength.ratio < d.withdrawRatio && (!fit || !WW.game || WW.game.metT !== null)) B.posture = 'withdraw';
+    else if (rt > 60 && B.hadFit && B.strength.ratio < d.withdrawRatio && (!fit || !WW.game || WW.game.metT !== null)) B.posture = 'withdraw'; // (a raid force, PT boats or carriers alone, fights on: it never "withdraws")
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
     if (B.posture !== prev) B.postureAt = now;
+    if (B.posture === 'withdraw' && !B.brokenAt && WW.game && WW.game.metT !== null && now - B.postureAt >= WD_BREAK) B.brokenAt = now; // F15: a real retirement
     var aw = airWar(B, cs, rt); if (B.airWar && !aw) B.holdEnd = rt; B.airWar = aw; // holdEnd: when the surface force was let go (tests)
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
@@ -145,6 +153,12 @@ window.WW = window.WW || {};
     }
   }
 
+  function lateNow(B, rt) {
+    var G = WW.game, D = WW.dayNight;
+    if (G && G.metT !== null && rt - G.metT > PRESS_MET) return true;
+    if (G && G.contactT !== null && rt - G.contactT > PRESS_CONTACT) return true;
+    return !!(D && D.canFly() && D.level(D.roundT() + DUSK_AHEAD) < D.FLY_MIN);
+  }
   // The air-war hold (see CLOSE_AT): true while the side keeps its surface force with its carriers.
   function airWar(B, cs, rt) {
     var i, u, cv = 0, d = B.doctrine;
