@@ -556,7 +556,7 @@ function install(P) {
     const step = spec.step || (spec.light ? 5 : P.SAMPLE), planesSeen = new Set();
     const SAN = spec.san && window.__san; // the common-sense auditor (tests/sanity_rules.js): read-only, sampled every step
     if (SAN) SAN.begin({ seed: spec.seed, only: spec.san === true ? null : spec.san });
-    while (G.state === 'battle' && G.roundTime < cap) {
+    while (G.state === 'battle' && G.roundTime < Math.max(cap, G.deadline ? G.deadline() + 30 : 0)) { // a no-carrier round's limit runs from first contact (main.js deadline)
       __sim.fastForward(step);
       if (SAN) SAN.sample();
       for (const p of WW.world.planes) planesSeen.add(p); // planes lost per nation (balance diagnosis)

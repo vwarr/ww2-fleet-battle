@@ -53,6 +53,14 @@ window.WW = window.WW || {};
     WW.daylight = D.pin != null ? D.pin : D.lightAt(D.sunElev);
   }
   function span(a, j) { return a[0] + (a[1] - a[0]) * j; }
+  // Both sides have a ship that fights in the dark (a gun ship or PT boats; the ships spawn before roundStart). A
+  // carrier or submarine force alone has nothing to do at night (a night round of four carriers 1400 apart, no launches).
+  var NIGHT_FIGHT = { battleship: 1, cruiser: 1, destroyer: 1, pt: 1 };
+  function nightFleets() {
+    var has = {}, S = WW.world ? WW.world.ships : [];
+    for (var i = 0; i < S.length; i++) if (S[i].alive && !S[i].isBase && NIGHT_FIGHT[S[i].type]) has[S[i].nation] = true;
+    return !!(has.USN && has.IJN);
+  }
 
   // kind: 'dawn' | 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
   // force: a kind, or a number n: a dusk round whose sun sets n s in (tests).
@@ -61,6 +69,7 @@ window.WW = window.WW || {};
     if (f === 'dawn' || f === 'day' || f === 'dusk' || f === 'night') kind = f;
     else if (typeof f === 'number') kind = 'dusk';
     else kind = r < M.dawn ? 'dawn' : r < M.dawn + M.day ? 'day' : r < M.dawn + M.day + M.dusk ? 'dusk' : 'night';
+    if (kind === 'night' && f == null && !nightFleets()) kind = 'dusk'; // a side with nothing to fight a night action with: a sunset round instead
     var L = WW.cfg.ROUND_TIMEOUT, ph = D.perH();
     if (kind === 'dawn') D.startHour = span(CFG.DAWN_START, j);
     else if (kind === 'day') D.startHour = span(CFG.DAY_START, j);

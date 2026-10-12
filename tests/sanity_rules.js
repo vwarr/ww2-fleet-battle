@@ -205,9 +205,10 @@ function install(P) {
         // P7: empty bomber not heading home
         if (!p.ordnance && (p.state === 'transit' || p.state === 'attack') && !p.phase) H('P7', [p], P.MIN.P7, () => `${lbl(p)} ${p.state} with no ordnance, ${tg ? 'target ' + lbl(tg) : 'no target'}`);
       }
-      // P7: badly hit and not going home; P7f: not enough fuel to get home and not on the way
+      // P7: badly hit and not going home; P7f: not enough fuel to get home and not on the way (the way home burns
+      // P.CRUISE_BURN per s at cruise: air_flight.js home(), bingo())
       if ((p.state === 'transit' || p.state === 'attack') && !p.phase && p.hp < P.DMG_HP * p.maxHp) H('P7', [p], P.MIN.P7, () => `${lbl(p)} at ${Math.round(p.hp / p.maxHp * 100)}% hp still ${p.state}${p.foe ? ' fighting ' + lbl(p.foe) : ''}`);
-      if (p.state !== 'return' && !p.carrier.isBase && p.fuel < dist(p, p.carrier) / (p.pt.cruise || p.pt.speed * 0.8) * 1.1 + 3) H('P7f', [p], P.MIN.P7f, () => `${lbl(p)} ${p.state} fuel ${p.fuel.toFixed(0)}s, home ${(dist(p, p.carrier) / (p.pt.cruise || p.pt.speed * 0.8)).toFixed(0)}s away`);
+      if (p.state !== 'return' && !p.carrier.isBase && p.fuel < dist(p, p.carrier) / (p.pt.cruise || p.pt.speed * 0.8) * P.CRUISE_BURN * 1.1 + 3) H('P7f', [p], P.MIN.P7f, () => `${lbl(p)} ${p.state} fuel ${p.fuel.toFixed(0)}s, home ${(dist(p, p.carrier) / (p.pt.cruise || p.pt.speed * 0.8)).toFixed(0)}s away`);
       // P6c: circling (path long, net displacement small) when not on CAP station, not marshalling
       const tr = R.track.get(p) || (R.track.set(p, { q: [] }), R.track.get(p)), q = tr.q;
       q.push([t, p.x, p.z, p.state]); while (q.length && t - q[0][0] > P.CIRC_T) q.shift();
@@ -395,7 +396,7 @@ const P = {
   DT: 0.5, GAP: 2, EX_KEEP: 4,
   THREAT_T: 45, JOIN_FUEL: 22, DROP_VT: 90, DROP_VB: 5, FUEL_PAD: 8, P3_T: 25, RAID_R: 300,
   BUNCH_R: 50, BUNCH_N: 4, VALUE_GAP: 150, P5_R: 120, P5B_T: 20, P5B_R: 150,
-  DMG_HP: 0.35, CIRC_T: 60, CIRC_NET: 80, CIRC_PATH: 900, ESC_R: 80, FLAK_NEAR: 150, HOLD_R: 200, AA_ENG: 2, OFF: 20, REACH_PAD: 1, AA_POINT: 15,
+  CRUISE_BURN: 0.6, DMG_HP: 0.35, CIRC_T: 60, CIRC_NET: 80, CIRC_PATH: 900, ESC_R: 80, FLAK_NEAR: 150, HOLD_R: 200, AA_ENG: 2, OFF: 20, REACH_PAD: 1, AA_POINT: 15,
   AA_HEAVY_K: 2.2, AA_LIGHT_K: 2,
   SPACE_K: 1.2, ESC_X: 150, S6_R: 500, S6_NEAR: 200, ATT_R: 100, EVADE_T: 6, EVADE_DH: 0.35, MID_R: 600,
   LONE_R: 250, CHARGE_R: 300, DMG_SHIP: 0.5,

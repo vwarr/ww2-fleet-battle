@@ -213,6 +213,8 @@ window.WW = window.WW || {};
     tick(w);
     const brk = pl.kind === 'dive' ? (S.wheelR ? S.wheelR(pl.pt) : 30) + 60 : pl.kind === 'torpedo' ? (S.SET_R || 140) + 40 : 60;
     if (w.done || (w.go && w.dT < brk)) { pl.sk = 'atk'; return false; }
+    // an escort whose strike has no bombers left (shot down, or gone home) has nothing to escort: it leaves the formation
+    if (pl.kind === 'fighter' && w.go && !w.members.some(b => b.alive && b.kind !== 'fighter' && b.ordnance)) { pl.sk = 'atk'; return false; }
     pl.state = 'transit';
     const i = pl.fi || 0, nb = Math.max(w.nDive || 0, 1);
     // cruise formation: open (LOOSE x the parade spacing) on the long leg out, closed up from LOOSE_D to TIGHT_D before

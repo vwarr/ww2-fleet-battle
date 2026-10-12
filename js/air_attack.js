@@ -250,6 +250,9 @@ window.WW = window.WW || {};
     if (pl.side && dh > (pl.dropR || DROP_FAR) + 8 && Math.sign(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x))) !== pl.side) {
       const a = t.heading + pl.side * 1.2; px += Math.cos(a) * 45; pz += Math.sin(a) * 45;
     }
+    // the aim point stays on the map (a target near the edge); a plane that has run off the map breaks off and sets up again
+    px = WW.clamp(px, 10, WW.cfg.MAP_W - 10); pz = WW.clamp(pz, 10, WW.cfg.MAP_H - 10);
+    if (pl.x < -30 || pl.z < -30 || pl.x > WW.cfg.MAP_W + 30 || pl.z > WW.cfg.MAP_H + 30) { pl.phase = null; pl.sk = null; ST.offMap = (ST.offMap || 0) + 1; return; }
     const d = pl.turnTo(Math.atan2(pz - pl.z, px - pl.x), dt, 1.0), alt = overLand(pl, 5, 1.8); // wave height, hop any land
     pl.speedTo(pl.pt.speed * (pl.pt.runK || 0.8), dt);    // slowed for the drop (Mk 13 / Type 91 limits)
     pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, -7, 9) - pl.vy, -14 * dt, 14 * dt);
@@ -288,7 +291,7 @@ window.WW = window.WW || {};
     if (pl.ordnance && t) { pl.sk = 'anvil'; pl.av = freeAV(pl, t); pl.anT = WW.time.now; } else { pl.state = 'return'; pl.sk = null; }
   }
 
-  function reset() { grps = new Map(); ST.dives = ST.runs = ST.flips = ST.rebal = 0; ST.pushT = []; }
+  function reset() { grps = new Map(); ST.dives = ST.runs = ST.flips = ST.rebal = ST.offMap = 0; ST.pushT = []; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
   Object.assign(S, { dive, torp, TOP, press, wheelR, attackStats: ST, SET_R });

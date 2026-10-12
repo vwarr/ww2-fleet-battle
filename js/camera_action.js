@@ -222,6 +222,8 @@ window.WW = window.WW || {};
 
   WW.camAction = {
     slowmo, // night_fx.js: a star shell revealing a target
+    // the round's last sinking (camera.js finale): 0.5x held for max real s, whatever the gap since the last one
+    finale(max) { slowAt = slowLast = clock; holdFn = () => true; holdMax = max || 3; },
     init() {
       WW.on('weaponDropped', onDrop);
       WW.on('weaponImpact', onImpact);
