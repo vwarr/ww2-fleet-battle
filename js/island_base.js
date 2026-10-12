@@ -27,9 +27,11 @@ window.WW = window.WW || {};
   const BLAST = { bomb: 7, big: 5, med: 3, small: 1.5, mg: 0 };
   const BATTERY = { cal: 'med', count: 2, range: 140, reload: 10 };      // a coastal battery (7-inch / 5-inch guns)
   const PIT_AA = { range: 42, dps: 4.5 };            // one AA pit (3-inch + .50s): heavy share in combat_aa HEAVY_SHARE.base
-  const ALARM_DT = 0.5;                              // the alarm check's interval (s)
+  const DUEL_K = 3;                                  // battery rate x this against a ship that is shelling the island
+  const now0 = () => WW.time.now;
+  const ALARM_DT = 0.5;                             // the alarm check's interval (s)
   const SEE_SHIP = 170, SEE_PLANE = { USN: 210, IJN: 160 }; // Midway's radar reached the raids; IJN lookouts less
-  const HP = { hangar: 380, fuel: 200, tower: 170, barracks: 120, aa: 150, battery: 230, ammo: 160 };
+  const HP = { hangar: 380, fuel: 200, tower: 170, barracks: 120, aa: 150, battery: 420, ammo: 160 };   // battery: dug in and sandbagged (at 230 it died to the first 2-3 rounds)
   const R = { hangar: 6, fuel: 3.5, tower: 3, barracks: 4, aa: 3, battery: 3.5, ammo: 3.5 };
   // facility places (site-local u, v; the ring search in airfield_layout.js free() moves them onto free ground): the
   // buildings stand beyond the runway ends and at the field's edges, clear of the runways, taxiways and dispersal rows
@@ -109,12 +111,15 @@ window.WW = window.WW || {};
     AL.columns(L);
     const pl = WW.landGround.plan(base);
     AL.rows(L, pl.demand);                                  // the dispersal rows first, then the buildings on free ground
-    const put = (kind, list, n) => { let k = 0; for (const q of list) { if (k >= n) break; const pt = AL.free(L, q[0], q[1], R[kind] + 1, true); if (!pt) continue; AL.addFac(L, pt.u, pt.v, R[kind] + 1); const w = L.toW(pt.u, pt.v); const f = fac(kind, w); f.u = pt.u; f.v = pt.v; f.a = Math.atan2(-w.z + S.z, -w.x + S.x); k++; } };
+    const put = (kind, list, n) => { const cr = R[kind] * (kind === 'fuel' ? 1.45 : 1) + 1; let k = 0; for (const q of list) { if (k >= n) break; const pt = AL.free(L, q[0], q[1], cr, true); if (!pt) continue; AL.addFac(L, pt.u, pt.v, cr); const w = L.toW(pt.u, pt.v); const f = fac(kind, w); f.u = pt.u; f.v = pt.v; f.a = Math.atan2(-w.z + S.z, -w.x + S.x); k++; } };
+    // cr: the clearance kept from the taxiways and the rest (the fuel farm's model is square: to its corners)
     put('hangar', PLACES.hangar, 2); put('tower', PLACES.tower, 1); put('fuel', PLACES.fuel, 2); put('ammo', PLACES.ammo, 1);
     put('barracks', PLACES.barracks, 3); put('aa', PLACES.aa, Math.round(3 * TUNE.pits));
     base.facilities.filter(f => f.kind === 'aa').forEach(f => {
       f.unit = { isBasePit: true, id: ID + 10 + base.facilities.indexOf(f), type: 'base', nation: owner, alive: true, sinking: false, submerged: false,
-        x: f.x, z: f.z, heading: S.h, speed: 0, stats: { aa: Object.assign({}, PIT_AA), length: 4, guns: [] }, fac: f };
+        x: f.x, z: f.z, heading: S.h, speed: 0, stats: { aa: Object.assign({}, PIT_AA), length: 4, guns: [] }, fac: f,
+        sup: { main: 0, aa: 1e9, aa0: 1e9, torp: 0, fuel: 0, main0: 0, fuel0: 0, flags: {} } };   // the island's own magazines
+        // (ship_supply.js has no allowance for a 'base' type: without this the pits counted as out of ammunition and never fired)
     });
     shorePoints(S, TUNE.guns > 0 ? 2 : 0).forEach((p, i) => {
       const q = L.toL(p.x, p.z); AL.addFac(L, q.u, q.v, R.battery + 1);
@@ -122,6 +127,7 @@ window.WW = window.WW || {};
       f.unit = { isBattery: true, id: ID + 30 + i, type: 'battery', nation: owner, alive: true, x: f.x, z: f.z, heading: p.a, speed: 0,
         stats: { guns: [BATTERY], length: 4, aa: null }, fac: f };
     });
+    if (WW.seaplaneBase) WW.seaplaneBase.place(base);      // the seaplane ramp in the lagoon (a facility: the camp keeps off it)
     if (WW.baseLifeLayout) WW.baseLifeLayout.place(base);   // the camp (huts, mess, trenches, ...) last: nothing above moves
     WW.landGround.setup(base, pl);
     base.maxHp = base.facilities.reduce((s, f) => s + f.maxHp, 0); base.hp = base.maxHp; base.stats.hp = base.maxHp;
@@ -157,6 +163,7 @@ window.WW = window.WW || {};
     if (WW.dist2(x, z, base.x, base.z) > 110 * 110 || WW.terrain.depthAt(x, z) > 0.3) return false; // in the water: a splash
     stats.impacts++;
     const key = kind === 'bomb' ? 'bomb' : cal || 'small', blast = BLAST[key] || 2, cw = CRATER[key] || 0;
+    WW.emit('baseImpact', { base, x, z, key, nation });   // base_fx.js: the burst on land (big shells throw up earth)
     if (cw) for (const r of base.runways) if (onRunway(r, x, z, 0.8) && weight(r) < CRATER_MAX) {
       const c = { x, z, w: cw, r: key === 'bomb' ? 2.2 : key === 'big' ? 1.8 : 1, rw: r.i, at: WW.time.now };
       r.craters.push(c); base.craters.push(c); stats.craters++;
@@ -255,13 +262,16 @@ window.WW = window.WW || {};
       for (const c of I.enemyShips(base.nation, { fresh: true })) {
         const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase) continue;
         const d = WW.dist(f.x, f.z, u.x, u.z); if (d > BATTERY.range) continue;
-        const sc = (u.stats.tons || 1000) / (1 + d / 60);
+        const sc = (u.stats.tons || 1000) / (1 + d / 60) * (now0() - (u._bombT || -1e9) < 30 ? 2 : 1);   // the ship shelling us first
         if (sc > bs) { bs = sc; best = u; }
       }
       if (!best) { f.reload = 1; continue; }
-      f.aim = Math.atan2(best.z - f.z, best.x - f.x);
+      f.aim = Math.atan2(best.z - f.z, best.x - f.x); f.firedAt = now0();
       for (let k = 0; k < BATTERY.count; k++) if (WW.combat.fireShell(f.unit, null, best, BATTERY.cal)) stats.coastalShots++;
-      f.reload = BATTERY.reload / Math.max(0.05, TUNE.guns) * WW.randRange(0.9, 1.15);
+      // the duel: a ship shelling the island draws the battery's full rate (TUNE.guns throttles the guns' reach over
+      // passing ships, which used to decide battles; a bombardment is what the batteries were sited for)
+      const duel = now0() - (base.shelledT || -1e9) < 30 ? DUEL_K : 1;
+      f.reload = BATTERY.reload / Math.max(0.05, TUNE.guns * duel) * WW.randRange(0.9, 1.15);
     }
   }
 
@@ -291,7 +301,7 @@ window.WW = window.WW || {};
     stats.bombardShells++;
     const s = e.ship;
     if (!(WW.time.now - (s._bombT || -1e9) < 30)) { stats.bombardRuns++; ev('bombard', { by: s }); }
-    s._bombT = WW.time.now;
+    s._bombT = WW.time.now; base.shelledT = WW.time.now;
   });
   function choice() { const g = WW.game; return g ? g.baseChoice : null; }
   // round start: the setup choice, else a WW.rand roll (USN 40%, IJN 40%, none 20%)

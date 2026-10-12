@@ -14,6 +14,7 @@ window.WW = window.WW || {};
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
   let M = null, built = null, craterGeo = null, craterPool = [], lastT = 0, capT = -1e9, capQ = null;
   const fires = new Map(); // facility -> { t0, k }
+  const spots = [];        // small fires where heavy shells fell { x, z, t0, life }
 
   function craterMesh() {
     if (!craterGeo) {
@@ -40,6 +41,7 @@ window.WW = window.WW || {};
   function clear() {
     if (built) { WW.scene.remove(built.group); built.strips.geometry.dispose(); built = null; }
     for (const c of craterPool) c.visible = false;
+    spots.length = 0;
     if (WW.baseGroundFx) WW.baseGroundFx.clear();
     fires.clear();
   }
@@ -86,11 +88,19 @@ window.WW = window.WW || {};
       }
       if (part.flag && WW.wind) part.flag.rotation.y = -WW.wind.a + Math.sin(performance.now() / 700) * 0.15;
     }
-    if (sdt > 0) burn(sdt, now);
+    if (sdt > 0) { burn(sdt, now); spotFires(sdt, now); }
     if (WW.baseLifeCars) WW.baseLifeCars.tick();            // the camp's trucks move first: the ground crews keep out of them
     if (WW.baseGroundFx) WW.baseGroundFx.update(rdt, b);
     if (WW.baseLife) WW.baseLife.update(rdt, b, built);   // the camp's people and trucks (after the ground crews: one trace)
     if (WW.baseLifeFx) WW.baseLifeFx.update(rdt, b, built); // the gooney birds, the blackout and the searchlights
+  }
+  function spotFires(dt, now) {
+    for (let i = spots.length - 1; i >= 0; i--) {
+      const f = spots[i], k = 1 - (now - f.t0) / f.life; if (k <= 0) { spots.splice(i, 1); continue; }
+      const y = Math.max(WW.terrain.PAD_H, -WW.terrain.depthAt(f.x, f.z));
+      if (R() < 3 * k * dt) WW.fx.fire(f.x + rr(-1, 1), y + rr(0.2, 1), f.z + rr(-1, 1));
+      if (R() < 0.9 * k * dt) WW.fx.smoke(f.x + rr(-0.6, 0.6), y + 1.5, f.z + rr(-0.6, 0.6), true, rr(1.4, 2.4));
+    }
   }
   function burn(dt, now) {
     const ld = WW.damage ? WW.damage.load() : 0;
@@ -163,6 +173,28 @@ window.WW = window.WW || {};
     }
     if (raid) add(7.5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 80, dur: dur(14, 18), w: 0.045, hgt: 0.32 });
     else if (b.facilities.some(f => f.out && WW.time.now - f.outAt < 90)) add(5, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 70, dur: dur(13, 17), w: 0.04, hgt: 0.3 });
+  });
+
+  // ---------- the bombardment on screen: heavy shells throw up earth, the fuel farm goes up in a fireball ----------
+  const gY = (x, z) => Math.max(WW.terrain.PAD_H, -WW.terrain.depthAt(x, z));
+  WW.on('baseImpact', e => {
+    if (WW.simOnly || !WW.fx || !e || (e.key !== 'big' && e.key !== 'med')) return;
+    const big = e.key === 'big', y = gY(e.x, e.z);
+    WW.fx.explosion(e.x, y + 0.3, e.z, big ? 4.2 : 2);
+    if (big && R() < 0.55 && spots.length < 60) spots.push({ x: e.x, z: e.z, t0: WW.time.now, life: rr(14, 30) });   // the incendiary / HE fills set the grass and debris alight
+    for (let n = 0; n < (big ? 5 : 2); n++) WW.fx.smoke(e.x + rr(-1.5, 1.5), y + rr(1, big ? 8 : 3), e.z + rr(-1.5, 1.5), true, big ? rr(3, 4.6) : rr(1.4, 2.2)); // the earth and smoke thrown up
+  });
+  WW.on('baseEvent', e => {
+    if (WW.simOnly || !WW.fx || !e || (e.kind !== 'fuel' && e.kind !== 'hangar')) return;
+    const y = gY(e.x, e.z), k = e.kind === 'fuel' ? 1 : 0.7;
+    WW.fx.explosion(e.x, y + 1, e.z, 5.5 * k);
+    for (let n = 0; n < 10 * k; n++) WW.fx.fire(e.x + rr(-3, 3), y + rr(0.5, 5), e.z + rr(-3, 3));
+    for (let n = 0; n < 4; n++) WW.fx.smoke(e.x + rr(-2, 2), y + rr(4, 10), e.z + rr(-2, 2), true, rr(3.5, 5));
+  });
+  // the director: an island under the guns (shells landing in the last few seconds) beats a burning base
+  (WW.camHooks = WW.camHooks || []).push((add, dur) => {
+    const b = WW.islandBase && WW.islandBase.base;
+    if (b && WW.time.now - (b.shelledT || -1e9) < 6) add(8, 'orbit', { x: b.x, z: b.z, y: 0 }, { r: 75, dur: dur(14, 18), w: 0.04, hgt: 0.3 });
   });
 
   WW.on('baseBuilt', onBuilt);

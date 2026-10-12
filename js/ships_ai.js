@@ -66,8 +66,10 @@ window.WW = window.WW || {};
   // Per-calibre overrides for guns that are not the ship's main battery role (a PT's machine gun never duels a
   // battleship or cruiser) and secondaries (closest small threat first).
   const GUN_W = { mg: { carrier: 0, battleship: 0, cruiser: 0, destroyer: 0.6, submarine: 1, pt: 1.5 } };
-  const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6 };
+  const SEC_W = { carrier: 0.8, battleship: 0.8, cruiser: 1, destroyer: 1.3, submarine: 1.2, pt: 1.6, base: 0.4 }; // base: the island's pits and batteries in reach (base_ai.js aims them)
   const VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };
+  // a gun's range to its target: light guns reach the island where its pits and batteries stand, not at its centre (base_ai.js)
+  const gunD = (ship, o, cal) => o.isBase && cal === 'small' && WW.baseAI && WW.baseAI.reach ? WW.baseAI.reach(ship, o) : WW.dist(ship.x, ship.z, o.x, o.z);
   const STICKY = 1.3; // switch targets only for a score this much better
   // The main battery of a battleship or cruiser does not waste shells on a PT boat beyond PT_CLOSE x its range (the
   // secondaries, the AA and the destroyers take them); a cruiser with no secondary battery still fires on one close in.
@@ -175,11 +177,11 @@ window.WW = window.WW || {};
       const g = st.guns[gi], gw = GUN_W[g.cal] || (gi === 0 ? W : SEC_W), bigMain = gi === 0 && BIG_MAIN[ship.type];
       let t = null, bs = 0;
       const noPt = (o, d) => bigMain && o.type === 'pt' && d > g.range * PT_CLOSE; // the main battery of a BB / CA: no shells at a PT boat unless it is close in
-      if (best && gw[best.type] > 0 && WW.dist(ship.x, ship.z, best.x, best.z) <= g.range && !noPt(best, WW.dist(ship.x, ship.z, best.x, best.z))) t = best;
+      if (best && gw[best.type] > 0 && gunD(ship, best, g.cal) <= g.range && !noPt(best, WW.dist(ship.x, ship.z, best.x, best.z))) t = best;
       else for (const c of cs) {
         const o = c.unit;
         if (!o || !o.alive || o.submerged || now - c.seenAt > FRESH || !(gw[o.type] > 0)) continue;
-        const d = WW.dist(ship.x, ship.z, o.x, o.z);
+        const d = gunD(ship, o, g.cal);
         if (d > g.range || noPt(o, d)) continue;
         const v = gw[o.type] * (gi === 0 && !GUN_W[g.cal] ? VALUE[o.type] : 1) / (1 + d / g.range);
         if (v > bs) { bs = v; t = o; }
@@ -199,7 +201,7 @@ window.WW = window.WW || {};
       // Aim as an offset from the turret's rest angle (aft turrets rest at PI) so it never swings through the bridge.
       let off = 0, rel = 0, d = 1e9;
       if (tgt) {
-        rel = WW.angleDiff(ship.heading, bearing(ship, tgt)); d = WW.dist(ship.x, ship.z, tgt.x, tgt.z);
+        rel = WW.angleDiff(ship.heading, bearing(ship, tgt)); d = gunD(ship, tgt, ts.gun.cal);
         off = WW.clamp(WW.angleDiff(ts.rest, rel), -ARC, ARC);
       }
       const rate = (TURRET_RATE[ts.cal] || 1) * dt;

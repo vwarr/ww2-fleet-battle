@@ -24,9 +24,11 @@ window.WW = window.WW || {};
     overhead: { leash: 160, leash2: 205, vecR: 200, spd: 0.8 }   // the loops reach ~155 (115 + 12% + 25 toward the threat)
   };
   // USN stations by section index: distance out, angle off the threat bearing, altitude band, inner (kept back)
-  const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 66 }, { d: 60, a: 0, y: 30, inner: true }];
+  const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 64 }, { d: 60, a: 0, y: 30, inner: true }];
   const LEG = 90, TURN = 0.42;           // racetrack half-leg (u) and turn rate (rad/s)
-  const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 45, dir: -1 }, { r: 80, y: 36, dir: 1 }]; // IJN loops round the fleet
+  const RING_A = 0.35, RING_D = 15, RING_DY = 1.5;   // USN: a further round of sections, across the bearing, ~300 ft up
+  // IJN loops round the fleet, low and medium (Zeros at 1,000-2,500 m: 27-38 u), shotai a few hundred feet apart in a band
+  const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 38, dir: -1 }, { r: 80, y: 29, dir: 1 }];
   const ST = { vectors: 0, contacts: 0, joins: 0 };
 
   function doc(nation) {
@@ -73,6 +75,24 @@ window.WW = window.WW || {};
   const SNOOP_R = 260;
   const snooper = u => u.kind === 'scout' || u.kind === 'flyingboat' || (u.search && !u.ordnance);
   function chasing(pl, u) { for (const q of WW.world.planes) if (q !== pl && q.alive && q.nation === pl.nation && (q.vec === u || q.foe === u) && !(q.element && q.element === pl.element)) return true; return false; }
+  // Sections already on each armed raider (vectored or engaged), counted once per element, per side, every 0.5 s:
+  // raidFor spreads the sections over the raid instead of every section scoring the same best raider.
+  const CLAIM = { USN: { t: -1, m: new Map() }, IJN: { t: -1, m: new Map() } };
+  function claims(pl, u) {
+    const C = CLAIM[pl.nation]; if (!C) return 0;
+    if (WW.time.now - C.t >= 0.5 || C.t < 0) {
+      C.t = WW.time.now; C.m = new Map();
+      for (const q of WW.world.planes) {
+        if (!q.alive || q.nation !== pl.nation || q.kind !== 'fighter') continue;
+        const k = q.vec || q.foe; if (!k || !k.alive) continue;
+        let S = C.m.get(k); if (!S) C.m.set(k, S = new Set());
+        S.add(q.element || q);
+      }
+    }
+    const S = C.m.get(u); if (!S) return 0;
+    return S.size - (S.has(pl.element || pl) ? 1 : 0);   // our own section does not count against us
+  }
+  const INNER_R = 220;                    // the inner (kept back) section takes raiders this close to the carrier
   function raidFor(pl, band, inner, D) {
     if (!WW.intel) return null;
     const c = pl.carrier, armed = WW.airOps.armed, quiet = !WW.airOps.picture(c).armed;
@@ -82,13 +102,13 @@ window.WW = window.WW || {};
       const dc = WW.dist(c.x, c.z, ct.x, ct.z);
       if (snooper(u)) {   // not the inner section; one section to a snooper
         if (!quiet || inner || dc > Math.min(SNOOP_R, D.vecR) || (pl.vec !== u && chasing(pl, u))) continue;
-      } else if (dc > (inner ? 150 : D.vecR)) continue;
+      } else if (dc > (inner ? INNER_R : D.vecR)) continue;
       const arm = armed(u);
       if (!arm && u.kind !== 'fighter' && !snooper(u)) continue;   // empty bombers going home: not worth a vector
       let s = arm ? 200 : u.kind === 'fighter' ? 60 : 90;
       if (arm && u.kind === 'torpedo') s += band === 'low' ? 80 : style(pl.nation) === 'overhead' ? 60 : -20;   // the Zeros go for the torpedo planes
       if (arm && u.kind === 'dive') s += band === 'high' ? 60 : -30;
-      s -= WW.dist(pl.x, pl.z, ct.x, ct.z) * 0.5 + dc * 0.2;
+      s -= WW.dist(pl.x, pl.z, ct.x, ct.z) * 0.5 + dc * 0.2 + (arm ? claims(pl, u) * 70 : 0);   // one section per raider first
       if (s > bs) { bs = s; best = u; }
     }
     return best;
@@ -99,6 +119,18 @@ window.WW = window.WW || {};
     const px = u.x + Math.cos(u.heading) * (u.speed || 0) * tg, pz = u.z + Math.sin(u.heading) * (u.speed || 0) * tg;
     const alt = band === 'high' ? Math.max(u.y + 10, 40) : Math.max(u.y + 6, 16);
     pl.fly(px, pz, alt, dt, pl.pt.speed, 0.5);
+  }
+
+  // A ship of ours under air attack within the cover reach (air_cover.js), when the raid picture has nothing for this
+  // section or only a raid still far out: the carrier comes first (the fighter director held the CAP over the
+  // carriers while a raid closed on them), the bombers on their run at a destroyer or a cripple next.
+  const COVER_R = 340;                    // a raid on the carrier inside this keeps the section on it
+  function cover(pl, u, inner) {
+    if (inner || !WW.airCover) return u;
+    if (u && WW.dist(pl.carrier.x, pl.carrier.z, u.x, u.z) < COVER_R) return u;
+    const k = WW.airCover.raidOn(pl);
+    if (k && pl.vec !== k && WW.airCover.stats[pl.nation]) WW.airCover.stats[pl.nation].vectors++;
+    return k || u;
   }
 
   // ---------- stations ----------
@@ -119,15 +151,18 @@ window.WW = window.WW || {};
     if (sty === 'picket') {
       const S = PICKET[i % PICKET.length], band = S.y > 45 ? 'high' : 'low';
       pl.capBand = band;                  // capPick: the high band takes the dive bombers, the low band the torpedo planes
-      const u = raidFor(pl, band, S.inner, D);
+      const u = cover(pl, raidFor(pl, band, S.inner, D), S.inner);
       if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, band, dt); return true; }
       pl.vec = null;
-      const a = b + S.a, p = inMap(c.x + Math.cos(a) * S.d, c.z + Math.sin(a) * S.d, 60);
-      racetrack(pl, p[0], p[1], a, S.y + Math.floor(i / PICKET.length) * 8, D, dt);
+      // a further round of sections spreads out across the bearing (wider, a little farther out), not up: real
+      // stations a few hundred feet apart in the band (RING_DY, the altitude rule y = 0.4 h^0.59), not a stack 8 u a step
+      const ring = Math.floor(i / PICKET.length), ra = ring ? (ring % 2 ? 1 : -1) * Math.ceil(ring / 2) * RING_A : 0;
+      const a = b + S.a + ra, sd = S.d + ring * RING_D, p = inMap(c.x + Math.cos(a) * sd, c.z + Math.sin(a) * sd, 60);
+      racetrack(pl, p[0], p[1], a, S.y + ring * RING_DY, D, dt);
       return true;
     }
     // overhead: loops round the fleet, shifted a little toward the threat; all react to a seen raid
-    const L = LOOP[i % LOOP.length], u = raidFor(pl, L.y < 35 ? 'low' : 'high', false, D);
+    const L0 = LOOP[i % LOOP.length], lr = Math.floor(i / LOOP.length), L = lr ? { r: L0.r + lr * 18, y: L0.y + lr * RING_DY, dir: L0.dir } : L0, u = cover(pl, raidFor(pl, L.y < 35 ? 'low' : 'high', false, D), false);
     pl.capBand = null;                    // the Zeros all go for whatever is lowest and nearest (drawn to the torpedo planes)
     if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, L.y < 35 ? 'low' : 'high', dt); return true; }
     pl.vec = null;
@@ -156,7 +191,7 @@ window.WW = window.WW || {};
     return false;
   }
   function join(cv) {
-    if (!raidNear(cv, JOIN_R)) return;
+    if (!raidNear(cv, JOIN_R) && !(WW.airCover && WW.airCover.near(cv))) return;
     cv._joinT = WW.time.now;
     const D = cv._deck;
     for (const p of WW.world.planes) {
@@ -172,7 +207,7 @@ window.WW = window.WW || {};
   // a joined fighter with no foe goes back home once no raid has been near its carrier for 3 s
   function joinDone(pl) { return !!pl.joined && (pl.fuel < JOIN_MIN || !pl.foe && WW.time.now - (pl.carrier._joinT || -1e9) > 3); }
 
-  function reset() { ST.vectors = ST.contacts = ST.joins = 0; }
+  function reset() { ST.vectors = ST.contacts = ST.joins = 0; for (const n in CLAIM) { CLAIM[n].t = -1; CLAIM[n].m = new Map(); } }
   WW.on('roundStart', reset);
   WW.cap = { patrol, bearing, band, doc, style, inReach, sectionIndex, join, joinDone, snooper, ENGAGE, DOC, SNOOP_R, stats: ST };
 })();

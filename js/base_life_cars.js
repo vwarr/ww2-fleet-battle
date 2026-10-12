@@ -40,7 +40,7 @@ window.WW = window.WW || {};
     const a0 = Math.atan2(from.z - f.z, from.x - f.x), taken = cars.filter(c => c !== from && c.path && c.path.length).map(c => c.path[c.path.length - 1]);
     for (let k = 0; k < 14; k++) {
       const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.45, x = f.x + Math.cos(a) * r, z = f.z + Math.sin(a) * r;
-      if (WW.baseLifePaths.open(x, z, true) && WW.baseLifePaths.offNet(x, z) && !taken.some(q => Math.hypot(q.x - x, q.z - z) < 3.5 * K())) return { x, z };
+      if (WW.baseLifePaths.open(x, z, true) && WW.baseLifePaths.stand(x, z, 2.0, true) && WW.baseLifePaths.offNet(x, z) && !taken.some(q => Math.hypot(q.x - x, q.z - z) < 3.5 * K())) return { x, z };
     }
     return null;
   }

@@ -6,6 +6,7 @@ window.WW = window.WW || {};
   const tracers = [];         // pooled THREE.Line
   let tracerIdx = 0, v3 = null;
   const REARM = 10;
+  const EDGE = 15;            // u outside the map before a plane turns back in
   const LOITER = 0.6;         // fuel burn of a CAP fighter on station with no foe (economical cruise)
   const PLANE_SCALE = WW.cfg.PLANE_SCALE || 0.82, PK = WW.cfg.PLANE_K || 1, FXK = Math.sqrt(PK); // ~2x true (ship_classes.js; ?planeScale=); FXK: puff sizes
   const DECK_Y = 0.75 * PK;   // fuselage centre above the flight deck (0.75 at the 1.7 tuning scale)
@@ -131,7 +132,7 @@ window.WW = window.WW || {};
     speedTo(v, dt) { this.speed += WW.clamp(v - this.speed, -10 * dt, 8 * dt); }
     fly(px, pz, alt, dt, spd, rate) {
       const d = this.turnTo(Math.atan2(pz - this.z, px - this.x), dt, rate || 1.1);
-      this.climbTo(alt, dt); this.speedTo(spd || this.pt.speed, dt);
+      this.climbTo(alt, dt, alt > this.y && WW.airFlight ? WW.airFlight.climbV(this) : 7); this.speedTo(spd || this.pt.speed, dt);   // cruise climb (air_flight.js)
       return d;
     }
     dropped() { this.ordnance = false; if (this.payload) this.payload.visible = false; }
@@ -161,11 +162,11 @@ window.WW = window.WW || {};
         return;
       }
       const c = this.carrier;
-      if (!c.alive) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }
+      if (!c.alive && !(WW.airFlight && WW.airFlight.orphan(this))) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }   // else: divert / ditch by a ship (air_flight.js)
       if (this.state === 'transit' || this.state === 'attack') {
         // a CAP fighter on station with nothing to chase loiters at economical cruise (1942 CAP sorties ran 2-3 h)
         this.fuel -= this.kind === 'fighter' && !this.target && !this.foe && !this.vec && !this.joined && !this.search ? dt * LOITER : dt;
-        if (this.fuel <= 0) this.state = 'return';
+        if (this.fuel <= 0 || (WW.airFlight && WW.airFlight.bingo(this))) { if (this.fuel > 0 && WW.airFlight) WW.airFlight.stats.bingo++; this.state = 'return'; }   // bingo fuel (air_flight.js)
       }
       switch (this.state) {
         case 'takeoff': this.takeoff(dt); break;
@@ -180,6 +181,9 @@ window.WW = window.WW || {};
         case 'landing': this.landing(dt); break;
         case 'rollout': this.rollout(dt); return;
       }
+      // the map edge: a plane more than EDGE outside turns back toward the middle (a chase or a run-out that drifted off)
+      if (this.alive && this.state !== 'landing' && this.kind !== 'scout' && this.kind !== 'flyingboat' && (this.x < -EDGE || this.z < -EDGE || this.x > WW.cfg.MAP_W + EDGE || this.z > WW.cfg.MAP_H + EDGE))
+        this.turnTo(Math.atan2(WW.cfg.MAP_H / 2 - this.z, WW.cfg.MAP_W / 2 - this.x), dt, 0.8);
       if (this.jink && WW.combatAA) WW.combatAA.applyJink(this, dt); // flak weave (combat_aa.js)
       this.trail(dt, false);
       this.integrate(dt, false);
@@ -205,7 +209,7 @@ window.WW = window.WW || {};
       this.tr = dt > 0 ? (this.tr || 0) + (this.turn - (this.tr || 0)) * (1 - Math.exp(-dt / 0.15)) : this.turn;
       let bank = WW.clamp(Math.atan2(this.speed * this.tr, G_EFF), -1.3, 1.3);
       if (this.alive) bank *= Math.max(0, Math.cos(this.pitch)); // no steep bank while pointing down a dive
-      const dr = bank - this.roll, maxR = 2.6 * dt;               // roll rate limit = the roll-in / roll-out lag
+      const dr = bank - this.roll, maxR = 2.0 * dt;               // roll rate limit (~115 deg/s, a fighter's full aileron roll) = the roll-in / roll-out lag
       this.roll += WW.clamp(dr * Math.min(1, dt * 7), -maxR, maxR);
       const v = Math.hypot(this.speed, this.vy);
       this.gload = Math.hypot(this.speed * this.tr, v * Math.max(0, pr));
