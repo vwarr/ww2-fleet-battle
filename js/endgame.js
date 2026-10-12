@@ -216,6 +216,10 @@ window.WW = window.WW || {};
   //    night action with (a fit gun ship, a PT boat with torpedoes left) and an enemy fleet ship (carrier, battleship,
   //    cruiser, destroyer) to fight it against (a battleship does not hunt spent PT boats in the dark): both retire for
   //    the night after NIGHT_T s
+  //  - lull out: a round with a raid force (a side that never had a gun ship: PT boats, carriers alone, submarines)
+  //    cannot end by a break; once it has struck, LULL_T s with no further attack (main.js game.lastHit:
+  //    a hit or a weapon dropped or fired) and no armed bomber in the air on its way end it: the raid is over
+  var LULL_T = 90, OUTB = { transit: 1, inbound: 1, attack: 1 };
   var WATCH_T = 5, BITE_T = 25, CLOSE_V = 0.3, CLOSE_T = 12, CLOSE_D = 4, NIGHT_AHEAD = 150, NIGHT_T = 20;
   var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var W8 = null;
@@ -241,6 +245,13 @@ window.WW = window.WW || {};
     }
     if (sm < W8.subBest - CLOSE_D) W8.subT = rt;
     W8.subBest = Math.min(W8.subBest, sm);
+  }
+  function lullDead() {
+    var G = WW.game, A = WW.fleetCmd && WW.fleetCmd.side('USN'), B = WW.fleetCmd && WW.fleetCmd.side('IJN');
+    if (!A || !B || (A.hadFit && B.hadFit) || !G.lastHit || subOnly('USN') || subOnly('IJN') || G.roundTime - G.lastHit < LULL_T) return false; // after the first attack; a submarine side has its own stall (main.js)
+    var P = WW.world.planes;
+    for (var i = 0; i < P.length; i++) { var p = P[i]; if (p.alive && p.ordnance && OUTB[p.state] && (p.kind === 'dive' || p.kind === 'torpedo')) return false; }
+    return true;
   }
   function subOnly(n) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].nation === n && S[i].type !== 'submarine') return false; return true; }
   function nightDead() {
@@ -303,6 +314,7 @@ window.WW = window.WW || {};
     closing: function (n) { return !!W8 && WW.game.roundTime - W8.closeT[n] < CLOSE_T; },
     subCloseT: function () { return W8 ? W8.subT : 0; },
     nightOut: function () { return !!W8 && W8.nightT >= NIGHT_T; },
+    lullOut: function () { return !!W8 && battle() && lullDead(); },
     // how the side's last major ship (CV / BB / CA / DD) left the battle: 'sunk' | 'escaped' | undefined (main.js)
     lastOut: function (n) { return last[n]; },
     tasks: function () { return tasks; }, complete: complete,   // task.air: a Catalina's claim (air_flyingboats.js)

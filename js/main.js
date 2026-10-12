@@ -279,9 +279,9 @@ window.WW = window.WW || {};
       else if (oU || oJ) {
         if (oU && oJ) { const tu = game.tonnage('USN'), tj = game.tonnage('IJN'); game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'kill'); }
         else { const loser = oU ? 'USN' : 'IJN'; game.endRound(WW.enemyOf(loser), lastEscaped(loser) ? 'retire' : 'kill', loser); }
-      } else if (WW.endgame && WW.endgame.nightOut()) {
+      } else if (WW.endgame && (WW.endgame.nightOut() || WW.endgame.lullOut())) { // both retire for the night; a raid that is over
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
-        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, 'night');
+        game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, WW.endgame.nightOut() ? 'night' : 'time');
       } else if (game.roundTime >= deadline() || stalled) {
         const tu = game.tonnage('USN'), tj = game.tonnage('IJN');
         game.endRound(tu > tj ? 'USN' : tj > tu ? 'IJN' : null, stalled ? 'stall' : 'time');
