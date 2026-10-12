@@ -238,16 +238,23 @@ window.WW = window.WW || {};
     return WW.world.ships.some(s => s.alive && !s.sinking && s.nation === n && s.type === 'carrier' && s.hp >= WW.fleetGroups.CRIP * s.maxHp);
   }
   // The pursuit is spent: nothing of broken side n sunk for SPENT_T s since it broke (or since its last loss), no hit
-  // on it for SPENT_HIT s, and no bomber of the enemy on its drop (attacking, within SPENT_AIR) at one of its ships: the side retires even
+  // on it for SPENT_HIT s, no bomber of the enemy on its drop (attacking, within SPENT_AIR) at one of its ships and no enemy
+  // gun ship in reach (SPENT_GUN x its range; merge A/B: kills 19 -> 17% without this): the side retires even
   // though enemy guns or strikes are still about (a pursuit that scores only the odd hit is no finish; the tail after
   // the climax was 2-3 minutes)
-  const SPENT_T = 60, SPENT_HIT = 20, SPENT_AIR = 200, lostT = { USN: 0, IJN: 0 };
+  const SPENT_T = 75, SPENT_HIT = 20, SPENT_AIR = 200, SPENT_GUN = 1.5, lostT = { USN: 0, IJN: 0 };
   WW.on('shipSunk', s => { if (s && lostT[s.nation] !== undefined && game.state === 'battle') lostT[s.nation] = game.roundTime; });
   WW.on('roundStart', () => { lostT.USN = lostT.IJN = 0; });
   function spent(n, B) {
     const t = game.roundTime;
     if (t - Math.max(B.brokenAt, lostT[n]) < SPENT_T || t - harmT[n] < SPENT_HIT) return false;
     for (const p of WW.world.planes) if (p.alive && p.nation !== n && p.ordnance && p.state === 'attack' && p.target && p.target.nation === n && WW.dist2(p.x, p.z, p.target.x, p.target.z) < SPENT_AIR * SPENT_AIR) return false;
+    // a pursuer in reach is still at it: an enemy gun ship within SPENT_GUN x its main battery range of one of her ships
+    for (const e of WW.world.ships) {
+      if (!e.alive || e.sinking || e.nation === n || !GUNS[e.type]) continue;
+      const R = e.stats.guns[0].range * SPENT_GUN;
+      for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation === n && s.type !== 'submarine' && WW.dist2(s.x, s.z, e.x, e.z) < R * R) return false;
+    }
     return true;
   }
   function gotClear(n, dt) {
