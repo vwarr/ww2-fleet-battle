@@ -185,6 +185,51 @@ Cuts: 5.7 / min overall, 6.8 in carrier_duel (story mode's 6-12 s shots plus the
    behind the firing ship's turrets, cut to the target for the splashes; AA = from the deck looking up; base =
    elevated over the field; sinking = low and wide in profile; orbits stay on one side of the line of action.
 
+## After (Phase 2 complete), the same 42 rounds
+
+Both columns from the current `--summarize` over the raw data (`summary_raw_before.md`, `summary_raw_after.md`; the
+baseline table above came from an earlier version of the analyser, so its figures differ a little from the before
+column here). The sim under the after survey is origin/main at 7febbee (planes2 rounds 1-2, basebattle); the baseline
+ran on the older main. M1 / M2 / M6 are camera-internal; M3 / M4 / M5 compare the camera on a sim with more base
+action than the baseline had. The endgame merge (98042b3) came in after the survey: its finale orbit at victory is a
+pr 99 shot the director score leaves alone (checked by the merged-tree smoke, below).
+
+| | before | after |
+|---|---|---|
+| M1 promise kept (label-seconds with a number) | 28% of 9291 | **65%** of 337 (strike 50%, push 75%, run 73%); happened at all 71% -> 91% |
+| M2 attack continuity | 45% of 212 filmed drops (42 cut before the release, 74 after) | **96%** of 181 (7 before, 1 after) |
+| M3 best action top-1 / top-3 | 36% / 53% | **62% / 75%** |
+| M4 screen time plane / ship / ship_combat / base / overview | 45 / 37 / 14 / 0 / 4 | 32 / 37 / **24** / **4** / 3 |
+| M4 shot length p10 / p50 / p90, cuts per min | 4.7 / 10.7 / 15.2 s, 5.8 | 4.6 / 11.5 / 15.4 s, 5.5 |
+| M5 dead air | 10% (4366 s) | **4%** (1702 s) |
+| M6 target in frame in the attack: dive / run / anvil / gun | 3% / 47% / 26% / 30% | **75%** / 54% / 12% / **41%** |
+| M6 occluded / into the sun | 1% / 7% | 1% / 11% |
+| M6 cuts that flip the line of action / in-shot crossings | 7% of shots / 17% | **2%** / 14% |
+| M6 snap frames per min (view rate p90) | 2.9 (0.28 rad/s) | **0.0** (0.23 rad/s) |
+| Sinkings on camera | 182 / 245 (carrier 11/14, BB 33/46, CA 30/41, DD 67/91) | **232 / 246** (carrier 12/12, BB 37/37, CA 35/38, DD 93/100) |
+| Base events on camera: bombardment / alarm / air raid | 5/32, 0/30, 6/18 | 32/101, 8/30, 5/17 |
+
+By scenario (after): M3 top-1 standard 59, carrier_duel 55, midway 50, battle_line 70, dusk 62, night 71, odd 75; M5
+2-7%; planes 43% of `standard`, 62% of `carrier_duel`, 28% of `battle_line`, 5% of `night`; M2 93-100% everywhere.
+
+What changed the numbers:
+- M1: the label shows a number only for a reliable item (the run, the push-over, a strike on its way with the wave's own
+  speed), none for the anvil set-up, the wheel or fighters closing (`vague`); label-seconds with a number fell from 9291
+  to 337, and 65% of those are kept (strike 50%: strikes still slow for the join-up / re-route).
+- M2: the attack lock, the torpedo hand-off to the impact event, the wingman hand-off rules (a wingman's bomb never
+  takes the shot inside 80 u of the subject's own release; the beat on a wingman's result returns to the subject's
+  chase), the dive cut-away held to the impact.
+- M3 / M5 / M4: one director score (camera_score.js) with a once-a-second re-evaluation; story mode yields from an
+  unlocked attack phase (the anvil set-up) and starts an imminent story only when it beats the running shot; sinkings,
+  torpedoes at a hull and the base interrupt. Base 0 -> 4% (8% in `night`, 2-4% elsewhere); ship_combat 14 -> 24%.
+- M6: the dive from above and behind the diver looking at the deck (3 -> 75%), the duel shot over the turrets (gun 30 ->
+  41%), the run framed on the ship (47 -> 54%), orbits that stay on one side of the line of action (flips 7 -> 2%), the
+  view turn capped at 1 rad/s (snaps 2.9 -> 0). Anvil 26 -> 12%: the set-up is now rarely filmed (517 s vs 3372) and
+  when it is, the circling bomber's over-the-shoulder shot cannot hold a ship abeam; structural, left as is.
+
+## Contact sheets (after; tests/shots/camera_audit/sheets/after_*.png, looked at)
+(filled in below once rendered)
+
 ## Status / handoff
 - 2026-10-11 22:00: Phase 2 items 1 (attack lock) and 2 (honest labels, outcome captions), ship / base scenes and
   interrupts, interrupt cadence: DONE (commits 6f5d632 .. d480969). Interim 6-round `standard` check (summary_raw_after.md
