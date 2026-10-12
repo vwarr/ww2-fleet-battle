@@ -308,7 +308,7 @@ const q = (arr, f) => { if (!arr.length) return 0; const s = arr.slice().sort((a
 const ATT_PH = { run: 'run', anvil: 'anvil', roll: 'dive', dive: 'dive', out: 'out', attack: 'attack' };
 function analyse(R) { // one round's record -> its metrics and its worst cases
   const M = { secs: 0, act: 0, on1: 0, on3: 0, dead: 0, deadSpells: [], cls: {}, cuts: 0, lens: [], prom: { n: 0, kept: 0, happened: 0, byKind: {}, vis: 0, visKept: 0 }, fin: { n: 0, kept: 0 },
-    att: { filmed: 0, held: 0, cutBefore: 0, cutAfter: 0, cases: [] }, runs: 0, aborts: 0, anvils: 0, drops: 0, hitsOf: 0, q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, cutFlips: 0, shots: 0, rotMax: [], att: {}, flipsBy: {} }, ev: { n: 0, on: 0, byKind: {} } };
+    att: { filmed: 0, held: 0, cutBefore: 0, cutAfter: 0, cases: [] }, runs: 0, aborts: 0, anvils: 0, drops: 0, hitsOf: 0, q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, cutFlips: 0, shots: 0, rotMax: [], att: {}, flipsBy: {}, snapsBy: {} }, ev: { n: 0, on: 0, byKind: {} } };
   const rec = R.rec, byW = new Map(); for (const r of rec) byW.set(r.w, r);
   let spell = null;
   for (const r of rec) {
@@ -324,6 +324,7 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     }
     if (r.sun !== null && r.elev > 2) { M.q.sunN++; if (r.sun > 0.75) M.q.sunIn++; }
     M.q.snaps += r.snaps; M.q.rotMax.push(r.rot);
+    if (r.snaps && r.shot) { const k = (r.shot.story ? 'story/' + r.shot.sk : r.shot.kind) + (r.shot.stage ? ':' + r.shot.stage : ''); M.q.snapsBy[k] = (M.q.snapsBy[k] || 0) + r.snaps; }
   }
   // shots
   for (const s of R.shots) { if (s.w1) M.lens.push(+(s.w1 - s.w0).toFixed(1)); M.q.shots++; const k = s.story ? 'story/' + s.sk : s.kind, f = M.q.flipsBy[k] = M.q.flipsBy[k] || { n: 0, f: 0 }; f.n++; if (s.loaFlips) { M.q.flips++; f.f++; } if (s.cutFlip) M.q.cutFlips++; }
@@ -377,7 +378,7 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
 }
 function merge(all) { // sum the per-round metrics
   const T = { secs: 0, act: 0, on1: 0, on3: 0, dead: 0, cls: {}, lens: [], cuts: 0, prom: { n: 0, kept: 0, happened: 0, vis: 0, visKept: 0, byKind: {} }, fin: { n: 0, kept: 0, happened: 0 }, att: { filmed: 0, held: 0, cutBefore: 0, cutAfter: 0 }, runs: 0, aborts: 0, anvils: 0, drops: 0, hitsOf: 0,
-    q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, cutFlips: 0, shots: 0, rotMax: [], att: {}, flipsBy: {} }, ev: { n: 0, on: 0, byKind: {} }, spells: [] };
+    q: { s: 0, sIn: 0, t: 0, tIn: 0, occ: 0, land: 0, hull: 0, sea: 0, sunIn: 0, sunN: 0, snaps: 0, flips: 0, cutFlips: 0, shots: 0, rotMax: [], att: {}, flipsBy: {}, snapsBy: {} }, ev: { n: 0, on: 0, byKind: {} }, spells: [] };
   for (const M of all) {
     for (const k of ['secs', 'act', 'on1', 'on3', 'dead', 'cuts', 'runs', 'aborts', 'anvils', 'drops', 'hitsOf']) T[k] += M[k];
     for (const k in M.cls) T.cls[k] = (T.cls[k] || 0) + M.cls[k];
@@ -386,7 +387,8 @@ function merge(all) { // sum the per-round metrics
     for (const k in M.prom.byKind) { const a = T.prom.byKind[k] = T.prom.byKind[k] || { n: 0, kept: 0, happened: 0 }; for (const f in a) a[f] += M.prom.byKind[k][f] || 0; }
     for (const k of ['n', 'kept', 'happened']) T.fin[k] += M.fin[k] || 0;
     for (const k of ['filmed', 'held', 'cutBefore', 'cutAfter']) T.att[k] += M.att[k];
-    for (const k in T.q) if (k !== 'rotMax' && k !== 'att' && k !== 'flipsBy') T.q[k] += M.q[k]; T.q.rotMax.push(...M.q.rotMax);
+    for (const k in T.q) if (k !== 'rotMax' && k !== 'att' && k !== 'flipsBy' && k !== 'snapsBy') T.q[k] += M.q[k]; T.q.rotMax.push(...M.q.rotMax);
+    for (const k in M.q.snapsBy || {}) T.q.snapsBy[k] = (T.q.snapsBy[k] || 0) + M.q.snapsBy[k];
     for (const k in M.q.att) { const a = T.q.att[k] = T.q.att[k] || { n: 0, tIn: 0 }; a.n += M.q.att[k].n; a.tIn += M.q.att[k].tIn; }
     for (const k in M.q.flipsBy) { const a = T.q.flipsBy[k] = T.q.flipsBy[k] || { n: 0, f: 0 }; a.n += M.q.flipsBy[k].n; a.f += M.q.flipsBy[k].f; }
     T.ev.n += M.ev.n; T.ev.on += M.ev.on;
@@ -406,7 +408,7 @@ function report(T, title) {
   L.push(`M5 dead air: ${pct(T.dead, tot)} of the time (${T.dead} s) on nothing while a big action (score >= 6) ran elsewhere`);
   const att = Object.keys(T.q.att).map(k => `${k} ${pct(T.q.att[k].tIn, T.q.att[k].n)}/${T.q.att[k].n}`).join(', ');
   const fl = Object.keys(T.q.flipsBy).filter(k => T.q.flipsBy[k].f).sort((a, b) => T.q.flipsBy[b].f - T.q.flipsBy[a].f).map(k => `${k} ${T.q.flipsBy[k].f}/${T.q.flipsBy[k].n}`).join(', ');
-  L.push(`M6 angle: subject in frame ${pct(T.q.sIn, T.q.s)}, target in frame ${pct(T.q.tIn, T.q.t)} (of ${T.q.t} s with a target); IN THE ATTACK (subject + target in frame): ${att}; occluded ${pct(T.q.occ, T.q.s)} (land ${T.q.land}, hull ${T.q.hull}, sea ${T.q.sea}), into the sun ${pct(T.q.sunIn, T.q.sunN)}, line-of-action: cuts that flip sides ${T.q.cutFlips} (${pct(T.q.cutFlips, T.q.shots)} of shots), in-shot crossings in ${pct(T.q.flips, T.q.shots)} of shots (${fl}), snap frames (>1.2 rad/s, cuts excluded) ${(60 * T.q.snaps / tot).toFixed(1)}/min, view rate p90 ${q(T.q.rotMax, 0.9)} rad/s`);
+  L.push(`M6 angle: subject in frame ${pct(T.q.sIn, T.q.s)}, target in frame ${pct(T.q.tIn, T.q.t)} (of ${T.q.t} s with a target); IN THE ATTACK (subject + target in frame): ${att}; occluded ${pct(T.q.occ, T.q.s)} (land ${T.q.land}, hull ${T.q.hull}, sea ${T.q.sea}), into the sun ${pct(T.q.sunIn, T.q.sunN)}, line-of-action: cuts that flip sides ${T.q.cutFlips} (${pct(T.q.cutFlips, T.q.shots)} of shots), in-shot crossings in ${pct(T.q.flips, T.q.shots)} of shots (${fl}), snap frames (>1.2 rad/s, cuts excluded) ${(60 * T.q.snaps / tot).toFixed(1)}/min (${Object.keys(T.q.snapsBy).sort((a, b) => T.q.snapsBy[b] - T.q.snapsBy[a]).slice(0, 8).map(k => k + ' ' + T.q.snapsBy[k]).join(', ')}), view rate p90 ${q(T.q.rotMax, 0.9)} rad/s`);
   L.push(`Big events on camera: ${pct(T.ev.on, T.ev.n)} of ${T.ev.n}: ` + Object.keys(T.ev.byKind).map(k => `${k} ${T.ev.byKind[k].on}/${T.ev.byKind[k].n}`).join(', '));
   return L.join('\n');
 }

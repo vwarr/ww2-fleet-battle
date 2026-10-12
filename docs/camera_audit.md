@@ -184,3 +184,15 @@ Cuts: 5.7 / min overall, 6.8 in carrier_duel (story mode's 6-12 s shots plus the
    / behind the plane keeping plane and ship in frame, then the wake to the hull; gun duel = a wide two-ship shot from
    behind the firing ship's turrets, cut to the target for the splashes; AA = from the deck looking up; base =
    elevated over the field; sinking = low and wide in profile; orbits stay on one side of the line of action.
+
+## Status / handoff
+- 2026-10-11 22:00: Phase 2 items 1 (attack lock) and 2 (honest labels, outcome captions), ship / base scenes and
+  interrupts, interrupt cadence: DONE (commits 6f5d632 .. d480969). Interim 6-round `standard` check (summary_raw_after.md
+  at that point): M1 67%, M2 97%, M3 44 / 56, M5 10%, base 1%, snaps 5.9 / min (regression: bomb hand-offs from the
+  deck shot, the over-the-shoulder turn rate).
+- Resumed 2026-10-11 (camera3 on origin/main with planes2 rounds 1-2 and basebattle merged). TO DO: item 3 (one director
+  score with hysteresis, story mode yielding from an unlocked attack phase), item 4 (director angles: run / dive / gun),
+  the snap sources, then the 42-round AFTER survey, the before / after table and the contact sheets.
+- Note for the AFTER table: origin/main's sim changed under the camera between the baseline and the after survey
+  (planes2 bombers-first pre-emption, basebattle bombardment). M1 / M2 / M6 are camera-internal; M3 / M4 / M5 compare
+  the camera on a sim with more base action than the baseline had.
