@@ -482,13 +482,16 @@ async function sheet(b, specTxt) {
     frames.push({ file, info });
     console.log(`  ${info.w}s ${info.shot} | ${info.top} | ${info.label} | ${info.cap}`);
   }
-  const shots = await p.evaluate(() => window.__audit.shots.map(s => Math.round(s.w0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : '')));
+  const shotsRaw = await p.evaluate(() => window.__audit.shots.map(s => ({ w0: s.w0, story: s.story, sk: s.sk, phase: s.phase, kind: s.kind, subj: s.subj ? { c: s.subj.c } : null })));
+  const shots = shotsRaw.map(s => Math.round(s.w0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : ''));
   fs.writeFileSync(path.join(dir, 'shots.txt'), shots.join('\n')); // the replay's shot list, checked against the survey's raw JSON
   const rawF = path.join(OUT, 'raw_' + TAG, `${name}_${seed}.json`);
   if (fs.existsSync(rawF)) {
-    const R = JSON.parse(fs.readFileSync(rawF, 'utf8')), ref = R.shots.map(s => Math.round(s.w0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : ''));
-    let i = 0; while (i < shots.length && i < ref.length && shots[i] === ref[i]) i++;
-    console.log(i >= shots.length ? `replay matches the survey (${shots.length} shots)` : `REPLAY DIVERGES from the survey at shot ${i}: ${shots[i]} vs ${ref[i]}`);
+    // (wall times are relative to the first shot: the page-load time before install() differs run to run)
+    const key = (w0, s, t0) => Math.round(w0 - t0) + ' ' + (s.story ? 'story/' + s.sk + '/' + s.phase : s.kind) + (s.subj ? '@' + s.subj.c : '');
+    const R = JSON.parse(fs.readFileSync(rawF, 'utf8')), ref = R.shots.map(s => key(s.w0, s, R.shots[0].w0)), mine = shotsRaw.map(s => key(s.w0, s, shotsRaw[0].w0));
+    let i = 0; while (i < mine.length && i < ref.length && mine[i] === ref[i]) i++;
+    console.log(i >= mine.length ? `replay matches the survey (${mine.length} shots)` : `REPLAY DIVERGES from the survey at shot ${i}: ${mine[i]} vs ${ref[i]}`);
   }
   await p.close();
   const argsM = ['-tile', '4x', '-geometry', '480x270+3+3', '-background', '#222', '-fill', 'white', '-font', FONT, '-pointsize', '13', '-title', `${name} seed ${seed} ${from}-${to}s`];

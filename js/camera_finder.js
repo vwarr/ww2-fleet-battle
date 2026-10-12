@@ -18,7 +18,8 @@ window.WW = window.WW || {};
   const GUIDE_V = 20, ARRIVE = 60, DROP_FAR = 100, HOT = [10, 30];
   const wall = () => performance.now() / 1000;
   const ok = p => p && !p.removed && p.alive;
-  const KIND = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
+  const KIND0 = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
+  const kindOf = t => (t && (KIND0[t.type] || (t.isBase ? 'airfield' : null))) || 'target';
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
   const sq = p => (p && p.squadron ? p.squadron.short : p && p.nation === 'IJN' ? 'IJN strike' : 'Strike');
   let cache = [], cacheAt = -1e9, cacheSim = -1e9, rate = 0.5, rW = null, rS = 0, latched = [];
@@ -68,7 +69,7 @@ window.WW = window.WW || {};
       const eta = Math.max(0, d - ARRIVE) / v + (w.go ? 0 : 15);
       const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance);
       add('strike', lead, t, eta, (1.2 + 0.25 * Math.min(6, n) + (vt ? 0.4 : 0)) * (VALUE[t.type] || 1),
-        sq(lead) + ' strike reaches the ' + (KIND[t.type] || 'target'), !w.go);
+        sq(lead) + ' strike reaches the ' + kindOf(t), !w.go);
     }
     for (const p of WW.world.planes) {
       if (!ok(p) || !p.pt) continue;
@@ -77,14 +78,14 @@ window.WW = window.WW || {};
       if (p.kind === 'dive' && p.ordnance && t && t.alive && p.state === 'attack' && !p.phase && p.wing === 0) {
         const R = wheelR(p.pt), dh = WW.dist(p.x, p.z, t.x, t.z), out = dh > R + 16;
         add('push', p, t, out ? (dh - R) / Math.max(8, p.speed || 20) + 1 : 2.5, 2.6 * (VALUE[t.type] || 1),
-          sq(p) + (out ? ' pushes over on the ' : ' circling to push over on the ') + (KIND[t.type] || 'target'), !out);
+          sq(p) + (out ? ' pushes over on the ' : ' circling to push over on the ') + kindOf(t), !out);
       } else if (p.kind === 'dive' && p.ordnance && t && t.alive && (p.phase === 'roll' || p.phase === 'dive'))
-        add('push', p, t, p.vy < -1 ? Math.max(0, p.y - (p.relAlt || 18)) / -p.vy : 2, 2.2 * (VALUE[t.type] || 1), sq(p) + ' releases on the ' + (KIND[t.type] || 'target'));
+        add('push', p, t, p.vy < -1 ? Math.max(0, p.y - (p.relAlt || 18)) / -p.vy : 2, 2.2 * (VALUE[t.type] || 1), sq(p) + ' releases on the ' + kindOf(t));
       // torpedo bombers on the run (a number: the distance to the drop range) or setting up the anvil (no number)
       else if (p.kind === 'torpedo' && p.ordnance && t && t.alive && p.phase === 'run' && p.wing === 0)
-        add('run', p, t, Math.max(0, WW.dist(p.x, p.z, t.x, t.z) - (p.dropR || DROP_FAR)) / Math.max(8, (p.speed || 20)), 3 * (VALUE[t.type] || 1), sq(p) + ' drops on the ' + (KIND[t.type] || 'target'));
+        add('run', p, t, Math.max(0, WW.dist(p.x, p.z, t.x, t.z) - (p.dropR || DROP_FAR)) / Math.max(8, (p.speed || 20)), 3 * (VALUE[t.type] || 1), sq(p) + ' drops on the ' + kindOf(t));
       else if (p.kind === 'torpedo' && p.ordnance && t && t.alive && p.sk === 'anvil' && p.wing === 0)
-        add('anvil', p, t, Math.max(4, 20 - (WW.time.now - (p.anT || WW.time.now))), 2.8 * (VALUE[t.type] || 1), sq(p) + ' sets up its torpedo attack on the ' + (KIND[t.type] || 'target'), true);
+        add('anvil', p, t, Math.max(4, 20 - (WW.time.now - (p.anT || WW.time.now))), 2.8 * (VALUE[t.type] || 1), sq(p) + ' sets up its torpedo attack on the ' + kindOf(t), true);
       // fighters closing on bombers (no number: the escort decides)
       else if (p.kind === 'fighter' && p.state === 'attack' && ok(p.foe) && p.foe.kind !== 'fighter' && p.foe.kind !== 'scout') {
         const d = Math.hypot(p.foe.x - p.x, p.foe.y - p.y, p.foe.z - p.z);
@@ -108,7 +109,7 @@ window.WW = window.WW || {};
           if (!b || eta < b.eta) best.set(s, { eta, n: (b ? b.n : 0) + 1 }); else b.n++;
         }
       }
-      for (const [s, b] of best) add('torps', s, s, b.eta, (2.4 + 0.3 * Math.min(4, b.n)) * (VALUE[s.type] || 1), 'Torpedoes running at the ' + (KIND[s.type] || 'ship'));
+      for (const [s, b] of best) add('torps', s, s, b.eta, (2.4 + 0.3 * Math.min(4, b.n)) * (VALUE[s.type] || 1), 'Torpedoes running at the ' + (KIND0[s.type] || 'ship'));
     }
     // ships in danger: fires, flooding, a magazine / deck explosion just now (ship_fires.js, when present)
     const now = WW.time.now;
@@ -122,7 +123,7 @@ window.WW = window.WW || {};
       else if (s.sinking) { d = 2.2; why = 'goes down'; }
       else if (fire >= 3 || (s.avgas && fire >= 2)) { d = 1.4 + 0.15 * fire; why = 'burns'; }
       else if (flood > 0.15 || low > 0.75) { d = 1.3; why = flood > 0.15 ? 'is flooding' : 'is badly hurt'; }
-      if (d) add('danger', s, s, 0, d * (VALUE[s.type] || 1) * 0.8, (s.name || 'The ' + (KIND[s.type] || 'ship')) + ' ' + why);
+      if (d) add('danger', s, s, 0, d * (VALUE[s.type] || 1) * 0.8, (s.name || 'The ' + (KIND0[s.type] || 'ship')) + ' ' + why);
     }
     out.sort((a, b) => b.score - a.score);
     return out;

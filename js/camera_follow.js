@@ -120,8 +120,8 @@ window.WW = window.WW || {};
       return 'Following ' + nameOf(cur.subj) + '  \u00b7  ' + (it ? say(it) : cur.item.label);
     }
     const sto = WW.camStory.story();
-    if (sto) {
-      const it = WW.camFinder && WW.camFinder.about(sto.lead);
+    if (sto) { // the lead's own attack ahead (a wave-mate's only while the lead still carries its weapon)
+      const L = sto.lead, it = WW.camFinder && (L.kind === 'fighter' || L.ordnance ? WW.camFinder.about(L) : WW.camFinder.list().find(i => i.subj === L) || null);
       const tail = it && it.etaReal >= 3 ? '  ·  ' + say(it) : '';
       if (!sto.begun) return sto.user || sto.item ? 'Next: ' + (it ? say(it) : nameOf(sto.lead)) : '';
       return 'Following ' + nameOf(sto.lead) + tail;

@@ -227,7 +227,10 @@ window.WW = window.WW || {};
     if (!S) return null;
     if (!S.begun) { if (!ok(S.lead)) { S = null; return null; } S.begun = true; S.t0 = wall(); S.titleUntil = wall() + CAPS; }
     const now = wall();
-    if (S.ending) { if (S.ending === 1) { S.ending = 2; const L = S.lead, c = mk('high', L, 7, false); if (L.removed) c.subj = { x: L.x, y: L.y, z: L.z, heading: L.heading, nation: L.nation }; return c; } end(true); return null; }
+    if (S.ending) { // the closing high shot, unless a big ship / base event is on (the director has better to show)
+      if (S.ending === 1 && !(WW.camScenes && WW.camScenes.bigNow() >= 8)) { S.ending = 2; const L = S.lead, c = mk('high', L, 7, false); if (L.removed) c.subj = { x: L.x, y: L.y, z: L.z, heading: L.heading, nation: L.nation }; return c; }
+      end(true); return null;
+    }
     if (S.fall && !S.fall.shown && S.lead && !S.lead.removed && now - S.fall.at < FALL) { // watch the leader go down
       S.fall.shown = true; S.last = 'fall';
       log.push({ sk: 'fall', kind: 'story', phase: 'down', at: now, dur: FALL, hard: false });
