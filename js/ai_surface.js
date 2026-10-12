@@ -9,6 +9,7 @@ window.WW = window.WW || {};
 (function () {
   const PI = Math.PI;
   const SONAR = 65; // destroyer sub-detection radius (intel.js R.SONAR)
+  const SUB_FAR = 400; // ... and with nothing else to do, out to this (not a 30 s old datum 2,000 u away across the map)
   const SUB_HUNT = 100; // a known sub inside its own torpedo reach (range 120 x 0.8) is hunted before surface targets
   const H = WW.shipAI.h, bearing = H.bearing, seen = H.seen, lead = H.lead, blend = H.blend;
 
@@ -84,7 +85,7 @@ window.WW = window.WW || {};
     const go = WW.fleetCmd ? WW.fleetCmd.order(ship) : null;
     const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) && !subTooFar(go, a.dcSub) &&
       WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
-    if (st.depthCharges && (a.dcLeft > 0 || ds || (!subTooFar(go, a.subC) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || !t || t.type === 'submarine' || subNearAlly(ship, a))))) {
+    if (st.depthCharges && (a.dcLeft > 0 || ds || (!subTooFar(go, a.subC) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || ((!t || t.type === 'submarine') && a.subD < SUB_FAR) || subNearAlly(ship, a))))) {
       a.dcReload -= dt;
       if (a.dcLeft > 0) { dcPattern(ship, a, dt); return; }
       const fresh = !!ds || seen(ship, a.sub), s = ds || (fresh ? a.sub : a.subC);

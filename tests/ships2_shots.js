@@ -60,15 +60,15 @@ function find() { // in the page: hooks that note the first carrier dive evasion
       window.__beh.run(Object.assign({}, spec, { until: e.t + lead }));
       const s = WW.world.ships.find(q => q.id === e.id); if (!s) return null;
       __sim.focus(s.x, s.z, kind === 'ev' ? 110 : 70, 60);
-      if (kind === 'ev') __sim.setScale(1);
+      if (kind === 'ev') __sim.setScale(0.35);
       const ev = s.ai && s.ai.airEv;
       return { t: +WW.game.roundTime.toFixed(1), ship: s.type + '#' + s.id + ' ' + s.nation, hdg: +(s.heading * 180 / Math.PI).toFixed(0), want: ev ? +(ev.h * 180 / Math.PI).toFixed(0) : null,
         planes: WW.world.planes.filter(q => q.alive && q.target === s && q.ordnance).map(q => q.kind + ':' + (q.phase || q.sk || q.state)).join(' ') };
     }, [spec, e, lead, kind]);
     console.log(kind, spec.scen, spec.seed, JSON.stringify(info));
     if (info) for (let i = 0; i < 3; i++) {
-      await p.waitForTimeout(kind === 'ev' ? 2500 : 1200);
-      await p.screenshot({ path: path.join(OUT, `${kind === 'ev' ? 'evade' : 'aa'}_${spec.seed}_${spec.scen}_${i}.png`) });
+      await p.waitForTimeout(kind === 'ev' ? 4000 : 1200);
+      await p.screenshot({ timeout: 120000, path: path.join(OUT, `${kind === 'ev' ? 'evade' : 'aa'}_${spec.seed}_${spec.scen}_${i}.png`) });
     }
     await p.close();
   }

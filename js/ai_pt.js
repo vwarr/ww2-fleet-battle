@@ -330,6 +330,18 @@ window.WW = window.WW || {};
     sweep(ship);
   }
 
-  WW.shipAI.roles.pt = ptAI;
+  // Lurking or on picket, the helm order changes at most HELM_RATE rad/s: the spot and the safest heading are re-picked
+  // every few seconds and the order jumped with them, so the boat turned continuously (Fable F6: PT boats spinning).
+  // A run, a break-off, a flight or a gun fight keep the raw order.
+  const HELM_RATE = 0.5;
+  function ptHelm(ship, dt) {
+    ptAI(ship, dt);
+    const a = ship.ai, L = a.lt;
+    if (!L || L.state !== 'lurk' || L.hot) { a.ptH = undefined; return; }
+    if (a.ptH === undefined) a.ptH = ship.heading;
+    a.ptH += WW.clamp(WW.angleDiff(a.ptH, ship.desiredHeading), -HELM_RATE * dt, HELM_RATE * dt);
+    ship.desiredHeading = a.ptH;
+  }
+  WW.shipAI.roles.pt = ptHelm;
   Object.assign(WW.lightAI, { PT, stats, opportunity });
 })();

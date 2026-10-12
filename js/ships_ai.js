@@ -325,8 +325,8 @@ window.WW = window.WW || {};
     const P = WW.world.planes, resc = !!(ship.rescue && ship.rescue.by === ship && !ship.rescue.done), r2 = (resc ? EV.RESC : EV.R) * (resc ? EV.RESC : EV.R);
     for (let i = 0; i < P.length; i++) {
       const p = P[i];
-      if (!p || !p.alive || !p.ordnance || p.nation === ship.nation || (p.target !== ship && !(resc && p.state === 'attack' && (p.kind === 'dive' || p.kind === 'torpedo')))) continue;
-      const dive = p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive' || p.target !== ship), torp = p.kind === 'torpedo' && (p.phase === 'run' || p.sk === 'anvil');
+      if (!p || !p.alive || !p.ordnance || p.nation === ship.nation || (p.target !== ship && !(resc && (p.kind === 'dive' || p.kind === 'torpedo')))) continue;
+      const dive = p.target !== ship || (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive')), torp = p.kind === 'torpedo' && (p.phase === 'run' || p.sk === 'anvil');
       if (!dive && !torp) continue;
       const d2 = WW.dist2(ship.x, ship.z, p.x, p.z);
       if (d2 > r2 || !seen(ship, p)) continue;
