@@ -7,14 +7,14 @@
 //   with hits, the straddled target   6.5-8 an attack about to happen (closer = more; a vague wait less)   5.5-6.5 a plain
 //   gun duel, a dogfight, a carrier launch   2.6-5 quiet ship shots, planes in transit   2 the wide establishing shot.
 // Once a second it RE-EVALUATES the running shot: its live worth (the best candidate about its own subject, else a
-// floor by shot kind) plus a hysteresis bonus (2 falling to 0.5 over the shot) against the best other candidate; a
+// floor by shot kind) plus a hysteresis bonus (3 falling to 1 over the shot) against the best other candidate; a
 // bigger action elsewhere takes the camera (a soft cut), never inside the attack lock, a hand-off, the user's or a
 // test shot, and never before the shot is MIN_T old. Story mode (camera_story.js) asks the same scale whether its
 // automatic story should yield (yields(shot)) and whether an imminent attack is worth cutting in for (prOf(item)).
 // Visual only: reads the sim, never writes it; no WW.rand. Load after camera_follow.js.
 window.WW = window.WW || {};
 (function (WW) {
-  const MIN_T = 4, MIN_PR = 6.5, BONUS = [2, 0.5], FLOOR = { wide: 2, low: 3, flyby: 3, orbit: 3, chase: 3, story: 3.5, duel: 4, base: 4, aa: 4, profile: 4, ots: 4 };
+  const MIN_T = 5, MIN_PR = 7, BONUS = [3, 1], FLOOR = { wide: 2, low: 3, flyby: 3, orbit: 3, chase: 3, story: 5, duel: 4, base: 4, aa: 4, profile: 4, ots: 4 }; // story: a mission being told is worth a little on its own
   const wall = () => performance.now() / 1000;
   let tickT = 0;
   const ST = { recuts: 0, yields: 0, byKind: {} };

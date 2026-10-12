@@ -107,12 +107,12 @@ window.WW = window.WW || {};
       if (s.type === 'battleship' && t && d < 170) add(scenes ? 4.5 : 6, scenes ? 'duel' : 'flyby', s, { dur: dur(15, 20), target: t });
       else if (s.type === 'cruiser' && t && d < 120) add(scenes ? 3.5 : 4.5, scenes ? 'duel' : 'chase', s, { dur: dur(13, 17), target: t });
       else if ((s.type === 'destroyer' || s.type === 'pt') && t && d < 90) add(scenes ? 3 : 4, scenes ? 'duel' : 'chase', s, { dur: dur(12, 15), target: t });
-      if (s.type === 'carrier' && WW.world.planes.some(p => p.carrier === s && p.state === 'takeoff')) add(6.5, 'flyby', s, { dur: dur(15, 20) });
+      if (s.type === 'carrier' && WW.world.planes.some(p => p.carrier === s && p.state === 'takeoff')) add(5.5, 'flyby', s, { dur: dur(15, 20) }); // a launch: a fine quiet-moment pick, not worth a cut
       if (s.type === 'submarine' && s.ai && s.ai.evadeT > 7) add(5, 'chase', s, { dur: dur(12, 15) });
     }
     for (const p of WW.world.planes) {
       if (!p.alive) continue;
-      const ace = (p.ace ? 3 : 0) + Math.min(2, (+p.kills || 0) * 0.5); // aces (if the game tracks them) draw the eye
+      const ace = (p.ace ? 1 : 0) + Math.min(0.5, (+p.kills || 0) * 0.25); // aces (if the game tracks them) draw the eye a little (never over a ship being hit)
       // an attack UNDER WAY: the run low beside the plane with the ship ahead (the story chase framing), the dive from above and
       // behind the diver looking down at the deck, or from the deck looking up through the flak (camera_scenes.js aa)
       if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8.5 + ace, 'chase', p, { dur: dur(12, 14), target: p.target });

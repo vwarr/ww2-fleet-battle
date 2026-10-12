@@ -71,8 +71,8 @@ window.WW = window.WW || {};
         const by = s.target && s.target.alive ? s.target : null;
         add(6 + (VALUE[s.type] || 1) + 0.4 * Math.min(3, hh) + 0.2 * Math.min(3, ss), 'orbit', s, { r: Math.max(s.stats.length * 1.6, 24) + 10, dur: dur(11, 14), w: 0.04, hgt: 0.12, loa: by });
       }
-      const at = attackers(s, 130);
-      if (at.length) add(7 + 0.4 * Math.min(4, at.length) + (VALUE[s.type] || 1) * 0.5, 'aa', s, { dur: dur(10, 14) });
+      const at = attackers(s, 130); // under air attack: planes committed (the run, the dive) count, the ones still setting up a little
+      if (at.length) { const com = at.filter(p => p.phase === 'run' || p.phase === 'roll' || p.phase === 'dive').length; add(5.8 + 0.7 * Math.min(4, com) + 0.1 * Math.min(5, at.length - com) + (VALUE[s.type] || 1) * 0.5, 'aa', s, { dur: dur(10, 14) }); }
     }
     const b = base();
     if (b) {

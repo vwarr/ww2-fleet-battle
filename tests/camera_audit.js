@@ -245,7 +245,7 @@ function install(cfg) {
     const promise = m && about ? { eta: /within/.test(label) ? +m[1] : about.etaReal, kind: about.kind, s: ref(about.subj), t: ref(about.target) } : null;
     const finder = WW.camFinder ? WW.camFinder.list().slice(0, 6).map(i => ({ kind: i.kind, s: ref(i.subj), t: ref(i.target), eta: +i.etaReal.toFixed(1), sc: +i.score.toFixed(2), v: i.vague ? 1 : 0 })) : [];
     // M6: subject and target in frame, occlusion, line of action, the sun
-    const c = WW.camera, subj = s && (s.plane || s.subj), isD = subj && subj.diorama;
+    const c = WW.camera, subj = s && (s.kind === 'aa' && s.att && !s.att.removed ? s.att : (s.plane || s.subj)), isD = subj && subj.diorama; // the deck shot: the attacker it looks at is the subject
     let tgt = null;
     if (s && s.stage === 'torp') tgt = s.tship;
     else if (subj && !isD) tgt = subj.foe || subj.diveTgt || subj.outTgt || subj.target || (subj.wave && subj.wave.target) || null;
