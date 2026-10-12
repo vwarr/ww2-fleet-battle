@@ -206,7 +206,7 @@ window.WW = window.WW || {};
     }
     // the enemy's air cover as seen: every enemy carrier seen is sunk or crippled, and an own carrier can fly
     var bare = false;
-    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (!knownGone(B, q, now) && knownHp(B, q) >= WW.fleetGroups.CRIP && airGroup(q) >= COVER_N) bare = false; }); }   // as known (F5), and a planeless deck is no cover
+    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (!knownGone(B, q, now) && knownHp(B, q) >= WW.fleetGroups.CRIP && !(WW.staff && WW.staff.provenBare && WW.staff.provenBare(B.nation, q))) bare = false; }); }   // as known (F5): a deck our strikes found bare (air_staff.js) is no cover
     return beaten(fitT, all, B.fitTons, B.startTons, 1, bare);
   }
   // the strike planes a carrier still has: in the hangar, being rearmed and in the air (a planeless deck is no air cover)

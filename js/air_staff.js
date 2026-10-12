@@ -296,19 +296,21 @@ window.WW = window.WW || {};
       cap = Math.min(cap, Math.max(MIN_B, Math.round(cap * 0.6), Math.round(esc * D.bpe)));
     }
     cv.ai.escWait = 0; cv.ai.capE = capE;
+    const self = B && B.defend.some(q => q.carrier === cv && q.enemy === tgt);   // an enemy ship closing on this carrier: everything that can go
     if (spent && !tgt.isBase) {   // no enemy air: packets, one after another (a steady stream home, not a 100-plane recovery)
-      cap = Math.min(cap, heavy && !Lg.mauled ? PACKET_SQN : PACKET_DIV); esc = 0; ST.packets++;   // and no escort: there is nothing to escort against
+      if (!self) { cap = Math.min(cap, heavy && !Lg.mauled ? PACKET_SQN : PACKET_DIV); ST.packets++; }
+      esc = 0;   // and no escort: there is nothing to escort against
       // the deck turns round what comes home first: the next packet goes when it and the planes on their way home fit
       // one recovery of DECK_Q (the stack never builds past a squadron)
       let home = 0; for (const p of WW.world.planes) if (p.alive && p.carrier === cv && (p.state === 'return' || p.state === 'landing')) home++;
-      if (DECK_Q - home < MIN_B) { ST.deckHolds++; return null; }
-      cap = Math.min(cap, DECK_Q - home);
+      if (!self && DECK_Q - home < MIN_B) { ST.deckHolds++; return null; }
+      if (!self) cap = Math.min(cap, DECK_Q - home);
     }
     else if (Lg.mauled) cap = Math.min(cap, PACKET_DIV);
     // a destroyer or PT boat while a carrier, battleship or cruiser is known afloat (self-defence, the pursuit): a
     // division, not the deck load (Fable audit F4)
     if (tgt.type === 'submarine') { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }   // a surfaced submarine: a division at most
-    else if (!tgt.isBase && (tgt.type === 'destroyer' || tgt.type === 'pt') && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(n)) { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }
+    else if (!self && !tgt.isBase && (tgt.type === 'destroyer' || tgt.type === 'pt') && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(n)) { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }
     if (J.lastLoss >= LOSS_HEAVY && !J.last.cut) { J.last.cut = true; cap = Math.min(cap, Math.max(MIN_B, Math.round(J.last.n * (1.2 - J.lastLoss)))); ST.cuts++; }   // smaller than the strike that was mauled
     // the commitment ceiling: strike planes out at once (bombers and escorts) within commit x the air group
     const room = Math.round((cv.wingN || 60) * D.commit * (urgent ? 1.15 : 1)) - out - queued;
@@ -371,5 +373,6 @@ window.WW = window.WW || {};
   WW.on('setupStart', reset);
   WW.on('waveGo', e => { try { waveGo(e); } catch (er) { console.error('staff', er); } });
   if (WW.air) { const u0 = WW.air.update; WW.air.update = function (dt) { const r = u0.apply(this, arguments); try { remember(dt); } catch (e) { console.error('staff', e); } return r; }; }
-  WW.staff = { TUNE, capEst, airSpent, outbound, raidsAt, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
+  const provenBare = (n, u) => !!(bare[n] && bare[n].has(u));   // a strike of n's went in over enemy carrier u and met no fighters
+  WW.staff = { TUNE, capEst, airSpent, provenBare, outbound, raidsAt, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
 })();

@@ -207,7 +207,8 @@ window.WW = window.WW || {};
     // the launch and form-up, out and back at the guide's speed, the attack and the landing (the deck's queue first)
     // must fit in the light left (daylight.js lightLeft); else a smaller strike that fits, or none.
     const LL = WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity;
-    if (LL < 1e9) {
+    const selfDef = SB && SB.defend.some(q => q.carrier === cv && q.enemy === tgt);   // an enemy ship closing on this carrier: it goes, dark or not
+    if (LL < 1e9 && !selfDef) {
       const D = cv._deck, d = WW.dist(cv.x, cv.z, tgt.x, tgt.z), fix = ETA.form + 2 * d / ETA.v + ETA.attack + homeN(cv) * ETA.trap;
       const per = ETA.launch + ETA.trap, room = Math.floor((LL - fix) / per);
       if (room < nd + nt + esc) {
@@ -243,6 +244,7 @@ window.WW = window.WW || {};
   }
 
   // ---------- the air boss ----------
+  function selfDefence(cv) { const B = WW.fleetCmd && WW.fleetCmd.side(cv.nation); return !!(B && B.defend.some(q => q.carrier === cv)); }
   function plan(cv, dt) {
     const a = cv.ai, A = O().picture(cv), attacked = O().underAttack(cv);
     a.capT -= dt;
@@ -255,7 +257,7 @@ window.WW = window.WW || {};
     if (a.strikeT > 1e8 && !busy) a.strikeT = tempo(cv);     // the strike was lost before it left (deck hit, stale wave)
     if (a.strikeT <= 0 && !busy) {
       if (attacked && (a.holdT || 0) < HOLD_MAX) { if (!a.holdT) O().stats.holds++; a.holdT = (a.holdT || 0) + dt; }
-      else if ((WW.endgame && WW.endgame.broken(cv.nation)) || (WW.dayNight && !WW.dayNight.canFly())) a.strikeT = RETRY;   // broken: no new strikes, it is running; no launches in the dark
+      else if ((WW.endgame && WW.endgame.broken(cv.nation) && !selfDefence(cv)) || (WW.dayNight && !WW.dayNight.canFly())) a.strikeT = RETRY;   // broken: no new strikes, it is running (but an enemy ship closing on this carrier still draws one); no launches in the dark
       else { a.holdT = 0; orderStrike(cv); }
     }
     launch(cv, dt);

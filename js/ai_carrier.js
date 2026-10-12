@@ -136,7 +136,7 @@ window.WW = window.WW || {};
     if (LL < CAP_DUSK) return elem;
     // the enemy air group spent (air_staff.js airSpent: none seen for a minute, its carriers bare or crippled): one
     // standing section against a straggler or a shadower, the rest land
-    if (WW.staff && WW.staff.airSpent && WW.staff.airSpent(ship.nation)) return elem;
+    if (!ship.isBase && WW.staff && WW.staff.airSpent && WW.staff.airSpent(ship.nation)) return elem;
     // an enemy carrier on the plot: its counterstrike is coming, so the standing CAP doubles (Midway, Santa Cruz)
     if (F >= 14 && WW.airBoss && WW.airBoss.cvContact && WW.airBoss.cvContact(ship.nation, ship.x, ship.z)) return base * 2;
     return base;
