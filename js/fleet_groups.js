@@ -261,7 +261,7 @@ window.WW = window.WW || {};
     return best || B.enemyCentre || B.searchPoint;
   }
   // The sortie: the escorts other than each carrier's guards (fleet_formation.js tagRing) steam for the enemy
-  // (sortieGoal), two or more together.
+  // (sortieGoal).
   function sortie(B, G, ncv) {
     var t = sortieGoal(B), go = [];
     G.carrier.members.forEach(function (q) {
@@ -269,7 +269,9 @@ window.WW = window.WW || {};
       if (q.type === 'carrier' || !o || o.role === 'withdraw' || o.guard) return;   // the guards are the ones that stay
       go.push(o);
     });
-    if (go.length < 2) return; // a sortie goes as a group of two or more, never one destroyer alone across the map (Fable F10)
+    // (Fable F10 asked for pairs only; with no sortie a carrier task force never meets the enemy's ships, nothing
+    // breaks and the round runs to time (carrier_duel 6 / 8 to time): the fleets-met rule (fleet_cmd beaten, endgame)
+    // has to change first. So a lone non-guard escort still goes.)
     go.forEach(function (o) {
       o.role = 'sortie'; o.sx = WW.clamp(t.x, 30, WW.cfg.MAP_W - 30); o.sz = WW.clamp(t.z, 30, WW.cfg.MAP_H - 30);
     });

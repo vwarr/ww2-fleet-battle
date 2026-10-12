@@ -55,8 +55,10 @@ window.WW = window.WW || {};
       if (B.doctrine.ringR > 0 && o.role === 'escort') s.ringCv = cv;
       if (o.role === 'escort') { tot[cv.id] = (tot[cv.id] || 0) + 1; list.push(o); }
     });
-    var g = {};
-    list.forEach(function (o) { var id = o.ringCv.id, n = g[id] = (g[id] || 0) + 1; o.guard = n <= (tot[id] >= 3 ? GUARD_N : 1); });
+    // A carrier task force on its own (no battle line, screen or flotilla) has no guards: its escorts are its only
+    // surface force and go out to meet the enemy (fleet_groups.js sortie; held back, carrier rounds ran to time)
+    var G = B.groups, surf = G.main.members.length + G.screen.members.length + G.flotilla.members.length, g = {};
+    list.forEach(function (o) { var id = o.ringCv.id, n = g[id] = (g[id] || 0) + 1; o.guard = surf > 0 && n <= (tot[id] >= 3 ? GUARD_N : 1); });
   }
   // The station of ring escort o: live point { x, z } (null when it has no carrier)
   function ringPoint(o, out) {
