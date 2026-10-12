@@ -110,7 +110,8 @@ window.WW = window.WW || {};
       if (WW.cap && !WW.cap.inReach(pl, u)) continue;
       const dc = WW.dist(c.x, c.z, u.x, u.z), arm = armed(u);
       const snoop = WW.cap ? WW.cap.snooper(u) : u.kind === 'flyingboat', cov = WW.airCover ? WW.airCover.onShip(pl, u) : null;   // on one of our ships (air_cover.js)
-      const clb = WW.airFlight && WW.airFlight.climbing(u);   // a bomber climbing out of its field / off its deck (air_flight.js)
+      // a bomber climbing out of its field / off its deck (air_flight.js), when no raid is on the carrier's picture
+      const clb = WW.airFlight && WW.airFlight.climbing(u) && !picture(c).armed;
       if (!cov && !(clb && dc <= Lh.leash2) && dc > (arm && inbound(u, c) || snoop || escorting(u, pl.nation) ? Lh.leash2 : Lh.leash) || !leashed(pl, u)) continue;
       if (snoop && picture(c).armed) continue;   // bombers first: the snooper waits
       let pr;
@@ -122,7 +123,7 @@ window.WW = window.WW || {};
       else pr = u.hp < u.maxHp * 0.5 ? 160 : 40;   // a damaged bomber going home: finish it
       if (cov) pr = Math.max(pr, arm ? 300 : 240);   // on its run at one of our ships (a fighter strafing a PT): now, after a dive on the carrier
       if (arm && bd) pr += u.kind === (bd === 'high' ? 'dive' : 'torpedo') ? 140 : -150;   // USN height bands: each band its own raiders
-      if (clb) pr = Math.max(pr, 260);   // slow, low and still forming up: the best chance at it it will ever give
+      if (clb) pr = Math.max(pr, 230);   // slow, low and still forming up (after a run on the fleet, before the fighters)
       const s = pr - WW.dist(pl.x, pl.z, u.x, u.z) * 0.8 - dc * 0.4 - claimed(u, pl) * 70;   // spread out: one section per raider
       if (s > bs) { bs = s; best = u; }
     }
@@ -155,7 +156,7 @@ window.WW = window.WW || {};
       // not on its way to the target (its own bombers' threats come first, above)
       if (!best && WW.airFlight && WW.airFlight.opp) {
         const w = pl.wave, onWay = esc && w && w.go && !w.done && w.dT > 220, u = onWay ? null : WW.airFlight.opp(pl);
-        if (u && (esc || WW.dist(u.x, u.z, c.x, c.z) <= leashOf(pl).leash2)) best = u;
+        if (u && (esc || (WW.dist(u.x, u.z, c.x, c.z) <= leashOf(pl).leash2 && !picture(c).armed))) best = u;
       }
       const f0 = pl.foe;
       pl.foe = WW.dogfight ? WW.dogfight.pick(pl, best) : best;

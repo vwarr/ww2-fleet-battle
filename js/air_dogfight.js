@@ -76,7 +76,8 @@ window.WW = window.WW || {};
     return Math.acos(WW.clamp((Math.cos(p.heading) * c * rx + Math.sin(ph) * ry + Math.sin(p.heading) * c * rz) / rl, -1, 1));
   }
   const FLYING = { transit: 1, attack: 1, 'return': 1, landing: 1 };
-  const flying = q => q.alive && FLYING[q.state] && q.y > 3 && q.state !== 'rollout';
+  // in the air: a plane climbing out of its field / off its deck counts (the gunsight snapshot takes it), not one on the deck
+  const flying = q => q.alive && (FLYING[q.state] || (q.state === 'takeoff' && (q.rwPh === 'climb' || q.deckPh === 'climb'))) && q.y > 3 && q.state !== 'rollout';
   // The enemy plane most squarely ahead: inside `cone` of the nose and within R; a bomber before a fighter
   // (a fighter scores `fk` rad worse). null if none.
   function ahead(p, R, cone, fk) {
