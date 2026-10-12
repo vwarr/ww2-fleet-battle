@@ -23,7 +23,7 @@
 //  - Break-off (waveTick): a strike caught short of the target by overwhelming fighters with a weak escort, after
 //    losses, jettisons and turns for home; how much it takes rises with doctrine press (the IJN veterans press on).
 //  - Sun and cloud (seeK, intel.js): a plane high in a low sun's glare, or in cloud, is seen visually at a shorter range.
-//  - The enemy air group spent (airSpent): no enemy combat plane seen for SPENT_T s, and every enemy carrier the side
+//  - The enemy air group spent (airSpent): no enemy bomber and no more than a section of fighters (< SPENT_F) seen for SPENT_T s, and every enemy carrier the side
 //    knows of is crippled or proven bare (a strike of ours went in over it and met no fighters: its PRIOR goes too).
 //    Then the strikes go in packets (a division of PACKET_DIV on a small ship, a squadron of PACKET_SQN on a heavy one),
 //    the CAP shrinks to one standing section (ai_carrier.js capWanted) and the pursuit reserve goes (air_boss.js).
@@ -39,7 +39,7 @@ window.WW = window.WW || {};
   const LOSS_HEAVY = 0.4, MAUL_LOST = 0.55, MAUL_LEFT = 0.3, MAUL_MIN = 8, ESC_MAX_K = 0.6, MIN_B = 4;
   const DOC = { USN: { capHold: 0.4, escortK: 0.9, learn: 0.3, commit: 0.45, bpe: 3, brk: 1 }, IJN: { capHold: 0.3, escortK: 0.6, learn: 0.1, commit: 0.5, bpe: 4.5, brk: 1.25 } };
   const ST = { smallDiv: 0, packets: 0, deckHolds: 0, plans: 0, doglegs: 0, sunIP: 0, cloudIP: 0, breakOffs: 0, mauled: 0, cuts: 0, waits: 0, escUp: 0, learned: 0, commitHolds: 0 };
-  const SPENT_T = 60, BARE_R = 120, PACKET_DIV = 6, PACKET_SQN = 12, DECK_Q = 12, HEAVY = { carrier: 1, battleship: 1, cruiser: 1 };
+  const SPENT_F = 4, SPENT_T = 60, BARE_R = 120, PACKET_DIV = 6, PACKET_SQN = 12, DECK_Q = 12, HEAVY = { carrier: 1, battleship: 1, cruiser: 1 };
   const ESC_WAIT = 45;   // s a strike waits for fighters to come back before it goes against a strong CAP without them
   // A/B switches (tests: env Q=staff=route:0,size:0): route (plotted routes), size (sizing, CAP hold, commitment, ledger),
   // brk (break-off), sun (sun / cloud sighting), base (the escort test for a raid on the island)
@@ -60,9 +60,10 @@ window.WW = window.WW || {};
       const M = mem[n] || (mem[n] = new Map());
       // a CAP is fighters over the enemy's ships or airfield (escorts seen over our own fleet are not a strongpoint)
       const S = WW.intel.enemyShips(n, { fresh: 120 }).slice(), b = ebase(n);   // (a copy: intel filters into one scratch array)
+      let nf = 0;
       for (const c of WW.intel.enemyPlanes(n)) {
         const u = c.unit;
-        if (u && u.alive && (u.kind === 'fighter' || u.kind === 'dive' || u.kind === 'torpedo') && now - c.seenAt < 2) seenAir[n] = now;
+        if (u && u.alive && now - c.seenAt < 2) { if (u.kind === 'dive' || u.kind === 'torpedo') seenAir[n] = now; else if (u.kind === 'fighter' && ++nf >= SPENT_F) seenAir[n] = now; }   // an air group: a bomber, or more fighters than a section
         if (!u || u.kind !== 'fighter') continue;
         if ((b && WW.dist2(b.x, b.z, c.x, c.z) < 220 * 220) || S.some(s => WW.dist2(s.x, s.z, c.x, c.z) < 220 * 220)) M.set(u, { x: c.x, z: c.z, t: now });
       }
@@ -246,7 +247,7 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(n)) {
       const u = c.unit; if (!u || !u.alive || u.isBase || u.type !== 'carrier' || WW.dist2(c.x, c.z, p.x, p.z) > BARE_R * BARE_R) continue;
       let f = 0; if (M) M.forEach(e => { if (now - e.t < 45 && WW.dist2(e.x, e.z, c.x, c.z) < EST_R * EST_R) f++; });
-      if (!f && now - (seenAir[n] || -1e9) > 20) (bare[n] || (bare[n] = new Set())).add(u);
+      if (f < SPENT_F && now - (seenAir[n] || -1e9) > 20) (bare[n] || (bare[n] = new Set())).add(u);
     }
   }
   // does side n believe the enemy's carrier air is gone? (its island base, open and flying, keeps it alive)

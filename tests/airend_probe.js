@@ -33,7 +33,7 @@ function install() {
   const R = window.__ap = { err: 0, force: null };
   const isAir = p => p.kind === 'fighter' || p.kind === 'dive' || p.kind === 'torpedo';
   let S = null;
-  const fresh = () => { S = { waits: [], mDay: 0, mDark: 0, lq: [], col: [], hy: [], dv: { n: 0, kept: 0, back: 0 }, eg: { USN: null, IJN: null }, egRole: { USN: {}, IJN: {} }, egCap: [], mMode: {}, blk: {}, ti: [], gap: {}, sp: [0, 0, 0], found: new Map(), struck: [], forced: false, nextS: 0 }; };
+  const fresh = () => { S = { waits: [], mDay: 0, mDark: 0, lq: [], col: [], hy: [], dv: { n: 0, kept: 0, back: 0 }, eg: { USN: null, IJN: null }, egRole: { USN: {}, IJN: {} }, egCap: [], mMode: {}, blk: {}, ti: [], gap: {}, sp: [0, 0, 0], inEg: {}, lqE: [], found: new Map(), struck: [], forced: false, nextS: 0 }; };
   fresh(); WW.on('roundStart', fresh);
   const hangN = n => { let k = 0; for (const s of WW.world.ships) if (s.alive && s.nation === n && s.hangar && !s.isBase) k += s.hangar.fighter + s.hangar.dive + s.hangar.torpedo + (s.rearm ? s.rearm.length : 0); return k; };
   const st = new WeakMap();   // per plane: { ph, t0, c }
@@ -72,7 +72,7 @@ function install() {
           if (D && i >= 0 && i < D.lq.length - 1) S.dv.kept++; else S.dv.back++;
         }
         o.ph = 'm'; o.c = p.carrier; o.day = day;
-      } else if (!m && o.ph === 'm' && p.state === 'landing' && p.deckPh === 'app') { S.waits.push([+(t - o.t0).toFixed(1), o.day ? 1 : 0]); o.ph = 'a'; }
+      } else if (!m && o.ph === 'm' && p.state === 'landing' && p.deckPh === 'app') { S.waits.push([+(t - o.t0).toFixed(1), o.day ? 1 : 0, t - (S.inEg[p.nation] || -99) < 6 ? 1 : 0]); o.ph = 'a'; }
       else if (!m && o.ph === 'm' && p.state === 'return') { o.ph = 'r'; }   // off the stack homebound again (its deck sank: a divert)
       else if (!m && o.ph === 'm' && p.state !== 'landing') { o.ph = null; }   // left the stack (CAP join, ditch)
       if (o.ph === 'a' && p.state === 'landing' && p.deckPh === 'marshal') { o.ph = 'm'; }   // wave-off / overshoot: back on the stack, the wait resumes
@@ -102,7 +102,7 @@ function install() {
     // landing queues, columns, the stack's height spread
     for (const c of WW.world.ships) {
       const D = c._deck; if (!c.alive || !D || c.isBase || !D.lq.length) continue;
-      S.lq.push(D.lq.length);
+      S.lq.push(D.lq.length); if (t - (S.inEg[c.nation] || -99) < 6) S.lqE.push(D.lq.length);
       const tr = {}; let lo = 1e9, hi = -1e9;
       for (const q of D.lq) if (q.deckPh === 'marshal') { const k = q.mTrack === undefined ? -1 : q.mTrack; tr[k] = (tr[k] || 0) + 1; lo = Math.min(lo, q.y); hi = Math.max(hi, q.y); }
       const v = Object.values(tr); if (v.length) { S.col.push(Math.max(...v)); S.hy.push(+(hi - lo).toFixed(1)); }
@@ -115,6 +115,7 @@ function install() {
       const eShips = WW.world.ships.filter(s => s.alive && !s.sinking && s.nation === e && !s.isBase);
       if (eAir > 4 || !eShips.length || mine < 10) continue;
       if (S.eg[n] === null) S.eg[n] = t;
+      S.inEg[n] = t;
       S.sp[n === 'USN' ? 0 : 1] += 5; if (WW.staff.airSpent && WW.staff.airSpent(n)) S.sp[2] += 5;
       const R0 = S.egRole[n];
       for (const p of WW.world.planes) {
@@ -137,7 +138,7 @@ function install() {
   R.flush = function () {
     const f = []; S.found.forEach((k, s) => { for (const n in k) f.push([n, k[n].type, k[n].t, k[n].drop === undefined ? null : +(k[n].drop - k[n].t).toFixed(0), s.alive && !s.sinking ? 1 : 0]); });
     const RS = WW.airDeck && WW.airDeck.recovery;
-    return { why: RS ? Object.assign({ waveoffs: RS.waveoffs, bolters: RS.bolters, marshal: RS.marshal, appT: RS.appT || 0, appN: RS.appN || 0, steps: RS.steps || 0, kept: RS.keptPlace || 0 }, RS.why) : {}, mMode: S.mMode, blk: S.blk, ti: S.ti, gap: S.gap, sp: S.sp, st: Object.assign({}, WW.staff.stats), waits: S.waits, mDay: S.mDay, mDark: S.mDark, lq: S.lq, col: S.col, hy: S.hy, dv: S.dv, eg: S.eg, egRole: S.egRole, egCap: S.egCap, found: f, err: R.err, last: R.last || null };
+    return { why: RS ? Object.assign({ waveoffs: RS.waveoffs, bolters: RS.bolters, marshal: RS.marshal, appT: RS.appT || 0, appN: RS.appN || 0, steps: RS.steps || 0, kept: RS.keptPlace || 0 }, RS.why) : {}, mMode: S.mMode, blk: S.blk, ti: S.ti, gap: S.gap, sp: S.sp, st: Object.assign({}, WW.staff.stats), waits: S.waits, mDay: S.mDay, mDark: S.mDark, lq: S.lq, lqE: S.lqE, col: S.col, hy: S.hy, dv: S.dv, eg: S.eg, egRole: S.egRole, egCap: S.egCap, found: f, err: R.err, last: R.last || null };
   };
   return true;
 }
@@ -175,6 +176,8 @@ function report(R) {
   const W = all('waits'), wd = W.filter(w => w[1]).map(w => w[0]), wn = W.filter(w => !w[1]).map(w => w[0]);
   say(`marshal wait (joined -> cleared in): all n ${W.length} p50 ${q(W.map(w => w[0]), .5)} p90 ${q(W.map(w => w[0]), .9)} max ${q(W.map(w => w[0]), 1)}; day n ${wd.length} p50 ${q(wd, .5)} p90 ${q(wd, .9)}; dark n ${wn.length} p50 ${q(wn, .5)} p90 ${q(wn, .9)}`);
   say(`marshal plane-s: day ${R.reduce((s, r) => s + r.rec.mDay, 0).toFixed(0)}  dark ${R.reduce((s, r) => s + r.rec.mDark, 0).toFixed(0)}  (per round ${(R.reduce((s, r) => s + r.rec.mDay + r.rec.mDark, 0) / R.length).toFixed(0)})`);
+  const WE = W.filter(w => w[2]).map(w => w[0]), WM = W.filter(w => !w[2]).map(w => w[0]), LE = all('lqE');
+  say(`  endgame: marshal wait n ${WE.length} p50 ${q(WE, .5)} p90 ${q(WE, .9)}; queue per carrier p50 ${q(LE, .5)} p90 ${q(LE, .9)}  |  main battle: marshal wait n ${WM.length} p50 ${q(WM, .5)} p90 ${q(WM, .9)}`);
   const L = all('lq'), C = all('col'), H = all('hy');
   say(`landing queue per carrier (samples with a queue): p50 ${q(L, .5)} p90 ${q(L, .9)} max ${q(L, 1)}; tallest column p50 ${q(C, .5)} p90 ${q(C, .9)} max ${q(C, 1)} (> 12: ${pc(C.filter(c => c > 12).length, C.length)}); stack height spread p50 ${q(H, .5)} p90 ${q(H, .9)} max ${q(H, 1)}`);
   const mm = {}; for (const r of R) for (const k in r.rec.mMode) mm[k] = (mm[k] || 0) + r.rec.mMode[k];
