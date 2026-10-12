@@ -350,6 +350,7 @@ window.WW = window.WW || {};
   // (behind the own carrier, else the own map edge) at full speed, pushed away from every known enemy that could
   // shoot (contacts <= 45 s old within 1.2 x its gun range + 20), through the safest heading. Home first: a cripple
   // that only ran from the nearest enemy could end up deep on the enemy's side, cornering the enemy carrier.
+  const SWEEP = 1.1;
   function crippleHome(ship) {
     const crip = WW.fleetGroups ? WW.fleetGroups.CRIP : 0.35, a = ship.ai, now = WW.time.now;
     if (ship.hp >= crip * ship.maxHp) return false;
@@ -369,8 +370,10 @@ window.WW = window.WW || {};
     const sh = n && WW.weather ? WW.weather.shelter(ship.x, ship.z, 160, 20) : null; // hide in a rain squall (weather.js)
     if (sh) { const sd = WW.dist(ship.x, ship.z, sh.x, sh.z); if (sd > 15) { ax += (sh.x - ship.x) / sd * 0.8; az += (sh.z - ship.z) / sd * 0.8; } }
     if (Math.abs(ax) + Math.abs(az) < 1e-3) return false;
-    const want = Math.atan2(az, ax);
-    ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;
+    const want = Math.atan2(az, ax), dh = WW.threat ? WW.threat.bestHeading(ship, want, 0, { k: 3 }) : want;
+    // a sweeping turn (helm order at most SWEEP rad off the heading): a helm order past 1.2 rad cuts the speed and the
+    // rudder bites with the speed (ships.js), so a crawling cripple told to reverse stopped dead in mid-turn
+    ship.desiredHeading = ship.heading + WW.clamp(WW.angleDiff(ship.heading, dh), -SWEEP, SWEEP);
     ship.throttle = hd > 30 || n ? 1 : 0.5;
     a.withdrawing = true;
     return true;
