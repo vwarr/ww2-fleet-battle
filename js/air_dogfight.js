@@ -15,6 +15,8 @@ window.WW = window.WW || {};
   const BOMBER_K = 5;    // a bomber is a big, steady, lightly protected target: hits on it count this much more
   const FIGHTER_K = 2.2;   // fighter-on-fighter lethality (P5: 1-3 fighters lost per side per carrier round)
   const LOCK = [5, 7];   // s a fighter stays committed to a new foe (through its passes)
+  const PREEMPT_R = 160;  // an armed bomber this close breaks a committed fight on a fighter / an empty bomber (pick)
+  const armedB = u => (u.kind === 'dive' || u.kind === 'torpedo') && u.ordnance && u.state !== 'return';
   const SWITCH_D = 50, SWITCH_BEHIND = 1.6, FRONT_R = 45, FRONT_CONE = 0.45;   // pick(): foe out of reach / behind; an enemy this close and this far off the nose instead
   const DS = { gunKills: 0, weaves: 0, rounds: 0, hits: 0, defences: {} }; // counters for tests
 
@@ -291,6 +293,12 @@ window.WW = window.WW || {};
         const q = ahead(p, FRONT_R, FRONT_CONE, 0.15);
         if (q && q !== cur && d3(p, q) < d3(p, cur)) { s.lock = 0; DS.switches = (DS.switches || 0) + 1; return q; }
       }
+      // the bombers first (1942 CAP doctrine): an armed raider in reach breaks a lock on a fighter that is not on our tail,
+      // or on a bomber that has already dropped (or a scout); the raider's run beats the fight we were in
+      if (!onWay && cur && cur.alive && best && best !== cur && armedB(best) && !armedB(cur) && cur.foe !== p && d3(p, best) < PREEMPT_R) { s.lock = 0; DS.preempt = (DS.preempt || 0) + 1; if (WW.emit) WW.emit('airOrder', { carrier: p.carrier, order: 'preempt', plane: p, target: best, from: cur }); return best; }
+      // an escort's bombers first: an enemy fighter on one of our bombers (air_cag escortPick's save) breaks a fight with
+      // a fighter that is not on our tail
+      if (p.target && cur && cur.alive && best && best !== cur && best.kind === 'fighter' && best.foe && best.foe.alive && best.foe.nation === p.nation && best.foe.kind !== 'fighter' && cur.foe !== p) { s.lock = 0; DS.saveBreak = (DS.saveBreak || 0) + 1; return best; }
       if (s.lock > 0 && cur && cur.alive && d3(p, cur) < 190) return cur;   // the CAP tally is at 130 u (air_cap.js ENGAGE), plus the height
       const q = threat(p, 45);
       if (q && (!slasher(p) || !s.def)) return q;

@@ -186,7 +186,8 @@ window.WW = window.WW || {};
     pl.coverN = idx >> 1;                  // the n-th element of this cover (a full air wing's strike carries several)
     return (pl.cover = idx % 2 ? 'top' : 'close');
   }
-  function strikeBombers(pl) { const L = []; for (const p of WW.world.planes) if (bomber(p) && p.carrier === pl.carrier && (p.state === 'transit' || p.state === 'attack' || p.state === 'return') && WW.dist(p.x, p.z, pl.x, pl.z) < 220) L.push(p); return L; }
+  // its own strike's bombers (another wave of the same carrier wheeling nearby is not its business)
+  function strikeBombers(pl) { const L = []; for (const p of WW.world.planes) if (bomber(p) && p.carrier === pl.carrier && !(pl.wave && p.wave && p.wave !== pl.wave) && (p.state === 'transit' || p.state === 'attack' || p.state === 'return') && WW.dist(p.x, p.z, pl.x, pl.z) < 220) L.push(p); return L; }
   // air_ops fighter(): the escort's foe. Saving a bomber first, then by cover role. Top cover meets fighters coming
   // at the strike (closing on its bombers, or already on one of ours), not every fighter that passes: a passing
   // raid's escort is left alone. Doctrine air.peel (IJN): with an ample escort, ONE element of a strike in transit
@@ -231,6 +232,17 @@ window.WW = window.WW || {};
     if (!best && top) best = passing(pl, B);
     return best;
   }
+  // The escort's orbit stays out of the heavy flak of an enemy battleship / cruiser that is not the strike's target:
+  // the orbit centre is pushed out to FLAK_R (+ the orbit radius) from it (the strike route avoids flak, air_staff.js)
+  const FLAK_R = 110;
+  function clearFlak(pl, cx, cz, t, r) {
+    for (const s of WW.world.ships) {
+      if (!s.alive || s.sinking || s === t || s.nation === pl.nation || (s.type !== 'battleship' && s.type !== 'cruiser')) continue;
+      const d = WW.dist(cx, cz, s.x, s.z), R = FLAK_R + r;
+      if (d < R) { const a = d > 1 ? Math.atan2(cz - s.z, cx - s.x) : Math.atan2(pl.z - s.z, pl.x - s.x); cx = s.x + Math.cos(a) * R; cz = s.z + Math.sin(a) * R; ST.flakClear = (ST.flakClear || 0) + 1; }
+    }
+    return [cx, cz];
+  }
   // air_ops fighter() with a strike target and no foe: formation, then over the target, then home with the bombers.
   function escort(pl, t, dt) {
     cover(pl);
@@ -239,9 +251,12 @@ window.WW = window.WW || {};
     const armed = B.filter(b => b.ordnance && b.state !== 'return');
     if (armed.length && t) { // over the attack: close cover low over the bombers, top cover above the target
       let lx = 0, lz = 0; for (const b of armed) { lx += b.x; lz += b.z; } lx /= armed.length; lz /= armed.length;
-      const cx = top ? t.x : lx, cz = top ? t.z : lz, r = top ? 45 : 25;
+      let cx = top ? t.x : lx, cz = top ? t.z : lz;
+      // top cover circles just outside the target's heavy flak (2.2 x aa.range, in 3D from its height), close cover with the bombers
+      const TY = 56, fr = top && t.stats && t.stats.aa ? t.stats.aa.range * 2.2 + 6 : 0, r = top ? Math.max(45, Math.sqrt(Math.max(0, fr * fr - TY * TY))) : 25;
+      [cx, cz] = clearFlak(pl, cx, cz, t, r);
       const a = Math.atan2(pl.z - cz, pl.x - cx) + 0.5;
-      pl.fly(cx + Math.cos(a) * r, cz + Math.sin(a) * r, top ? 56 : 42, dt, pl.pt.speed * 0.9);
+      pl.fly(cx + Math.cos(a) * r, cz + Math.sin(a) * r, top ? TY : 42, dt, pl.pt.speed * 0.9);
       return true;
     }
     const home = B.filter(b => b.state === 'return' && WW.dist(b.x, b.z, pl.carrier.x, pl.carrier.z) > 130);
