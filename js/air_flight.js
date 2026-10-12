@@ -18,7 +18,7 @@
 window.WW = window.WW || {};
 (function () {
   const CLIMB_K = 0.7, CRUISE_BURN = 0.6, RES_K = 0.15, SKIRT_R = 220, DITCH_HP = 0.2, PAIR_R = 140, FLAK_R = 150, ESC_DONE = 140, MARGIN = 20;
-  const ST = { bingo: 0, diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0, short: 0 };
+  const ST = { opp: 0, oppHome: 0, bingo: 0, diverts: 0, ditchBy: 0, fuelDitch: 0, dmgDitch: 0, noDeck: 0, escorts: 0, fullSpeed: 0, short: 0 };
   const cruise = p => p.pt.cruise || p.pt.speed * 0.8;
   const reserve = p => (p.pt.range / p.pt.speed) * 6 * RES_K;   // the full load as aircraft.js fills it, x RES_K
 
@@ -30,6 +30,26 @@ window.WW = window.WW || {};
   function bingo(p) {
     const c = p.carrier; if (!c || c.isBase || p.phase || p.kind === 'scout' || p.kind === 'flyingboat') return false;
     return p.fuel < WW.dist(p.x, p.z, c.x, c.z) / cruise(p) * CRUISE_BURN * BINGO_K + BINGO_S;   // the fuel the way home really burns
+  }
+  // A bomber climbing out from its field or deck (slow, low, still forming: the most vulnerable it ever is): in the air
+  // in state takeoff (land_air / air_deck climb-out), or below CLIMB_Y within CLIMB_R of its base / carrier and climbing.
+  const CLIMB_Y = 22, CLIMB_R = 200, OPP_R = 130, OPP_DY = 40;
+  function climbing(q) {
+    if (!q.alive || q.removed || q.deathMode || (q.kind !== 'dive' && q.kind !== 'torpedo') || !q.carrier || q.y < 2.5) return false;
+    if (q.state === 'takeoff') return q.rwPh === 'climb' || q.deckPh === 'climb' || q.y > 4;
+    return q.state === 'transit' && q.y < CLIMB_Y && (q.vy || 0) > 0.3 && WW.dist(q.x, q.z, q.carrier.x, q.carrier.z) < CLIMB_R;
+  }
+  // the climbing enemy bomber this fighter should jump (on the side's picture, within OPP_R and OPP_DY), or null
+  function opp(pl) {
+    if (!WW.intel) return null;
+    let best = null, bd = OPP_R;
+    for (const c of WW.intel.enemyPlanes(pl.nation)) {
+      const u = c.unit; if (!u || !climbing(u) || Math.abs(u.y - pl.y) > OPP_DY) continue;
+      const d = WW.dist(pl.x, pl.z, u.x, u.z) - (u.ordnance ? 15 : 0);
+      if (d < bd) { bd = d; best = u; }
+    }
+    if (best) ST.opp++;
+    return best;
   }
   // the climb rate fly() uses to go up (aircraft.js)
   function climbV(p) {
@@ -144,11 +164,16 @@ window.WW = window.WW || {};
           if (this.hp < this.maxHp * 0.5 && WW.dist(this.x, this.z, this.carrier.x, this.carrier.z) > ESC_DONE + 40) pair(this);
         }
         if (this.escortHome && escortFly(this, dt)) return;
+        // a fighter on its way home with fuel and ammunition to spare jumps a bomber climbing out below it
+        if (this.kind === 'fighter' && !this.nightRecall && this.hp > this.maxHp * 0.6 && (this.oppChk = (this.oppChk || 0) - dt) <= 0) {
+          this.oppChk = 1;
+          if (this.fuel > 8 && !bingo(this)) { const u = opp(this); if (u) { this.state = 'transit'; this.foe = u; ST.oppHome++; return; } }
+        }
       }
       return g0.apply(this, arguments);
     };
   }
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airFlight = { climbV, orphan, home, ditchShip, cruise, bingo, stats: ST };
+  WW.airFlight = { climbV, orphan, home, ditchShip, cruise, bingo, climbing, opp, stats: ST };
 })();

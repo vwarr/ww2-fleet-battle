@@ -22,7 +22,7 @@ function install() {
   let S = null, next = 0;
   const fresh = () => { S = { aa: new Map(), climbS: 0, climbNear: 0, climbEng: 0, fBy: 0, ex: [], over: { fighter: [0, 0], bomber: [0, 0], other: [0, 0] }, overF: 0 }; next = 0; };
   fresh(); WW.on('roundStart', fresh);
-  const aaHit = e => { if (e && e.ship && e.ship.isBase && e.target) S.aa.set(e.target, WW.game.roundTime); };
+  const aaHit = e => { if (e && e.ship && (e.ship.isBase || e.ship.isBasePit) && e.target) S.aa.set(e.target, WW.game.roundTime); };
   WW.on('aaHeavyFired', aaHit); WW.on('aaLightFired', aaHit);
   const air = q => q.alive && !q.removed && q.y > 2 && q.state !== 'rollout' && q.state !== 'ditch' && !q.deathMode;
   const climbing = q => (q.kind === 'dive' || q.kind === 'torpedo') && air(q) && q.carrier && (q.state === 'takeoff' || (q.state === 'transit' && q.y < 22 && (q.vy || 0) > 0.3 && WW.dist(q.x, q.z, q.carrier.x, q.carrier.z) < 200));
