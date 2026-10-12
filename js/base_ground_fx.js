@@ -250,6 +250,8 @@ window.WW = window.WW || {};
   }
   // where a crash truck stands by a wreck (plane frame: along, across): a side, the other side, behind, ahead - the
   // first off the taxi network and the revetments and not taken by the other truck (truck i starts its search at i)
+  // a stand-by place on another wreck or hulk (a truck's half length + the plane's half span)
+  const onWreck = (q, own) => (base.wrecks || []).concat(base.hulks || []).some(o => o !== own && Math.hypot(o.x - q.x, o.z - q.z) < CLS(o.v).span / 2 + 2.2);
   function standBy(t, w) {
     if (t.stand && t.stand.w === w) return t.stand;
     const C = CLS(w.v), sd = C.span / 2 + 2.2, ln = C.len / 2 + 2.8, L = base.layout, AL = WW.airfieldLayout;
@@ -260,7 +262,7 @@ window.WW = window.WW || {};
       .sort((p, q) => Math.hypot(p.x - pv.x, p.z - pv.z) - Math.hypot(q.x - pv.x, q.z - pv.z));
     const across = q => { const dx = q.x - pv.x, dz = q.z - pv.z, l2 = dx * dx + dz * dz || 1, f = WW.clamp(((w.x - pv.x) * dx + (w.z - pv.z) * dz) / l2, 0, 1);
       return Math.hypot(pv.x + dx * f - w.x, pv.z + dz * f - w.z) < Math.max(C.span, C.len) / 2 + HW(); };   // the way in runs over the wreck
-    const free = cand.filter(q => taken.indexOf(q.k) < 0), ok = free.filter(q => { const l = L.toL(q.x, q.z); return !across(q) && !AL.onNetwork(L, l.u, l.v, HW() + 0.6) && !inRevet(l.u, l.v); });
+    const free = cand.filter(q => taken.indexOf(q.k) < 0), ok = free.filter(q => { const l = L.toL(q.x, q.z); return !across(q) && !AL.onNetwork(L, l.u, l.v, HW() + 0.6) && !inRevet(l.u, l.v) && !onWreck(q, w); });
     return (t.stand = ok[0] || free[0] || cand[0]);
   }
   function tripPos(t, ahead) {
