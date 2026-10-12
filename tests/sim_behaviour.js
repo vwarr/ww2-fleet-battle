@@ -544,7 +544,7 @@ function install(P) {
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
     const step = spec.light ? 5 : P.SAMPLE, planesSeen = new Set();
-    while (G.state === 'battle' && G.roundTime < cap) {
+    while (G.state === 'battle' && G.roundTime < Math.max(cap, G.deadline ? G.deadline() + 30 : 0)) { // a no-carrier round's limit runs from first contact (main.js deadline)
       __sim.fastForward(step);
       for (const p of WW.world.planes) planesSeen.add(p); // planes lost per nation (balance diagnosis)
       if (spec.light) { if (spec.noStall) G.lastSink = G.roundTime; for (const s of WW.world.ships) if (!isFinite(s.x) || !isFinite(s.z)) R.nan++; continue; }

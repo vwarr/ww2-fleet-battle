@@ -200,14 +200,15 @@ window.WW = window.WW || {};
   //    (or be caught on the way) so the fleets almost always meet. Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
-  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 10, STALE_T = 40, STALE_AIR = 50;
+  const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 8, STALE_T = 35, STALE_AIR = 42;
   //  - the round is not cut off in the middle of a fight: the limit stretches to ACT_T s after the last attack (a hit,
   //    a weapon dropped or fired), at most EXT_MAX s past it; in a round with no carrier on either side (no air war
-  //    to fill the approach) the limit runs from first contact, CONTACT_K x ROUND_TIMEOUT after it (same cap).
+  //    to fill the approach: a battle line steams 330 s to meet) the limit runs from first contact, CONTACT_K x
+  //    ROUND_TIMEOUT after it, at most 2 x EXT_MAX past it.
   //  - a pursuit that is closing (WW.endgame.closing: an enemy gun ship getting nearer the broken side) keeps the
   //    broken side from counting as clear; both sides with nothing to fight a night action with end it ('night',
   //    WW.endgame.nightOut).
-  const ACT_T = 30, CONTACT_K = 0.6;
+  const ACT_T = 30, CONTACT_K = 0.75;
   const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 }, harmT = { USN: 0, IJN: 0 }, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
   WW.on('shipHit', e => { if (e && e.ship && harmT[e.ship.nation] !== undefined) harmT[e.ship.nation] = game.roundTime; });
   const FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 }; // the surface fleets (not PT pickets, submarines or the island's batteries)
@@ -250,7 +251,7 @@ window.WW = window.WW || {};
   function deadline() {
     const T0 = WW.cfg.ROUND_TIMEOUT, MAX = T0 + EXT_MAX;
     let T = Math.max(T0, Math.min(MAX, (game.lastHit || 0) + ACT_T));
-    if (!game.hadCV && game.contactT !== null) T = Math.max(T, Math.min(MAX, game.contactT + CONTACT_K * T0));
+    if (!game.hadCV && game.contactT !== null) T = Math.max(T, Math.min(T0 + 2 * EXT_MAX, game.contactT + CONTACT_K * T0));
     if (WW.fleetCmd) for (const n of ['USN', 'IJN']) {
       const B = WW.fleetCmd.side(n);
       if (B && B.brokenAt && afloat(n, true)) T = Math.max(T, Math.min(MAX, B.brokenAt + PURSUE_T));

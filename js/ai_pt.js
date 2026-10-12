@@ -24,7 +24,7 @@ window.WW = window.WW || {};
     DEEP: { PEN_RUN: 0.95, PEN_ABORT: 1.05, PEN_LURK: 0.85, PEN_HOME: 1.05 }, PEN_HOME: 0.02, // deep: PT_DEEP limits
     GUN_R: 160, GUN_T: 40, GUN_OFF: 18, // skirmish: an enemy PT / surfaced sub this close, at most this long, beam offset
     RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 240, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 70, IDLE_THR: 0.7, BACK_T: 14,
-    STALK: 35, BOLD_GATE: 0.8, BOLD_FLEE: 4, DARK: 0.35 // bold boats: stalk this far outside the guns' reach; run gate x (1 + BOLD_GATE x bold); flee danger
+    STALK: 35, BOLD_GATE: 0.8, BOLD_FLEE: 4, BOLD_DASH: 1.8, DARK: 0.35 // BOLD_DASH: x DASH; bold boats: stalk this far outside the guns' reach; run gate x (1 + BOLD_GATE x bold); flee danger
   };
   // Boldness (PT doctrine): 2 once the enemy's escorts are gone (no fit destroyer of its seen this round: nothing
   // left that hunts PT boats; the side has seen the enemy), 1 in the dark (the PT boat's hour: Guadalcanal, Surigao),
@@ -140,15 +140,16 @@ window.WW = window.WW || {};
   // ptReach), on the boat's own side of it, kept out of the reach of the others; the wing beside its leader.
   function stalkSpot(ship, L) {
     let t = null, bd = 1e9;
-    for (const c of contacts(ship, 45)) {
+    const dark = WW.daylight < PT.DARK;
+    for (const c of contacts(ship, dark ? 180 : 45)) { // in the dark: an old contact too, run down along its course
       if (c.unit.submerged || !VAL[c.unit.type] || c.unit.isBase || c.unit.type === 'submarine') continue;
       const d = WW.dist(ship.x, ship.z, c.x, c.z); if (d < bd) { bd = d; t = c; }
     }
     if (!t) return false;
     const pr = L.pair.p && L.pair.p.ai && L.pair.p.ai.lt;
     if (!L.pair.lead && pr && pr.lx !== undefined && pr.stalk) { L.lx = pr.lx; L.lz = WW.clamp(pr.lz + 15, 20, WW.cfg.MAP_H - 20); L.stalk = true; return true; }
-    const dr = Math.min(age(t), 20), tx = t.x + Math.cos(t.heading) * t.speed * dr, tz = t.z + Math.sin(t.heading) * t.speed * dr;
-    let a = Math.atan2(ship.z - tz, ship.x - tx), r = ptReach(t.unit) + PT.STALK, x = 0, z = 0;
+    const dr = Math.min(age(t), dark ? 60 : 20), tx = t.x + Math.cos(t.heading) * t.speed * dr, tz = t.z + Math.sin(t.heading) * t.speed * dr;
+    let a = Math.atan2(ship.z - tz, ship.x - tx), r = (ptReach(t.unit) + PT.STALK) * (dark ? 0.55 : 1), x = 0, z = 0; // at night closer: the guns cannot see the boat either
     for (let q = 0; q < 7; q++) {
       x = tx + Math.cos(a) * r; z = tz + Math.sin(a) * r;
       if (WW.terrain.isNavigable(x, z, 2.5) && danger(ship.nation, x, z) - ownDps(t.unit, r) <= PT.EX_MAX) break;
@@ -171,10 +172,10 @@ window.WW = window.WW || {};
   }
   function runCheck(ship, c, side, gate) {
     const u = c.unit, n = ship.nation, f = firePoint(ship, u, side);
-    const dash = WW.dist(ship.x, ship.z, f.x, f.z);
-    if (WW.dist(ship.x, ship.z, u.x, u.z) > PT.DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
+    const dash = WW.dist(ship.x, ship.z, f.x, f.z), DASH = PT.DASH * (ship.ai.lt && ship.ai.lt.bold ? PT.BOLD_DASH : 1); // a bold boat runs in from its stalking spot
+    if (WW.dist(ship.x, ship.z, u.x, u.z) > DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
     stats.checks++;
-    if (dash > PT.DASH) { stats.far++; return null; }
+    if (dash > DASH) { stats.far++; return null; }
     if (pen(ship, f.x) > lim(ship, 'PEN_RUN')) { stats.deep++; return null; }
     if (WW.terrain.depthAt(f.x, f.z) < 2) { stats.shoal++; return null; }
     let ex = 0;

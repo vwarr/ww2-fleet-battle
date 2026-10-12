@@ -17,6 +17,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var EXIT = 20;                                  // units from the home edge: off the map (a corner can pin a big hull short of the line)
+  var ESC_PLANE_R = 200;                          // an escaping carrier's planes this close land on her past the edge
   var RESCUE_R = 320, PILOT_R = 220;              // a rescuer is sent from this far (ship survivors / aircrew)
   var WAIT_T = 150, RESCUE_AGE = 240;            // unassigned survivors are lost after WAIT_T s, any after RESCUE_AGE s
   var PICKUP_D = 10, PICKUP_V = 1.6, PICKUP_T = 10; // alongside (aircrew; a hull's survivors: + half its length + 4, clear of the wreck), nearly stopped, this long
@@ -107,8 +108,16 @@ window.WW = window.WW || {};
     stats.lastEsc = { type: s.type, nation: s.nation, t: +WW.game.roundTime.toFixed(0), hp: +(s.hp / s.maxHp).toFixed(2) };
     for (var i = 0; i < tasks.length; i++) if (tasks[i].by === s) release(tasks[i]);
     WW.emit('shipEscaped', s);
-    var P = WW.world.planes; // its planes still up (CAP, a scout) go with it: they land on it past the edge
-    for (var k = 0; k < P.length; k++) if (P[k].carrier === s && P[k].alive && P[k].remove) P[k].remove();
+    // its planes still up: another own deck takes them (they divert there); else those near her land on her past the
+    // edge, and the rest ditch (a destroyer may pick the crews up) rather than vanish in mid-air
+    var P = WW.world.planes, alt = null, ad = 1e18;
+    for (var j = 0; j < WW.world.ships.length; j++) { var c = WW.world.ships[j]; if (c !== s && c.alive && !c.sinking && !c.escaped && c.type === 'carrier' && c.hangar && c.nation === s.nation) { var q = WW.dist2(c.x, c.z, s.x, s.z); if (q < ad) { ad = q; alt = c; } } }
+    for (var k = 0; k < P.length; k++) {
+      var pl = P[k]; if (pl.carrier !== s || !pl.alive) continue;
+      if (alt) { var D = s._deck; if (D && D.lq) { var ix = D.lq.indexOf(pl); if (ix >= 0) D.lq.splice(ix, 1); } pl.carrier = alt; if (pl.state === 'landing') { pl.state = 'return'; pl.deckPh = null; } }
+      else if (WW.dist2(pl.x, pl.z, s.x, s.z) < ESC_PLANE_R * ESC_PLANE_R) { if (pl.remove) pl.remove(); }
+      else if (pl.ditch) pl.ditch();
+    }
     s.remove();
   }
   // Doctrine scuttle: a cripple of a broken side, slowed, with a faster known enemy gun ship within reach.
@@ -197,30 +206,31 @@ window.WW = window.WW || {};
   }
 
   // ---- round watch (main.js reads it to end a round that has nothing left in it) ----
-  //  - pursuit closing: an enemy fit gun ship got nearer (by CLOSE_D in a WATCH_T sample) to a broken side's ships
-  //    within CLOSE_R, in the last CLOSE_T s: the pursuit is biting, the broken side has not got clear yet
+  //  - pursuit closing: an enemy fit gun ship outside its gun range of a broken side's ship, closing at more than
+  //    CLOSE_V u/s, that will have her in range within BITE_T s (in the last CLOSE_T s): the pursuit is about to bite,
+  //    the broken side has not got clear yet (a stern chase that gains a knot an hour is no battle)
   //  - subs closing: a submarines-only side got nearer to the enemy (main.js's stall clock waits while it does)
-  //  - night out: dark with no flying for NIGHT_AHEAD s, and neither side has a ship to fight a night action with
-  //    (a fit gun ship or a PT boat): both retire for the night after NIGHT_T s
-  var WATCH_T = 5, CLOSE_D = 4, CLOSE_R = 650, CLOSE_T = 12, NIGHT_AHEAD = 150, NIGHT_T = 20;
-  var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, NIGHT_FIGHT = { battleship: 1, cruiser: 1, destroyer: 1, pt: 1 };
+  //  - night out: dark with no flying for NIGHT_AHEAD s, and neither side has business in the dark: a ship to fight a
+  //    night action with (a fit gun ship, a PT boat with torpedoes left) and an enemy fleet ship (carrier, battleship,
+  //    cruiser, destroyer) to fight it against (a battleship does not hunt spent PT boats in the dark): both retire for
+  //    the night after NIGHT_T s
+  var WATCH_T = 5, BITE_T = 25, CLOSE_V = 0.3, CLOSE_T = 12, CLOSE_D = 4, NIGHT_AHEAD = 150, NIGHT_T = 20;
+  var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var W8 = null;
-  function watchReset() { W8 = { t: 0, best: { USN: 1e9, IJN: 1e9 }, closeT: { USN: -1e9, IJN: -1e9 }, subBest: 1e9, subT: 0, nightT: 0 }; }
+  function watchReset() { W8 = { t: 0, gap: new Map(), closeT: { USN: -1e9, IJN: -1e9 }, subBest: 1e9, subT: 0, nightT: 0 }; }
   function fitGun(s) { return s.alive && !s.sinking && !s.escaped && GUN[s.type] && s.hp >= WW.fleetGroups.CRIP * s.maxHp; }
   function watch(dt) {
     var rt = WW.game.roundTime, S = WW.world.ships, i, k;
     W8.nightT = nightDead() ? W8.nightT + dt : 0;
     W8.t -= dt; if (W8.t > 0) return;
     W8.t = WATCH_T;
-    for (var q = 0; q < NATIONS.length; q++) {
-      var n = NATIONS[q], dm = 1e9;
-      if (!broken(n)) { W8.best[n] = 1e9; continue; }
-      for (i = 0; i < S.length; i++) {
-        var s = S[i]; if (!s.alive || s.sinking || s.nation !== n || s.type === 'submarine') continue;
-        for (k = 0; k < S.length; k++) if (S[k].nation !== n && fitGun(S[k])) dm = Math.min(dm, WW.dist(s.x, s.z, S[k].x, S[k].z));
-      }
-      if (dm < CLOSE_R && dm < W8.best[n] - CLOSE_D) W8.closeT[n] = rt;
-      W8.best[n] = dm < W8.best[n] ? dm : Math.min(W8.best[n] + 2 * CLOSE_D, dm); // opening: the next closing counts again
+    for (k = 0; k < S.length; k++) { // each fit gun ship hunting a broken side: its gap to gun range, and how it changes
+      var e = S[k], n = WW.enemyOf(e.nation); if (!fitGun(e) || !broken(n)) { W8.gap.delete(e.id); continue; }
+      var dm = 1e9;
+      for (i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && !s.sinking && s.nation === n && s.type !== 'submarine') dm = Math.min(dm, WW.dist(s.x, s.z, e.x, e.z)); }
+      var gap = dm - e.stats.guns[0].range, g0 = W8.gap.get(e.id), v = g0 === undefined ? 0 : (g0 - gap) / WATCH_T;
+      W8.gap.set(e.id, gap);
+      if (gap > 0 && v > CLOSE_V && gap / v < BITE_T) W8.closeT[n] = rt;
     }
     var sm = 1e9; // a submarines-only side: its nearest boat to an enemy ship
     for (i = 0; i < S.length; i++) {
@@ -233,9 +243,13 @@ window.WW = window.WW || {};
   function subOnly(n) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].nation === n && S[i].type !== 'submarine') return false; return true; }
   function nightDead() {
     var D = WW.dayNight; if (!D || D.canFly() || D.level(D.roundT() + NIGHT_AHEAD) >= D.FLY_MIN) return false;
-    var S = WW.world.ships, has = {};
-    for (var i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && !s.sinking && !s.escaped && !s.isBase && NIGHT_FIGHT[s.type] && (s.type === 'pt' || fitGun(s))) has[s.nation] = true; }
-    return !has.USN && !has.IJN;
+    var S = WW.world.ships, fights = {}, fleet = {};
+    for (var i = 0; i < S.length; i++) {
+      var s = S[i]; if (!s.alive || s.sinking || s.escaped || s.isBase) continue;
+      if (fitGun(s) || (s.type === 'pt' && (!WW.supply || WW.supply.torpLeft(s) > 0))) fights[s.nation] = true;
+      if (FLEET[s.type]) fleet[s.nation] = true;
+    }
+    return !(fights.USN && fleet.IJN) && !(fights.IJN && fleet.USN);
   }
 
   function update(dt) {
@@ -244,8 +258,9 @@ window.WW = window.WW || {};
     var now = WW.time.now, W = WW.cfg.MAP_W, ships = WW.world.ships;
     if (!(WW.game && WW.game.noRetire)) for (var i = 0; i < ships.length; i++) {
       var s = ships[i];
-      if (!s.alive || s.sinking || !s.escapeEdge) continue;
-      if (s.escapeEdge < 0 ? s.x <= EXIT : s.x >= W - EXIT) escape(s);
+      if (!s.alive || s.sinking) continue;
+      var edge = s.escapeEdge || (s.ai && s.ai.withdrawing && s.type !== 'submarine' && s.type !== 'pt' ? (s.nation === 'USN' ? -1 : 1) : 0); // a cripple sent home (ships_ai.js) leaves too: no hulk parked on the edge
+      if (edge && (edge < 0 ? s.x <= EXIT : s.x >= W - EXIT)) escape(s);
     }
     pickup(dt);
     tick -= dt;
