@@ -185,7 +185,7 @@ window.WW = window.WW || {};
   // that overran it, with its carrier slow, turn round every ~25 s (sanity S8c: circling in place).
   // Speed: the carrier's plus d / KEEP_T (proportional, no step), so it closes without overrunning.
   var ARC_STEP = 0.7; // rad: the waypoint ahead round the ring when the station is across it
-  var KEEP_IN = 1, KEEP_OUT = 2, KEEP_T = 12, XTRACK = 0.05, XMAX = 0.6;
+  var KEEP_IN = 1, KEEP_OUT = 2, KEEP_T = 12, XTRACK = 0.05, XMAX = 0.6, GUIDE_MIN = 0.25;
   function ringKeep(ship, o, B) {
     var p = ringPoint(o); if (!p) return false;
     var cv = o.ringCv, ch = Math.cos(cv.heading), sh = Math.sin(cv.heading), lead = Math.max(2, cv.speed) * 4, L = ship.stats.length;
@@ -296,7 +296,7 @@ window.WW = window.WW || {};
       // a ship ahead of a slow guide slows down instead of turning round to re-cross its station)
       var along = (p.x - ship.x) * ch + (p.z - ship.z) * sh, cross = -(p.x - ship.x) * sh + (p.z - ship.z) * ch;
       want = g.h + WW.clamp(cross * XTRACK, -XMAX, XMAX) + zig;
-      ship.throttle = WW.clamp((g.v + along / KEEP_T) / ship.stats.speed, 0.1, 1);
+      ship.throttle = WW.clamp((g.v + along / KEEP_T) / ship.stats.speed, GUIDE_MIN, 1); // steerage way: a big ship lying to under a guide that has stopped and swings was 'stuck'
     }
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
     return true;
