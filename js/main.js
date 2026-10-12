@@ -197,7 +197,8 @@ window.WW = window.WW || {};
   //    (a stern chase at equal speed out of gun reach is no battle; STALE_AIR while the pursuer has a carrier that can
   //    fly: time to spot and launch a pursuit strike) and no strike bound for it. Only once the surface fleets have
   //    met (game.metT: the first shell between their ships): a side broken by the air war alone must run for home
-  //    (or be caught on the way) so the fleets almost always meet. Not with game.noRetire (tests).
+  //    (or be caught on the way) so the fleets almost always meet; unless it has no gun ship left to meet them with
+  //    (a lone carrier). Not with game.noRetire (tests).
   //  - the time limit, ROUND_TIMEOUT, is stretched for a pursuit: while a broken side still has ships afloat it
   //    is at least PURSUE_T s after the side broke, at most EXT_MAX s past the limit. Then tonnage decides ('time').
   const PURSUE_T = 150, EXT_MAX = 150, RETIRE_MIN = 40, CLEAR_R = 300, CLEAR_AIR = 400, CLEAR_T = 8, STALE_T = 35, STALE_AIR = 42;
@@ -238,11 +239,13 @@ window.WW = window.WW || {};
   }
   function gotClear(n, dt) {
     const B = WW.fleetCmd && WW.fleetCmd.side(n);
-    if (game.noRetire || game.metT === null || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
+    if (game.noRetire || (game.metT === null && gunAfloat(n)) || !B || !B.brokenAt || B.posture !== 'withdraw' || game.roundTime - B.brokenAt < RETIRE_MIN || !afloat(n, true) || !clear(n) || (WW.endgame && WW.endgame.closing(n))) { clearT[n] = 0; return false; }
     clearT[n] += dt;
     return clearT[n] >= CLEAR_T;
   }
   const MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
+  // the fleets-met gate on the retire (above) holds only a side that still has a gun ship to meet the enemy with
+  const gunAfloat = n => WW.world.ships.some(s => s.alive && !s.sinking && s.nation === n && GUNS[s.type]);
   const afloat = (n, major) => WW.world.ships.reduce((k, s) => k + (s.alive && s.nation === n && (!major || MAJOR[s.type]) ? 1 : 0), 0);
   function out(n) {
     if (game.noRetire || !game.hadMajor[n]) return afloat(n, false) === 0; // noRetire: tests (the ASW hunt runs on)

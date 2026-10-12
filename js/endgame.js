@@ -10,8 +10,8 @@
 //  - Hulks (either navy): a ship below HULK_HP that the enemy has not hit for HULK_QUIET s, HULK_T s after she was
 //    wrecked, is given up: the nearest own destroyer with torpedoes (not in a gun fight) closes to TORP_D and sends her
 //    down with a torpedo (ship.scuttle, ai_endgame.js steers; the USN scuttled Lexington, Hornet, Yorktown's
-//    screen tried; the IJN Hiryu, Akagi). With no destroyer to do it, flooding finishes her FOUNDER_T s after she was
-//    wrecked (FOUNDER_HP of her hp a second): no hulk drifts on to the time limit.
+//    screen tried; the IJN Hiryu, Akagi). Unless one is already on the way, flooding finishes her FOUNDER_T s after
+//    she was wrecked (FOUNDER_HP of her hp a second; a wrecked PT boat too): no hulk drifts on to the time limit.
 //  - Stats per round (WW.endgame.stats), reset on roundStart.
 window.WW = window.WW || {};
 (function () {
@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   var CREW = { fighter: 1, dive: 2, torpedo: 3, scout: 2, flyingboat: 8 };
   var SCUT_T = 4, SCUT_P = 0.08, SCUT_HP = 0.25, SCUT_K = 0.6, SCUT_GRACE = 30, SCUT_FAST = 1.3; // check interval, chance per check,
                                                   // hp share and speedK below which, s after the break, pursuer speed ratio
-  var HULK_HP = 0.15, HULK_T = 40, HULK_QUIET = 20, SCUT_R = 340, TORP_D = 45, TORP_CD = 25, FOUNDER_T = 110, FOUNDER_HP = 0.006;
+  var HULK_HP = 0.15, HULK_T = 20, HULK_QUIET = 12, SCUT_R = 340, TORP_D = 45, TORP_CD = 20, FOUNDER_T = 35, FOUNDER_HP = 0.012;
   var NATIONS = ['USN', 'IJN'];
   var MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var tasks = [], nextId = 1, tick = 0, scutT = 0, broke = {}, stats = null, last = {};
@@ -146,13 +146,15 @@ window.WW = window.WW || {};
     for (i = 0; i < ships.length; i++) {
       s = ships[i];
       if (s.scuttle && (!s.alive || s.escaped || !s.scuttle.alive || s.scuttle.sinking || engaged(s))) { s.scuttle.scuttleBy = null; s.scuttle = null; } // done, or called away to fight
-      if (!s.alive || s.sinking || s.isBase || s.type === 'submarine' || s.type === 'pt') continue;
+      if (!s.alive || s.sinking || s.isBase || s.type === 'submarine') continue;
       if (s.hp >= HULK_HP * s.maxHp) { s.hulkAt = 0; continue; }
       if (!s.hulkAt) s.hulkAt = now;
+      var sb = s.scuttleBy, onWay = sb && sb.alive && sb.scuttle === s && WW.dist2(sb.x, sb.z, s.x, s.z) < 120 * 120;
+      if (now - s.hulkAt > FOUNDER_T && !onWay) s.founder = true;
+      if (s.type === 'pt') continue;
       if (now - s.hulkAt < HULK_T || now - (s.egHitT || 0) < HULK_QUIET) continue; // the enemy may still finish her
       var by = s.scuttleBy;
       if (!by || !by.alive || by.scuttle !== s) { s.scuttleBy = by = scuttler(s); if (by) by.scuttle = s; }
-      if (!by && now - s.hulkAt > FOUNDER_T) s.founder = true;
     }
   }
   function scuttler(h) {
