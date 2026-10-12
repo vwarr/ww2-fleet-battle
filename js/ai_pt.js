@@ -23,11 +23,26 @@ window.WW = window.WW || {};
     PEN_RUN: 0.12, PEN_ABORT: 0.16, PEN_LURK: -0.06, // midline limits (x half-map)
     DEEP: { PEN_RUN: 0.95, PEN_ABORT: 1.05, PEN_LURK: 0.85, PEN_HOME: 1.05 }, PEN_HOME: 0.02, // deep: PT_DEEP limits
     GUN_R: 160, GUN_T: 40, GUN_OFF: 18, // skirmish: an enemy PT / surfaced sub this close, at most this long, beam offset
-    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 90, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 40, IDLE_THR: 0.9
+    RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 90, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 70, IDLE_THR: 0.7, BACK_T: 14,
+    STALK: 35, BOLD_GATE: 0.8, BOLD_FLEE: 4, BOLD_DASH: 1.8, DARK: 0.35 // BOLD_DASH: x DASH; bold boats: stalk this far outside the guns' reach; run gate x (1 + BOLD_GATE x bold); flee danger
   };
+  // Boldness (PT doctrine): 2 once the enemy's escorts are gone (no fit destroyer of its seen this round: nothing
+  // left that hunts PT boats; the side has seen the enemy), 1 in the dark (the PT boat's hour: Guadalcanal, Surigao),
+  // else 0. A bold boat may run deep (the PT_DEEP limits), stalks the enemy's heavy ships just outside the reach of
+  // their guns instead of lurking at home, takes any heavy ship for a target and accepts more fire on the run (a
+  // standoff of PT boats and a battleship until the time limit was no battle).
+  function bold(ship) {
+    const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null;
+    if (!B || !B.foeSeen) return 0;
+    let seenAny = B.foeSeen.size > 0, dd = false;
+    B.foeSeen.forEach(u => { if (u.type === 'destroyer' && u.alive && !u.sinking && !u.escaped && u.hp >= WW.fleetGroups.CRIP * u.maxHp) dd = true; });
+    if (!seenAny) seenAny = contacts(ship, 60).some(c => !c.unit.submerged);
+    if (seenAny && !dd) return 2;
+    return WW.daylight < PT.DARK ? 1 : 0;
+  }
   // Midline limits: PT_DEEP (the commander's ptDeep: no enemy gun ship seen this round, and a carrier known or a long
   // search) lets the boats run deep; the danger field still steers them.
-  const deepOK = ship => { const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null; return !!(B && (B.ptDeep || picketing(ship, B))); };
+  const deepOK = ship => { const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(ship.nation) : null; return !!(B && (B.ptDeep || picketing(ship, B) || (ship.ai.lt && ship.ai.lt.bold))); };
   // ---- pickets (the air-war hold and the approach) ----
   // PICKET: SEE the share of its own sighting range of the shadowed ship (intel.js SEEN x EYE.pt) a picket keeps
   // from it, ARC (rad) round from the line home where the first pair sits and LANE (rad) between pairs (each further
@@ -93,7 +108,9 @@ window.WW = window.WW || {};
     const a = ship.ai, o = order(ship), W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, n = ship.nation;
     noteGhosts(ship);
     const B = WW.fleetCmd && WW.fleetCmd.side ? WW.fleetCmd.side(n) : null;
+    L.stalk = false;
     if (picketing(ship, B)) return picketSpot(ship, B, L);
+    if (L.bold && ship.hp >= ship.maxHp * 0.35 && stalkSpot(ship, L)) return;
     // the commander's spot for this boat (fleet_search.js: one per pair, spread out), unless it is hot now
     if (o && o.spot && ship.hp >= ship.maxHp * 0.35 && danger(n, o.spot.x, o.spot.z) <= 0.3 && !ghostNear(ship, o.spot.x, o.spot.z)) { L.lx = o.spot.x; L.lz = o.spot.z; return; }
     let bx, bz;
@@ -119,6 +136,28 @@ window.WW = window.WW || {};
     if (!L.pair.lead && pr && pr.lx !== undefined) { L.lx = pr.lx; L.lz = WW.clamp(pr.lz + 15, 20, Hh - 20); return; }
     L.lx = best.x; L.lz = best.z;
   }
+  // A bold boat's spot: STALK outside the reach of the nearest known heavy ship (the guns that fire on a PT boat,
+  // ptReach), on the boat's own side of it, kept out of the reach of the others; the wing beside its leader.
+  function stalkSpot(ship, L) {
+    let t = null, bd = 1e9;
+    const dark = WW.daylight < PT.DARK;
+    for (const c of contacts(ship, dark ? 180 : 45)) { // in the dark: an old contact too, run down along its course
+      if (c.unit.submerged || !VAL[c.unit.type] || c.unit.isBase || c.unit.type === 'submarine') continue;
+      const d = WW.dist(ship.x, ship.z, c.x, c.z); if (d < bd) { bd = d; t = c; }
+    }
+    if (!t) return false;
+    const pr = L.pair.p && L.pair.p.ai && L.pair.p.ai.lt;
+    if (!L.pair.lead && pr && pr.lx !== undefined && pr.stalk) { L.lx = pr.lx; L.lz = WW.clamp(pr.lz + 15, 20, WW.cfg.MAP_H - 20); L.stalk = true; return true; }
+    const dr = Math.min(age(t), dark ? 60 : 20), tx = t.x + Math.cos(t.heading) * t.speed * dr, tz = t.z + Math.sin(t.heading) * t.speed * dr;
+    let a = Math.atan2(ship.z - tz, ship.x - tx), r = (ptReach(t.unit) + PT.STALK) * (dark ? 0.55 : 1), x = 0, z = 0; // at night closer: the guns cannot see the boat either
+    for (let q = 0; q < 7; q++) {
+      x = tx + Math.cos(a) * r; z = tz + Math.sin(a) * r;
+      if (WW.terrain.isNavigable(x, z, 2.5) && danger(ship.nation, x, z) - ownDps(t.unit, r) <= PT.EX_MAX) break;
+      a += (q % 2 ? -1 : 1) * (q + 1) * 0.35;
+    }
+    L.lx = WW.clamp(x, 40, WW.cfg.MAP_W - 40); L.lz = WW.clamp(z, 40, WW.cfg.MAP_H - 40); L.stalk = true;
+    return true;
+  }
   // A target of opportunity: { c, fx, fz, score } or null. Isolated, crippled, slow, or a DD / CA near land,
   // within a short dash, with acceptable danger along the run from ships other than the target.
   function firePoint(ship, u, side) {
@@ -133,10 +172,10 @@ window.WW = window.WW || {};
   }
   function runCheck(ship, c, side, gate) {
     const u = c.unit, n = ship.nation, f = firePoint(ship, u, side);
-    const dash = WW.dist(ship.x, ship.z, f.x, f.z);
-    if (WW.dist(ship.x, ship.z, u.x, u.z) > PT.DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
+    const dash = WW.dist(ship.x, ship.z, f.x, f.z), DASH = PT.DASH * (ship.ai.lt && ship.ai.lt.bold ? PT.BOLD_DASH : 1); // a bold boat runs in from its stalking spot
+    if (WW.dist(ship.x, ship.z, u.x, u.z) > DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
     stats.checks++;
-    if (dash > PT.DASH) { stats.far++; return null; }
+    if (dash > DASH) { stats.far++; return null; }
     if (pen(ship, f.x) > lim(ship, 'PEN_RUN')) { stats.deep++; return null; }
     if (WW.terrain.depthAt(f.x, f.z) < 2) { stats.shoal++; return null; }
     let ex = 0;
@@ -157,8 +196,8 @@ window.WW = window.WW || {};
       for (const g of guns) if (g !== c && WW.dist(g.x, g.z, c.x, c.z) < 75) { iso = false; break; }
       const crip = u.hp < u.maxHp * 0.5, slow = u.stats.speed < 6 || u.speed < 2.5;
       const land = (u.type === 'destroyer' || u.type === 'cruiser') && landNear(u.x, u.z, 30);
-      if (!(iso || crip || land || slow)) continue;
-      const gate = PT.EX_MAX * (crip ? 1.6 : 1) * (land ? 1.4 : 1) * (iso ? 1.2 : 1);
+      if (!(iso || crip || land || slow || (L.bold && u.type !== 'destroyer'))) continue;
+      const gate = PT.EX_MAX * (crip ? 1.6 : 1) * (land ? 1.4 : 1) * (iso ? 1.2 : 1) * (1 + PT.BOLD_GATE * (L.bold || 0));
       // the beam on our side, else the far beam (away from a consort), whichever run is clearer
       const s0 = sideOf(ship, u, L.pair.lead), r0 = runCheck(ship, c, s0, gate), r1 = runCheck(ship, c, -s0, gate);
       const r = r0 && (!r1 || r0.ex <= r1.ex + 2) ? r0 : r1, side = r === r0 ? s0 : -s0;
@@ -187,7 +226,7 @@ window.WW = window.WW || {};
   function ptReach(u) {
     const G = u.stats.guns, W = WW.shipAI.ROLE_W[u.type]; let r = 0;
     for (let k = 0; k < G.length; k++) if (k > 0 || !W || W.pt > 0) r = Math.max(r, G[k].range);
-    return r || G[0].range;
+    return r || (G[0] ? G[0].range : 0);
   }
   function nearestBig(ship) { // nearest known enemy gun ship that out-guns a PT (flee from it)
     let b = null, bd = 1e9, near = null, nd = 1e9;
@@ -225,14 +264,14 @@ window.WW = window.WW || {};
     const jink = Math.sin(T * 1.7 + ship.id) * 0.45;
     L.decT -= dt;
     const decide = L.decT <= 0;
-    if (decide) { L.decT = 0.5; L.pair = partner(ship); }
+    if (decide) { L.decT = 0.5; L.pair = partner(ship); L.bold = bold(ship); if (!L.bold) L.stalk = false; }
     if (L.state === 'run') {
       const u = L.tgt, c = u && u.alive && WW.intel ? WW.intel.known(n, u) : null;
       let abort = !c || age(c) > 6 || T - L.t0 > PT.RUN_MAX || pen(ship, ship.x) > lim(ship, 'PEN_ABORT') || ship.hp < L.hp0 - ship.maxHp * 0.3;
       if (!abort && decide) {
         // abort when the danger on the run spikes or a destroyer turns toward us
         const lx = ship.x + Math.cos(ship.heading) * 20, lz = ship.z + Math.sin(ship.heading) * 20;
-        if (danger(n, lx, lz) - ownDps(u, WW.dist(lx, lz, u.x, u.z)) > PT.EX_MAX * 2.2) abort = true;
+        if (danger(n, lx, lz) - ownDps(u, WW.dist(lx, lz, u.x, u.z)) > PT.EX_MAX * 2.2 * (1 + PT.BOLD_GATE * (L.bold || 0))) abort = true;
         for (const q of contacts(ship, 3)) {
           if (abort || q.unit === u || q.unit.type !== 'destroyer') continue;
           const d = WW.dist(ship.x, ship.z, q.x, q.z);
@@ -304,17 +343,17 @@ window.WW = window.WW || {};
       if (g && (!pk || WW.dist(ship.x, ship.z, g.x, g.z) < PICKET.CLOSE)) { L.state = 'gun'; L.tgt = g; L.t0 = T; L.hp0 = ship.hp; ship.target = g; return; } // a picket fights only what is on it
     }
     // inside known gun reach with no run worth making: break off
-    if (decide && nb && (nb.margin < (L.hot ? 60 : pk ? 15 : 25) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG * 1.5 : PT.FLEE_DG))) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
+    if (decide && nb && (nb.margin < (L.hot ? 60 : pk ? 15 : L.stalk ? 10 : 25) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG * 1.5 : L.stalk ? PT.BOLD_FLEE : PT.FLEE_DG))) { L.state = 'flee'; L.t0 = T; L.from = nb.c.unit; return; }
     // A heavy ship we lost sight of may have closed into gun reach (its ghost): no patrol legs, full speed to the
     // spot (lurkSpot keeps it out of ghost reach), so a PT never idles where an unseen battleship can range it.
-    if (decide) L.hot = ghostNear(ship, ship.x, ship.z) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG : 0.3); // a picket works inside the edge of it
+    if (decide) L.hot = !L.stalk && (ghostNear(ship, ship.x, ship.z) || danger(n, ship.x, ship.z) > (pk ? PICKET.DG : 0.3)); // a picket works inside the edge of it; a stalker on purpose
     // At the spot: a patrol leg stern-on to the enemy (a break-off then needs no turn), and a slower leg back.
     const d = WW.dist(ship.x, ship.z, L.lx, L.lz);
     // ARRIVE: the arrival radius is ~1.5 x the boat's turning circle at speed (11 / 1.2 = 9 u): inside 8 it could never
     // get there and orbited the spot (Fable F6: PT boats spinning)
     const ARRIVE = 16;
     if (L.hot && d > ARRIVE) { L.leg = 'fwd'; L.legT = T; }
-    if (L.leg === 'back' && (d > PT.IDLE_R || T - L.legT > 8)) { L.leg = 'fwd'; L.legT = T; } // (land astern: the timer turns it back)
+    if (L.leg === 'back' && (d > PT.IDLE_R || T - L.legT > PT.BACK_T)) { L.leg = 'fwd'; L.legT = T; } // (land astern: the timer turns it back)
     else if (L.leg !== 'back' && (d < ARRIVE || (d < 25 && T - L.legT > 25))) { L.leg = 'back'; L.legT = T; }
     if (L.leg === 'back') {
       const ec = WW.intel && WW.intel.centre ? WW.intel.centre(n) : null;

@@ -65,7 +65,8 @@ window.WW = window.WW || {};
     }).sort((a, b) => score(b) - score(a) || a.t - b.t).slice(0, 5).sort((a, b) => a.t - b.t);
     const how = d.reason === 'kill' ? (d.loser ? 'the ' + d.loser + ' surface fleet destroyed' : 'the enemy fleet annihilated')
       : d.reason === 'retire' ? (d.loser || 'the enemy') + ' fleet retired from the action'
-      : d.reason === 'stall' ? 'only submarines left; decided on tonnage' : 'the action broken off at dusk; decided on tonnage';
+      : d.reason === 'stall' ? 'only submarines left; decided on tonnage' : d.reason === 'lull' ? 'the raid spent, the action over; decided on tonnage'
+      : d.reason === 'night' ? 'both sides retired for the night; decided on tonnage' : 'the action broken off at dusk; decided on tonnage';
     return { winner: d.winner, how, round: d.round, t0: D ? D.clock(0) : '', t1: D ? D.clock() : '', sides: [side('USN'), side('IJN')], key };
   }
 

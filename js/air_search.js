@@ -206,14 +206,17 @@ window.WW = window.WW || {};
     if (so && so.target && !so.hold && !a.soPrev && a.strikeT > GO_T) a.strikeT = GO_T;
     a.soPrev = !!(so && so.target);
     a.srchWant = rt > START_T && (B.posture === 'search' || B.searchFor > SEARCH_AGE) && !so;
+    // the enemy carrier not on the plot: a PT picket, a submarine or a screen ship found does not end the hunt for it
+    // (Fable audit F28; Midway: the searches went on until the carriers were found). One searcher per carrier.
+    a.cvHunt = !a.srchWant && rt > START_T && !(so && so.target && so.target.type === 'carrier') && !WW.intel.enemyShips(cv.nation).some(c => c.unit && c.unit.alive && !c.unit.sinking && !c.unit.isBase && (WW.intel.typeOf ? WW.intel.typeOf(c) : c.unit.type) === 'carrier');
     // pursuit (or the enemy about to break, air_ops.js beaten): the enemy's carrier lost (no contact in PU_AGE s): one searcher down its escape route (the sectors in
     // front of the enemy's home edge get the pursuit priority, fleet_cmd.js), a spare fighter before a bomber
     const pu = (B.posture === 'pursue' || (WW.airOps.beaten && WW.airOps.beaten(B))) && !WW.intel.enemyShips(cv.nation, { fresh: PU_AGE }).some(c => c.unit && c.unit.alive && c.unit.type === 'carrier');
-    if (!(a.srchWant || pu) || a.srchT > 0) return;
+    if (!(a.srchWant || pu || a.cvHunt) || a.srchT > 0) return;
     a.srchT = CV_GAP;
     const mine = WW.world.planes.filter(p => p.alive && p.carrier === cv && p.search && p.state !== 'return').length + a.queue.filter(q => q.search).length;
     if (mine >= (a.srchWant ? PER_CV : 1) || searchers(cv.nation) + a.queue.filter(q => q.search).length >= WANT) return;
-    const kind = !a.srchWant && hg.fighter > 2 ? 'fighter' : hg.dive > 0 ? 'dive' : hg.torpedo > 0 ? 'torpedo' : hg.fighter > 3 ? 'fighter' : null;
+    const kind = !a.srchWant && !a.cvHunt && hg.fighter > 2 ? 'fighter' : hg.dive > 0 ? 'dive' : hg.torpedo > 0 ? 'torpedo' : hg.fighter > 3 ? 'fighter' : null;
     if (!kind) return;
     a.queue.push({ kind, target: null, search: true });
   }

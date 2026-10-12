@@ -144,11 +144,20 @@ window.WW = window.WW || {};
   // 3-plane shotai), one per 9 fighters of the air group (a full 1942 group: 3 sections / 2 shotai, 6 fighters), twice
   // that once an enemy carrier is known (its strike is coming), three times (at least 4) when enemy planes are detected inside 350 (USN carrier radar reaches 400, intel.js
   // SEE_PLANE_NATION; IJN lookouts see ~170, so the IJN scrambles later). air_boss.js keeps it relieved by elements.
+  // One section only once the enemy air group is spent, or as the light fails; none in the last CAP_DARK s of light.
+  const CAP_DUSK = 120, CAP_DARK = 45;   // s of light left: the CAP down to one section, then all down
   function capWanted(ship) {
     let near = 0;
     if (WW.intel) for (const c of WW.intel.enemyPlanes(ship.nation)) if (c.unit && c.unit.kind !== 'scout' && c.unit.kind !== 'flyingboat' && WW.dist(ship.x, ship.z, c.x, c.z) < 350) near++;
     const elem = ship.nation === 'IJN' ? 3 : 2, F = ship.wingF || (ship.hangar ? ship.hangar.fighter : 0), base = elem * Math.max(1, Math.round(F / 9));
     if (near) return F >= 14 ? base * 3 : 4;   // a raid on the plot: everything that can fly (Santa Cruz: 38 Wildcats over two carriers)
+    // the light failing (daylight.js lightLeft): the CAP comes down to one section, then lands before dark
+    const LL = WW.dayNight && WW.dayNight.lightLeft ? WW.dayNight.lightLeft() : Infinity;
+    if (LL < CAP_DARK) return 0;
+    if (LL < CAP_DUSK) return elem;
+    // the enemy air group spent (air_staff.js airSpent: none seen for a minute, its carriers bare or crippled): one
+    // standing section against a straggler or a shadower, the rest land
+    if (!ship.isBase && WW.staff && WW.staff.airSpent && WW.staff.airSpent(ship.nation)) return elem;
     // an enemy carrier on the plot: its counterstrike is coming, so the standing CAP doubles (Midway, Santa Cruz)
     if (F >= 14 && WW.airBoss && WW.airBoss.cvContact && WW.airBoss.cvContact(ship.nation, ship.x, ship.z)) return base * 2;
     return base;

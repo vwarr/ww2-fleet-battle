@@ -12,7 +12,7 @@ window.WW = window.WW || {};
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
-  var OUT_SHARE = 0.35, OUT_K = 0.4; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
+  var OUT_SHARE = 0.35, OUT_K = 0.4, BARE_K = 2; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
   // Air cover lost (balance pass 2): a side that brought carriers and has none fit left (sunk or below CRIP), facing
   // an enemy carrier that can fly now (daylight), breaks off once the fleets have met (as the outfought rule). 1942:
   // Yamamoto turned the Main Body back at Midway rather than meet Spruance's air at dawn without cover; Kondo after
@@ -25,7 +25,14 @@ window.WW = window.WW || {};
   var VALUE = { carrier: 10, battleship: 9, cruiser: 5, destroyer: 2.5, submarine: 2, pt: 1 };      // what a kill is worth
   var ENGAGE_AGE = 30, POST_DWELL = 15; // engage: only on contacts this fresh; a picture posture holds this long
   var ENGAGE_D = 260;   // nearest known enemy closer than this from any own ship (not the PT pickets far out ahead): engage, else approach
-  var LATE = 0.55;      // share of ROUND_TIMEOUT after which a stronger side presses
+  // A stronger side presses "late": PRESS_MET s after the fleets met (the gun fight has shown who is stronger), or
+  // PRESS_CONTACT s after first contact, or as the light goes (the day side wants it settled before dark; night_ops
+  // makes the night-fighting side readier after dark). Not the round clock: an admiral did not know when the game ends
+  // (Fable F13). B.timeLeft stays for the air staff's own use.
+  var PRESS_MET = 30, PRESS_CONTACT = 300, DUSK_AHEAD = 90;
+  // A side that turns away on the strength picture (posture withdraw, not broken) for WD_BREAK s after the fleets met
+  // breaks off for real (brokenAt: ai_endgame.js takes it home) rather than idling in a 'withdraw' caption (Fable F15).
+  var WD_BREAK = 45;
   // strikes: on contacts this fresh and within STRIKE_R of the carrier (0.6 W, ~6x a big ship's visual range), else
   // anything known out to STRIKE_FAR (the whole width: the 1942 strikes flew 8-12x visual range); DIST_K: the
   // distance at which a target's score halves (it scales with the map so near and far keep the old balance)
@@ -51,7 +58,7 @@ window.WW = window.WW || {};
   function newSide(n) {
     var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
       strength: { own: 0, known: 0, ratio: 1 }, fit: 0, hadFit: false, brokenAt: 0, doctrine: WW.fleetGroups.rollDoctrine(n),
-      startTons: -1, fitTons: 0, foeSeen: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0, airWar: false, closeAt: 0, holdEnd: 0, foeCV: new Map(),
+      startTons: -1, fitTons: 0, foeSeen: new Map(), foeLook: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0, airWar: false, closeAt: 0, holdEnd: 0, foeCV: new Map(),
       axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
       groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
@@ -87,7 +94,7 @@ window.WW = window.WW || {};
     B.enemyCentre = ew ? { x: ex / ew, z: ez / ew } : null;
     // ---- posture ----
     var T = WW.cfg.ROUND_TIMEOUT, rt = WW.game ? WW.game.roundTime : 0, prev = B.posture;
-    B.timeLeft = T - rt; B.late = rt > T * LATE;
+    B.timeLeft = T - rt; B.late = lateNow(B, rt);
     // Broken: the fit battleship / cruiser / destroyer tonnage (hp >= CRIP) is below BREAK of what the side started
     // with. The side breaks off for home whatever the (fogged) strength ratio says (ai_endgame.js); main.js ends the
     // round when its ships have left the map ("retires") or are all sunk.
@@ -112,7 +119,7 @@ window.WW = window.WW || {};
     // (beaten) does, or when it has no fit gun ship to fight with: before that the admiral's picture of the enemy
     // surface force is a set of scout reports, and both navies' doctrine sought the decisive surface action (balance
     // pass, Oct 2026: a side that lost its carrier ran for home at once and the fleets never met)
-    else if (rt > 60 && B.strength.ratio < d.withdrawRatio && (!fit || !WW.game || WW.game.metT !== null)) B.posture = 'withdraw';
+    else if (rt > 60 && B.hadFit && B.strength.ratio < d.withdrawRatio && (!fit || !WW.game || WW.game.metT !== null)) B.posture = 'withdraw'; // (a raid force, PT boats or carriers alone, fights on: it never "withdraws")
     else if (B.late && B.strength.ratio >= d.pressRatio * (1.15 - 0.3 * d.aggression) * (WW.nightOps ? WW.nightOps.pressK(B) : 1)) B.posture = 'press'; // night_ops: readier after dark
     else B.posture = dmin < ENGAGE_D ? 'engage' : 'approach';
     // Dwell: a posture taken on the (fogged) strength picture holds POST_DWELL s before another such change (a contact
@@ -121,6 +128,7 @@ window.WW = window.WW || {};
     var hardP = function (p) { return p === 'pursue' || (p === 'withdraw' && B.brokenAt); };
     if (prev && B.posture !== prev && !hardP(B.posture) && !hardP(prev) && now - (B.postureAt || -1e9) < POST_DWELL) B.posture = prev;
     if (B.posture !== prev) B.postureAt = now;
+    if (B.posture === 'withdraw' && !B.brokenAt && WW.game && WW.game.metT !== null && now - B.postureAt >= WD_BREAK) B.brokenAt = now; // F15: a real retirement
     var aw = airWar(B, cs, rt); if (B.airWar && !aw) B.holdEnd = rt; B.airWar = aw; // holdEnd: when the surface force was let go (tests)
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
@@ -151,6 +159,12 @@ window.WW = window.WW || {};
     }
   }
 
+  function lateNow(B, rt) {
+    var G = WW.game, D = WW.dayNight;
+    if (G && G.metT !== null && rt - G.metT > PRESS_MET) return true;
+    if (G && G.contactT !== null && rt - G.contactT > PRESS_CONTACT) return true;
+    return !!(D && D.canFly() && D.level(D.roundT() + DUSK_AHEAD) < D.FLY_MIN);
+  }
   // The air-war hold (see CLOSE_AT): true while the side keeps its surface force with its carriers.
   function airWar(B, cs, rt) {
     var i, u, cv = 0, d = B.doctrine;
@@ -160,7 +174,7 @@ window.WW = window.WW || {};
     var M = B.groups.carrier.members;
     for (i = 0; i < M.length; i++) if (M[i].type === 'carrier' && M[i].hp >= WW.fleetGroups.CRIP * M[i].maxHp) cv++;
     if (!cv || rt >= B.closeAt || B.posture === 'pursue' || B.posture === 'withdraw' || B.posture === 'press') return false;
-    var won = B.foeCV.size > 0; B.foeCV.forEach(function (q) { if (q.alive && !q.sinking) won = false; });
+    var won = B.foeCV.size > 0, now = WW.time.now; B.foeCV.forEach(function (q) { if (!knownGone(B, q, now)) won = false; }); // as seen (F5)
     if (won) return false;
     var D = WW.dayNight; // flying now, or within FLY_AHEAD s (a dawn round waits for the light)
     return !D || D.canFly() || D.level(D.roundT() + FLY_AHEAD) >= D.FLY_MIN;
@@ -169,15 +183,27 @@ window.WW = window.WW || {};
   // Pursuit (fog of war): every enemy gun ship the side has seen this round is remembered; the enemy is judged
   // broken when the fit (hp >= CRIP) tonnage among those still afloat is below BREAK of all of them, the same
   // rule the enemy's own commander uses (on its true starting tonnage).
+  // The picture (fog of war, not the true state): an enemy ship's hp as last seen, and her loss only when it was
+  // seen (she was in sight within SEEN_LOSS s of going down or leaving the map); B.foeLook: id -> { hp, t }.
+  var SEEN_LOSS = 30;
+  function look(B, cs, now) {
+    var F = WW.intel ? WW.intel.T.FRESH : 3;
+    for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && now - cs[i].seenAt <= F) B.foeLook.set(u.id, { hp: u.hp / u.maxHp, t: cs[i].seenAt }); }
+  }
+  function knownGone(B, u, now) { var k = B.foeLook.get(u.id); return (!u.alive || u.sinking || u.escaped) && !!k && (u.goneAt || now) - k.t < SEEN_LOSS; }
+  function knownHp(B, u) { var k = B.foeLook.get(u.id); return k ? k.hp : 1; }
+  WW.on('shipSunk', function (s) { if (s && s.goneAt === undefined) s.goneAt = WW.time.now; });
+  WW.on('shipEscaped', function (s) { if (s && s.goneAt === undefined) s.goneAt = WW.time.now; });
   function foeBroken(B, cs, now) {
+    look(B, cs, now);
     for (var i = 0; i < cs.length; i++) { var u = cs[i].unit; if (u && GUNSHIP[u.type] && !B.foeSeen.has(u.id)) B.foeSeen.set(u.id, u); }
     var all = 0, fitT = 0, crip = WW.fleetGroups.CRIP;
-    B.foeSeen.forEach(function (u) { all += u.stats.tons; if (u.alive && !u.sinking && !u.escaped && u.hp >= crip * u.maxHp) fitT += u.stats.tons; });
+    B.foeSeen.forEach(function (u) { all += u.stats.tons; if (!knownGone(B, u, now) && knownHp(B, u) >= crip) fitT += u.stats.tons; });
     B.foeTons = all; B.foeFit = fitT;
     if (!WW.game || WW.game.roundTime <= 60) return false;
     // latched: once pursuing, a side keeps at it with no contact while the enemy still has a seen gun ship or a known
     // carrier afloat (the strike range, the escape-route search and the run for the enemy's edge stay on)
-    if (B.pursueAt && !cs.length) { var any = false; B.foeSeen.forEach(function (u) { if (u.alive && !u.escaped) any = true; }); return any || foeCarrier(B); }
+    if (B.pursueAt && !cs.length) { var any = false; B.foeSeen.forEach(function (u) { if (!knownGone(B, u, now)) any = true; }); return any || foeCarrier(B); }
     if (!cs.length) return false;
     if (all === 0) { // an enemy with no gun ships at all (carriers only): its carriers are unescorted, fit gun ships hunt them
       if (!B.fit) return false;
@@ -186,15 +212,25 @@ window.WW = window.WW || {};
     }
     // the enemy's air cover as seen: every enemy carrier seen is sunk or crippled, and an own carrier can fly
     var bare = false;
-    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (q.alive && !q.sinking && q.hp >= WW.fleetGroups.CRIP * q.maxHp) bare = false; }); }
+    if (TUNE.airCover > 0 && B.foeCV.size) { bare = fitCV(B.nation, null); B.foeCV.forEach(function (q) { if (!knownGone(B, q, now) && knownHp(B, q) >= WW.fleetGroups.CRIP && !(WW.staff && WW.staff.provenBare && WW.staff.provenBare(B.nation, q))) bare = false; }); }   // as known (F5): a deck our strikes found bare (air_staff.js) is no cover
     return beaten(fitT, all, B.fitTons, B.startTons, 1, bare);
   }
-  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now; seenBy: only one the side seenBy knows of
+  // the strike planes a carrier still has: in the hangar, being rearmed and in the air (a planeless deck is no air cover)
+  var COVER_N = 6;
+  function airGroup(q) {
+    var h = q.hangar; if (!h) return 0;
+    var k = (h.dive || 0) + (h.torpedo || 0), P = WW.world.planes, i;
+    if (q.rearm) for (i = 0; i < q.rearm.length; i++) if (q.rearm[i].kind !== 'fighter') k++;
+    for (i = 0; i < P.length; i++) if (P[i].alive && P[i].carrier === q && (P[i].kind === 'dive' || P[i].kind === 'torpedo')) k++;
+    return k;
+  }
+  // a fit (hp >= CRIP) carrier of nation n afloat that can fly now, with COVER_N or more strike planes; seenBy: only
+  // one the side seenBy knows of
   function fitCV(n, seenBy) {
     var D = WW.dayNight; if (D && !D.canFly()) return false;
     var S = WW.world.ships;
     for (var i = 0; i < S.length; i++) {
-      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp) continue;
+      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp || airGroup(q) < COVER_N) continue;
       if (!seenBy || seenBy.foeCV.has(q.id)) return true;
     }
     return false;
@@ -204,7 +240,11 @@ window.WW = window.WW || {};
   // line: Savo, Cape Esperance; a side holding on to a hopeless gun fight until the time limit was not realistic).
   function beaten(fitT, all, foeFit, foeAll, nfit, bare) {
     if (fitT < BREAK * all) return true;
-    if (!nfit || !(foeAll > 0) || !WW.game || WW.game.roundTime < 90 || WW.game.metT === null) return false; // outfought: only once the fleets have met (main.js metT), not by the air war alone
+    if (!nfit || !(foeAll > 0) || !WW.game || WW.game.roundTime < 90) return false;
+    // outfought: only once the fleets have met (main.js metT), not by the air war alone; except a side with no air
+    // cover left that is also outgunned BARE_K to one by the gun ships it has seen (a lone destroyer left of a carrier
+    // group does not stay to waltz with the enemy's screen until the fleets "meet")
+    if (WW.game.metT === null) return bare && foeFit >= BARE_K * fitT;
     if (bare) return true; // air cover lost (TUNE.airCover)
     return fitT < OUT_SHARE * all && fitT / all < OUT_K * foeFit / foeAll;
   }
@@ -253,9 +293,9 @@ window.WW = window.WW || {};
   // PT pickets, and air strikes sank whole small surface forces before the fleets met).
   var SMALL = { destroyer: 1, pt: 1 };
   function bigFoe(B) {
-    var big = false;
-    B.foeCV.forEach(function (u) { if (u.alive && !u.sinking && !u.escaped) big = true; });
-    if (!big) B.foeSeen.forEach(function (u) { if ((u.type === 'battleship' || u.type === 'cruiser') && u.alive && !u.sinking && !u.escaped) big = true; });
+    var big = false, now = WW.time.now;
+    B.foeCV.forEach(function (u) { if (!knownGone(B, u, now)) big = true; });
+    if (!big) B.foeSeen.forEach(function (u) { if ((u.type === 'battleship' || u.type === 'cruiser') && !knownGone(B, u, now)) big = true; });
     return big;
   }
   function strikes(B, cs, now) {
@@ -282,16 +322,18 @@ window.WW = window.WW || {};
       if (best) B.strikes.set(cv.id, { target: best, contact: bc, score: bs, hold: !!(B.airRaid && B.airRaid.carrier === cv) });
     }
   }
-  // Pursuit division of labour: the gun ships run down the slow cripples near them; the strikes go for what they
-  // cannot catch, a ship at speed (speedK >= 0.75) with no own gun ship within 150 of its last-known position.
+  // Pursuit division of labour: the gun ships take what they can catch, a ship with an own fit gun ship faster than
+  // it within CATCH_K x that ship's gun range of its last-known position (x0.5: left to them); the strikes go for
+  // the rest, first the slowed cripples nobody is catching (Mikuma at Midway: x2.5), then a ship at speed (x2).
+  var CATCH_K = 2.5;
   function runaway(B, u, c) {
-    if (WW.endgameAI && WW.endgameAI.isCripple(u)) return 1;
-    var ships = WW.world.ships;
+    var ships = WW.world.ships, V = WW.shipSpeed, vu = V ? V.vmax(u) : u.stats.speed;
     for (var i = 0; i < ships.length; i++) {
-      var s = ships[i];
-      if (s.alive && s.nation === B.nation && GUNSHIP[s.type] && WW.dist2(s.x, s.z, c.x, c.z) < 150 * 150) return 1;
+      var s = ships[i], g = s.stats.guns[0];
+      if (!s.alive || s.sinking || s.nation !== B.nation || !GUNSHIP[s.type] || !g || s.hp < WW.fleetGroups.CRIP * s.maxHp) continue;
+      if ((V ? V.vmax(s) : s.stats.speed) > vu * 1.1 && WW.dist2(s.x, s.z, c.x, c.z) < Math.pow(g.range * CATCH_K, 2)) return 0.5;
     }
-    return 2.5;
+    return WW.endgameAI && WW.endgameAI.isCripple(u) ? 2.5 : 2;
   }
   // Scout sectors: how long since an own ship / plane looked there, plus stale contacts; the best one is the
   // search point while nothing is known.
@@ -349,6 +391,7 @@ window.WW = window.WW || {};
   WW.fleetCmd = {
     TICK: TICK, VALUE: VALUE, TUNE: TUNE, stats: stats, update: update, reset: reset,
     side: side, order: order,
+    bigFoe: function (n) { var B = sides[n]; return !!B && bigFoe(B) && B.posture !== 'pursue'; },   // the SMALL rule's test (air_ops pickTarget near)
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },
     incoming: function (nation, target) { var B = sides[nation]; return (B && B.incoming.get(target)) || 0; },

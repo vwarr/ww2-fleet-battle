@@ -43,6 +43,18 @@ window.WW = window.WW || {};
     roundT: function () { return WW.time.now - D.t0; },
     dark: function () { return 1 - WW.daylight; },
     canFly: function () { return WW.daylight >= FLY_MIN; },
+    // s of flying light left (until daylight falls below RECALL), Infinity when it will not fail this round (the
+    // planner's sunset: air_boss.js orderStrike ETA, ai_carrier.js capWanted lands the CAP before dark)
+    lightLeft: function () {
+      if (D.pin != null || D.pinHour != null) return WW.daylight >= RECALL ? Infinity : 0;
+      if (WW.daylight < RECALL) return 0;
+      var t = D.roundT(), now = WW.time.now;
+      if (D._ll && now - D._ll.at < 1) return Math.max(0, D._ll.v - (now - D._ll.at));
+      var v = Infinity;
+      for (var s = 2; s <= 900; s += 2) if (D.level(t + s) < RECALL) { v = s; break; }
+      D._ll = { at: now, v: v };
+      return v;
+    },
     landRisk: function () { var k = (RECALL - WW.daylight) / (RECALL - 0.1); return k <= 0 ? 0 : LAND_RISK * Math.min(1, k); },
     update: update, roll: roll, setClock: setClock
   };
@@ -53,6 +65,14 @@ window.WW = window.WW || {};
     WW.daylight = D.pin != null ? D.pin : D.lightAt(D.sunElev);
   }
   function span(a, j) { return a[0] + (a[1] - a[0]) * j; }
+  // Both sides have a ship that fights in the dark (a gun ship or PT boats; the ships spawn before roundStart). A
+  // carrier or submarine force alone has nothing to do at night (a night round of four carriers 1400 apart, no launches).
+  var NIGHT_FIGHT = { battleship: 1, cruiser: 1, destroyer: 1, pt: 1 };
+  function nightFleets() {
+    var has = {}, S = WW.world ? WW.world.ships : [];
+    for (var i = 0; i < S.length; i++) if (S[i].alive && !S[i].isBase && NIGHT_FIGHT[S[i].type]) has[S[i].nation] = true;
+    return !!(has.USN && has.IJN);
+  }
 
   // kind: 'dawn' | 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
   // force: a kind, or a number n: a dusk round whose sun sets n s in (tests).
@@ -61,13 +81,14 @@ window.WW = window.WW || {};
     if (f === 'dawn' || f === 'day' || f === 'dusk' || f === 'night') kind = f;
     else if (typeof f === 'number') kind = 'dusk';
     else kind = r < M.dawn ? 'dawn' : r < M.dawn + M.day ? 'day' : r < M.dawn + M.day + M.dusk ? 'dusk' : 'night';
+    if (kind === 'night' && f == null && !nightFleets()) kind = 'dusk'; // a side with nothing to fight a night action with: a sunset round instead
     var L = WW.cfg.ROUND_TIMEOUT, ph = D.perH();
     if (kind === 'dawn') D.startHour = span(CFG.DAWN_START, j);
     else if (kind === 'day') D.startHour = span(CFG.DAY_START, j);
     else if (kind === 'night') D.startHour = span(CFG.NIGHT_START, j);
     else D.startHour = CFG.SUNSET - (typeof f === 'number' ? f : span(CFG.SUNSET_AT, j) * L) / ph;
     D.kind = kind;
-    D.t0 = WW.time.now; D.recalled = false; D._fly = true; D.lastLaunched = WW.stats.planesLaunched;
+    D.t0 = WW.time.now; D.recalled = false; D._fly = true; D._ll = null; D.lastLaunched = WW.stats.planesLaunched;
     setClock(D.pinHour != null ? D.pinHour : D.startHour);
     stats.rounds++; stats.kinds[kind]++;
   }
