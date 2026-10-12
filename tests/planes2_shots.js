@@ -3,6 +3,7 @@
 //   cover   a CAP fighter with an armed bomber on its run at a destroyer / PT / cruiser of ours as its foe
 //   alert   a ready deck alert plane (plane.alert) on its way out or in its attack
 //   escort  a wingman (plane.escortHome) on the wing of a damaged plane going home
+//   preempt a fighter that has just broken off a dogfight onto an armed bomber (air_dogfight.js pick, 'preempt' event)
 //   cap     the CAP on station round a carrier, from the side (heights a few hundred feet apart, not a ladder)
 // Writes tests/shots/planes2/render_<kind>_<seed>_<t>.png.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/planes2_shots.js [seed=4] [maxT=600] [kinds=cover,alert,escort,cap]
@@ -40,11 +41,14 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
     G.noRetire = false; G.baseChoice = null; G.composition = comp; G.mode = 'auto'; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     __render = false;
     // the subject finders: return { a: subject plane, b: second plane / ship to frame } or null
+    WW.on('airOrder', e => { if (e && e.order === 'preempt') window.__pre = { t: WW.game.roundTime, plane: e.plane, target: e.target }; });
     window.__find = {
       cover: () => { for (const f of WW.world.planes) { const u = f.foe; if (!f.alive || f.kind !== 'fighter' || !u || !u.alive || !u.ordnance || !u.target || u.target.type === 'carrier' || u.target.isBase || u.target.nation !== f.nation) continue;
         if (WW.dist(u.x, u.z, u.target.x, u.target.z) < 220 && WW.dist(f.x, f.z, u.x, u.z) < 45) return { a: f, b: u, c: u.target }; } return null; },
       alert: () => { for (const q of WW.world.planes) if (q.alive && q.alert && q.state !== 'takeoff' && q.target && q.target.alive && WW.dist(q.x, q.z, q.target.x, q.target.z) < 200) return { a: q, b: q.target }; return null; },
       escort: () => { for (const q of WW.world.planes) { const d = q.escortHome; if (q.alive && d && d.alive && WW.dist(q.x, q.z, d.x, d.z) < 30) return { a: q, b: d }; } return null; },
+      preempt: () => { const e = window.__pre; if (!e || WW.game.roundTime - e.t > 1.2) return null; const f = e.plane, u = e.target;
+        return f.alive && u.alive && f.foe === u && WW.dist(f.x, f.z, u.x, u.z) < 60 ? { a: f, b: u } : null; },
       cap: () => WW.game.roundTime > 70 ? { cv: WW.world.ships.find(s => s.alive && s.type === 'carrier' && !s.isBase) } : null
     };
   }, SEED);

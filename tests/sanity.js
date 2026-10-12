@@ -37,7 +37,7 @@ const RULES = [
   ['P6c', 1, 'planes2 / airend', 'non-CAP plane circling: > 900 u flown with < 80 u net in 60 s (no foe, no attack run inside the 60 s, not an escort within 150 u of a bomber of its strike that is still armed / attacking)'],
   ['P6h', 0, 'airend', 'as P6c for a returning plane within 200 u of home: holding for the deck (the landing queue, see docs/airdiag; info)'],
   ['P7', 2, 'planes2', 'bomber with no ordnance still in transit / attack, or any plane under 35% hp not going home (10 s)'],
-  ['P7f', 1, 'planes2', 'not returning with less fuel than the way home x1.1 + 3 s (5 s). The sim burns fuel only out (aircraft.js: return at fuel 0, the way home is free), so nobody ditches: a realism matter (no bingo fuel), not a visible blunder'],
+  ['P7f', 1, 'planes2', 'not returning with less fuel than the way home at cruise (x0.6 burn) x1.1 + 3 s (5 s): past bingo (air_flight.js bingo turns home there; below it the 15% reserve), a realism matter, not a visible blunder'],
   ['P8', 2, 'planes2', 'escort > 80 u from its strike\'s nearest bomber while an enemy fighter attacks one of them, before the attack (3 s)'],
   ['P8b', 2, 'planes2', 'escort within 50 u of an enemy fighter attacking its bomber and not fighting a fighter (3 s)'],
   ['P9', 1, 'planes2', 'plane (not attacking) inside the heavy-flak reach (0.9 x aa.range x 2.2) of an enemy BB / CA / CV that is not its target nor within 150 u of it (the target\'s screen is unavoidable), nor (for a CAP fighter) inside its carrier\'s CAP leash (the enemy came to the fleet), nor an escort with its strike\'s armed / attacking bombers (2 s)'],

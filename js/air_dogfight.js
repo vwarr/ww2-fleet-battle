@@ -295,7 +295,7 @@ window.WW = window.WW || {};
       }
       // the bombers first (1942 CAP doctrine): an armed raider in reach breaks a lock on a fighter that is not on our tail,
       // or on a bomber that has already dropped (or a scout); the raider's run beats the fight we were in
-      if (!onWay && cur && cur.alive && best && best !== cur && armedB(best) && !armedB(cur) && cur.foe !== p && d3(p, best) < PREEMPT_R) { s.lock = 0; DS.preempt = (DS.preempt || 0) + 1; return best; }
+      if (!onWay && cur && cur.alive && best && best !== cur && armedB(best) && !armedB(cur) && cur.foe !== p && d3(p, best) < PREEMPT_R) { s.lock = 0; DS.preempt = (DS.preempt || 0) + 1; if (WW.emit) WW.emit('airOrder', { carrier: p.carrier, order: 'preempt', plane: p, target: best, from: cur }); return best; }
       // an escort's bombers first: an enemy fighter on one of our bombers (air_cag escortPick's save) breaks a fight with
       // a fighter that is not on our tail
       if (p.target && cur && cur.alive && best && best !== cur && best.kind === 'fighter' && best.foe && best.foe.alive && best.foe.nation === p.nation && best.foe.kind !== 'fighter' && cur.foe !== p) { s.lock = 0; DS.saveBreak = (DS.saveBreak || 0) + 1; return best; }

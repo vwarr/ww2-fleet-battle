@@ -67,7 +67,7 @@ function install() {
   fresh();
   WW.on('roundStart', fresh);
   const ev = (k, o) => { if (S && S.tr) S.tr.ev.push(Object.assign({ t: +now().toFixed(1), k }, o)); };
-  WW.on('airOrder', e => { try { if (S && e) { if (e.order === 'escortHome') S.esc++; if (e.order === 'ditchBy') S.dby++; } if (S && e && (e.order === 'alert' || e.order === 'escortHome' || e.order === 'ditchBy' || e.order === 'coverShip')) ev(e.order, { id: e.plane ? id(e.plane) : 0, n: e.carrier ? e.carrier.nation : null, tg: e.target ? -id(e.target) : 0, x: e.plane ? +e.plane.x.toFixed(0) : 0, z: e.plane ? +e.plane.z.toFixed(0) : 0 }); } catch (er) { R.err++; } });
+  WW.on('airOrder', e => { try { if (S && e) { if (e.order === 'escortHome') S.esc++; if (e.order === 'ditchBy') S.dby++; } if (S && e && (e.order === 'alert' || e.order === 'escortHome' || e.order === 'ditchBy' || e.order === 'coverShip' || e.order === 'preempt')) ev(e.order, { id: e.plane ? id(e.plane) : 0, fr: e.from ? id(e.from) : 0, n: e.carrier ? e.carrier.nation : null, tg: e.target ? -id(e.target) : 0, x: e.plane ? +e.plane.x.toFixed(0) : 0, z: e.plane ? +e.plane.z.toFixed(0) : 0 }); } catch (er) { R.err++; } });
   WW.on('weaponDropped', e => {
     try {
       const p = e && e.plane; if (!S || !p) return;

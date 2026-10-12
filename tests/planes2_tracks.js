@@ -23,7 +23,7 @@ const shipType = id => { const L = ships.get(id); return L ? L[0][3] : null; };
 
 // ---------- pick the scene: window, centre, key planes ----------
 function pick() {
-  let t0 = +process.argv[4], t1 = +process.argv[5], key = [], cx, cz, R = 160, marks = [], title = '';
+  let t0 = +process.argv[4], t1 = +process.argv[5], key = [], cx, cz, R = 160, marks = [], rings = [], title = '';
   const manual = isFinite(t0) && isFinite(t1);
   if (scene === 'cover') {
     // an enemy armed bomber with a non-carrier ship as its target, a fighter of the ship's side with that bomber as its foe
@@ -89,6 +89,42 @@ function pick() {
     const end = P[P.length - 1]; cx = (e.x + end[5]) / 2; cz = (e.z + end[6]) / 2; R = Math.max(80, Math.hypot(e.x - end[5], e.z - end[6]) * 0.7);
     key = [e.id]; marks.push({ t: e.t, x: e.x, z: e.z, txt: 'ditch order' }, { t: last, x: end[5], z: end[6], txt: 'ditched' });
     title = `Plane #${e.id} ditching beside a ${shipType(e.tg) || 'ship'} (t=${e.t})`;
+  } else if (scene === 'preempt') {
+    // a fighter breaking off a dogfight (a fighter / an empty bomber) onto an armed raider (air_dogfight.js pick);
+    // the first in the round: up to it the round is the same as before the change (KEYS= the same ids on the old trace)
+    const L = EV.filter(e => e.k === 'preempt' && (!manual || (e.t >= t0 && e.t <= t1)));
+    const e = +process.env.K ? L[+process.env.K - 1] : L[0]; if (!e) throw new Error('no preempt event');
+    if (!manual) { t0 = e.t - 15; t1 = e.t + 20; }
+    const f = at(planes.get(e.id), e.t); cx = f[5]; cz = f[6]; R = 130;
+    key = [e.id, e.fr, Math.abs(e.tg)];
+    marks.push({ t: e.t, x: f[5], z: f[6], txt: 'breaks off onto the raider' });
+    title = `#${e.id} breaks off #${e.fr} (${(planes.get(e.fr) || [[0, 0, 0, '?']])[0][3]}) for armed raider #${Math.abs(e.tg)} (t=${e.t})`;
+  } else if (scene === 'topcover') {
+    // escorts circling over their strike's target ship while the bombers attack, with the target's heavy-flak ring at
+    // the top cover's height (2.2 x aa.range in 3D: core.js aa ranges) and the old 45 u orbit dashed
+    const AA = { carrier: 45, battleship: 40, cruiser: 42 };   // a destroyer's ring at 56 u (35 u) is inside the 45 u orbit anyway
+    let best = null;
+    for (const [id, L] of planes) {
+      if (L[0][3] !== 'f') continue;
+      let run = 0, r0 = null;
+      for (const r of L) {
+        const ty = r[13] ? shipType(r[13]) : null, sh = ty && AA[ty] ? at(ships.get(r[13]), r[0]) : null;
+        const ok = sh && r[7] > 45 && !r[12] && /x/.test(r[4]) && Math.hypot(r[5] - sh[5], r[6] - sh[6]) < 140 && (!manual || (r[0] >= t0 && r[0] <= t1));
+        if (ok) { if (!r0) r0 = r; run++; if (!best || run > best.run) best = { run, id, r0, t: r[0], ship: r[13], ty }; } else { run = 0; r0 = null; }
+      }
+    }
+    if (!best) throw new Error('no top cover orbit in this trace');
+    if (!manual) { t0 = best.r0[0]; t1 = best.t; }
+    const sh = at(ships.get(best.ship), (t0 + t1) / 2); cx = sh[5]; cz = sh[6]; R = 150;
+    key = [best.id]; for (const [id, L] of planes) if (id !== best.id && L[0][3] === 'f' && key.length < 4 && L.some(r => r[0] >= t0 && r[0] <= t1 && r[13] === best.ship && r[7] > 45 && Math.hypot(r[5] - sh[5], r[6] - sh[6]) < 140)) key.push(id);
+    const fr = AA[best.ty] * 2.2, ry = Math.sqrt(Math.max(0, fr * fr - 56 * 56));
+    rings.push({ x: sh[5], z: sh[6], r: ry, txt: 'heavy flak at 56 u (' + Math.round(ry) + ' u)', dash: false }, { x: sh[5], z: sh[6], r: 45, txt: 'old top cover orbit (45 u)', dash: true });
+    title = `Top cover over the target ${best.ty} (t=${t0.toFixed(0)}-${t1.toFixed(0)})`;
+  } else if (scene === 'keys') {
+    // the given planes over the given window (KEYS=a,b,c, t0 t1): the same moment on another trace
+    key = process.env.KEYS.split(',').map(Number);
+    const f = at(planes.get(key[0]), (t0 + t1) / 2) || planes.get(key[0])[0]; cx = +process.env.CX || f[5]; cz = +process.env.CZ || f[6]; R = +process.env.R || 130;
+    title = (process.env.TITLE || 'planes ' + key.join(', ')) + ` (t=${t0}-${t1})`;
   } else if (scene === 'cap') {
     if (!manual) { t0 = 60; t1 = 120; }
     const cv = [...ships.values()].find(L => L[0][3] === 'carrier' && L[0][2] === 'U') || [...ships.values()].find(L => L[0][3] === 'carrier');
@@ -96,7 +132,7 @@ function pick() {
     for (const [id, L] of planes) if (L[0][2] === cv[0][2] && L[0][3] === 'f' && L.some(r => r[0] >= t0 && r[0] <= t1 && r[4] === 't')) key.push(id);
     key = key.slice(0, 8); title = `${cv[0][2] === 'U' ? 'USN' : 'IJN'} CAP stations round the carrier, t=${t0}-${t1}`;
   }
-  return { t0, t1, cx, cz, R, key, marks, title };
+  return { t0, t1, cx, cz, R, key, marks, rings, title };
 }
 const P = pick();
 
@@ -133,6 +169,7 @@ for (const [id, L] of planes) {
     if (seg) top += `<path d="${seg}" stroke="${col}" stroke-width="0.8" fill="none" opacity="0.35"/>`;
   }
 }
+for (const g of P.rings || []) top += `<circle cx="${X(g.x)}" cy="${Z(g.z)}" r="${(g.r * sc).toFixed(1)}" fill="${g.dash ? 'none' : 'rgba(217,48,37,0.08)'}" stroke="#d93025" stroke-width="1.5" ${g.dash ? 'stroke-dasharray="5 4"' : ''}/><text x="${+X(g.x) + g.r * sc * 0.72}" y="${+Z(g.z) - g.r * sc * 0.72}" font-size="10" fill="#d93025">${g.txt}</text>`;
 for (const m of P.marks) top += `<circle cx="${X(m.x)}" cy="${Z(m.z)}" r="9" fill="none" stroke="#000" stroke-dasharray="3 2"/><text x="${+X(m.x) + 10}" y="${+Z(m.z) + 14}" font-size="10">${m.txt} (${m.t} s)</text>`;
 
 // side panel: height against time for every plane in the window within the map, key planes bold
@@ -179,7 +216,7 @@ ${legend}<text x="10" y="${SZ + 42}" font-size="11">${P.title} - ${J.scen} seed 
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
   const p = await b.newPage({ viewport: { width: Wd, height: Ht } });
   await p.setContent(`<html><body style="margin:0">${svg}</body></html>`);
-  const out = file.replace(/\.json$/, '_' + scene + '.png');
+  const out = file.replace(/\.json$/, '_' + scene + (process.env.TAG ? '_' + process.env.TAG : '') + '.png');
   await p.screenshot({ path: out });
   await b.close();
   console.log('tracks: ' + out + ' | ' + P.title + ' | key ' + P.key.join(','));
