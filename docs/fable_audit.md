@@ -537,3 +537,61 @@ excepted); `ai_threat.js:70` stamps the AA umbrella at 1.55 x `aa.range` while h
 
 `tests/fable_probe.js --merge a.json,b.json` reports saved batches together (batches under the 10-minute background
 limit: `--only standard --seeds 14` is about a minute on the node runner).
+
+## Wave 2 (second instance, wrap-up): F25-F30, code-read hypotheses not yet measured
+
+Written at the coordinator's wrap-up request from the code read only; each names the rule and inputs, and the probe
+detector that would confirm it. None is measured, so severities are provisional.
+
+### F25. The carrier flees ghosts: a gun ship last seen 90 s ago keeps it running (S2, carrier)
+
+`ai_carrier.js:29,39-47 fleeFrom()`: contacts up to FLEE_AGE 90 s old count, dead-reckoned at most 20 s along their
+last course; a destroyer that was seen turning away 80 s ago still sits in the flee radius (FLEE_MIN 210, x1.5 in the
+dark) and the carrier runs from empty sea at throttle 1, with `cvWary` (320) blocking flight ops for 10 s after every
+such sighting. Detector: carrier throttle 1 with its nearest flee-trigger contact older than 30 s. Fix: flee only on
+contacts fresher than 30 s (dead-reckoned), beyond that keep station and let the ring's lookouts re-acquire.
+
+### F26. A press stops dead at the enemy's home band: mirror standoffs (S2, fleet command / endgame) → endgame
+
+`ai_surface.js:63,223-248 pressContact / homeWaters`: a pressing ship never follows a contact inside HOME_K 0.35 W of
+the enemy's edge, and `pressContact` skips any contact in the carrier's lair (230). An enemy that is not broken and
+holds its band (its carriers' station band is 0.2-0.33 W, so its screen often is) is left alone: both sides 'press',
+both hold at the band edge 300-400 u apart until time (the survey's 12% "time ending with enemies within 500",
+battle_line 14/40 time endings). Detector: posture 'press' on both sides, nearest enemy 300-500, no shell for 60 s.
+Fix: the band limit only while the enemy has a fit carrier known there; a pressing side with the stronger line
+presses into home waters (Guadalcanal: the IJN came in to the anchorage).
+
+### F27. One destroyer is sent 220 u for one pilot during the air war (S2, endgame / ships) → endgame
+
+`endgame.js:15,53-59`: a ditched aircrew task (`PILOT_R` 220) is assigned to the nearest fit destroyer that is not in
+a gun fight and not under known gun danger; the air picture is not consulted (F8) and neither is the destroyer's
+station: a ring escort or the ASW screen leaves for a 3-4 minute round trip to pick up one pilot while the strikes are
+in the air. 1942 practice sent a destroyer for aircrew only when the force was not engaged, else the Dumbo / a
+submarine. Detector: rescuer role 'escort' / 'asw' more than 150 from its station while an enemy carrier is known
+afloat. Fix: aircrew tasks go to the lifeguard sub or the Catalina first, to a screen destroyer only in posture
+search / pursue / withdraw or with no enemy carrier known.
+
+### F28. The carrier search is switched off by any contact, however small (S2, intel / plane AI) → airend
+
+`air_search.js:208`: `srchWant = posture 'search' || searchFor > 45`, and `fleet_search.js:33` resets `searchFor` on
+any contact up to 30 s old: an enemy PT picket, a submarine or a lone destroyer in sight keeps every carrier search
+plane on deck while the enemy carrier is never found; with the SMALL rule (F4) giving no strike order on the small
+contact either, the air group sits idle (the survey's "carrier hiding in the last third" 5%, cv2_vs_cv2 10/12 time
+endings, carrier_duel 22/40 dead air). Detector: no enemy CV / BB / CA contact fresher than 90 s, searchers 0,
+hangar bombers > 12, for 60 s. Fix: `searchFor` counts only contacts worth a strike (CV / BB / CA, or the base when
+it is the objective); the small contact's bearing seeds the first sector.
+
+### F29. The PT boat flees a battleship it last saw four minutes ago (S3, PT boats)
+
+`ai_pt.js:26,76-91` ghosts: a battleship or cruiser seen once is remembered GHOST_T 240 s, its reach grown by
++30 +min(1.5 age, 90); `lurkSpot` and the flee test (`:307`) treat the ghost as present. A PT that saw a cruiser pass
+at t 200 still refuses its lurk spot and runs at t 430. Realistic caution, but it reads as fleeing from nothing when
+the cruiser is long gone the other way. Detector: PT state 'flee' with no fresh gun ship within 200 and the ghost
+older than 120 s. Fix: GHOST_T 120 and no flee on a ghost alone (lurk spot avoidance only).
+
+### F30. Dead helm code: the shared cripple withdrawal and the idle search are never used (S3, hygiene)
+
+`ships_ai.js:234-260 withdraw()` runs only when a role has not set `ownWithdraw`; every role sets it (surface
+`ai_surface.js:75`, carrier `ai_carrier.js:53`, PT `ai_pt.js:223`, subs are excluded), so the shared withdrawal is
+dead; `ships_ai.js:216-228 idle()` runs only with no commander order, and `fleet_groups.assign` gives every ship one.
+A reader fixing cripple behaviour (F11) edits the wrong function. Fix: delete or route through them.
