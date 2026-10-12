@@ -12,11 +12,14 @@
 //   bomber_deck  land bombers (B-17, B-26, Betty) whose carrier became a ship    == 0
 //   reopened     rounds where a closed main runway reopened                       >= 80%
 //   resumed      rounds with a launch after a reopening (when one was queued)    >= 50% of the reopened rounds
+//   crash_moved  samples of a crash-landed plane (one in the circuit is shot up to 35% hp at CRASH_T) doing anything but
+//                skidding to a stop: taxiing, rolling, flying                      == 0
+//   crash_wreck  rounds where a forced crash landing happened and left a wreck   == all of them
 // Info: launches, landings, tows, roll aborts, ground losses, diverts, ditches, slots, mode switches.
 'use strict';
 const HL = require('./headless');
 const args = HL.argv.filter(a => !a.startsWith('--'));
-const ROUNDS = +(args[0] || 12), SEED0 = +(args[1] || 1), GROUP = +(args[2] || 1), SAMPLE = 0.25, TOL = 1.2, FORCE_T = 80, CAP = 360;
+const ROUNDS = +(args[0] || 12), SEED0 = +(args[1] || 1), GROUP = +(args[2] || 1), SAMPLE = 0.25, TOL = 1.2, FORCE_T = 80, CAP = 360, CRASH_T = 150;
 
 function install(P) {
   window.__bg = function (seed, owner) {
@@ -28,12 +31,14 @@ function install(P) {
     I.TUNE.group = P.GROUP; G.baseChoice = owner; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
     const b = I.base, L = b.layout, LG = WW.landGround, LA = WW.landAir, AL = WW.airfieldLayout, R = { seed, owner,
       offNet: 0, offMax: 0, overlap: 0, liftClosed: 0, bomberDeck: 0, reopenedT: null, closedT: null, launchAfter: 0, queuedAtReopen: 0, samples: 0, maxQ: 0, maxTaxi: 0,
-      slots: b.slots.length, spots: L.spots.length, cls: L.spots.reduce((o, s) => (o[s.cls] = (o[s.cls] || 0) + 1, o), {}) };
+      crashForced: 0, crashed: 0, crashWreck: 0, crashMoved: 0, slots: b.slots.length, spots: L.spots.length, cls: L.spots.reduce((o, s) => (o[s.cls] = (o[s.cls] || 0) + 1, o), {}) };
     const ph = new Map(), BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 };
     let forced = false, lastLaunches = 0, openPrev = true;
     WW.on('baseEvent', e => {
       if (e.base !== I.base) return;
       if (e.kind === 'runwayClosed' && R.closedT === null) R.closedT = G.roundTime;
+      if (e.kind === 'crashLanding') R.crashed++;
+      if (e.kind === 'crashWreck') R.crashWreck++;
       if (e.kind === 'runwayOpen' && R.closedT !== null && R.reopenedT === null) { R.reopenedT = G.roundTime; R.queuedAtReopen = b.ai ? b.ai.queue.length : 0; lastLaunches = LA.stats.launches; }
     });
     const r = p => LG.rad(p.variant);
@@ -44,6 +49,10 @@ function install(P) {
         forced = true; const rw = b.runways[0], en = WW.enemyOf(b.nation);
         I.impact(en, rw.x + rw.c * 10, rw.z + rw.s * 10, 180, 'bomb'); I.impact(en, rw.x - rw.c * 12, rw.z - rw.s * 12, 180, 'bomb');
       }
+      if (G.roundTime >= P.CRASH_T && !R.crashForced) { // shoot up a plane in the circuit: it must crash-land, not taxi in
+        const q = WW.world.planes.find(q => q.carrier === b && q.alive && q.state === 'landing' && q.rwPh === 'circuit' && q.hp > q.maxHp * 0.4);
+        if (q) { q.hp = q.maxHp * 0.35; R.crashForced = 1; }
+      }
       R.samples++;
       const open = LG.opsOpen(b), wasOpen = openPrev || open0, bodies = []; openPrev = open;
       for (const s of b.slots) if (s.state === 'parked' || s.state === 'rearm' || s.state === 'wreck') bodies.push({ x: s.x, z: s.z, r: s.r, k: 's' + s.i });
@@ -52,10 +61,11 @@ function install(P) {
         if (p.variant && BIG[p.variant] && p.carrier && !p.carrier.isBase) R.bomberDeck++;
         if (p.carrier !== b) continue;
         const prev = ph.get(p), now = p.alive ? p.rwPh : null; ph.set(p, now);
+        if (p.crashed && p.alive && !(p.state === 'rollout' && p.rwPh === 'crash')) R.crashMoved++;
         if (now === 'climb' && prev !== 'climb' && !open && !wasOpen) R.liftClosed++;   // closed all through the step
         if (!LG.onGround(p)) continue;
         bodies.push({ x: p.x, z: p.z, r: r(p), k: p.state + '/' + p.rwPh + ' pi' + p.pi + ' gid' + p.gid });
-        if (p.rwPh === 'roll' || p.rwPh === 'stopped' || p.rwPh === 'land' || p.rwPh === 'towed') continue; // on a runway
+        if (p.rwPh === 'roll' || p.rwPh === 'stopped' || p.rwPh === 'land' || p.rwPh === 'towed' || p.rwPh === 'crash') continue; // on a runway (a crash skids where it will)
         const d = AL.netDist(L, p.x, p.z);
         if (d > P.TOL) { R.offNet++; R.offMax = Math.max(R.offMax, d); if ((R.offEx = R.offEx || []).length < 6) { const q = L.toL(p.x, p.z); R.offEx.push(p.state + '/' + p.rwPh + ' pi' + p.pi + ' u' + q.u.toFixed(1) + ' v' + q.v.toFixed(1) + ' d' + d.toFixed(1) + (p.slot && p.slot.spot ? ' sp' + p.slot.spot.u.toFixed(0) + ',' + p.slot.spot.v.toFixed(0) + ' col' + p.slot.spot.col : '')); } }
       }
@@ -83,19 +93,20 @@ function install(P) {
     p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
     await p.goto(HL.url()); await p.waitForFunction(() => window.__sim && window.WW && WW.game); await p.waitForTimeout(HL.settle());
     await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; __sim.setScale(0.1); });
-    await p.evaluate(install, { SAMPLE, TOL, FORCE_T, CAP, GROUP });
+    await p.evaluate(install, { SAMPLE, TOL, FORCE_T, CAP, GROUP, CRASH_T });
     p.errs = errs; pages.push(p);
   }
   const specs = []; for (let i = 0; i < ROUNDS; i++) specs.push({ seed: SEED0 + i, owner: (SEED0 + i) % 2 ? 'USN' : 'IJN' });
   const out = new Array(specs.length); let next = 0;
   await Promise.all(pages.map(async pg => { while (next < specs.length) { const i = next++; out[i] = await pg.evaluate(s => window.__bg(s.seed, s.owner), specs[i]); } }));
   const sum = k => out.reduce((s, r) => s + (r[k] || 0), 0);
-  for (const r of out) { console.log(`seed ${r.seed} ${r.owner}: slots ${r.slots}/${r.spots} of ${r.group} ${JSON.stringify(r.cls)}  launches ${r.launches} landings ${r.landings}  offNet ${r.offNet} (max ${r.offMax.toFixed(2)})  overlap ${r.overlap}  liftClosed ${r.liftClosed}  closed ${r.closedT === null ? '-' : r.closedT.toFixed(0)} reopened ${r.reopenedT === null ? '-' : r.reopenedT.toFixed(0)} resumed ${r.launchAfter}  tows ${r.tows} aborts ${r.aborts} groundLost ${r.groundLost} diverted ${r.diverted} ditched ${r.ditched} emergency ${r.emergency}  queue ${r.maxQ}/${r.maxTaxi}`); if (r.offEx) console.log('   off: ' + r.offEx.join(' | ')); if (r.ovEx) console.log('   ov: ' + r.ovEx.join(' | ')); if (r.towLog.length) console.log('   tow: ' + r.towLog.join(' | ')); }
+  for (const r of out) { console.log(`seed ${r.seed} ${r.owner}: slots ${r.slots}/${r.spots} of ${r.group} ${JSON.stringify(r.cls)}  launches ${r.launches} landings ${r.landings}  offNet ${r.offNet} (max ${r.offMax.toFixed(2)})  overlap ${r.overlap}  liftClosed ${r.liftClosed}  closed ${r.closedT === null ? '-' : r.closedT.toFixed(0)} reopened ${r.reopenedT === null ? '-' : r.reopenedT.toFixed(0)} resumed ${r.launchAfter}  tows ${r.tows} aborts ${r.aborts} groundLost ${r.groundLost} diverted ${r.diverted} ditched ${r.ditched} emergency ${r.emergency}  crash ${r.crashForced}/${r.crashed}/${r.crashWreck}  queue ${r.maxQ}/${r.maxTaxi}`); if (r.offEx) console.log('   off: ' + r.offEx.join(' | ')); if (r.ovEx) console.log('   ov: ' + r.ovEx.join(' | ')); if (r.towLog.length) console.log('   tow: ' + r.towLog.join(' | ')); }
   const reopened = out.filter(r => r.reopenedT !== null), resumed = reopened.filter(r => r.launchAfter);
   const checks = [
     ['off_net', sum('offNet'), v => v === 0], ['overlap', sum('overlap'), v => v === 0], ['lift_closed', sum('liftClosed'), v => v === 0],
     ['bomber_deck', sum('bomberDeck'), v => v === 0], ['reopened', reopened.length / out.length, v => v >= 0.8],
-    ['resumed', reopened.length ? resumed.length / reopened.length : 0, v => v >= 0.5]];
+    ['resumed', reopened.length ? resumed.length / reopened.length : 0, v => v >= 0.5],
+    ['crash_moved', sum('crashMoved'), v => v === 0], ['crash_wreck', sum('crashWreck') + '/' + sum('crashed'), v => +v.split('/')[0] === +v.split('/')[1]]];
   let fails = 0;
   console.log('\n=== base ground ops (' + HL.label() + ') ===');
   for (const [k, v, ok] of checks) { const pass = ok(v); if (!pass) fails++; console.log(`  ${k.padEnd(12)} ${typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(2) : v}  ${pass ? 'PASS' : 'FAIL'}`); }

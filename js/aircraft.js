@@ -131,7 +131,7 @@ window.WW = window.WW || {};
     speedTo(v, dt) { this.speed += WW.clamp(v - this.speed, -10 * dt, 8 * dt); }
     fly(px, pz, alt, dt, spd, rate) {
       const d = this.turnTo(Math.atan2(pz - this.z, px - this.x), dt, rate || 1.1);
-      this.climbTo(alt, dt); this.speedTo(spd || this.pt.speed, dt);
+      this.climbTo(alt, dt, alt > this.y && WW.airFlight ? WW.airFlight.climbV(this) : 7); this.speedTo(spd || this.pt.speed, dt);   // cruise climb (air_flight.js)
       return d;
     }
     dropped() { this.ordnance = false; if (this.payload) this.payload.visible = false; }
@@ -161,7 +161,7 @@ window.WW = window.WW || {};
         return;
       }
       const c = this.carrier;
-      if (!c.alive) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }
+      if (!c.alive && !(WW.airFlight && WW.airFlight.orphan(this))) { if (this.state === 'rollout' || this.state === 'takeoff') { this.ditch(); this.vy = -2; } else this.ditch(); return; }   // else: divert / ditch by a ship (air_flight.js)
       if (this.state === 'transit' || this.state === 'attack') {
         // a CAP fighter on station with nothing to chase loiters at economical cruise (1942 CAP sorties ran 2-3 h)
         this.fuel -= this.kind === 'fighter' && !this.target && !this.foe && !this.vec && !this.joined && !this.search ? dt * LOITER : dt;
@@ -205,7 +205,7 @@ window.WW = window.WW || {};
       this.tr = dt > 0 ? (this.tr || 0) + (this.turn - (this.tr || 0)) * (1 - Math.exp(-dt / 0.15)) : this.turn;
       let bank = WW.clamp(Math.atan2(this.speed * this.tr, G_EFF), -1.3, 1.3);
       if (this.alive) bank *= Math.max(0, Math.cos(this.pitch)); // no steep bank while pointing down a dive
-      const dr = bank - this.roll, maxR = 2.6 * dt;               // roll rate limit = the roll-in / roll-out lag
+      const dr = bank - this.roll, maxR = 2.0 * dt;               // roll rate limit (~115 deg/s, a fighter's full aileron roll) = the roll-in / roll-out lag
       this.roll += WW.clamp(dr * Math.min(1, dt * 7), -maxR, maxR);
       const v = Math.hypot(this.speed, this.vy);
       this.gload = Math.hypot(this.speed * this.tr, v * Math.max(0, pr));

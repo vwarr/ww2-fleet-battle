@@ -284,6 +284,7 @@ window.WW = window.WW || {};
         for (var k = 0; k < planes.length; k++) {
           var p2 = planes[k];
           if (!p2 || !p2.alive || p2.nation === s.nation || (p2.y || 0) > LIGHT.maxAlt) continue;
+          if (p2.carrier && p2.carrier.isBase && WW.landGround.onGround(p2)) continue;   // taxiing / rolling on the island: the main battery's business (island_base.js impact)
           var ex = p2.x - s.x, ez = p2.z - s.z, ey = (p2.y || 0), dd = ex * ex + ez * ez + ey * ey;
           if (dd < bd && detected(s, p2)) { bd = dd; lt = p2; }
         }
