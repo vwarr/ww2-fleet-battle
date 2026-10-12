@@ -16,6 +16,9 @@ const SEEDS = +arg('--seeds', 4), ONLY = arg('--only', null);
 function probe() {
   const F = WW.formation, T = window.__p2 = { mode: {}, ep: {}, ex: [] }, H = new WeakMap(), ON = new WeakMap();
   ['ringKeep', 'guideKeep'].forEach(k => { const f = F[k]; F[k] = function (s) { const r = f.apply(this, arguments); if (r) { s.__km = k === 'ringKeep' ? 'ring' : 'guide'; s.__kt = WW.time.now; } return r; }; });
+  T.spread = {};   // ship torpedo spreads by launcher > target type (Fable F1: destroyers vs carriers / battleships)
+  const tf = WW.supply.torpFired;
+  WW.supply.torpFired = function (s) { const t = s.target, k = s.type[0].toUpperCase() + '>' + (t ? t.type : '-'); T.spread[k] = (T.spread[k] || 0) + 1; return tf.apply(this, arguments); };
   const S = window.__san, smp = S.sample;
   S.sample = function () {
     const r = smp.apply(this, arguments), t = WW.time.now;
@@ -52,11 +55,12 @@ function probe() {
   }
   let next = 0;
   await Promise.all(pages.map(async p => { while (next < specs.length) { const s = specs[next++]; await p.evaluate(sp => window.__beh.run(sp), Object.assign({}, s, { san: ['S8c'] })); } }));
-  const tot = { mode: {}, ep: {}, ex: [] };
-  for (const p of pages) { const r = await p.evaluate(() => window.__p2); for (const k in r.mode) tot.mode[k] = (tot.mode[k] || 0) + r.mode[k]; for (const k in r.ep) tot.ep[k] = (tot.ep[k] || 0) + r.ep[k]; tot.ex.push(...r.ex); }
+  const tot = { mode: {}, ep: {}, ex: [], spread: {} };
+  for (const p of pages) { const r = await p.evaluate(() => window.__p2); for (const k in r.spread) tot.spread[k] = (tot.spread[k] || 0) + r.spread[k]; for (const k in r.mode) tot.mode[k] = (tot.mode[k] || 0) + r.mode[k]; for (const k in r.ep) tot.ep[k] = (tot.ep[k] || 0) + r.ep[k]; tot.ex.push(...r.ex); }
   const n = specs.length;
   console.log(`${n} rounds. circling s / round by helm mode:`, Object.fromEntries(Object.entries(tot.mode).map(([k, v]) => [k, +(v / n).toFixed(1)])));
   console.log('circling episodes / round by dominant mode:', Object.fromEntries(Object.entries(tot.ep).map(([k, v]) => [k, +(v / n).toFixed(2)])));
+  console.log('ship torpedo spreads / round by launcher > target:', Object.fromEntries(Object.entries(tot.spread).sort().map(([k, v]) => [k, +(v / n).toFixed(2)])));
   console.log(tot.ex.slice(0, 25).join('\n'));
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

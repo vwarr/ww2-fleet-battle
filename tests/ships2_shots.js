@@ -11,11 +11,14 @@ const SB = require('./sim_behaviour');
 const SAN = require('./sanity');
 const argv = HL.argv, arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const SEEDS = arg('--seeds', '1,2,3').split(',').map(Number), ONLY = arg('--only', 'standard,carrier_duel,midway').split(',');
-const OUT = path.join(__dirname, 'shots', 'ships2');
+const OUT = path.join(__dirname, 'shots', 'ships2'), KINDS = arg('--kinds', 'ev,aa').split(',');
 
 function find() { // in the page: hooks that note the first carrier dive evasion and light AA on an armed attacker
   const F = window.__f2 = { ev: null, aa: null };
-  WW.on('shipEvade', e => { if (!F.ev && e.ship.type === 'carrier' && e.kind === 'dive' && WW.game.roundTime > 20) F.ev = { t: WW.game.roundTime, id: e.ship.id }; });
+  WW.on('shipEvade', e => { // a carrier's dive evasion with two or more bombers rolling in / diving on her
+    const n = WW.world.planes.filter(p => p.alive && p.target === e.ship && p.ordnance && (p.phase === 'roll' || p.phase === 'dive' || p.state === 'attack')).length;
+    if (!F.ev && e.ship.type === 'carrier' && e.kind === 'dive' && WW.game.roundTime > 20 && n >= 3) F.ev = { t: WW.game.roundTime, id: e.ship.id };
+  });
   WW.on('aaLightFired', e => {
     const p = e.target, s = e.ship;
     if (F.aa || !s || !s.stats || s.isBase || !p || !p.ordnance || p.target !== s || !(p.phase === 'run' || p.phase === 'dive')) return;
@@ -46,31 +49,33 @@ function find() { // in the page: hooks that note the first carrier dive evasion
   await nb.close();
   const { chromium } = require('playwright');
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  for (const { spec, f } of found.slice(0, 3)) for (const kind of ['ev', 'aa']) {
+  for (const { spec, f } of found.slice(0, 3)) for (const kind of KINDS) {
+    try {
     const e = f[kind]; if (!e) continue;
     const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
     p.on('pageerror', x => console.log('PAGE', x.message));
-    await p.goto((process.env.BASE_URL || 'http://localhost:8784/') + 'index.html?v=' + Date.now());
+    await p.goto((process.env.BASE_URL || 'http://localhost:8784/') + 'index.html?v=' + Date.now(), { timeout: 180000 });
     await p.waitForFunction(() => window.__sim && window.WW && WW.game, null, { timeout: 90000 });
     await p.waitForTimeout(2000);
     await p.evaluate(SB.install, SB.P);
-    const lead = kind === 'ev' ? 2.5 : 0.3;
+    const lead = kind === 'ev' ? 3.5 : 0.3;
     const info = await p.evaluate(([spec, e, lead, kind]) => {
       __sim.setScale(0.1);
       window.__beh.run(Object.assign({}, spec, { until: e.t + lead }));
       const s = WW.world.ships.find(q => q.id === e.id); if (!s) return null;
       __sim.focus(s.x, s.z, kind === 'ev' ? 110 : 70, 60);
-      if (kind === 'ev') __sim.setScale(0.35);
+      
       const ev = s.ai && s.ai.airEv;
       return { t: +WW.game.roundTime.toFixed(1), ship: s.type + '#' + s.id + ' ' + s.nation, hdg: +(s.heading * 180 / Math.PI).toFixed(0), want: ev ? +(ev.h * 180 / Math.PI).toFixed(0) : null,
         planes: WW.world.planes.filter(q => q.alive && q.target === s && q.ordnance).map(q => q.kind + ':' + (q.phase || q.sk || q.state)).join(' ') };
     }, [spec, e, lead, kind]);
     console.log(kind, spec.scen, spec.seed, JSON.stringify(info));
     if (info) for (let i = 0; i < 3; i++) {
-      await p.waitForTimeout(kind === 'ev' ? 4000 : 1200);
+      await p.waitForTimeout(1500);
       await p.screenshot({ timeout: 120000, path: path.join(OUT, `${kind === 'ev' ? 'evade' : 'aa'}_${spec.seed}_${spec.scen}_${i}.png`) });
     }
     await p.close();
+    } catch (err) { console.log('shot failed', kind, spec.scen, spec.seed, err.message.split('\n')[0]); }
   }
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });
