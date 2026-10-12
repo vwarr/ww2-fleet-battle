@@ -6,6 +6,7 @@
 //   preempt a fighter that has just broken off a dogfight onto an armed bomber (air_dogfight.js pick, 'preempt' event)
 //   baseclimb a fighter on a bomber climbing out of the island field
 //   overfly  an enemy plane over the field under the base's AA, with a base fighter on it (from the field, looking up)
+//   baselaunch four or more of the island's bombers on the runway / hold line / climb-out at once (a strike going)
 //   cap     the CAP on station round a carrier, from the side (heights a few hundred feet apart, not a ladder)
 // Writes tests/shots/planes2/render_<kind>_<seed>_<t>.png.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/planes2_shots.js [seed=4] [maxT=600] [kinds=cover,alert,escort,cap]
@@ -56,6 +57,9 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
       overfly: () => { const B = WW.islandBase && WW.islandBase.base; if (!B) return null; const t = WW.game.roundTime;
         for (const [q, ta] of window.__aaB || []) if (q.alive && t - ta < 0.6 && WW.dist(q.x, q.z, B.x, B.z) < 90 && WW.world.planes.some(f => f.alive && f.nation === B.nation && f.kind === 'fighter' && f.foe === q)) return { a: q, b: B, base: B };
         return null; },
+      baselaunch: () => { const B = WW.islandBase && WW.islandBase.base; if (!B) return null;
+        const L = WW.world.planes.filter(q => q.alive && q.carrier === B && q.state === 'takeoff' && q.kind !== 'fighter' && (q.rwPh === 'roll' || q.rwPh === 'lineup' || q.rwPh === 'hold' || q.rwPh === 'climb'));
+        return L.length >= 4 ? { a: L.find(q => q.rwPh === 'roll') || L[0], b: B, base: B, n: L.length } : null; },
       cap: () => WW.game.roundTime > 70 ? { cv: WW.world.ships.find(s => s.alive && s.type === 'carrier' && !s.isBase) } : null
     };
   }, SEED);
@@ -66,7 +70,9 @@ const SEED = +(process.argv[2] || 4), MAXT = +(process.argv[3] || 600), KINDS = 
         __sim.fastForward(1);
         const s = F(); if (!s) continue;
         window.__subj = s;
-        if (kind === 'overfly') {
+        if (kind === 'baselaunch') {
+          window.__look = () => { const q = __subj.a, h = q.heading + Math.PI + 0.35; return { x: q.x + Math.cos(h) * 75, y: 32, z: q.z + Math.sin(h) * 75, tx: q.x + Math.cos(q.heading) * 25, ty: 6, tz: q.z + Math.sin(q.heading) * 30 }; };   // behind the roller, looking down the runway
+        } else if (kind === 'overfly') {
           window.__look = () => { const q = __subj.a, B = __subj.base, h = Math.atan2(q.z - B.z, q.x - B.x); return { x: B.x - Math.cos(h) * 40, y: 8, z: B.z - Math.sin(h) * 40, tx: q.x, ty: q.y, tz: q.z }; };
         } else if (kind === 'cap') {
           window.__look = () => { const c = __subj.cv, n = c.heading + Math.PI / 2; return { x: c.x + Math.cos(n) * 210, y: 34, z: c.z + Math.sin(n) * 210, tx: c.x, ty: 42, tz: c.z }; };
