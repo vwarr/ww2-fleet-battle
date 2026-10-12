@@ -25,7 +25,9 @@ window.WW = window.WW || {};
     const sub = s && s.pt ? s : shot.plane;
     if (!sub || !sub.pt) return false;
     const same = (shot.group && shot.group.indexOf(p) >= 0) || (sub.wave && p.wave === sub.wave) || (sub.element && p.element === sub.element);
-    return !!(same && inFrame(p));
+    if (!same || !inFrame(p)) return false;
+    const L = WW.camLock && WW.camLock.state(shot);   // the subject about to drop itself keeps the camera
+    return !(L && L.release);
   }
   const SLOW_GAP = 20;                       // at most one slow motion per 20 real seconds
   const ease = x => x * x * (3 - 2 * x);
@@ -51,7 +53,7 @@ window.WW = window.WW || {};
   // ---------- hand-offs (events come from combat_weapons.js during the sim step) ----------
   function onDrop(ev) {
     const shot = WW.cam && WW.cam._shot && WW.cam._shot();
-    if (!live || !shot || shot.stage || shot.nohand || !ev || !ev.proj) return; // nohand: a brief cut away (camera_story.js dive) returns to its story
+    if (!live || !shot || (shot.stage && shot.stage !== 'hold') || shot.nohand || !ev || !ev.proj) return; // a new drop may take over the beat on a result
     const p = ev.proj, cur = WW.cam.current();
     if (ev.kind === 'bomb') {
       const mine = mineOrWing(ev, shot);

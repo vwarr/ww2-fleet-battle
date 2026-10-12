@@ -60,11 +60,12 @@ window.WW = window.WW || {};
   // how much an imminent finder item is worth as a story: attacks on ships beat fighters closing in
   const ATTACK = { strike: 1.5, push: 1.6, anvil: 1.6, run: 1.7, bandits: 0.8 };
   function imm(it) { return 10 + 3 * it.score * (ATTACK[it.kind] || 1); } // score = drama x the 10-30 s window: a strike 60 s out loses to one 20 s out
+  const NOW = { run: 1, push: 1 };                      // an attack already under way (the run, the dive) pulls the camera from 3 s out
   function bestImminent(not) {
     let b = null;
     if (WW.camFinder) for (const it of WW.camFinder.list()) {
       const p = it.subj;
-      if (!p || !p.pt || !ok(p) || it.etaReal < 8 || it.etaReal > 45 || (not && not(p))) continue; // (a deck launch is a fine opening)
+      if (!p || !p.pt || !ok(p) || it.etaReal < (NOW[it.kind] ? 3 : 8) || it.etaReal > 45 || (not && not(p))) continue; // (a deck launch is a fine opening)
       if (!b || imm(it) > imm(b)) b = it;
     }
     return b;

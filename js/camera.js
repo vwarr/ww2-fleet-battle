@@ -395,6 +395,7 @@ window.WW = window.WW || {};
     interrupt(c) {
       if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
       if (shot && (shot.user || shot.pr >= 99 || shot.subj === c.subj)) return false;
+      if (shot && shot.t < 2.5 && c.pr < 11) return false;                    // a cut into a cut: only for the biggest kind
       if (shot && WW.camLock && !WW.camLock.allows(shot, c.pr)) return false;
       if (WW.camStory && WW.camStory.active() && WW.camStory.interrupted) WW.camStory.interrupted(c);
       startShot(c);

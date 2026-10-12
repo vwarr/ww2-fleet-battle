@@ -17,8 +17,8 @@ window.WW = window.WW || {};
   const ok = p => p && !p.removed && p.alive;
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
   const TOP = { carrier: 7, battleship: 6, cruiser: 5, destroyer: 4, submarine: 2.5, pt: 2 };
-  const hits = new Map(), strad = new Map(), fired = new Map();   // ship -> [wall times] / { at, target }
-  let bombard = { at: -1e9, by: null }, scrambleAt = -1e9, lastInt = -1e9;
+  const hits = new Map(), strad = new Map(), fired = new Map(), hitBy = new Map();   // ship -> [wall times] / { at, target } / { at, kind }
+  let bombard = { at: -1e9, by: null }, scrambleAt = -1e9, lastInt = -1e9, tickT = 0;
   const ST = { interrupts: 0, duels: 0, profiles: 0, aa: 0, base: 0 };
   const recent = (m, s, win) => { const a = m.get(s); if (!a) return 0; const now = wall(); let n = 0; for (const w of a) if (now - w < win) n++; return n; };
   const push = (m, s) => { const a = m.get(s) || m.set(s, []).get(s); a.push(wall()); if (a.length > 12) a.shift(); };
@@ -31,8 +31,14 @@ window.WW = window.WW || {};
     if (e.ship) { push(hits, e.ship); return; }
     for (const s of WW.world.ships) if (s.alive && !s.submerged && WW.dist2(s.x, s.z, e.x, e.z) < 18 * 18) { push(strad, s); break; }
   });
-  WW.on('baseEvent', e => { if (!e) return; if (e.kind === 'bombard') bombard = { at: wall(), by: e.by || null }; else if (e.kind === 'scramble') scrambleAt = wall(); });
-  WW.on('roundStart', () => { hits.clear(); strad.clear(); fired.clear(); bombard = { at: -1e9, by: null }; scrambleAt = -1e9; lastInt = -1e9; });
+  WW.on('shipHit', e => { if (e && e.ship && (e.kind === 'torpedo' || e.kind === 'bomb')) hitBy.set(e.ship, { at: wall(), kind: e.kind }); });
+  WW.on('baseEvent', e => {
+    if (!e || !e.base) return;
+    if (e.kind === 'bombard') { bombard = { at: wall(), by: e.by || null }; interrupt({ kind: 'base', subj: e.base, threat: e.by && e.by.alive ? e.by : null, dur: 12 + Math.random() * 4, pr: 9, why: 'bombard', interrupt: true }); }
+    else if (e.kind === 'airRaid') interrupt({ kind: 'base', subj: e.base, threat: e.by && e.by.alive ? e.by : null, dur: 12 + Math.random() * 4, pr: 8.5, why: 'raid', interrupt: true });
+    else if (e.kind === 'scramble') scrambleAt = wall();
+  });
+  WW.on('roundStart', () => { hits.clear(); strad.clear(); fired.clear(); hitBy.clear(); bombard = { at: -1e9, by: null }; scrambleAt = -1e9; lastInt = -1e9; });
   // the interrupts: a ship going down or blowing up cuts in at once (the lock decides whether the running shot allows it)
   function interrupt(c) {
     if (!WW.cam || !WW.cam.interrupt) return;
@@ -87,10 +93,28 @@ window.WW = window.WW || {};
       if (s.sinking && (s.sinkT || 0) < 6) best = Math.max(best, 10);
       if (!s.alive) continue;
       if (recent(hits, s, 6)) best = Math.max(best, 7.5 + (VALUE[s.type] || 1));
+      const h = hitBy.get(s); if (h && now - h.at < 6) best = Math.max(best, 7 + (VALUE[s.type] || 1));
     }
     if (now - bombard.at < 20) best = Math.max(best, 8.5);
+    const b = base();
+    if (b) { let n = 0; for (const p of WW.world.planes) if (ok(p) && p.nation !== b.nation && p.ordnance && p.target === b && (p.phase || WW.dist2(p.x, p.z, b.x, b.z) < 120 * 120)) n++; if (n >= 2) best = Math.max(best, 8); }
+    if (WW.camFinder) for (const it of WW.camFinder.list()) if (it.kind === 'torps' && it.eta < 15 && it.subj && it.subj.alive) best = Math.max(best, 8.5);
     return best;
   }
+  // every second: torpedoes about to reach a ship the camera is not on cut in (the hull, the wakes coming at it)
+  function tick(rdt) {
+    if ((tickT -= rdt) > 0 || !WW.camFinder || !(WW.game && WW.game.state === 'battle')) return;
+    tickT = 1;
+    const shot = WW.cam._shot();
+    for (const it of WW.camFinder.list()) {
+      if (it.kind !== 'torps' || it.eta > 12 || !it.subj || !it.subj.alive) continue;
+      if (shot && (shot.subj === it.subj || shot.tship === it.subj)) break;
+      const s = it.subj;
+      interrupt({ kind: 'orbit', subj: s, r: Math.max(s.stats.length * 1.6, 24) + 12, dur: 12 + Math.random() * 4, w: 0.04, hgt: 0.14, pr: 8.5 + (VALUE[s.type] || 1) * 0.5, interrupt: true });
+      break;
+    }
+  }
+  if (WW.cam && WW.cam.update) { const u = WW.cam.update; WW.cam.update = function (rdt) { try { tick(rdt || 0); } catch (e) { /* never break the camera */ } return u.apply(this, arguments); }; }
 
   // ---------- shot goals ----------
   function openSide(x, z, a, r) { // the side with more open (deep) water: +1 / -1 for angle a / a + PI
