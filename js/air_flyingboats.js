@@ -21,6 +21,7 @@ window.WW = window.WW || {};
   var pool = {}, base = WW.Plane.prototype, stats = null;
   var OWN = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, alight: 1, afloat: 1, liftoff: 1, 'return': 1, depart: 1, alightHome: 1, taxiIn: 1 };
   var WATER = { afloat: 1, liftoff: 1, depart: 1, taxiIn: 1 };   // depart / alightHome / taxiIn: the island's seaplane ramp (seaplane_base.js)
+  var SEAT = { afloat: 1, liftoff: 1, depart: 1, taxiIn: 1, alight: 1, alightHome: 1 };   // states where the hull may be on the water (seat)
 
   function per() { return WW.perSide(0); }
   function reset() {
@@ -87,6 +88,42 @@ window.WW = window.WW || {};
         var want = WATER[this.state] || this.state === 'alight' || !this.alive ? 1 : 0;
         if (this.state === 'depart' || this.state === 'taxiIn' || (this.state === 'alightHome' && this.y < 12)) want = 1;
         if (this.floatA !== want) { this.floatA = WW.clamp(this.floatA + WW.clamp(want - this.floatA, -dt * 0.5, dt * 0.5), 0, 1); m.floats.set(this.floatA); }
+      }
+      this.seat(dt);
+    }
+    // On the water (visual only: the sim keeps p.y = WATER_Y and the plane's roll): the hull sits down to its
+    // waterline (models_flyingboats.js: about a third of its depth), less as it gets up on the step and out of it at
+    // lift-off, with a slow bob and a slight list onto the down-wind float, which then rests in the water (no bank in
+    // a taxiing turn). Hauled up (taxiIn), the keel rides the slipway and the apron as models_base.js lays them, nose
+    // down the slope.
+    seat(dt) {
+      var m = this.model, g = m.group;
+      if (!this.alive || this.deathMode || !SEAT[this.state]) { this.listS = undefined; return; }
+      var hauled = this.state === 'taxiIn' && this.upT && this.ramp;
+      var wet = hauled ? 1 : WW.clamp((WATER_Y + 0.6 - this.y) / 0.6, 0, 1);
+      if (!(wet > 0)) { this.listS = undefined; return; }
+      var calm = wet * (1 - 0.8 * WW.clamp((this.speed - 4) / 10, 0, 1));   // on the step: riding high, steady
+      var t = this.t, rest = -m.waterline * SCALE;
+      // the down-wind side (+1: the model's +z float); eased over, so a turn through the wind rolls it across slowly
+      var w = WW.wind || { x: 0, z: 0 }, d = w.x * -Math.sin(this.heading) + w.z * Math.cos(this.heading), side = d < 0 ? -1 : 1;
+      this.listS = this.listS === undefined || !(dt > 0) ? side : this.listS + WW.clamp(side - this.listS, -dt * 0.35, dt * 0.35);
+      var list = m.list * this.listS * calm * (m.floats.fixed ? 1 : m.floats.down) + Math.sin(t * 0.83 + 1.1) * 0.008 * calm;
+      g.position.y += (rest - WATER_Y) * calm + Math.sin(t * 1.27) * 0.012 * calm;
+      g.rotation.x = g.rotation.x * (1 - wet) + list;
+      g.rotation.z += Math.sin(t * 1.05 + 0.4) * 0.006 * calm;
+      if (!hauled) return;
+      // up the slipway (from -0.5 at the ramp foot to the apron's edge, 4 short of its centre) and onto the apron
+      var R = this.ramp, b = WW.islandBase && WW.islandBase.base, pad = b ? b.site.padH : 1.2;
+      var gy = function (x, z) { return Math.max(pad, -WW.terrain.depthAt(x, z)) - 0.05; };
+      var ex = R.ax - Math.cos(R.h) * 4, ez = R.az - Math.sin(R.h) * 4, y0 = gy(ex, ez) + 0.05, y1 = -0.5;
+      var dx = ex - R.wx, dz = ez - R.wz, L2 = dx * dx + dz * dz || 1, u = ((this.x - R.wx) * dx + (this.z - R.wz) * dz) / L2;
+      var L = Math.sqrt(L2), top = y1 + (y0 - y1) * WW.clamp(u, 0, 1) + 0.08;   // past the slipway's end: up onto the apron's top over 2 u
+      if (u > 1) top += (gy(R.ax, R.az) + 0.12 - top) * WW.clamp((u - 1) * L / 2, 0, 1);
+      top = Math.max(top, -WW.terrain.depthAt(this.x, this.z));
+      var yk = top - m.keel * SCALE + 0.05, afloat = g.position.y;   // on the beaching gear
+      if (yk > afloat) {
+        var slope = u < 1 ? Math.atan2(y0 - y1, L) : 0, k = WW.clamp((yk - afloat) / 0.3, 0, 1);
+        g.position.y = yk; g.rotation.x *= 1 - k; g.rotation.z -= slope * k;   // tail first up the slope: nose down
       }
     }
     damage(amount) {
