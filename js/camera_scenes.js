@@ -17,7 +17,7 @@ window.WW = window.WW || {};
   const ok = p => p && !p.removed && p.alive;
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
   const TOP = { carrier: 7, battleship: 6, cruiser: 5, destroyer: 4, submarine: 2.5, pt: 2 };
-  const hits = new Map(), strad = new Map(), fired = new Map(), hitBy = new Map();   // ship -> [wall times] / { at, target } / { at, kind }
+  const hits = new Map(), strad = new Map(), fired = new Map(), hitBy = new Map(), crit = new Map();   // ship -> [wall times] / { at, target } / { at, kind } / wall time of a magazine or deck explosion
   let bombard = { at: -1e9, by: null }, scrambleAt = -1e9, lastInt = -1e9, tickT = 0;
   const ST = { interrupts: 0, duels: 0, profiles: 0, aa: 0, base: 0 };
   const recent = (m, s, win) => { const a = m.get(s); if (!a) return 0; const now = wall(); let n = 0; for (const w of a) if (now - w < win) n++; return n; };
@@ -38,7 +38,7 @@ window.WW = window.WW || {};
     else if (e.kind === 'airRaid') interrupt({ kind: 'base', subj: e.base, threat: e.by && e.by.alive ? e.by : null, dur: 12 + Math.random() * 4, pr: 8.5, why: 'raid', interrupt: true });
     else if (e.kind === 'scramble') scrambleAt = wall();
   });
-  WW.on('roundStart', () => { hits.clear(); strad.clear(); fired.clear(); hitBy.clear(); bombard = { at: -1e9, by: null }; scrambleAt = -1e9; lastInt = -1e9; });
+  WW.on('roundStart', () => { hits.clear(); strad.clear(); fired.clear(); hitBy.clear(); crit.clear(); bombard = { at: -1e9, by: null }; scrambleAt = -1e9; lastInt = -1e9; });
   // the interrupts: a ship going down or blowing up cuts in at once (the lock decides whether the running shot allows it)
   function interrupt(c) {
     if (!WW.cam || !WW.cam.interrupt) return;
@@ -51,7 +51,10 @@ window.WW = window.WW || {};
     const big = s.type === 'carrier' || s.type === 'battleship';
     interrupt({ kind: 'profile', subj: s, pr: big ? 11 : s.type === 'cruiser' ? 10 : 9, dur: 14 + Math.random() * 4, interrupt: true });
   });
-  WW.on('magazine', e => { if (e && e.ship && !e.ship.removed) interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 1.5 + 18, dur: 12 + Math.random() * 4, w: 0.045, hgt: 0.2, pr: 11, interrupt: true }); });
+  // a magazine: wide and a little high, the whole column in frame (fx_critical.js); a deck load / hangar going up: the
+  // flight deck from off the quarter (the director's strongest cuts after a sinking)
+  WW.on('magazine', e => { if (e && e.ship && !e.ship.removed) { crit.set(e.ship, wall()); interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 2.2 + 36, dur: 14 + Math.random() * 4, w: 0.035, hgt: 0.32, pr: 11, interrupt: true }); } });
+  WW.on('deckHit', e => { if (e && e.ship && !e.ship.removed && e.ship.alive) { crit.set(e.ship, wall()); interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 1.8 + 24, dur: 13 + Math.random() * 4, w: 0.04, hgt: 0.24, pr: e.hangar || e.load >= 6 ? 10.5 : 10, interrupt: true }); } });
 
   // ---------- candidates (camera.js candidates(): WW.camHooks) ----------
   function attackers(s, R) { const out = []; for (const p of WW.world.planes) if (ok(p) && p.nation !== s.nation && (p.target === s || p.diveTgt === s || p.outTgt === s) && (p.phase || p.state === 'attack') && WW.dist2(p.x, p.z, s.x, s.z) < R * R) out.push(p); return out; }
@@ -61,6 +64,7 @@ window.WW = window.WW || {};
       if (s.removed) continue;
       if (s.sinking && (s.sinkT || 0) < 7) { add(10 + (VALUE[s.type] >= 1.4 ? 1 : 0), 'profile', s, { dur: dur(14, 18) }); continue; }
       if (!s.alive || s.submerged) continue;
+      const cr = crit.get(s); if (cr && now - cr < 20) add(9.6 + (VALUE[s.type] || 1) * 0.3, 'orbit', s, { r: s.stats.length * 1.8 + 24, dur: dur(11, 14), w: 0.04, hgt: 0.24 });   // the deck still going up
       const f = fired.get(s), t = f && f.target;
       if (f && now - f.at < 8 && t && t.alive && !t.removed && WW.dist(s.x, s.z, t.x, t.z) < 220) {
         const h = recent(hits, t, 10), st = recent(strad, t, 8);
@@ -91,6 +95,7 @@ window.WW = window.WW || {};
     for (const s of WW.world.ships) {
       if (s.removed) continue;
       if (s.sinking && (s.sinkT || 0) < 6) best = Math.max(best, 10);
+      const cr = crit.get(s); if (cr && now - cr < 15) best = Math.max(best, 10);
       if (!s.alive) continue;
       if (recent(hits, s, 6)) best = Math.max(best, 7.5 + (VALUE[s.type] || 1));
       const h = hitBy.get(s); if (h && now - h.at < 6) best = Math.max(best, 7 + (VALUE[s.type] || 1));
