@@ -32,6 +32,7 @@ window.WW = window.WW || {};
       struts: [[0.5, 1.15], [0.1, 1.15], [0.5, 2.05], [0.1, 2.05]], cockpit: [1.3, 1.78], tailGlass: true, marks: 2.7 }
   };
   var TPL = {}, K, M, _y = new THREE.Vector3(0, 1, 0), _d = new THREE.Vector3();
+  var DRAFT = 0.35, FLOAT_GAP = 0.05, FLOAT_DIP = 0.04, STRUT = 0.66;   // hull depth under water afloat; lowered float's bottom above the waterline, its dip when listed onto it; strut drop
 
   // a thin bar from a to b ([x, y, z]); models.js bar() has its bottom at y = 0, so it grows from a along its y
   function strut(p, hex, w, a, b) {
@@ -105,26 +106,44 @@ window.WW = window.WW || {};
     });
     var tpl = { name: T.name, body: K.bake(b), props: props, R: T.prop, blades: blades(P, T.prop), fx: fx, floats: [] };
     var dg = new THREE.CircleGeometry(T.prop, 24); dg.rotateY(PI / 2); tpl.disc = dg; tpl.discMat = K.discMat(nat, P.tip);
-    // wingtip floats: a strut down from the wing and the float. PBY: a pivot that swings it out to the tip (fold)
-    var fl = new THREE.Group(), L = T.floatLen;
+    // afloat (air_flyingboats.js): the waterline, DRAFT of the hull's depth up from the keel at its deepest station
+    // (a PBY at its mooring drew about a third of its hull depth amidships: the white bottom and the lit lower flanks
+    // under water, the bottom showing only where it sweeps up aft and at the bow); the keel: the hull's lowest point
+    // (the haul-up rides on it)
+    var deep = st.reduce(function (a, s) { return s[2] > a[2] ? s : a; });
+    tpl.keel = st.reduce(function (k, s) { return Math.min(k, s[3] - s[2]); }, 1e9);
+    tpl.waterline = deep[3] - deep[2] + DRAFT * 2 * deep[2];
+    // wingtip floats: a strut down from the wing and the float. PBY: a pivot that swings it out to the tip (fold).
+    // Strut and float are two meshes: lowered, the strut reaches down (floats.set: x ext) so the float's bottom hangs
+    // FLOAT_GAP above the waterline, and a slight list (tpl.list, rad) puts the down-wind float in the water; folded
+    // (the PBY in flight) it is back to its stub, the float the wing tip.
+    var fl = new THREE.Group(), fb = new THREE.Group(), L = T.floatLen;
     M._bar(fl, P.strut, 0.05, 0.62, 0.05, 0.02, -0.66, 0);
     M._bar(fl, P.strut, 0.04, 0.6, 0.04, -0.14, -0.64, 0).rotation.z = -0.25;
-    M._sph(fl, P.top, L, 0.16, 0.17, 0.0, -0.72, 0);
-    M._sph(fl, P.belly, L * 0.96, 0.1, 0.15, 0.0, -0.77, 0);
-    tpl.floatGeo = K.bake(fl);
+    M._sph(fb, P.top, L, 0.16, 0.17, 0.0, -0.72, 0);
+    M._sph(fb, P.belly, L * 0.96, 0.1, 0.15, 0.0, -0.77, 0);
+    tpl.strutGeo = K.bake(fl); tpl.floatGeo = K.bake(fb);
     [-1, 1].forEach(function (k) { tpl.floats.push([T.wing.qc - 0.02, wy - 0.02, k * T.floatZ]); });
+    tpl.floatExt = Math.max(0, (wy - 0.02 - 0.82) - (tpl.waterline + FLOAT_GAP));   // float bottom: 0.82 below the pivot
+    tpl.list = (FLOAT_GAP + FLOAT_DIP) / T.floatZ;
     tpl.fixedFloats = !!T.fixedFloats;
     var tc = K.chordAt(T.wing, 0.97);
     fx.tipL = new THREE.Vector3(T.wing.qc - 0.25 * tc.c, wy, -0.97 * T.wing.semi); fx.tipR = new THREE.Vector3(fx.tipL.x, wy, -fx.tipL.z);
     return (TPL[nat] = tpl);
   }
 
-  // floats.set(a): 0 = up (PBY: swung out, the float is the wing tip), 1 = down (on the water). H6K: fixed down.
+  // floats.set(a): 0 = up (PBY: swung out, the float is the wing tip), 1 = down (on the water: the strut reaches down
+  // to its full length as it swings). H6K: fixed down, full length.
   function setFloats(a) {
     this.down = a;
-    for (var i = 0; i < this.parts.length; i++) { var p = this.parts[i]; p.rotation.x = this.fixed ? 0 : -p.userData.k * (PI / 2) * (1 - a); }
+    var e = this.ext * (this.fixed ? 1 : a);
+    for (var i = 0; i < this.parts.length; i++) {
+      var p = this.parts[i]; p.rotation.x = this.fixed ? 0 : -p.userData.k * (PI / 2) * (1 - a);
+      p.children[0].scale.y = 1 + e / STRUT; p.children[1].position.y = -e;
+    }
   }
-  // buildFlyingBoat(nation) -> { group, props: [Group], blades: [Mesh], discs: [Mesh], floats: { down, set(a) }, fx, name, payload: null }
+  // buildFlyingBoat(nation) -> { group, props: [Group], blades: [Mesh], discs: [Mesh], floats: { down, set(a) }, fx, name,
+  //   payload: null, waterline, keel (model y: the water afloat, the hull's lowest point), list (rad: onto one float) }
   //   props spin about local x; the group is scaled by the caller (air_flyingboats.js SCALE).
   function buildFlyingBoat(nationId) {
     var nat = WW.models._nation(nationId).id, t = template(nat), mat = WW.models._mat(0xffffff);
@@ -136,15 +155,17 @@ window.WW = window.WW || {};
       var d = new THREE.Mesh(t.disc, t.discMat); d.visible = false; d.renderOrder = 5; pr.add(d);
       props.push(pr); bl.push(b); ds.push(d);
     });
-    var floats = { down: 1, parts: [], fixed: t.fixedFloats, set: setFloats };
+    var floats = { down: 1, parts: [], fixed: t.fixedFloats, ext: t.floatExt, set: setFloats };
     t.floats.forEach(function (fp) {
-      var f = new THREE.Group(); f.position.fromArray(fp); f.userData.k = fp[2] < 0 ? -1 : 1; f.add(new THREE.Mesh(t.floatGeo, mat)); g.add(f);
+      var f = new THREE.Group(); f.position.fromArray(fp); f.userData.k = fp[2] < 0 ? -1 : 1;
+      f.add(new THREE.Mesh(t.strutGeo, mat)); f.add(new THREE.Mesh(t.floatGeo, mat)); g.add(f);
       floats.parts.push(f);
     });
     floats.set(1);
     if (WW.models._shadows) WW.models._shadows(g, false);
     ds.forEach(function (d) { d.castShadow = false; });
-    return { group: g, props: props, blades: bl, discs: ds, floats: floats, fx: t.fx, name: t.name, payload: null, prop: null };
+    return { group: g, props: props, blades: bl, discs: ds, floats: floats, fx: t.fx, name: t.name, payload: null, prop: null,
+      waterline: t.waterline, keel: t.keel, list: t.list };
   }
   if (WW.models && WW.models._planeKit) WW.models.buildFlyingBoat = buildFlyingBoat;
   else console.error('models_flyingboats.js must load after models_planes.js');
