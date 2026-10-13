@@ -62,7 +62,7 @@ function install() {
   WW.on('weaponDropped', e => {
     const p = e && e.plane; if (!big(p) || !p.level || e.kind !== 'bomb') return;
     const t = e.target, r = rec(p);
-    const d = { v: p.variant, y: +p.y.toFixed(1), alt: +(p.lvA || p.level.alt).toFixed(1), ship: !!(t && !t.isBase), ax: t ? t.x : 0, az: t ? t.z : 0, tt: +(WW.game.roundTime - r.t0).toFixed(0), hi: r.run ? r.runHi / r.run : 0, hit: 0, miss: null };
+    const d = { v: p.variant, y: +p.y.toFixed(1), alt: +(p.lvA || p.level.alt).toFixed(1), ship: !!(t && !t.isBase), ax: t ? t.x : 0, az: t ? t.z : 0, tt: +(WW.game.roundTime - r.t0).toFixed(0), hi: r.run ? r.runHi / r.run : 0, hit: 0, miss: null, sp: t && !t.isBase && t.stats ? +((t.speed || 0) / (t.stats.speed || 1)).toFixed(2) : null };
     S.drops.push(d); S.bombs.set(e.proj, d);
   });
   WW.on('weaponImpact', e => {
@@ -102,7 +102,7 @@ function install() {
   R.flush = () => {
     const rs = [...seen.values()];
     const gaps = []; for (let i = 1; i < S.td.length; i++) if (S.td[i] - S.td[i - 1] < 60) gaps.push(S.td[i] - S.td[i - 1]);
-    const o = { gaps, tdN: S.td.length, homeLoss: S.homeLoss, sorties: S.sorties, home: S.home, dmg: S.dmg, lost: S.lost, drops: S.drops.map(d => ({ v: d.v, y: d.y, alt: d.alt, ship: d.ship, tt: d.tt, hi: d.hi, hit: d.hit, miss: d.miss })),
+    const o = { gaps, tdN: S.td.length, homeLoss: S.homeLoss, sorties: S.sorties, home: S.home, dmg: S.dmg, lost: S.lost, drops: S.drops.map(d => ({ sp: d.sp, v: d.v, y: d.y, alt: d.alt, ship: d.ship, tt: d.tt, hi: d.hi, hit: d.hit, miss: d.miss })),
       hold: rs.filter(r => r.hold > 0).map(r => ({ v: r.v, t: r.hold, y: r.holdY / r.hold, aa: r.holdAA, f: r.holdF, isle: r.holdIsle })) };
     fresh(); return o;
   };
@@ -143,6 +143,8 @@ function install() {
     for (const v of ['b17', 'g4mL']) for (const ship of [true, false]) {
       const D = DR.filter(d => d.v === v && d.ship === ship); if (!D.length) continue;
       const miss = D.filter(d => d.miss !== null).map(d => d.miss);
+      const HS = D.filter(d => d.hit && d.ship).map(d => d.sp);
+      if (HS.length) console.log(`  level ${v} ship hits at speed (x max): ${HS.join(' ')}; all drops median ${f1(med(D.map(d => d.sp || 0)))}`);
       console.log(`  level ${v.padEnd(4)} on ${ship ? 'ships' : 'base '}: ${D.length} bombs, release height median ${f1(med(D.map(d => d.y)))} u (want ${D[0].alt}, min ${f1(Math.min(...D.map(d => d.y)))}), take-off -> release median ${f1(med(D.map(d => d.tt)))} s, run (last 150 u) at height ${pc(D.reduce((s, d) => s + d.hi, 0), D.length)}, hits ${D.reduce((s, d) => s + d.hit, 0)} (${pc(D.reduce((s, d) => s + d.hit, 0), D.length)})` + (miss.length ? `, miss median ${f1(med(miss))} u` : ''));
     }
   }
