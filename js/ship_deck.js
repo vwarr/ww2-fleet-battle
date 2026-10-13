@@ -25,7 +25,7 @@ window.WW = window.WW || {};
   // deck back within HOLD_S s (longer when no other deck of the side is open); else it diverts or ditches
   var BOOM_PERM = 6, BOOM_T = 2;       // a deck-load explosion: this big a load wrecks the deck for the round, a smaller one BOOM_T x as long
   var stats = null, tick = 0;
-  function per() { return WW.perSide(0); }
+  function per() { return { USN: 0, IJN: 0 }; }
   function reset() { tick = 0; stats = { out: per(), perm: per(), back: per(), outS: per(), held: 0, diverted: 0, ditched: 0, hangarBooms: per() }; S.stats = stats; }
   function dcOf(s) { var d = WW.fleetCmd && WW.fleetCmd.doctrine(s.nation); return d && d.damageControl > 0 ? d.damageControl : 1; }
   function out(cv) { return !!(cv && cv.deckOut); }
