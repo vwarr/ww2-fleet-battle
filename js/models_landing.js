@@ -18,12 +18,15 @@
 // inertia), slams into the seas and throws spray over the bow; the ramp drops over ~1 s. Wrecks: a craft wrecked in the
 // shallows stays there, listing and burning, for the round (Omaha's beach was strewn with them); one sunk in deep water
 // goes down in ~25 s; a foundered DD in seconds.
+// Performance (~100 craft and thousands of men aboard): the men in a craft farther than LOD_D u from the camera are
+// box figures (models_infantry.js lodFigures, no shadow); a far craft off screen is not drawn (its sea ride still runs,
+// so it is in step when it comes back into view); only the used part of each instance buffer is uploaded.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   const COL = { hull: 0x5f6b74, hullL: 0x727e86, boot: 0x2a2f33, deck: 0x464d52, ply: 0x66727a, steel: 0x535c63, wood: 0x8a7556, metal: 0x34373a,
     armour: 0x58626a, rn: 0x84919a, rnD: 0x69757d, glass: 0x34465a, crate: 0x7a6a48 };
-  const MAN_S = 0.78, MAXB = { lcvp: 260, lca: 60, lcm: 60, lct: 80, lci: 40 }, MAX_MEN = 5000, MAX_TANK = 260, MAX_DD = 64, MAX_WRECK = 90;
+  const LOD_D = 45, MAN_S = 0.78, MAXB = { lcvp: 260, lca: 60, lcm: 60, lct: 80, lci: 40 }, MAX_MEN = 5000, MAX_TANK = 260, MAX_DD = 64, MAX_WRECK = 90;
   const DEEP_SINK_T = 25, DD_SINK_T = 8, RAFT_T = 120, SPRAY_DP = 0.3;
   let root = null, T = null, DEF = null, men = null, tank = null, dd = null, raft = null, built = false;
   const vis = new WeakMap();
@@ -166,18 +169,24 @@ window.WW = window.WW || {};
     }
     const G = WW.soldierModel.build(), TK = WW.tankModel.build();
     men = {}; for (const p of ['stand', 'crouch', 'runA', 'runB']) men[p] = mk(G[p], MAX_MEN);
+    const LG = WW.infantryFx && WW.infantryFx.lodFigures ? WW.infantryFx.lodFigures() : G;   // the far men: box figures
+    for (const p of ['stand', 'crouch', 'runA', 'runB']) { men['~' + p] = mk(LG[p], MAX_MEN); men['~' + p].castShadow = false; }
     tank = mk(TK.sherman, MAX_TANK); dd = mk(TK.screen, MAX_DD, true); raft = mk(TK.raft, MAX_DD); dd.setColorAt(0, new THREE.Color(1, 1, 1));
     WW.scene.add(root);
     built = true;
   }
+  // upload only the part of an instance buffer in use (the matrices, or the colours)
+  function used(im, col) { const a = col ? im.instanceColor : im.instanceMatrix; a.updateRange.offset = 0; a.updateRange.count = im.count * (col ? 3 : 16); a.needsUpdate = true; }
+  const _fr = new THREE.Frustum(), _frM = new THREE.Matrix4(), _sph = new THREE.Sphere(), _cp = new THREE.Vector3();
   // ---- posing ----
   const _M = new THREE.Matrix4(), _R = new THREE.Matrix4(), _L = new THREE.Matrix4(), _W = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1), _c = new THREE.Color();
   const _rY = new THREE.Matrix4(), _rZ = new THREE.Matrix4(), _sM = new THREE.Matrix4().makeScale(MAN_S, MAN_S, MAN_S);
   let n = null, wreckCol = new THREE.Color(0.42, 0.4, 0.38), white = new THREE.Color(1, 1, 1);
   function craftMatrix(x, y, z, h, pitch, roll) { _e.set(roll, -h, pitch, 'YXZ'); _q.setFromEuler(_e); return _M.compose(_p.set(x, y, z), _q, _s.set(1, 1, 1)); }
   function local(x, y, z, yaw, pitch) { _L.makeTranslation(x, y, z); if (yaw) _L.multiply(_rY.makeRotationY(yaw)); if (pitch) _L.multiply(_rZ.makeRotationZ(pitch)); return _L; }
+  let farK = '';   // '~' while drawing a far craft: its men as box figures
   function man(pose, M, x, y, z, yaw) {
-    const im = men[pose]; if (im.count >= MAX_MEN) return;
+    const im = men[farK + pose]; if (im.count >= MAX_MEN) return;
     _W.multiplyMatrices(M, local(x, y, z, yaw || 0, 0)).multiply(_sM);
     im.setMatrixAt(im.count++, _W);
   }
@@ -208,6 +217,9 @@ window.WW = window.WW || {};
   function draw(u, st, wreck) {
     const D = DEF[u.type], P = T[u.type];
     if (!D || P.body.count >= MAXB[u.type]) return;
+    const far = (u.x - _cp.x) * (u.x - _cp.x) + (st.y - _cp.y) * (st.y - _cp.y) + (u.z - _cp.z) * (u.z - _cp.z) > LOD_D * LOD_D;
+    if (far && !_fr.intersectsSphere(_sph.set(_p.set(u.x, st.y, u.z), u.C.len * 0.6 + 1))) return;   // far and off screen
+    farK = far ? '~' : '';
     const M = craftMatrix(u.x, st.y, u.z, u.heading, st.p, st.r);
     const i = P.body.count++;
     P.body.setMatrixAt(i, M); P.body.setColorAt(i, wreck ? wreckCol : white);
@@ -219,7 +231,7 @@ window.WW = window.WW || {};
       // the LCI's troops going down the gangways
       if (u.type === 'lci' && ra > 0.8 && u.men > 0 && !wreck) {
         _R.copy(_W);
-        for (let k = 0; k < 3; k++) { const im = men[((performance.now() / 140 | 0) + k) & 1 ? 'runA' : 'runB']; if (im.count < MAX_MEN) im.setMatrixAt(im.count++, _W.multiplyMatrices(_R, local(0.3 + k * 0.38, 0.01, 0, 0, 0)).multiply(_sM)); }
+        for (let k = 0; k < 3; k++) { const im = men[farK + (((performance.now() / 140 | 0) + k) & 1 ? 'runA' : 'runB')]; if (im.count < MAX_MEN) im.setMatrixAt(im.count++, _W.multiplyMatrices(_R, local(0.3 + k * 0.38, 0.01, 0, 0, 0)).multiply(_sM)); }
       }
     }
     if (wreck) return;
@@ -238,6 +250,7 @@ window.WW = window.WW || {};
   const _sS = new THREE.Matrix4();
   function drawDD(u, st, sink) {
     if (dd.count >= MAX_DD || tank.count >= MAX_TANK) return;
+    farK = '';
     const TM = WW.tankModel, yF = st.y - (TM.SCREEN_TOP - 0.27) - (u.flood || 0) * 0.22 - (sink || 0);
     const g = WW.terrain.heightRaw(u.x, u.z), yT = sink ? yF : Math.max(g, yF), c = sink ? 0 : WW.clamp((g - yF) / 0.3, 0, 1);
     const M = craftMatrix(u.x, yT, u.z, u.heading, st.p * 0.6 * (1 - c) + (sink ? Math.min(0.5, sink * 0.6) : 0), st.r * 0.6 * (1 - c));
@@ -249,6 +262,7 @@ window.WW = window.WW || {};
   // the crew of a foundered DD in their raft, drifting on the wind
   function drawRaft(w, age) {
     if (raft.count >= MAX_DD) return;
+    farK = '';
     const x = w.x + w.rx + (WW.wind ? WW.wind.x : 0.5) * age * 0.04, z = w.z + w.rz + (WW.wind ? WW.wind.z : 0.2) * age * 0.04;
     const y = WW.waves ? WW.waves.height(x, z) : 0, sl = WW.waves ? WW.waves.slope(x, z, 0.3) : { x: 0, z: 0 };
     const M = craftMatrix(x, y, z, w.heading + age * 0.05, Math.atan(sl.x) * 0.8, -Math.atan(sl.z) * 0.8);
@@ -259,7 +273,8 @@ window.WW = window.WW || {};
     if (WW.simOnly || !WW.landingCraft || !WW.isScn('normandy') || !WW.scene) { if (root) root.visible = false; return; }
     if (!built) init();
     root.visible = true;
-    const dt = Math.min(0.1, rdt || 0.016), now = performance.now() / 1000, rt = WW.game ? WW.game.roundTime : 0;
+    const dt = Math.min(0.1, rdt || 0.016), now = performance.now() / 1000, rt = WW.game ? WW.game.roundTime : 0, cam = WW.camera;
+    cam.updateMatrixWorld(); _cp.copy(cam.position); _frM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); _fr.setFromProjectionMatrix(_frM); farK = '';
     for (const k in T) { T[k].body.count = 0; T[k].ramp.count = 0; }
     for (const p in men) men[p].count = 0;
     tank.count = 0; dd.count = 0; raft.count = 0;
@@ -291,9 +306,9 @@ window.WW = window.WW || {};
       draw(w, sk, true);
       if (age < (w.stranded ? 90 : 14) && Math.random() < dt * 1.5 && WW.fx && WW.fx.smoke) WW.fx.smoke(w.x, st.y + 0.4, w.z, true, w.C.len < 2 ? 0.5 : 0.9);
     }
-    for (const k in T) { for (const im of [T[k].body, T[k].ramp]) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; } }
-    for (const p in men) men[p].instanceMatrix.needsUpdate = true;
-    tank.instanceMatrix.needsUpdate = true; dd.instanceMatrix.needsUpdate = true; raft.instanceMatrix.needsUpdate = true; if (dd.instanceColor) dd.instanceColor.needsUpdate = true;
+    for (const k in T) { for (const im of [T[k].body, T[k].ramp]) { used(im); if (im.instanceColor) used(im, true); } }
+    for (const p in men) used(men[p]);
+    used(tank); used(dd); used(raft); if (dd.instanceColor) used(dd, true);
   }
   WW.on('craftEvent', e => {
     if (WW.simOnly || !WW.isScn('normandy')) return;

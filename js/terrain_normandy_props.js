@@ -98,7 +98,7 @@ window.WW = window.WW || {};
       L.forEach((i, k) => { const x = xOf(i), z = zOf(i), M = mOf(i, x, z), y = M.elements[13]; im.setMatrixAt(k, M); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
       const c = new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), sph = new THREE.Sphere(c, Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + pad);
       const rec = { im, hiG: view(hi, sph), loG: lo ? view(lo, sph) : null, c, r: sph.radius, lo: false };
-      im.geometry = rec.hiG; im.castShadow = true; im.receiveShadow = true; im.name = 'chunk';
+      im.geometry = rec.hiG; im.frustumCulled = true; im.castShadow = true; im.receiveShadow = true; im.name = 'chunk';   // (this three's InstancedMesh is not culled by default)
       g.add(im); if (lo) lods.push(rec);
     }
   }
