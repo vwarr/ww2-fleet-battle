@@ -173,18 +173,19 @@ window.WW = window.WW || {};
   });
   on('ace', e => e.pilot && add(e.pilot.name + ' of ' + (e.plane && e.plane.squadron ? e.plane.squadron.short : 'the air group') + ' makes ace', 2, e.pilot.nation));
   on('flyingBoat', e => e.order === 'lost' && e.plane && add(observer(e.plane) + ' patrol plane lost', 1, e.nation || e.plane.nation));
-  // the patrol boat's radio report (air_patrol.js): "PBY: 2 carriers, 1 battleship bearing 320, 180 miles" from the own
-  // island (else the fleet); a raid: "Many planes heading Midway"
+  // the patrol boat's radio report (air_patrol.js): "Midway PBY: 2 carriers, 1 battleship bearing 320, 180 miles" from
+  // the own island (else "PBY (fleet patrol): ..." from the fleet); a raid: "Many planes heading Midway"
   const NUM = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
   on('flyingBoat', e => {
     if (e.order !== 'sighting' || !e.plane) return;
     const b = WW.islandBase && WW.islandBase.base, home = b && b.nation === e.nation ? b : null, f = home || fleetCentre(e.nation) || e.plane;
     const d = WW.dist(f.x, f.z, e.x, e.z), at = ' bearing ' + bearing(f.x, f.z, e.x, e.z) + ', ' + Math.max(5, Math.round(d / 40) * 5) + ' miles';
-    if (e.planes) { add(observer(e.plane) + ': many planes heading ' + (home ? home.name : 'the fleet') + at, 3, e.nation, { kind: 'sighting' }); return; }
+    const by = home ? home.name + ' ' + observer(e.plane) : observer(e.plane) + ' (fleet patrol)';   // whose boat: the island's own, or one from the edge reporting to the fleet
+    if (e.planes) { add(by + ': many planes heading ' + (home ? home.name : 'the fleet') + at, 3, e.nation, { kind: 'sighting' }); return; }
     const types = Object.keys(e.comp || {}).sort((a, c) => (RANK[c] || 0) - (RANK[a] || 0));
     if (!types.length) return;
     const what = types.map(t => (NUM[e.comp[t]] || e.comp[t]) + ' ' + word(t, e.comp[t])).join(', ');
-    add(observer(e.plane) + ': ' + what + at, e.carriers ? 3 : 2, e.nation, { kind: 'sighting' });
+    add(by + ': ' + what + at, e.carriers ? 3 : 2, e.nation, { kind: 'sighting' });
   });
   on('admiralOrder', e => {
     if (!e.text) return;
