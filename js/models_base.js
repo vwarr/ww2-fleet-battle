@@ -124,16 +124,37 @@ window.WW = window.WW || {};
     return GROUND;
   }
   // per map: the runways and the taxi network (site-local u / v -> a group rotated by the main runway heading), one
-  // baked mesh. Layers: runway 0.08 thick > hold bars 0.075 > taxiways 0.06 > hardstands 0.05 (no z-fighting).
+  // baked mesh. Layers (no coplanar overlap): main runway 0.08 thick > hold bars 0.075 > cross runway 0.06 > taxiways
+  // 0.06 (0.04 lower) > driveways 0.055 > hardstands 0.05. The crossing is the main runway's: its slab and its paint
+  // (the centreline) run through, the cross runway passes under it and its paint stops short of the main's edges; a
+  // threshold inside the crossing (the main's west end lies in it) is left off, as is a hold bar under the cross runway.
+  var CLEAR = 1.5;
+  function clear(r, o, t0, t1, w0, w1, m) { // a mark (runway r's frame: t0..t1 along, w0..w1 across) clear of runway o's paving + m
+    if (!o) return true;
+    var c = Math.cos(r.h), s = Math.sin(r.h), oc = Math.cos(o.h), os = Math.sin(o.h);
+    for (var a = 0; a <= 4; a++) for (var b = 0; b <= 2; b++) {
+      var t = t0 + (t1 - t0) * a / 4, w = w0 + (w1 - w0) * b / 2, x = r.x + c * t - s * w - o.x, z = r.z + s * t + c * w - o.z;
+      if (Math.abs(x * oc + z * os) < o.len / 2 + m && Math.abs(-x * os + z * oc) < o.w / 2 + m) return false;
+    }
+    return true;
+  }
   function strips(S, L) {
-    var g = new THREE.Group(), y = S.padH;
+    var g = new THREE.Group(), y = S.padH, R0 = S.runways[0], R1 = S.runways[1];
     S.runways.forEach(function (r, i) {
-      var q = new THREE.Group(); q.position.set(r.x, y, r.z); q.rotation.y = -r.h; g.add(q);
-      M._bar(q, i ? C.strip2 : C.strip, r.len, 0.08, r.w, 0, 0, 0);
-      for (var u = -r.len / 2 + 9; u < r.len / 2 - 8; u += 6) M._bar(q, C.paint, 2.6, 0.1, 0.3, u, 0, 0);       // centreline dashes
+      var q = new THREE.Group(), o = i ? R0 : R1, th = i ? 0.06 : 0.08; q.position.set(r.x, y, r.z); q.rotation.y = -r.h; g.add(q);
+      M._bar(q, i ? C.strip2 : C.strip, r.len, th, r.w, 0, 0, 0);
+      var paint = function (lt, lw, t, w, all) { // a white mark (all: the main's centreline, through the crossing)
+        if (all || clear(r, o, t - lt / 2, t + lt / 2, w - lw / 2, w + lw / 2, CLEAR)) M._bar(q, C.paint, lt, th + 0.02, lw, t, 0, w);
+      };
+      var sa = o ? Math.sin(r.h - o.h) : 0, dx = o ? r.x - o.x : 0, dz = o ? r.z - o.z : 0;
+      if (!i || Math.abs(sa) < 0.2) for (var u = -r.len / 2 + 9; u < r.len / 2 - 8; u += 6) paint(2.6, 0.3, u, 0, !i); // centreline dashes
+      else { // the cross runway's: laid out both ways from where it meets the main's centreline, from just off its edges
+        var tx = (dx * Math.sin(o.h) - dz * Math.cos(o.h)) / sa, d0 = (o.w / 2 + CLEAR + 0.2) / Math.abs(sa) + 1.3;
+        [-1, 1].forEach(function (e) { for (var t = tx + e * d0; Math.abs(t) <= r.len / 2 - 7.5; t += e * 6) paint(2.6, 0.3, t, 0); });
+      }
       [-1, 1].forEach(function (e) {
-        for (var k = -3; k <= 3; k++) if (k) M._bar(q, C.paint, 3, 0.1, 0.38, e * (r.len / 2 - 2.5), 0, k * 0.55); // threshold bars
-        M._bar(q, C.paint, 0.4, 0.1, r.w, e * (r.len / 2 - 5), 0, 0);
+        for (var k = -3; k <= 3; k++) if (k) paint(3, 0.38, e * (r.len / 2 - 2.5), k * 0.55);     // threshold bars
+        paint(0.4, r.w, e * (r.len / 2 - 5), 0);
       });
     });
     if (!L) return new THREE.Mesh(bake(g), groundMat());
@@ -148,13 +169,15 @@ window.WW = window.WW || {};
       seg(-TU, sd * TV, TU, sd * TV, 5, C.taxi, 0.06);                                  // the parallel taxiway
       [-1, 1].forEach(function (e) {
         seg(e * TU, 0, e * TU, sd * TV, 5, C.taxi, 0.06);                               // the end connector
-        for (var k = 0; k < 2; k++) seg(e * TU - 2.5, sd * (HV + 0.5 + k * 0.7), e * TU + 2.5, sd * (HV + 0.5 + k * 0.7), 0.25, C.hold, 0.075); // hold-short bars
+        for (var k = 0; k < 2; k++) { var hv = sd * (HV + 0.5 + k * 0.7);                   // hold-short bars (not under the cross runway)
+          if (clear(R0, R1, e * TU - 2.6, e * TU + 2.6, hv - 0.2, hv + 0.2, 0.3)) seg(e * TU - 2.5, hv, e * TU + 2.5, hv, 0.25, C.hold, 0.075); }
       });
     });
     L.segs.forEach(function (q) { seg(q.u0, q.v0, q.u1, q.v1, q.w + 1, C.taxi, 0.06); });   // columns and row lanes
     L.spots.forEach(function (sp) {                                                       // hardstands and their driveways
       var M2 = M._bar(F, C.stand, sp.span + 1.2, 0.05, sp.len + 1.2, sp.u, gy(sp.u, sp.v), sp.v); M2.rotation.y = 0;
-      seg(sp.u, sp.v, sp.u, sp.laneV, 3, C.taxi, 0.055);
+      var dv = Math.sign(sp.laneV - sp.v) * ((sp.len + 1.2) / 2 + 1.5);                      // (seg runs 1.5 past each end):
+      seg(sp.u, sp.v + dv, sp.u, sp.laneV, 3, C.taxi, 0.055);                               // from the hardstand's edge, not over it
     });
     return new THREE.Mesh(bake(g), groundMat());
   }

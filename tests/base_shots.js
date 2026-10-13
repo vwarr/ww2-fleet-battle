@@ -50,6 +50,12 @@ const SHOTS = [
   ['night_peace', () => { __ff(15); return __camp('huts', 30, 12, 8); }],
   ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4); return __camp('huts', 40, 14, 10); }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
+  ['crossing', () => { // low over the runway crossing (the cross runway meets the main one near its west end, u -36)
+    const L = B.layout, c = L.toW(-36, 0), e = L.toW(-8, 26); return [e.x, 11, e.z, c.x, 0, c.z]; }],
+  ['crossing_top', () => { // straight down onto the crossing: edges, markings, taxiway joins
+    const L = B.layout, c = L.toW(-36, 0), e = L.toW(-36, -6); return [e.x, 40, e.z, c.x, 0, c.z]; }],
+  ['crossing_low', () => { // across the crossing from the far side, low: the joint and the cross runway's dashes stopping
+    const L = B.layout, c = L.toW(-36, 0), e = L.toW(-52, -14); return [e.x, 4, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {
     const r = B.layout.rows.find(r => r.spots.length >= 3) || B.layout.rows[0], sp = r.spots[Math.floor(r.spots.length / 2)];
     const L = B.layout, q = L.toW(sp.u - 14, sp.laneV - r.side * 9), t = L.toW(sp.u, sp.v);
