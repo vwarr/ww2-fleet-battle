@@ -4,12 +4,16 @@
 // with vertex colours (no BufferGeometryUtils in the UMD build), drawn with the ships' toon shading:
 //   runA / runB  the stride's two frames, leaning forward, rifle at port arms (models_infantry.js alternates them)
 //   stand        upright, rifle across the chest; crouch: knees bent, bent over (the bluff, the assault)
-//   prone        flat on the sand, rifle forward (pinned, the shingle); fallen: on his back, arms out
+//   prone        flat on the sand, rifle forward (pinned, the shingle); fallen: on his back, arms out; sitting: a
+//                wounded man propped against the shingle
+// Gear variants ('<pose>:<gear>', GEAR): bazooka, eng (Bangalore and satchel charge), radio, flame(thrower), medic (red
+// crosses on the helmet, no rifle). Everyone wears the inflatable life belt.
 // Local frame: feet at y = 0, facing +x, ~0.43 u tall (about 2x true size, as the sailors). olive: the uniform colour.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
-  const C = { olive: 0x6f7550, oliveD: 0x5c6243, web: 0x8a8460, helmet: 0x56603f, skin: 0xe2b994, boot: 0x4a3b2c, stock: 0x8a5a34, metal: 0x3a3c3e, pack: 0x7a7a58 };
+  const C = { olive: 0x6f7550, oliveD: 0x5c6243, web: 0x8a8460, helmet: 0x56603f, skin: 0xe2b994, boot: 0x4a3b2c, stock: 0x8a5a34, metal: 0x3a3c3e, pack: 0x7a7a58,
+    belt: 0x4f5546, white: 0xeeeae0, red: 0xb03a30, radio: 0x55593f, charge: 0x8a7a50 };
   const geos = {};
   let box = null, sph = null, dome = null, cyl = null;
   function prim() {
@@ -68,7 +72,10 @@ window.WW = window.WW || {};
     up.push(part(cyl, C.helmet, [0.128, 0.008, 0.122], [0, H + 0.201, 0]));                 // ... and its brim
     const af = o.armF === undefined ? 0.9 : o.armF;
     for (const z of [0.075, -0.075]) up.push(part(box, C.olive, [0.04, 0.13, 0.04], [0, H + 0.085, z], [0, 0, af], [0, H + 0.145, z]));   // arms forward to the rifle
-    if (o.rifle === 'none') {  // dropped beside him (laid flat with the figure)
+    up.push(part(box, C.belt, [0.108, 0.02, 0.14], [0, H - 0.006, 0]));                      // the inflatable life belt, worn low
+    gear(up, o.gear, H);
+    if (o.rifle === 'skip') { /* no rifle: the bazooka man's tube, the medic */ }
+    else if (o.rifle === 'none') {  // dropped beside him (laid flat with the figure)
       up.push(part(box, C.metal, [0.014, 0.2, 0.014], [0.0, H + 0.02, 0.13]));
       up.push(part(box, C.stock, [0.02, 0.1, 0.026], [0.0, H - 0.1, 0.13]));
     } else if (o.rifle === 'over') {   // prone: held out beyond the helmet (the figure's +y is ahead once it is laid flat)
@@ -85,6 +92,31 @@ window.WW = window.WW || {};
     for (const p of up) p.m = new THREE.Matrix4().multiplyMatrices(pivot, p.m);
     return P.concat(up);
   }
+  // what a man carries besides his rifle (the assault sections were organised round them: two bazookas, a BAR, a
+  // flamethrower, the Bangalore torpedoes and pole charges of the wire-cutting team, a radio with the section leader)
+  function gear(up, g, H) {
+    if (g === 'bazooka') {
+      up.push(part(cyl, C.metal, [0.036, 0.34, 0.036], [0.06, H + 0.17, -0.075], [0, 0, -Math.PI / 2 + 0.12]));
+      up.push(part(box, C.charge, [0.05, 0.06, 0.03], [-0.06, H + 0.06, 0.07]));                   // the rocket bag
+    } else if (g === 'eng') {
+      up.push(part(cyl, C.oliveD, [0.024, 0.42, 0.024], [0.06, H + 0.2, 0.07], [0, 0, -Math.PI / 2 + 0.35]));   // a Bangalore section on the shoulder
+      up.push(part(box, C.charge, [0.06, 0.07, 0.1], [-0.075, H + 0.06, 0]));                      // the satchel charge
+    } else if (g === 'radio') {
+      up.push(part(box, C.radio, [0.06, 0.11, 0.09], [-0.085, H + 0.11, 0]));                      // the SCR-300 on his back
+      up.push(part(box, C.metal, [0.006, 0.22, 0.006], [-0.1, H + 0.27, 0.03]));                   // its whip
+    } else if (g === 'flame') {
+      for (const z of [0.028, -0.028]) up.push(part(cyl, C.oliveD, [0.045, 0.13, 0.045], [-0.085, H + 0.1, z]));   // the M2's tanks
+      up.push(part(cyl, C.metal, [0.02, 0.2, 0.02], [0.12, H + 0.1, 0.03], [0, 0, -Math.PI / 2]));
+    } else if (g === 'medic') {                                                                    // red crosses on white on the helmet, the armband
+      for (const z of [0.059, -0.059]) {
+        up.push(part(cyl, C.white, [0.05, 0.004, 0.05], [0, H + 0.225, z], [Math.PI / 2, 0, 0]));
+        up.push(part(box, C.red, [0.03, 0.009, 0.006], [0, H + 0.225, z * 1.06]));
+        up.push(part(box, C.red, [0.009, 0.03, 0.006], [0, H + 0.225, z * 1.06]));
+      }
+      up.push(part(box, C.white, [0.044, 0.025, 0.044], [0, H + 0.11, 0.075]));
+      for (const z of [0.05, -0.05]) up.push(part(box, C.charge, [0.04, 0.045, 0.03], [0.02, H - 0.02, z]));   // the aid pouches
+    }
+  }
   function build() {
     if (geos.stand) return geos;
     prim();
@@ -97,9 +129,20 @@ window.WW = window.WW || {};
     geos.prone = merge(figure({ armF: 2.7, rifle: 'over' }), flat);
     const back = new THREE.Matrix4().makeTranslation(0, 0.045, 0).multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2));
     geos.fallen = merge(figure({ armF: 0.25, legF: 0.15, legB: -0.1, rifle: 'none' }), back);
+    // the gear variants of the moving and fighting poses: geos['runA:eng'] etc.
+    const P = { runA: { legF: 0.55, legB: -0.45, lean: 0.25, armF: 0.9 }, runB: { legF: -0.45, legB: 0.55, lean: 0.25, armF: 0.9 }, stand: { armF: 0.9 },
+      crouch: { legF: 0.7, legB: -0.2, knee: 0.06, lean: 0.55, armF: 1.1 } };
+    for (const g of GEAR) {
+      const rifle = g === 'bazooka' || g === 'medic' ? 'skip' : undefined;
+      for (const k in P) geos[k + ':' + g] = merge(figure(Object.assign({ gear: g, rifle }, P[k])));
+      geos['prone:' + g] = merge(figure({ armF: 2.7, rifle: rifle || 'over', gear: g }), flat);
+    }
+    // the wounded: sitting against the shingle, legs out, arm in his lap
+    geos.sitting = merge(figure({ legF: 1.45, legB: 1.35, knee: 0.16, lean: -0.15, armF: 0.4, rifle: 'none' }));
     return geos;
   }
   // part / merge: the kit, for the other hand-merged Normandy models (models_landing.js, the tank); prim() first
-  WW.soldierModel = { build, COLORS: C, POSES: ['runA', 'runB', 'stand', 'crouch', 'prone', 'fallen'], part, merge,
+  const GEAR = ['bazooka', 'eng', 'radio', 'flame', 'medic'];
+  WW.soldierModel = { build, COLORS: C, POSES: ['runA', 'runB', 'stand', 'crouch', 'prone', 'fallen'], GEAR, part, merge,
     prims() { if (!box) prim(); return { box, sph, dome, cyl }; } };
 })(window.WW);

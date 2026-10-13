@@ -15,7 +15,7 @@
 // Rangers at Pointe du Hoc: 'rope' at the foot of the cliff (the grapnels and ladders, ROPE_T s under fire from the top),
 // then top / assault on WN 75, then 'guns': inland to the orchard where the 155s stood unmanned, and they spike them.
 // Tanks ashore are single-vehicle squads ('tank'): up to the shingle line, then they fire at the embrasures
-// (infantry_fire.js). Swimmers from a wrecked craft start in the water at half speed.
+// (infantry_fire.js). Swimmers from a wrecked craft start in the water at half speed, and some drown.
 // Events: 'squadEvent' { kind: landed | lost | captured | gunsSpiked, or the new state (shingle | shelf | climb | top | assault | guns | hold), squad }.
 window.WW = window.WW || {};
 (function (WW) {
@@ -23,13 +23,13 @@ window.WW = window.WW || {};
   const SQUAD = 12, MIN_SQUAD = 3, ID0 = 30000;
   // speeds (u/s, on the compressed clock: about 4x a man's real pace), x (1 - PIN_K x pinned)
   const V = { wade: 0.35, cross: 0.7, shingle: 0.4, shelf: 0.55, climb: 0.15, top: 0.5, assault: 0.3, rope: 0, guns: 0.5, tank: 0.6, swim: 0.18 };
-  const PIN = 1, PIN_K = 0.8, BLOW_T = { eng: 8, ranger: 18, rifle: 35, tank: 1e9 }, ROPE_T = 22, WN_R = 260, TANK_HP = 70;
+  const DEEP = 0.3, DROWN = 0.004, PIN = 1, PIN_K = 0.8, BLOW_T = { eng: 8, ranger: 18, rifle: 35, tank: 1e9 }, ROPE_T = 22, WN_R = 260, TANK_HP = 70;
   const on = () => WW.isScn('normandy');
   const T = () => WW.normandyTerrain, R = () => WW.infRoutes;
   const rt = () => (WW.game ? WW.game.roundTime : 0);
   let squads = [], acc = new Map(), stats = null, nid = 0, targets = [];
 
-  function newStats() { return { landed: 0, squads: 0, tanks: 0, lost: 0, tanksLost: 0, onTop: 0, captured: 0, gaps: 0, hocGuns: false, bySector: {} }; }
+  function newStats() { return { landed: 0, squads: 0, tanks: 0, lost: 0, tanksLost: 0, drowned: 0, onTop: 0, captured: 0, gaps: 0, hocGuns: false, bySector: {} }; }
   function sec(s) { return stats.bySector[s] || (stats.bySector[s] = { landed: 0, lost: 0, onTop: 0 }); }
   function kindOf(c) { return c.type === 'lcm' ? 'eng' : /Ranger/.test(c.unit || '') ? 'ranger' : 'rifle'; }
   function make(c, men, x, z, kind, swim) {
@@ -58,7 +58,7 @@ window.WW = window.WW || {};
     }
     if (done) { if (a.men > 0) { stats.lost += 0; } acc.delete(c); }
   }
-  function setState(q, s) { if (q.state === s) return; q.state = s; q.stateT = rt(); if (s !== 'wade' && s !== 'cross') WW.emit('squadEvent', { kind: s, squad: q }); }
+  function setState(q, s) { if (q.state === s) return; q.state = s; q.stateT = rt(); if (s !== 'wade' && s !== 'cross' && s !== 'swim') WW.emit('squadEvent', { kind: s, squad: q }); }
 
   // the next strongpoint for a squad on the top: the nearest not silenced within WN_R along the coast
   function pickWN(q) {
@@ -82,8 +82,14 @@ window.WW = window.WW || {};
     const t = T(), r = R(), pinned = q.sup > PIN, k = pinned ? 1 - PIN_K : 1, now = rt();
     const st = q.state;
     if (st === 'swim' || st === 'wade') {
-      const zs = t.shoreZ(q.x);
-      moveTo(q, q.x, zs + 1, V[st] * k, dt);
+      // the surf: slower the deeper it is (chest-deep with 60 lb of kit); off a wreck, men swim until they find their
+      // feet, and some go under (DROWN a man a second while it is over their heads)
+      const zs = t.shoreZ(q.x), d = WW.terrain.depthAt(q.x, q.z) || 0;
+      moveTo(q, q.x, zs + 1, V[st] * k * (st === 'wade' ? (d > DEEP ? 0.55 : d > DEEP / 2 ? 0.8 : 1) : 1), dt);
+      if (st === 'swim') {
+        if (d > DEEP && WW.rand() < q.men * DROWN * dt) { stats.drowned++; lose(q, 1, 'drowned'); if (!q.alive) return; }
+        if (d <= DEEP) setState(q, 'wade');
+      }
       if (q.z >= zs) setState(q, 'cross');
     } else if (st === 'cross') {
       if (moveTo(q, q.x, t.shingleZ(q.x), V.cross * k, dt)) { setState(q, 'shingle'); }
@@ -141,13 +147,13 @@ window.WW = window.WW || {};
     for (const q of squads) if (q.alive) targets.push(q);
     if (squads.length > 600) squads = squads.filter(q => q.alive || rt() - q.stateT < 60);
   }
-  function lose(q, n) {   // casualties: n men (a tank: knocked out)
+  function lose(q, n, why) {   // casualties: n men (a tank: knocked out); why: 'drowned' (the visuals)
     if (!q.alive) return 0;
     if (q.kind === 'tank') { q.alive = false; stats.tanksLost++; WW.emit('squadEvent', { kind: 'lost', squad: q }); return 0; }
     n = Math.min(n, q.men); if (n <= 0) return 0;
     q.men -= n; stats.lost += n; sec(q.sector).lost += n;
     if (q.topped) { stats.onTop -= n; sec(q.sector).onTop -= n; }
-    WW.emit('squadCasualty', { squad: q, n, x: q.x, z: q.z });
+    WW.emit('squadCasualty', { squad: q, n, x: q.x, z: q.z, why });
     if (q.men <= 0) { q.alive = false; q.stateT = rt(); WW.emit('squadEvent', { kind: 'lost', squad: q }); }
     return n;
   }

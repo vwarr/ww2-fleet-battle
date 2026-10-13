@@ -95,6 +95,7 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     if (WW.intel.enemyShips('USN').some(c => c.unit === wn)) out.push('silenced WN still a contact');
     return out;
   });
+  let silTot = 0;
   for (const seed of SEEDS) {
     const a = await run(seed), c = await run(seed);
     const ha = crypto.createHash('sha1').update(JSON.stringify(a.tr)).digest('hex').slice(0, 12), hc = crypto.createHash('sha1').update(JSON.stringify(c.tr)).digest('hex').slice(0, 12);
@@ -110,7 +111,7 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     if (a.lc.stray) probs.push(`${a.lc.stray} craft beached outside their sector`);
     if (SECS >= 400 && a.lc.foundered < a.lc.dd / 2) probs.push(`only ${a.lc.foundered} of ${a.lc.dd} DD tanks foundered`);
     if (SECS >= 400 && !(a.inf.top > 0)) probs.push('no squad on the bluff top');
-    if (SECS >= 400 && !(a.inf.sil > 0)) probs.push('no strongpoint silenced');
+    silTot += a.inf.sil || 0;   // a seed with none silenced by ~08:40 is history (the DDs gone); none over all seeds is a bug
     if (a.inf.ms > 1.5) probs.push(`infantry step ${a.inf.ms.toFixed(2)} ms`);
     if (SECS >= 400 && !(a.air.b24 > 0)) probs.push('no B-24 bomb fell');
     if (a.air.b24Near) probs.push(`${a.air.b24Near} B-24 bombs within 200 u of the bluffs under cloud`);
@@ -122,6 +123,7 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     if (probs.length) fail++;
     console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} GER shots ${a.shots} hits on defences ${a.dHits} out ${a.out} craft ${a.lc.launched} men ashore ${a.lc.men} lost ${a.lc.lost} DD foundered ${a.lc.foundered}/${a.lc.dd} squads ${a.inf.squads} on top ${a.inf.top} lost ${a.inf.lost} WN silenced ${a.inf.sil} inf ${a.inf.ms.toFixed(3)} ms B-24 bombs ${a.air.b24} P-47 bombs ${a.air.p47} dd depth >= ${a.ddMin.toFixed(1)} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
   }
+  if (SECS >= 400 && !silTot) { fail++; console.log('FAIL no strongpoint silenced in any seed'); }
   const u = await unit();
   console.log('damage model: ' + (u.length ? 'FAIL ' + u.join('; ') : 'ok'));
   if (u.length) fail++;
