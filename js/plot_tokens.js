@@ -8,12 +8,16 @@
 //    contact.err), a dashed course arrow, fading as the contact goes stale; pinned paper notes for its sighting
 //    reports (WW.diary.notes). Sunk ships the side saw go down are crossed out where they sank.
 // Wobble and tilt come from per-unit hashes (no per-frame randomness, so nothing shimmers).
+// Normandy (plot_normandy.js on): its land battle is drawn first (lanes, waves, the men, the strongpoints, the
+// beachhead line), the carrier's range rings and the misidentification labels are left out, the strongpoints are not
+// ship tokens, and the cartouche names Force O / the 352nd Division. GER has its own field-grey paint and pencil.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   if (WW.simOnly) return;
-  const PAINT = { USN: ['#4f78ad', '#33547e', '#7d9fca'], IJN: ['#c4574c', '#8a3a33', '#e08a7e'] };
-  const PENCIL = { USN: 'rgba(40,70,130,', IJN: 'rgba(170,40,35,' };
+  const PAINT = { USN: ['#4f78ad', '#33547e', '#7d9fca'], IJN: ['#c4574c', '#8a3a33', '#e08a7e'], GER: ['#6f7a68', '#4a5446', '#949e8c'] };
+  const PENCIL = { USN: 'rgba(40,70,130,', IJN: 'rgba(170,40,35,', GER: 'rgba(60,70,55,' };
+  const nd = () => !!(WW.plotNormandy && WW.plotNormandy.on());
   const BEAM = { carrier: 0.26, battleship: 0.24, cruiser: 0.2, destroyer: 0.17, submarine: 0.15, pt: 0.34 };
   const SHORT = { carrier: 'CV', battleship: 'BB', cruiser: 'CA', destroyer: 'DD', submarine: 'SS', pt: 'PT' };
   const sprites = new Map();
@@ -171,8 +175,8 @@ window.WW = window.WW || {};
     g.stroke();
   }
   function draw(g, P) {
-    const owner = P.owner, now = WW.time.now, ships = WW.world.ships, planes = WW.world.planes;
-    rings(g, owner);
+    const owner = P.owner, now = WW.time.now, ships = WW.world.ships, planes = WW.world.planes, N = nd();
+    if (N) WW.plotNormandy.draw(g, P, owner); else rings(g, owner);
     for (const w of wrecks) if (!owner || w.seen[owner]) {
       const X = WW.plot.sx(w.x), Y = WW.plot.sy(w.z), col = (PENCIL[w.nation] || PENCIL.USN) + '0.7)';
       g.strokeStyle = col; g.lineWidth = 1.8; g.beginPath(); g.moveTo(X - 6, Y - 6); g.lineTo(X + 6, Y + 6); g.moveTo(X + 6, Y - 6); g.lineTo(X - 6, Y + 6); g.stroke();
@@ -182,7 +186,7 @@ window.WW = window.WW || {};
     const capital = s => s.type === 'carrier' || s.type === 'battleship';
     // omniscient: what each side wrongly believes a ship to be ("USN plot: BB?"), from its misidentified contacts
     const misid = new Map(), late = [];
-    if (!owner && WW.intel) for (const n of ['USN', 'IJN']) for (const c of WW.intel.contacts(n)) if (c.misid && c.unit && c.unit.stats) misid.set(c.unit, n + ' plot: ' + (SHORT[c.reportedType] || c.reportedType) + '?');
+    if (!owner && WW.intel && !N) for (const n of ['USN', 'IJN']) for (const c of WW.intel.contacts(n)) if (c.misid && c.unit && c.unit.stats) misid.set(c.unit, n + ' plot: ' + (SHORT[c.reportedType] || c.reportedType) + '?');
     // own (or all) ships at their true positions
     for (const s of ships) {
       if (!s.alive || s.removed || (owner && s.nation !== owner)) continue;
@@ -194,7 +198,7 @@ window.WW = window.WW || {};
     if (owner && WW.intel) {
       const foe = WW.enemyOf(owner), col = PENCIL[foe] || PENCIL.IJN;
       for (const c of WW.intel.contacts(owner)) {
-        const u = c.unit; if (!u || !u.stats) continue;
+        const u = c.unit; if (!u || !u.stats || u.isLand) continue;   // (Normandy's strongpoints: plot_normandy.js)
         const age = now - c.seenAt, fresh = age <= 3, a = fresh ? 1 : Math.max(0.5, 1 - age / 120), ph = hash(u);
         const t = c.reportedType || (WW.intel.typeOf ? WW.intel.typeOf(c) : null) || u.type, X = WW.plot.sx(c.x), Y = WW.plot.sy(c.z);
         const r = (fresh ? 0 : Math.min(50, age * (c.speed || 0) * 0.5) + 6) + (c.err || 0);
@@ -216,7 +220,8 @@ window.WW = window.WW || {};
   // the cartouche: whose plot, the admiral, the clock, the keys
   function caption(g, P) {
     const o = P.owner, A = o && WW.admirals && WW.admirals.of ? WW.admirals.of(o) : null;
-    const title = o ? (o === 'USN' ? 'U.S. Pacific Fleet — Task Force Plot' : 'Kido Butai — Flag Plot') : 'Omniscient Plot — all true positions';
+    const title = nd() ? (o ? (o === 'USN' ? 'Force O — Omaha Beach Plot' : '352. Infanterie-Division — Lagekarte') : 'Omaha Beach — all true positions')
+      : o ? (o === 'USN' ? 'U.S. Pacific Fleet — Task Force Plot' : 'Kido Butai — Flag Plot') : 'Omniscient Plot — all true positions';
     const sub = (A ? A.title + '  ·  ' : '') + (WW.diary ? WW.diary.clock() + ' hrs' : '');
     const y = P.py + WW.plot.BORDER * P.s * 0.42;
     g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = o ? PAINT[o][1] : '#3b3328';
