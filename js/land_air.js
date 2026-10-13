@@ -70,18 +70,27 @@ window.WW = window.WW || {};
     return { on, coming };
   }
   // The enemy warship that threatens the island most: a fresh contact within DEF_R of it, a ship shelling it (_bombT,
-  // island_base.js) or a gun ship counting double; null when the sea round the island is clear.
-  const DEF_R = 300, DEF_V = { battleship: 9, cruiser: 6, carrier: 8, destroyer: 3, pt: 1.2, submarine: 1.5 };
+  // island_base.js) or a gun ship counting double; null when the sea round the island is clear. Never a PT boat or a
+  // submarine: the bombers are not sent at small craft (the shore batteries' job), and a destroyer only when no bigger
+  // ship is in reach (strikeTarget).
+  const DEF_R = 300, DEF_V = { battleship: 9, cruiser: 6, carrier: 8, destroyer: 3 };
   function defTarget(b) {
     if (!WW.intel) return null;
     let best = null, bs = 0; const now = WW.time.now;
     for (const c of WW.intel.enemyShips(b.nation, { fresh: true })) {
-      const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase) continue;
+      const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase || !DEF_V[u.type]) continue;
       const d = WW.dist(b.x, b.z, c.x, c.z); if (d > DEF_R) continue;
       const sc = (DEF_V[u.type] || 1) * (now - (u._bombT || -1e9) < 60 ? 2 : 1) / (1 + d / 150);
       if (sc > bs) { bs = sc; best = u; }
     }
     return best;
+  }
+  // The base's bombers go for the big ships (air_ops.js pickTarget opts.big): the best carrier, battleship or cruiser
+  // in reach; the self-defence target first unless it is a destroyer and a bigger ship is in reach
+  const bigPick = b => (WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }, { big: true, reach: STRIKE_R }) : null);
+  function strikeTarget(b, def) {
+    const t = bigPick(b);
+    return def && (def.type !== 'destroyer' || !t || t.type === 'destroyer') ? def : t;
   }
   function variants(b, kind) { const L = []; for (const s of b.slots) if (VAR[s.v].kind === kind && !VAR[s.v].level && L.indexOf(s.v) < 0) L.push(s.v); return L; }
   function pick(b, kind) { for (const v of variants(b, kind)) if (G().ready(b, v) > 0) return v; return null; }
@@ -112,7 +121,7 @@ window.WW = window.WW || {};
     if (def && def !== a.defFor) { a.defFor = def; a.strikeT = Math.min(a.strikeT, 4); ST.defence++; }
     if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
       a.strikeT = WW.randRange(55, 75);
-      const t = def || (WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null);
+      const t = strikeTarget(b, def);
       if (t && !canLaunch(b) && def) a.strikeT = 5;   // runway cratered / dark: the strike goes the moment it can (at dawn)
       if (t && WW.dist(b.x, b.z, t.x, t.z) < STRIKE_R && canLaunch(b)) {
         if (t === def) ST.defStrikes++;
@@ -136,7 +145,7 @@ window.WW = window.WW || {};
     if (!canLaunch(b)) { if (!G().opsOpen(b)) ST.closedLaunches++; return; } // runway closed / dusk: the queue waits
     const q = a.queue[0];
     let t = q.target;
-    if (t && (!t.alive || t.sinking)) t = WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }) : null;
+    if (t && (!t.alive || t.sinking)) t = bigPick(b);
     const slot = G().take(b, q.v);
     a.queue.shift();
     if ((q.target && !t) || !slot) return;
