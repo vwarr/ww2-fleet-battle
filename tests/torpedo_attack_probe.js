@@ -42,7 +42,7 @@ function install() {
     const E = S.m.get(p); if (E && !E.tR) { E.tR = now(); E.end = 'drop'; }
     if (!t || !t.alive) return;
     const D = { t: now(), range: Math.hypot(t.x - p.x, t.z - p.z), off: Math.abs(WW.angleDiff(t.heading, Math.atan2(p.z - t.z, p.x - t.x))), tgt: t, type: t.type, h0: t.heading,
-      spdK: t.stats && t.stats.speed ? (t.speed || 0) / t.stats.speed : 0, comb0: !!(t.ai && (t.ai.combUntil || 0) > WW.time.now), opp: E ? E.lvl : null, res: null, n: p.nation, pr: E ? E.pr : null };
+      spdK: t.stats && t.stats.speed ? (t.speed || 0) / t.stats.speed : 0, comb0: !!(t.ai && (t.ai.combUntil || 0) > WW.time.now), opp: E ? E.lvl : null, res: null, n: p.nation, pr: E ? E.pr : null, hasty: !!p.hasty };
     S.proj.set(e.proj, D); S.drops.push(D);
   });
   WW.on('torpedoUnder', e => { if (e && isPT(e.ship)) S.pt.torpUnderPT++; });
@@ -134,6 +134,11 @@ function report(rounds) {
     const lab = `${a}-${b > 1e8 ? '' : b} / ${Math.round(a * 9.6)}-${b > 1e8 ? '' : Math.round(b * 9.6)}`;
     out.range[lab] = { n: A.length, hit: A.filter(isHit).length / A.length, nm: M.length, hm: M.filter(isHit).length / (M.length || 1), ns: St.length, hs: St.filter(isHit).length / (St.length || 1) };
     console.log(`${lab.padEnd(22)}  ${String(A.length).padStart(5)}  ${pc(out.range[lab].hit).padStart(4)}  |  ${String(M.length).padStart(5)} ${pc(out.range[lab].hm).padStart(4)}  |  ${String(St.length).padStart(5)} ${pc(out.range[lab].hs).padStart(4)}`);
+  }
+  for (const [a, b] of B) {   // the same buckets by target type, and the share released in a hasty (straight-in) run
+    const A = Dd.filter(d => d.range >= a && d.range < b); if (!A.length) continue;
+    const T = {}; for (const d of A) (T[d.type] = T[d.type] || []).push(d);
+    console.log(`  ${a}-${b > 1e8 ? '' : b} u: ` + Object.entries(T).map(([k, x]) => `${k} ${x.length} ${pc(x.filter(isHit).length / x.length)}`).join(', ') + `; straight-in ${pc(A.filter(d => d.hasty).length / A.length)}`);
   }
   const ty = {}; for (const d of Dd) { const k = d.type; (ty[k] = ty[k] || []).push(d); }
   console.log('by target type: ' + Object.entries(ty).map(([k, a]) => `${k} ${a.length} drops ${pc(a.filter(isHit).length / a.length)}`).join(', '));
