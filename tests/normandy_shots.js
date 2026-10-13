@@ -24,6 +24,10 @@
 //   wn_close   an MG 42 nest firing (sim ~110 s): the crew in Feldgrau, the gun on the parapet, tracers down the beach
 //   mg_fire    the beach under MG fire (sim ~130 s): tracer streams from the bluffs onto the men, sand kicked up
 //   wn_out     a knocked-out strongpoint position: burnt, scorched, rubble, bodies, smoke (sim ~200 s)
+//   rocket_lct / rockets_sea / rockets_wide / rockets_after: the LCT(R) barrage at H-5 from beside a firing craft, from
+//              the sea behind the line, from the director's high wide shot, and its smoke 20 s on (rocket_barrage.js)
+//   d1_road / vierville / moulins / ruins_close / d3_road: the road up D-1 to Vierville and its church, the village's
+//              shelled houses, the villas along the shelf at Les Moulins and Hamel-au-Pretre (mostly ruins), D-3's road
 //   b24        a B-24 box crossing the coast at ~6,000 m (sim 40 s)
 //   p47        a P-47 flight diving on a strongpoint (sim 240 s)
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
@@ -74,6 +78,11 @@ const SHOTS = [
   ['rockets', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 4) __sim.fastForward(0.5); const z = T.shoreZ(1720) - 290; return [1700, 7, z - 16, 1726, 9, z + 70]; }],
   ['swell_dd', () => { const s = WW.world.ships.find(q => q.name === 'Thompson') || WW.world.ships.find(q => q.type === 'destroyer'); return [s.x - 14, 2.2, s.z - 9, s.x, 1, s.z]; }],
   ['rockets_beach', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 5) __sim.fastForward(0.5); const z = T.shoreZ(1740); return [1740, 2.5, z + 4, 1730, 9, z - 160]; }],
+  // the LCT(R) barrage from the sea and from the director's wide shots (rocket_barrage.js); the barrage steps with the sim
+  ['rocket_lct', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 3) { __sim.fastForward(0.5); WW.rocketBarrage.update(0.5); } const s = WW.rocketBarrage.ships[4]; return [s.x - 8, 2.4, s.z - 6, s.x + 2, 1.4, s.z + 8]; }],
+  ['rockets_sea', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 5) { __sim.fastForward(0.5); WW.rocketBarrage.update(0.5); } const s = WW.rocketBarrage.ships[4]; return [s.x - 30, 9, s.z - 120, s.x + 10, 7, T.shoreZ(1720)]; }],
+  ['rockets_wide', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 6) { __sim.fastForward(0.5); WW.rocketBarrage.update(0.5); } const z = T.shoreZ(1720); return [1450, 140, z - 560, 1720, 0, z]; }],
+  ['rockets_after', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 25) { __sim.fastForward(0.5); WW.rocketBarrage.update(0.5); } const z = T.shoreZ(1720); return [1640, 20, z - 380, 1730, 5, z]; }],
   ['ramps', () => { __sim.fastForward(110); const z = T.shoreZ(1760); return [1740, 6, z - 40, 1765, 0.5, z + 5]; }],
   ['shingle', () => { __sim.fastForward(120); const q = WW.infantry.squads.find(q => q.alive && q.sector === 'easyRed' && q.kind !== 'tank') || WW.infantry.squads.find(q => q.alive); return [q.x - 14, 5, q.z - 18, q.x + 2, 0.5, q.z + 4]; }],
   ['bluff', () => { __sim.fastForward(270); const q = WW.infantry.squads.find(q => q.alive && q.state === 'climb') || WW.infantry.squads.find(q => q.alive); return [q.x - 16, q.y + 6, q.z - 16, q.x, q.y, q.z + 3]; }],
@@ -87,6 +96,12 @@ const SHOTS = [
   ['mg_fire', () => { __sim.fastForward(Math.max(0, 130 - WW.game.roundTime)); const now = WW.time.now; let e = null, t = null; for (let i = 0; i < 40 && !t; i++) { for (const q of WW.coastDefence.elements) { const st = WW.defenceFx._state(q); if (q.alive && q.kind === 'mg' && st && st.tgt && st.tgt.isSquad && st.tgt.alive && WW.terrain.heightRaw(st.tgt.x, st.tgt.z) > 0.05 && now - st.actT < 1) { e = q; t = st.tgt; break; } } if (!t) __sim.fastForward(1); } if (!t) { e = WW.coastDefence.elements.find(q => q.alive && q.kind === 'mg'); t = e; } warm(); const dx = e.x - t.x, dz = e.z - t.z, d = Math.hypot(dx, dz), ux = dx / d, uz = dz / d; const px = t.x - ux * 4 + uz * 12, pz = t.z - uz * 4 - ux * 12; return [px, Math.max(0, WW.terrain.heightRaw(px, pz)) + 2.6, pz, (t.x * 3 + e.x) / 4, 0.8, (t.z * 3 + e.z) / 4]; }],
   ['wn_out', () => { __sim.fastForward(Math.max(0, 200 - WW.game.roundTime)); const now = WW.time.now; const e = WW.coastDefence.elements.filter(q => !q.alive && !q.dormant && q.type !== 'wall').sort((a, b) => (b.K.wall ? 1 : 0) - (a.K.wall ? 1 : 0) || b.outAt - a.outAt)[0] || WW.coastDefence.elements[0]; warm(); return [e.x - 7, e.y + 4, e.z - 6, e.x, e.y + 0.3, e.z]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
+  // the villages, the villas on the shelf and the roads up the draws (normandy_villages.js)
+  ['d1_road', () => { const z = T.shoreZ(1376); return [1369, 7, z - 22, 1380, 6, T.bluffTopZ(1376) + 40]; }],
+  ['vierville', () => { const zt = T.bluffTopZ(1385); return [1352, 13, zt + 24, 1390, 4, zt + 58]; }],
+  ['moulins', () => { const z = T.shingleZ(1530); return [1512, 3.2, z - 7, 1545, 1.6, z + 8]; }],
+  ['ruins_close', () => { const z = T.shingleZ(1500); return [1494, 2.4, z + 1, 1506, 0.9, z + 8]; }],
+  ['d3_road', () => { const z = T.bluffFootZ(1582); return [1576, 5, z - 10, 1584, 5, T.bluffTopZ(1582) + 40]; }],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }],
   // the realism pass (vehicles.js, beach_engineers.js, leaders.js, hoc_climb.js, prisoners.js; drawn by vehicles_fx.js
   // and hoc_fx.js), in clock order; the last ones force the state they show (a lane marked, E-1 open, a surrender)

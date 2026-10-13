@@ -40,6 +40,7 @@ js/terrain_normandy.js  WW.normandyTerrain: the Normandy coast height function (
 js/sky_time.js          WW.skyTime: the look of the time of day and the rain (palettes, sun / moon light, fog, water, bloom)
 js/weather_fx.js        WW.weatherFx: rain curtains and cloud decks over the squalls (visual)
 js/terrain.js           WW.terrain: sea floor, islands, depth grid (a scenario's own map: scn.terrain)
+js/normandy_villages.js  WW.normandyVillages: the villages' stone houses and churches, shelled and burnt, the villas on the shelf (mostly ruins), the roads up D-1 / D-3 / E-1
 js/terrain_normandy_props.js WW.normandyProps: Normandy villages and churches, hedgerows, the sea wall, the beach obstacles (visual)
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material

@@ -6,10 +6,15 @@
 //    Teller mines; instanced, each hidden once the sim marks it destroyed (update)
 //  - the scrub on the bluffs (gorse, bramble, bracken) and marram on the shelf
 //  - the sea wall from Vierville to Les Moulins
+// Performance: the hedgerows (~100,000 bushes) and the scrub were single InstancedMeshes, drawn whole (and again into
+// the shadow map) every frame: 5-6 M triangles a pass. Now they are cut into CHUNK u tiles (chunked()), each tile an
+// InstancedMesh with its own bounds, so the camera's and the shadow map's frustums drop the tiles out of view, and a
+// tile beyond LO_D from the camera draws a low-poly bush (lods, swapped in update()).
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
-  let shared = null, obstMeshes = null, lastAlive = -1;
+  let shared = null, obstMeshes = null, lastAlive = -1, lods = [];
+  const CHUNK = 120, LO_D = 200;
   const D = () => WW.normandyData, NT = () => WW.normandyTerrain;
   function prng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const gy = (x, z) => Math.max(0, WW.terrain.heightRaw(x, z));
@@ -20,14 +25,14 @@ window.WW = window.WW || {};
     shared = {
       house: new THREE.BoxGeometry(1, 1, 1), roof: (() => { const g = new THREE.CylinderGeometry(0, 0.75, 0.6, 4, 1); g.rotateY(Math.PI / 4); g.scale(1.42, 1, 1); return g; })(),
       tower: new THREE.BoxGeometry(1, 1, 1), spire: new THREE.ConeGeometry(0.6, 2.4, 6),
-      bush: new THREE.SphereGeometry(1, 7, 5), wall: new THREE.BoxGeometry(1, 1, 1),
+      bush: new THREE.SphereGeometry(1, 7, 5), bushLo: new THREE.IcosahedronGeometry(1, 0), wall: new THREE.BoxGeometry(1, 1, 1),
       // obstacles at about 2x true size, as the sailors (models_crew.js): a hedgehog's 2 m beams 0.45 u, a 3 m stake 0.6 u
       beam: new THREE.BoxGeometry(0.45, 0.05, 0.05), pole: new THREE.CylinderGeometry(0.03, 0.04, 0.5, 5), mine: new THREE.CylinderGeometry(0.08, 0.08, 0.035, 8),
       gate: new THREE.BoxGeometry(0.1, 0.1, 0.1),
       stone: lam(0xd8ccb4), stoneD: lam(0xbfb39a), slate: lam(0x6f7b86), tile: lam(0xb9775f), hedge: lam(0x52633c), concrete: lam(0xc8c4b8),
       steel: lam(0x6b625a), wood: lam(0x8a6e52), mineM: lam(0x5d6150)
     };
-    shared.bush.scale(1, 0.62, 1);
+    shared.bush.scale(1, 0.62, 1); shared.bushLo.scale(1, 0.62, 1);
   }
 
   // ---- villages ----
@@ -77,11 +82,34 @@ window.WW = window.WW || {};
         }
       }
     }
-    const n = pts.length / 3, im = new THREE.InstancedMesh(shared.bush, shared.hedge, n);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
-    for (let i = 0; i < n; i++) { const x = pts[i * 3], z = pts[i * 3 + 1], k = pts[i * 3 + 2]; im.setMatrixAt(i, m.compose(p.set(x, gy(x, z) + 0.3 * k, z), q, s.set(k * 1.1, k * 1.3, k * 1.1))); }
-    im.castShadow = true; im.receiveShadow = true;
-    g.add(im);
+    const n = pts.length / 3, m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+    chunked(g, shared.bush, shared.bushLo, shared.hedge, n, i => pts[i * 3], i => pts[i * 3 + 1], (i, x, z) => { const k = pts[i * 3 + 2]; return m.compose(p.set(x, gy(x, z) + 0.3 * k, z), q, s.set(k * 1.1, k * 1.3, k * 1.1)); }, 1.6);
+  }
+  // n instances (position xOf(i), zOf(i), matrix mOf(i, x, z)) cut into CHUNK u tiles: an InstancedMesh per tile, its
+  // geometry a view of the shared one with the tile's own bounding sphere (three culls an InstancedMesh by its
+  // geometry's bounds), the low-poly geometry (lo) swapped in beyond LO_D; pad: the largest instance's reach
+  function chunked(g, hi, lo, mat, n, xOf, zOf, mOf, pad) {
+    const tiles = new Map();
+    for (let i = 0; i < n; i++) { const key = Math.floor(xOf(i) / CHUNK) * 100000 + Math.floor(zOf(i) / CHUNK); if (!tiles.has(key)) tiles.set(key, []); tiles.get(key).push(i); }
+    const view = (geo, sph) => { const v = new THREE.BufferGeometry(); for (const k in geo.attributes) v.setAttribute(k, geo.attributes[k]); if (geo.index) v.setIndex(geo.index); v.boundingSphere = sph; return v; };
+    for (const L of tiles.values()) {
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, y0 = 1e9, y1 = -1e9;
+      const im = new THREE.InstancedMesh(hi, mat, L.length);
+      L.forEach((i, k) => { const x = xOf(i), z = zOf(i), M = mOf(i, x, z), y = M.elements[13]; im.setMatrixAt(k, M); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
+      const c = new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), sph = new THREE.Sphere(c, Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + pad);
+      const rec = { im, hiG: view(hi, sph), loG: lo ? view(lo, sph) : null, c, r: sph.radius, lo: false };
+      im.geometry = rec.hiG; im.castShadow = true; im.receiveShadow = true; im.name = 'chunk';
+      g.add(im); if (lo) lods.push(rec);
+    }
+  }
+  // the tiles' detail by their distance from the camera (per frame: a few hundred distance checks)
+  function lodUpdate() {
+    const cam = WW.camera; if (!cam || !lods.length) return;
+    const cp = cam.position;
+    for (const L of lods) {
+      const far = L.c.distanceTo(cp) - L.r > LO_D;
+      if (far !== L.lo) { L.lo = far; L.im.geometry = far ? L.loG : L.hiG; }
+    }
   }
 
   // ---- the bluffs' cover: gorse, bramble and last year's bracken in clumps up the slopes (the folds and the scrub the
@@ -110,10 +138,8 @@ window.WW = window.WW || {};
     }
     kinds.forEach(([col, pts], ki) => {
       const tuft = ki === 1 || ki === 3;
-      const n = pts.length / 3, im = new THREE.InstancedMesh(tuft ? shared.tuft : shared.bush, new THREE.MeshLambertMaterial({ color: soft(col), side: tuft ? THREE.DoubleSide : THREE.FrontSide }), n);
-      for (let i = 0; i < n; i++) { const x = pts[i * 3], z = pts[i * 3 + 1], k = pts[i * 3 + 2]; q.setFromAxisAngle(_Y, r() * 6.28); im.setMatrixAt(i, m.compose(p.set(x, gy(x, z) + (tuft ? 0 : 0.15 * k), z), q, tuft ? s.set(k * 1.3, k * 0.9, k * 1.3) : s.set(k * (1.1 + r() * 0.6), k * 0.95, k))); }
-      im.castShadow = true; im.receiveShadow = true;
-      g.add(im);
+      const n = pts.length / 3, mat = new THREE.MeshLambertMaterial({ color: soft(col), side: tuft ? THREE.DoubleSide : THREE.FrontSide });
+      chunked(g, tuft ? shared.tuft : shared.bush, tuft ? null : shared.bushLo, mat, n, i => pts[i * 3], i => pts[i * 3 + 1], (i, x, z) => { const k = pts[i * 3 + 2]; q.setFromAxisAngle(_Y, r() * 6.28); return m.compose(p.set(x, gy(x, z) + (tuft ? 0 : 0.15 * k), z), q, tuft ? s.set(k * 1.3, k * 0.9, k * 1.3) : s.set(k * (1.1 + r() * 0.6), k * 0.95, k)); }, 1);
     });
   }
   const _Y = new THREE.Vector3(0, 1, 0);
@@ -176,16 +202,19 @@ window.WW = window.WW || {};
     lastAlive = alive;
   }
   // per frame (base_fx-style hook, cheap): re-place only when the number of standing obstacles changed
-  function update() {
+  function update(rdt) {
     if (!obstMeshes || !WW.isScn('normandy')) return;
+    if (WW.normandyVillages) WW.normandyVillages.update(rdt);   // the gutted houses' smoke
+    lodUpdate();
     let alive = 0; for (const o of obstMeshes.L) if (o.alive) alive++;
     if (alive !== lastAlive) place();
   }
 
   function build(g) {
     if (!shared) initShared();
+    lods = [];
     const r = prng(1944);
-    D().VILLAGES.forEach(v => village(g, v, r));
+    if (WW.normandyVillages) WW.normandyVillages.build(g); else D().VILLAGES.forEach(v => village(g, v, r));   // normandy_villages.js: the house kit, the damage, the villas, the roads
     hedgerows(g, r);
     scrub(g);
     seaWall(g);
