@@ -119,6 +119,7 @@ window.WW = window.WW || {};
         if (!fv || G().ready(b, fv) - a.queue.filter(q => q.v === fv).length <= 0) break;
         a.queue.unshift({ v: fv, target: null, fast: raid });
       }
+      if (WW.strafe && !raid) WW.strafe.capCheck(b);   // the field's CAP strafes small craft off the island (air_strafe.js)
       if (raid && now - a.scrT > 60 && canLaunch(b) && a.queue.some(q => q.fast)) { a.scrT = now; ST.scrambles++; WW.emit('baseEvent', { kind: 'scramble', base: b, nation: b.nation, x: b.x, z: b.z }); }
     }
     a.strikeT -= dt;

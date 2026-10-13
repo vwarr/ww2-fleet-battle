@@ -157,7 +157,7 @@ const DOCTRINE_INFO = ['deck_hits', 'deck_safe', 'deck_planes', 'deck_chain', 'f
 const BASE_INFO = ['base_neut', 'base_t_neut', 'base_cap_leash', 'base_raids', 'rw_closures', 'batteries_out', 'land_strikes', 'land_sorties', 'land_hits', 'bombard_runs', 'bombard_shells'];
 const NIGHT_INFO = ['tod', 'det_day', 'det_dusk', 'det_night', 'det_radar', 'det_flash', 'night_torps_n', 'searchlights', 'radar_sights', 'night_land', 'night_land_loss', 'recalls', 'wx_det_rain', 'wx_det_clear', 'dive_holds', 'dive_aborts', 'cv_shelter'];
 const FB_INFO = ['fb_rescues', 'fb_survivors', 'cat_lost', 'pat_sight_usn', 'pat_sight_ijn', 'pat_lost_usn', 'pat_lost_ijn', 'misid', 'bad_strikes', 'bad_redirects'];
-const INFO = [...BASE_INFO, ...NIGHT_INFO, ...FB_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'srch_sect', 'srch_lost', 'form_first', 'form_later', 'sync_usn', 'sync_ijn', 'reserve', 'strafe_hits', 'pt_nn_p10', 'first_dmg', 'cap_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
+const INFO = [...BASE_INFO, ...NIGHT_INFO, ...FB_INFO, ...DOCTRINE_INFO, 'end_retire', 'wipeout', 'cv_escaped', 'pursuit_kills', 'escaped', 'usn_rescues', 'usn_survivors', 'usn_pilots', 'usn_lost_srv', 'ijn_abandoned', 'ijn_scuttled', 'spd_hp', 'cv_brk_min', 'cv_brk_gun', 'srch_sect', 'srch_lost', 'form_first', 'form_later', 'sync_usn', 'sync_ijn', 'reserve', 'strafe_hits', 'pt_nn_p10', 'first_dmg', 'cap_bkills', 'gunner_fkills', 'ftr_fkills', 'ftr_bkills', 'jettisons', 'sync_n', 'first_fire', 'first_contact', 'first_sight', 'pt_in_big', 'big_band', 'torp_passes', 'sub_shots', 'pt_torp_hit', 'sub_torp_hit', 'dd_episodes', 'sub_killed_by', 'len_min', 'len_max', 'stuck_who'];
 
 // ======================= SCENARIOS =======================
 // A / B fleets; sides alternate with seed parity (odd seed: A = USN) unless random/mirror.
@@ -295,6 +295,10 @@ function install(P) {
     if (s.type === 'submarine') { const k = R.lastHit[s.id] || '?'; R.dd.subDeaths++; if (k === 'dc') R.dd.subDC++; R.dd.kinds[k] = (R.dd.kinds[k] || 0) + 1; }
   });
   WW.on('planeKill', e => {
+    if (R && e && e.shooter && e.victim && !e.shooter.stats) {   // plane-on-plane gun kills by shooter / victim kind (air_gunners.js: bombers' gunners)
+      const fs = e.shooter.kind === 'fighter', fv = e.victim.kind === 'fighter';
+      if (!fs && fv) R.air.gunK++; else if (fs && fv) R.air.ffK++; else if (fs) R.air.fbK++;
+    }
     if (!R || !e || !e.shooter || e.shooter.kind !== 'fighter') return;
     if (!e.shooter.target && e.victim && (e.victim.kind === 'dive' || e.victim.kind === 'torpedo')) R.air.capBK++; // CAP gun kill on a bomber
     const cv = e.shooter.carrier; if (!live(cv)) return;
@@ -559,7 +563,7 @@ function install(P) {
       dd: { subDeaths: 0, subDC: 0, react: [], missed: 0, kinds: {} }, sub: { bow: 0, beam: 0, stern: 0, nearDived: 0, nearSurf: 0 },
       ftr: { t: 0, inLeash: 0, killsUA: 0, bomberKillsUA: 0 }, big: { fs: 0, fn: 0, band: 0, shots: 0, broad: 0 },
       intel: { checked: 0, unseen: 0, err: 0 }, cr: { n: 0, away: 0 }, lc: { n: 0, away: 0 }, torp: { passes: 0, par: 0 }, sync: {},
-      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0, capBK: 0 } };
+      air: { drops: 0, sync: [], capN: 0, capGap: 0, escN: 0, escWith: 0, coh: [], bombers: 0, lostArmed: 0, jett: 0, capF: 0, capB: 0, capBK: 0, gunK: 0, ffK: 0, fbK: 0 } };
     const types = {}; for (const s of WW.world.ships) types[s.nation + ':' + s.type] = (types[s.nation + ':' + s.type] || 0) + 1;
     R.pt.n = WW.world.ships.filter(s => s.type === 'pt').length;
     const step = spec.step || (spec.light ? 5 : P.SAMPLE), planesSeen = new Set();
@@ -673,6 +677,9 @@ function aggregate(rounds) {
     // stray shot or one forced surfacing in eight rounds is no rate)
     sub_bowbeam: shots >= SUB_MIN_SHOTS ? ratio(S(r => r.sub.bow + r.sub.beam), shots) : null, sub_shots: shots, sub_dived_dd: near >= SUB_MIN_NEAR ? ratio(S(r => r.sub.nearDived), near) : null,
     cap_bkills: rounds.length ? S(r => r.air.capBK || 0) / rounds.length : null,
+    gunner_fkills: rounds.length ? S(r => r.air.gunK || 0) / rounds.length : null,   // fighters shot down by bombers' gunners per round
+    ftr_fkills: rounds.length ? S(r => r.air.ffK || 0) / rounds.length : null,       // fighters shot down by fighters per round
+    ftr_bkills: rounds.length ? S(r => r.air.fbK || 0) / rounds.length : null,       // bombers shot down by fighters per round
     cap_on_bmb: ratio(S(r => r.air.capB || 0), S(r => r.air.capF || 0)),
     cap_gap: ratio(S(r => r.air.capGap || 0), S(r => r.air.capN || 0)), esc_with: ratio(S(r => r.air.escWith || 0), S(r => r.air.escN || 0)),
     elem_coh: med(C(r => r.air.coh || [])), air_sync: med(C(r => r.air.sync || [])), sync_n: C(r => r.air.sync || []).length,

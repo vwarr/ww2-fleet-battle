@@ -310,6 +310,7 @@ window.WW = window.WW || {};
         if (lk <= 0) continue;
         var frac = Math.sqrt(bd) / lr;
         var hc = LIGHT.hitK * (1.4 - 0.8 * frac) * (lt.kind === 'fighter' ? 0.6 : 1) * exposure(lt);
+        if (s.aaSup && s.aaSup.until > WW.time.now) hc *= s.aaSup.k;   // strafed: the gun crews' heads down (air_gunners.js)
         var hit = rnd() < hc * lk;
         if (hit) hitPlane(lt, aa.dps * (1 - hs) * LIGHT.interval * LIGHT.dmgK, s, 'lightKills');
         if (lk >= 1 || hit || Math.random() < lk * 0.6) tracerStream(s, lt, hit);   // visual only: every light-AA tick shows a stream (fewer when its ammunition runs low)
