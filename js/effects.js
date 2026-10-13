@@ -252,6 +252,17 @@ window.WW = window.WW || {};
       P.smoke.spawn(x + rr(-0.3, 0.3), y + rr(-0.3, 0.3), z + rr(-0.3, 0.3), rr(-0.6, 0.6), rr(-0.2, 0.5), rr(-0.6, 0.6),
         rr(1.2, 1.8), rr(0.3, 0.45), rr(0.9, 1.3), col(0x5c5c62), col(0x9a9aa0), 0, 2, rr(-1, 1));
   }
+  // a boat's bow slamming into a sea (Normandy landing craft, models_landing.js): a low fan of white spray thrown
+  // ahead and to both sides, from the bow at height y; heading: the boat's, size ~0.3-1
+  function spray(x, y, z, heading, size) {
+    if (!P) return; size = size || 0.5;
+    var c = Math.cos(heading || 0), s = Math.sin(heading || 0), n = 3 + Math.round(size * 5);
+    for (var i = 0; i < n; i++) {
+      var side = i & 1 ? 1 : -1, out = rr(0.6, 1.6) * size, fwd = rr(0.2, 1.0) * size;
+      P.solid.spawn(x, y, z, c * fwd - s * side * out, rr(1.2, 2.4) * Math.sqrt(size), s * fwd + c * side * out,
+        rr(0.5, 0.9), 0.12 * size + 0.05, 0.32 * size + 0.08, col(W), col(0xdfe6e4), 7, 0.4, rr(-0.6, 0.6), false);
+    }
+  }
   function smoke(x, y, z, dark, size) {
     if (!P) return; size = size || 1;
     var k = rr(0.7, 1.25) * size;                       // varied puff sizes: reads as separate cotton balls
@@ -322,7 +333,7 @@ window.WW = window.WW || {};
 
   WW.fx = {
     init: init, update: update, clearAll: clearAll,
-    splash: splash, explosion: explosion, torpedoHit: torpedoHit, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
+    splash: splash, spray: spray, explosion: explosion, torpedoHit: torpedoHit, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
     fire: fire, wake: wake, torpBubbles: torpBubbles, oilSlick: oilSlick, sparks: sparks, trail: trail,
     _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; }
   };

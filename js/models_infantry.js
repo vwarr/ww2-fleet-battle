@@ -3,7 +3,7 @@
 // re-posed each frame from the squads (infantry.js): a squad shows its men in a loose file around its position (a
 // fixed offset per man); moving men run (the stride's two frames alternate, each man in his own phase), pinned men
 // and men at the shingle lie prone, men on the bluff or closing on a position crouch, the rest stand. The fallen
-// (squadCasualty) stay where they fell, up to MAX_BODY. Tanks ashore are a Sherman of boxes: hull, tracks, turret, gun.
+// (squadCasualty) stay where they fell, up to MAX_BODY. Tanks ashore: the Sherman of models_tank.js.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
@@ -16,12 +16,8 @@ window.WW = window.WW || {};
     const mk = (g, n, m) => { const im = new THREE.InstancedMesh(g, m || mat, n); im.count = 0; im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(im); return im; };
     mesh = {}; for (const p of ['runA', 'runB', 'stand', 'crouch', 'prone']) mesh[p] = mk(G[p], MAX);
     dead = mk(G.fallen, MAX_BODY);
-    // the Sherman: hull, tracks, turret and gun merged by parts into one instanced group
-    const lam = c => new THREE.MeshLambertMaterial({ color: WW.pastel(c, 0.1) });
-    const add = (geo, c) => mk(geo, MAX_TANK, lam(c));
-    const g = (sx, sy, sz, x, y, z) => new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z);
-    tank = [add(g(0.8, 0.2, 0.36, 0, 0.17, 0), 0x5e6847), add(g(0.84, 0.12, 0.1, 0, 0.06, 0.16), 0x3f4134), add(g(0.84, 0.12, 0.1, 0, 0.06, -0.16), 0x3f4134),
-      add(new THREE.CylinderGeometry(0.15, 0.17, 0.14, 10).translate(0.02, 0.34, 0), 0x56603f), add(g(0.32, 0.04, 0.04, 0.26, 0.34, 0), 0x3a3c3e)];
+    // the Sherman (models_tank.js)
+    tank = [mk(WW.tankModel.build().sherman, MAX_TANK)];
     WW.scene.add(root);
   }
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
@@ -37,7 +33,7 @@ window.WW = window.WW || {};
       if (!q.alive) continue;
       if (q.kind === 'tank') {
         if (nt >= MAX_TANK) continue;
-        _e.set(0, -q.heading, 0); _q.setFromEuler(_e); _m.compose(_p.set(q.x, q.y, q.z), _q, _s);
+        _e.set(0, -q.heading, 0); _q.setFromEuler(_e); _m.compose(_p.set(q.x, Math.max(q.y, WW.terrain.heightRaw(q.x, q.z)), q.z), _q, _s);
         for (const im of tank) im.setMatrixAt(nt, _m);
         nt++; continue;
       }

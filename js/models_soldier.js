@@ -99,5 +99,7 @@ window.WW = window.WW || {};
     geos.fallen = merge(figure({ armF: 0.25, legF: 0.15, legB: -0.1, rifle: 'none' }), back);
     return geos;
   }
-  WW.soldierModel = { build, COLORS: C, POSES: ['runA', 'runB', 'stand', 'crouch', 'prone', 'fallen'] };
+  // part / merge: the kit, for the other hand-merged Normandy models (models_landing.js, the tank); prim() first
+  WW.soldierModel = { build, COLORS: C, POSES: ['runA', 'runB', 'stand', 'crouch', 'prone', 'fallen'], part, merge,
+    prims() { if (!box) prim(); return { box, sph, dome, cyl }; } };
 })(window.WW);
