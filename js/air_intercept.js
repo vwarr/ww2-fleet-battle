@@ -71,13 +71,34 @@ window.WW = window.WW || {};
   // shot-up airframe. The CAP's real effect on the raiders that got through in 1942 was the drop: a pilot with a
   // Zero or a Wildcat on his tail, or a holed plane, released early, wide and shallow (combat_weapons.js diveAim
   // widens the aim error, air_attack.js torp throws the torpedo off its line). Deterministic.
-  function harried(pl) {
+  function harryK(pl) {   // the same reading, no bookkeeping
     const s = pl.df;
     let on = s && s.from && s.from.alive && WW.dist(s.from.x, s.from.z, pl.x, pl.z) < 45 ? 1 : 0;
     if (!on) for (const q of WW.world.planes) if (q.alive && q.foe === pl && q.kind === 'fighter' && WW.dist(q.x, q.z, pl.x, pl.z) < 80) { on = 0.8; break; }   // a fighter working it over
-    const h = Math.min(1, Math.max(on, (1 - pl.hp / pl.maxHp) * 1.4));
+    return Math.min(1, Math.max(on, (1 - pl.hp / pl.maxHp) * 1.4));
+  }
+  function harried(pl) {
+    const h = harryK(pl);
     ST.releases++; if (h > 0) { ST.harried++; ST.harriedSum += h; }
     return h;
   }
-  WW.intercept = { attack, predict, harried, HARRY: { aim: 1.2, torp: 0.16 }, stats: ST };
+  // How hot the target area looks to a torpedo pilot setting up his attack on t, 0..1 (air_attack.js torp): enemy
+  // fighters he can see (within PR_SEE of him, or the CAP over the target within PR_CAP of it; his own escorts near
+  // count against them), the flak of the screen round the target (combat_weapons.js flakAt), or a fighter on him now /
+  // a shot-up airframe (harryK). 4 fighters about, or ~30 dps of AA (a carrier with a battleship, a cruiser and two
+  // destroyers round her), is as bad as it gets. Deterministic, no side effects.
+  const PR_SEE = 110, PR_CAP = 130, PR_FTR = 4, PR_FLAK = 30, PR_FLAK_R = 60;
+  function pressure(pl, t) {
+    let f = 0, own = 0;
+    for (const q of WW.world.planes) {
+      if (!q.alive || q.kind !== 'fighter' || (q.state !== 'transit' && q.state !== 'attack') || q.deckPh) continue;
+      const near = WW.dist2(q.x, q.z, pl.x, pl.z) < PR_SEE * PR_SEE;
+      if (q.nation === pl.nation) { if (near) own++; }
+      else if (near || (t && WW.dist2(q.x, q.z, t.x, t.z) < PR_CAP * PR_CAP)) f += q.foe && q.foe.nation === pl.nation ? 1 : 0.8;   // one already on our strike counts in full
+    }
+    const fk = Math.min(1, Math.max(0, f - 0.5 * own) / PR_FTR);
+    const ak = t && WW.combat.flakAt ? Math.min(1, WW.combat.flakAt(pl.nation, t.x, t.z, PR_FLAK_R) / PR_FLAK) : 0;
+    return Math.min(1, Math.max(harryK(pl), 0.65 * fk + 0.45 * ak));
+  }
+  WW.intercept = { attack, predict, harried, harryK, pressure, HARRY: { aim: 1.2, torp: 0.16 }, stats: ST };
 })();
