@@ -311,7 +311,7 @@ window.WW = window.WW || {};
       if (WW.shipFires) WW.shipFires.hit(this, amount, kind, cal, hx, hz); // fires, a loaded flight deck (ship_fires.js)
       if (WW.damage) WW.damage.hit(this, amount, hx, hz, kind, cal);
       if (!this.alive) return; // a magazine or the deck already sent her down (ship_fires.js)
-      if (this.hp <= 0) { this.hp = 0; this.startSinking(); return; }
+      if (this.hp <= 0) { this.hp = 0; this.sinkCause = { kind, cal, x: hx, z: hz }; this.startSinking(); return; } // the fatal hit (ship_breakup.js)
       this.applyLook();
     }
 
@@ -321,6 +321,7 @@ window.WW = window.WW || {};
       if (this.removed) return;
       this.removed = true; this.sinking = false; this.alive = false; this.dmgSites.length = 0;
       if (WW.scene) WW.scene.remove(this.group);
+      if (this.broken && WW.shipBreakup) WW.shipBreakup.drop(this); // the stern half and its clipped materials
       this.model.hullMats.forEach(m => { if (m.dispose) m.dispose(); });
     }
   }

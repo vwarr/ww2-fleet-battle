@@ -13,7 +13,7 @@
 window.WW = window.WW || {};
 (function () {
   const TAU2 = Math.PI * 2, DRIFT_MAX = 15, COAST_END = 1.2;
-  const TAU = { carrier: 7, battleship: 6.5, cruiser: 5, destroyer: 4, submarine: 2.5, pt: 1.5 }; // run-on time constant (s)
+  const TAU = { carrier: 7, battleship: 6.5, cruiser: 5, destroyer: 4, submarine: 2.5, pt: 1 }; // run-on time constant (s)
   const vr = (a, b) => a + (b - a) * Math.random(); // visual-only randomness
   let wreckCol = null;
   // A settled wreck or another sinking ship whose footprint overlaps a circle of radius r at (x, z).
@@ -54,7 +54,9 @@ window.WW = window.WW || {};
     if (this.capsized) tau *= 0.5;
     if (this.broken) tau = Math.min(tau, 1.4);                       // a broken back: the halves stop in their own length
     this.coastTau = tau; this.coastV0 = v0; this.coastTr = this.turnRate || 0; this.coasting = true;
-    this.sinkDur = 8.5 + (this.broken || L < 8 ? 0 : 3 * WW.clamp(v0 / st.speed, 0, 1));
+    const way = WW.clamp(v0 / st.speed, 0, 1);
+    this.sinkDur = 8.5 + (this.broken || L < 8 ? 0 : 3 * way);
+    this.sinkPow = 2 + 1.5 * way; // under way she stays up longer, low in the water, then goes
     if (wreckNear(this.x, this.z, L * 0.5 + 3, this)) { // sinking on top of a wreck: slide clear of it
       let ax = 0, az = 0;
       for (const w of WW.world.wrecks) { const d = WW.dist(this.x, this.z, w.x, w.z) + 0.1; if (d < 40) { ax += (this.x - w.x) / d; az += (this.z - w.z) / d; } }
@@ -117,7 +119,7 @@ window.WW = window.WW || {};
     const th = Math.asin(sn) * sg;
     this.restY = flatY + L * 0.5 * sn;
     this.restTop = flatY + this.hullTop * Math.cos(roll) + L * sn;
-    g.position.set(this.x, WW.lerp(this.startY, this.restY, k * k), this.z);
+    g.position.set(this.x, WW.lerp(this.startY, this.restY, Math.pow(k, this.sinkPow || 2)), this.z);
     g.rotation.set(WW.lerp(this.listRoll + this.heel, roll, Math.min(1, this.sinkT / 4)), // heel at the fatal hit eases out
       -this.heading, WW.lerp(this.sinkPitch, th || this.sinkPitch, k) * k);
     this.rustLook(k);
@@ -132,6 +134,12 @@ window.WW = window.WW || {};
 
   // booms, fires, the oil slick and the final splash (visual)
   P.sinkFx = function (dt, L, D) {
+    this.wakeT -= dt;
+    if (this.wakeT <= 0 && this.speed > 0.8 && this.sinkT < D * 0.6) { // still under way: her wake, fading
+      this.wakeT = 0.15;
+      const p = this.toWorld(-L * 0.45, 0);
+      WW.fx.wake(p[0], p[1], this.heading, WW.clamp(L / 10, 0.4, 2.5) * (0.3 + 0.5 * this.speed / this.stats.speed));
+    }
     this.boomT -= dt;
     if (this.boomT <= 0 && this.sinkT < 5) {
       this.boomT = vr(1.4, 2.8);

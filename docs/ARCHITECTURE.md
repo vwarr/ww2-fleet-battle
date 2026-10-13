@@ -61,6 +61,8 @@ js/combat_weapons.js    torpedoes, bombs, depth charges
 js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts, plane jinking
 js/ships.js             WW.Ship, WW.ships: movement, damage, sinking, wrecks
 js/ships_nav.js         WW.shipNav: hull outline checks, ship collisions
+js/ship_sinking.js      sinking ships (WW.Ship methods): run-on with the way she had, drift, settling on the seabed, wrecks
+js/ship_breakup.js      WW.shipBreakup: ships broken in two (the chance from the fatal hit; two clipped halves rearing into a V)
 js/ship_speed.js        WW.shipSpeed: damage slows ships (hull damage, torpedo flooding, engine-room hits)
 js/intel.js             WW.intel: fog of war, per-side contact tables (what each side has seen)
 js/night_ops.js         WW.nightOps: sight in the dark and rain, USN ship radar, star shells, searchlights, night doctrine factors
