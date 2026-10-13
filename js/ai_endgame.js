@@ -155,7 +155,7 @@ window.WW = window.WW || {};
     let bd = 1e18;
     for (const c of WW.intel.enemyShips(ship.nation)) {
       const u = c.unit;
-      if (!u || !u.alive || u.submerged || u.isBase || u.type === 'submarine' || now - c.seenAt > PURSUE_AGE) continue; // not the island base (island_base.js)
+      if (!u || !u.alive || u.submerged || u.isBase || u.isLand || u.type === 'submarine' || now - c.seenAt > PURSUE_AGE) continue; // not the island base (island_base.js)
       if (ship.type === 'battleship' && u.type === 'pt') continue;
       if (u.type === 'carrier' && !fairGame(ship, u, B)) continue;
       const d = WW.dist2(ship.x, ship.z, c.x, c.z) * (isCripple(u) ? 0.6 : 1) * (vmax(u) < vmax(ship) * 0.95 ? 1 : 4); // cripples first; what it can catch before what outruns it

@@ -334,6 +334,7 @@ window.WW = window.WW || {};
     call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
     call('islandBase', 'update', dt); // the island air base: repairs, coastal guns, base planes (island_base.js, land_air.js)
+    call('coastDefence', 'update', dt); // Normandy: the strongpoints' guns, MG cones and mortar zones (coast_defence*.js)
     call('endgame', 'update', dt);  // escapes off the map, survivor pickups, scuttling (endgame.js)
     call('shipFires', 'update', dt); // fires, flooding, damage control (ship_fires.js)
     call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)

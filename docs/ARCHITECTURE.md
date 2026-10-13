@@ -100,6 +100,9 @@ js/air_cap.js           WW.cap: doctrine CAP (USN radar pickets in two height ba
 js/air_cag.js           WW.cag: strike leader (handover, redirect, AA detour), VT/VB timing, close and top cover escorts
 js/island_base.js       WW.islandBase: the island air base (owner, facilities, craters, coastal guns, AA pits, neutralized, events)
 js/base_ai.js           WW.baseAI: the fight for the island in the AI (objective, bombardment aim, strike value, defence)
+js/coast_defence_data.js WW.defenceData: the German strongpoints (WN 60-75, Pointe du Hoc): element kinds and placements
+js/coast_defence.js     WW.coastDefence: strongpoint elements and WN units (Normandy): embrasure / wall damage, suppression, silencing, intel, land_sites hooks
+js/coast_defence_fire.js WW.coastFire: the strongpoints' direct fire (fireShell, landSites.gunTick) and the abstract MG cones / mortar zones
 js/land_air.js          WW.landAir: the base air group (roster, CAP, strikes), the runway (takeoff, circuit, landing), level bombing
 js/air_flyingboats.js   WW.flyingBoats, WW.FlyingBoat: flying boats from off the map; the Catalina "Dumbo" rescue (endgame.js tasks)
 js/air_patrol.js        WW.patrol: long-range patrol flying boats (search, shadow from standoff, evade fighters, Mavis bombing); bad-report strike metrics
@@ -114,6 +117,7 @@ js/camera_finder.js     WW.camFinder: imminent-action finder (attacks about to h
 js/camera_follow.js     WW.camFollow: keys F / Tab / 8 / 9, the follow label, finder candidates for the director
 js/camera_score.js      WW.camScore: one director score (the drama ladder), re-evaluation of the running shot with hysteresis
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
+js/models_bunker.js     WW.bunkerModels: casemates, gun pits, Tobruks, MG nests, mortar pits, flak, the 155s (visual)
 js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, parked planes, captions, diary, camera hooks)
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)
 js/night_fx.js          WW.nightFx: night lights (pooled), star shell flares, searchlight cones, night camera candidates (visual)

@@ -256,22 +256,21 @@ window.WW = window.WW || {};
     const I = WW.intel; if (!I) return;
     for (const f of base.facilities) {
       if (f.kind !== 'battery' || f.out) continue;
-      f.reload -= dt;
-      if (f.reload > 0) continue;
-      let best = null, bs = -1;
-      for (const c of I.enemyShips(base.nation, { fresh: true })) {
-        const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase) continue;
-        const d = WW.dist(f.x, f.z, u.x, u.z); if (d > BATTERY.range) continue;
-        const sc = (u.stats.tons || 1000) / (1 + d / 60) * (now0() - (u._bombT || -1e9) < 30 ? 2 : 1);   // the ship shelling us first
-        if (sc > bs) { bs = sc; best = u; }
-      }
-      if (!best) { f.reload = 1; continue; }
-      f.aim = Math.atan2(best.z - f.z, best.x - f.x); f.firedAt = now0();
-      for (let k = 0; k < BATTERY.count; k++) if (WW.combat.fireShell(f.unit, null, best, BATTERY.cal)) stats.coastalShots++;
+      WW.landSites.gunTick(f, dt, () => {
+        let best = null, bs = -1;
+        for (const c of I.enemyShips(base.nation, { fresh: true })) {
+          const u = c.unit; if (!u || !u.alive || u.sinking || u.submerged || u.isBase) continue;
+          const d = WW.dist(f.x, f.z, u.x, u.z); if (d > BATTERY.range) continue;
+          const sc = (u.stats.tons || 1000) / (1 + d / 60) * (now0() - (u._bombT || -1e9) < 30 ? 2 : 1);   // the ship shelling us first
+          if (sc > bs) { bs = sc; best = u; }
+        }
+        return best;
+      }, best => {
+        f.aim = Math.atan2(best.z - f.z, best.x - f.x); f.firedAt = now0();
+        for (let k = 0; k < BATTERY.count; k++) if (WW.combat.fireShell(f.unit, null, best, BATTERY.cal)) stats.coastalShots++;
       // the duel: a ship shelling the island draws the battery's full rate (TUNE.guns throttles the guns' reach over
       // passing ships, which used to decide battles; a bombardment is what the batteries were sited for)
-      const duel = now0() - (base.shelledT || -1e9) < 30 ? DUEL_K : 1;
-      f.reload = BATTERY.reload / Math.max(0.05, TUNE.guns * duel) * WW.randRange(0.9, 1.15);
+      }, () => BATTERY.reload / Math.max(0.05, TUNE.guns * (now0() - (base.shelledT || -1e9) < 30 ? DUEL_K : 1)));
     }
   }
 

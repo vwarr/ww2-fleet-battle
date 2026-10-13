@@ -62,7 +62,7 @@ window.WW = window.WW || {};
     const n = ship.nation, W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, M = B.groups.pt.members, i = Math.max(0, M.indexOf(ship));
     let tx = W / 2 - homeX(ship) * W * PICKET.FAR, tz = B.axis.z, bd = 1e9, tu = null; // nothing known: the enemy's likely approach
     for (const c of contacts(ship, PICKET.AGE)) { // the nearest known enemy surface ship to our main body: its screen
-      if (c.unit.submerged || c.unit.isBase || c.unit.type === 'pt' || c.unit.type === 'submarine') continue; // not the enemy's own pickets
+      if (c.unit.submerged || c.unit.isBase || c.unit.isLand || c.unit.type === 'pt' || c.unit.type === 'submarine') continue; // not the enemy's own pickets
       const d = WW.dist(B.axis.x, B.axis.z, c.x, c.z); if (d < bd) { bd = d; tx = c.x; tz = c.z; tu = c.unit; }
     }
     const IR = WW.intel && WW.intel.R, sight = (IR ? (IR.SEEN[tu ? tu.type : 'destroyer'] || 170) * (IR.EYE.pt || 0.55) : 95);
@@ -142,7 +142,7 @@ window.WW = window.WW || {};
     let t = null, bd = 1e9;
     const dark = WW.daylight < PT.DARK;
     for (const c of contacts(ship, dark ? 180 : 45)) { // in the dark: an old contact too, run down along its course
-      if (c.unit.submerged || !VAL[c.unit.type] || c.unit.isBase || c.unit.type === 'submarine') continue;
+      if (c.unit.submerged || !VAL[c.unit.type] || c.unit.isBase || c.unit.isLand || c.unit.type === 'submarine') continue;
       const d = WW.dist(ship.x, ship.z, c.x, c.z); if (d < bd) { bd = d; t = c; }
     }
     if (!t) return false;

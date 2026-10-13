@@ -5,6 +5,9 @@
 // destroyers), the tidal flat 0-1.5 deep over its first 30 u, land behind the waterline and the bluff top 3-7 u
 // high, the five draws lower than the bluffs beside them, Pointe du Hoc a headland (land 30 u north of the cliff
 // line beside it), and the same layout on every seed (shoreline and bluff heights within the detail noise).
+// P4 defences: 13 strongpoints / 70 elements built, the Germans fire (shells) within the run, and after it a unit
+// test on a fresh round: a casemate hit on its sea wall takes WALL_K x, through its embrasure 1x; a near miss
+// suppresses; knocking out every weapon of a WN silences it (event, intel contact gone).
 // Usage: node tests/normandy_probe.js [seeds=1,2,3] [secs=400]
 const crypto = require('crypto');
 const H = require('./headless');
@@ -39,28 +42,57 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     const layout = [700, 725, 1372, 1700, 2000].map(x => [T.shoreZ(x), -d(x, T.bluffTopZ(x) + 10)]);
     const tr = [], sides = WW.sides().join(',');
     const nations = new Set(WW.world.ships.map(s => s.nation));
+    const C0 = WW.coastDefence;
     for (let t = 5; t <= secs + 1e-9 && G.state === 'battle'; t += 5) {
       __sim.fastForward(5);
       for (const s of WW.world.ships) if (![s.x, s.z, s.hp, s.heading].every(Number.isFinite)) bad.push(`t=${t} ship ${s.id} ${s.nation} ${s.type} NaN`);
       for (const q of WW.world.planes) if (q.alive && ![q.x, q.y, q.z].every(Number.isFinite)) bad.push(`t=${t} plane ${q.nation} ${q.kind} NaN`);
-      tr.push(WW.world.ships.map(s => [s.id, s.x, s.z, s.hp].join(',')).join(';'));
+      tr.push(WW.world.ships.map(s => [s.id, s.x, s.z, s.hp].join(',')).join(';') + '|' + C0.elements.map(e => e.hp.toFixed(3) + (e.alive ? '' : 'x')).join(','));
     }
-    return { terr: terr.slice(0, 6), layout, obst: T.obstacles.length, sides, nations: [...nations].join(','), ships: WW.world.ships.length, state: G.state, t: +G.roundTime.toFixed(1), winner: G.winner, reason: G.endReason,
-      sunk: WW.world.ships.filter(s => !s.alive || s.sinking).map(s => s.nation + ' ' + s.type).join(', '), shells: WW.stats.shellsFired, bad: bad.slice(0, 5), tr };
+    const shots = C0.stats.shots, dHits = C0.stats.hits;
+    const C = WW.coastDefence, def = { els: C.elements.length, wns: C.wns.length, shots: 0 };
+    return { terr: terr.slice(0, 6), layout, obst: T.obstacles.length, def, sides, nations: [...nations].join(','), ships: WW.world.ships.length, state: G.state, t: +G.roundTime.toFixed(1), winner: G.winner, reason: G.endReason,
+      shots, dHits, sunk: WW.world.ships.filter(s => !s.alive || s.sinking).map(s => s.nation + ' ' + s.type).join(', '), shells: WW.stats.shellsFired, bad: bad.slice(0, 5), tr };
   }, [seed, SECS]);
   let layout0 = null;
+  // the damage model, on a fresh round (after the seeded runs: it draws WW.rand)
+  const unit = () => p.evaluate(() => {
+    const G = WW.game, C = WW.coastDefence, out = [];
+    WW.terrain.generate(9); WW.seedRandom(9); G.composition = null; G.mode = 'auto'; G.startRound({ keepMap: true });
+    const c88 = C.elements.find(e => e.kind === 'c88' && e.wn.wid === 'WN72'), h0 = c88.hp;
+    c88.takeDamage(100, c88.x, c88.z, 'shell', 'med', { x0: c88.x + 20, z0: c88.z - 300 });   // from the sea: the wall
+    const wall = h0 - c88.hp;
+    if (Math.abs(wall - 100 * C.WALL_K) > 1e-6) out.push('wall hit took ' + wall.toFixed(1));
+    const c50 = C.elements.find(e => e.kind === 'c50' && e.wn.wid === 'WN72'), h1 = c50.hp;
+    c50.takeDamage(40, c50.x, c50.z, 'shell', 'small', { x0: c50.x + 160, z0: c50.z - 70 });   // from the east, along the beach: the embrasure
+    if (c50.alive && Math.abs(h1 - c50.hp - 40) > 1e-6) out.push('embrasure hit took ' + (h1 - c50.hp).toFixed(1));
+    const mg = C.elements.find(e => e.kind === 'mg' && e.wn.wid === 'WN70');
+    C.impact('USN', mg.x + 6, mg.z, 110, 'shell', 'big');
+    if (!(mg.suppressedUntil > WW.time.now)) out.push('near miss did not suppress');
+    let ev = null; WW.on('defenceEvent', e => { if (e.kind === 'silenced' && e.wn.wid === 'WN61') ev = e; });
+    const wn = C.wnOf('WN61'); wn.elements.forEach(e => C.knockOut(e));
+    if (!ev || wn.alive || !wn.silenced) out.push('WN61 not silenced');
+    WW.intel.update(1);
+    if (WW.intel.enemyShips('USN').some(c => c.unit === wn)) out.push('silenced WN still a contact');
+    return out;
+  });
   for (const seed of SEEDS) {
     const a = await run(seed), c = await run(seed);
     const ha = crypto.createHash('sha1').update(JSON.stringify(a.tr)).digest('hex').slice(0, 12), hc = crypto.createHash('sha1').update(JSON.stringify(c.tr)).digest('hex').slice(0, 12);
     const probs = [...a.bad];
     if (a.sides !== 'USN,GER') probs.push('sides ' + a.sides);
     probs.push(...a.terr);
+    if (a.def.els !== 70 || a.def.wns !== 13) probs.push(`defences built ${a.def.wns} WN / ${a.def.els} elements`);
+    if (!(a.shots > 0)) probs.push('no German gun fired');
     if (layout0 === null) layout0 = a.layout;
     else if (a.layout.some((q, i) => Math.abs(q[0] - layout0[i][0]) > 0.01 || Math.abs(q[1] - layout0[i][1]) > 1.2)) probs.push(`layout ${JSON.stringify(a.layout)} differs from the first seed's`);
     if (ha !== hc) probs.push(`replay differs ${ha} / ${hc}`);
     if (probs.length) fail++;
-    console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
+    console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} GER shots ${a.shots} hits on defences ${a.dHits} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
   }
+  const u = await unit();
+  console.log('damage model: ' + (u.length ? 'FAIL ' + u.join('; ') : 'ok'));
+  if (u.length) fail++;
   await b.close();
   if (errs.length) { fail++; console.log('page errors:\n' + [...new Set(errs)].slice(0, 10).join('\n')); }
   console.log(fail ? `FAIL: ${fail} problem(s)` : 'PASS');

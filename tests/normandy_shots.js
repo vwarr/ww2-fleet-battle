@@ -5,6 +5,8 @@
 //   draw       the E-1 draw (St-Laurent) from just off the beach: the notch in the bluffs
 //   hoc        Pointe du Hoc from the north-east: the sheer headland, the cratered top
 //   plateau    the bluff top and the bocage behind Vierville: fields, hedgerows, the church
+//   wn72       WN 72 at Vierville: the 88 casemate in the sea wall, enfilading Dog Green, the 50 mm beside it
+//   wn62       WN 62 above Easy Red / Fox Green: the two 75 mm casemates on the slope, MG nests, mortar pits
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
@@ -19,6 +21,8 @@ const SHOTS = [
   ['beach', () => { const z = T.shoreZ(1400); return [1385, 4, z - 45, 1410, 2, z + 30]; }],
   ['draw', () => { const z = T.shoreZ(1690); return [1690, 12, z - 70, 1690, 3, z + 50]; }],
   ['hoc', () => { const z = T.shoreZ(725); return [800, 20, z - 60, 725, 3, z + 15]; }],
+  ['wn72', () => { const e = WW.coastDefence.wnOf('WN72').elements[0]; return [e.x + 22, e.y + 6, e.z - 16, e.x, e.y + 0.5, e.z]; }],
+  ['wn62', () => { const e = WW.coastDefence.wnOf('WN62').elements[0]; return [e.x - 26, e.y + 9, e.z - 22, e.x + 4, e.y, e.z + 2]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
 ];

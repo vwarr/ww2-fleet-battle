@@ -263,7 +263,7 @@ window.WW = window.WW || {};
     if (!R) { B.battle = null; return null; }
     var cs = WW.intel.enemyShips(B.nation), best = null, bd = 1e18, big = false;
     for (i = 0; i < cs.length; i++) {
-      var u = cs[i].unit; if (!u || !u.alive || u.submerged || u.isBase || !u.stats.guns.length || u.type === 'carrier' || u.type === 'pt' || now - cs[i].seenAt > BATTLE_AGE) continue;
+      var u = cs[i].unit; if (!u || !u.alive || u.submerged || u.isBase || u.isLand || !u.stats.guns.length || u.type === 'carrier' || u.type === 'pt' || now - cs[i].seenAt > BATTLE_AGE) continue;
       var hv = !!BIGG[u.type], d2 = WW.dist2(g.x, g.z, cs[i].x, cs[i].z);
       if ((hv && !big) || ((hv === big) && d2 < bd)) { bd = d2; best = cs[i]; big = hv; }
     }

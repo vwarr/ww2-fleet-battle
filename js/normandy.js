@@ -10,6 +10,14 @@ window.WW = window.WW || {};
   const N = WW.scenarios.normandy;
   const PI = Math.PI;
 
+  // Settings (URL: ?hoc=casemates&cloud=0&fw190=1): the historical choices the plan leaves open
+  //   hocGuns  'moved': the Pointe du Hoc 155s had been moved ~1 km inland to an orchard, unmanned (the Rangers found
+  //            and spiked them); 'casemates': in their pits on the point, firing on the fleet (the planners' fear)
+  //   cloud    true: the B-24s bomb through cloud and drop about 3 mi inland, as on the day (P8)
+  //   fw190    true: Priller and Wodarczyk's two Fw 190s strafe the beach (they were over Sword and Juno: flavour, P8)
+  const q = k => { const m = typeof location !== 'undefined' && new RegExp('[?&]' + k + '=(\\w+)').exec(location.search); return m ? m[1] : null; };
+  N.settings = { hocGuns: q('hoc') === 'casemates' ? 'casemates' : 'moved', cloud: q('cloud') !== '0', fw190: q('fw190') === '1' };
+
   // the sides that must field ships before Start (ui.js): the Germans hold the coast, their boats are optional
   N.fleetSides = ['USN'];
   N.patrol = false;   // no flying-boat patrols (air_patrol.js)
