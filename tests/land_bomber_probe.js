@@ -9,6 +9,11 @@
 //     the run's last 150 u flown above 90% of the bombing height, and the hits: ship bombs that hit, base bombs within
 //     6 u of the aim point.
 // (c) the field: touchdowns per round (every type) and the touchdown-to-touchdown interval (gaps under 60 s).
+// (d) every base plane (fighters and SBDs / Zeros too): per class, the time from reaching the field to touchdown
+//     (median / max), split damaged (crippled or under 60% hp on reaching the field) / healthy; the losses after the
+//     attack by phase (home / hold / approach / leaving: shot down, ditched, diverted); the time the field spends in
+//     launch mode while a plane waits to land (and the longest such stretch); the small planes' (F4F, SBD, A6M)
+//     holding time, height and share of it over the island (< 110 u); ground tows and aborted take-offs.
 // Usage: node tests/land_bomber_probe.js [--only midway,ijnbase] [--seeds N=8] [--seed0 S=1] [--workers K]
 'use strict';
 const HL = require('./headless');
@@ -25,10 +30,17 @@ const spec = (sc, seed) => ({ seed, A: SC[sc].A, B: SC[sc].B, aNation: SC[sc].aN
 function install() {
   const R = window.__lb = {}, BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 }, DT = 0.5;
   let S = null, next = 0, seen = null;
-  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet() }; next = 0; seen = new Map(); };
+  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0 }; next = 0; seen = new Map(); };
   fresh(); WW.on('roundStart', fresh);
   const inc = (o, k, v) => { o[k] = (o[k] || 0) + (v === undefined ? 1 : v); };
   const big = p => p && p.carrier && p.carrier.isBase && BIG[p.variant];
+  const own = p => p && p.carrier && p.carrier.isBase && p.variant;
+  const A = () => S.all;
+  function arec(p) { // every base plane: one record per sortie
+    let r = S.allSeen.get(p);
+    if (!r) { r = { v: p.variant, land0: null, dmg: false, td: null, hold: 0, holdY: 0, isle: 0 }; S.allSeen.set(p, r); }
+    return r;
+  }
   function phase(p) {
     if (p.leaving) return 'leave';
     if (p.state === 'landing') return p.rwPh === 'final' || p.cleared ? 'app' : 'hold';
@@ -50,6 +62,7 @@ function install() {
     return D0.apply(this, arguments);
   };
   P.shotDown = function () {
+    if (own(this) && this.alive) { const ph = phase(this); if (ph !== 'out' && ph !== 'ground') inc(S.aLost, this.variant + '|' + ph); }
     if (big(this) && this.alive) {
       const ph = phase(this), kb = this.killedBy, B = this.carrier;
       inc(S.lost, ph); rec(this).end = 'shot:' + ph;
@@ -57,8 +70,8 @@ function install() {
     }
     return SD0.apply(this, arguments);
   };
-  P.ditch = function () { if (big(this) && this.alive) { const ph = phase(this); inc(S.lost, ph === 'leave' ? 'ditchHold' : 'ditch:' + ph); rec(this).end = 'ditch'; } return DI0.apply(this, arguments); };
-  WW.on('baseEvent', e => { if (e && e.kind === 'divert' && big(e.plane)) inc(S.lost, 'divert'); });
+  P.ditch = function () { if (own(this) && this.alive) { const ph = phase(this); if (ph !== 'out' && ph !== 'ground') inc(S.aLost, this.variant + '|ditch'); } if (big(this) && this.alive) { const ph = phase(this); inc(S.lost, ph === 'leave' ? 'ditchHold' : 'ditch:' + ph); rec(this).end = 'ditch'; } return DI0.apply(this, arguments); };
+  WW.on('baseEvent', e => { if (e && e.kind === 'divert' && e.plane && e.plane.variant) inc(S.aLost, e.plane.variant + '|divert'); if (e && e.kind === 'divert' && big(e.plane)) inc(S.lost, 'divert'); });
   WW.on('weaponDropped', e => {
     const p = e && e.plane; if (!big(p) || !p.level || e.kind !== 'bomb') return;
     const t = e.target, r = rec(p);
@@ -78,6 +91,18 @@ function install() {
   function sample() {
     const PL = WW.world.planes, B = WW.islandBase && WW.islandBase.base;
     for (const p of PL) if (B && p.carrier === B && p.alive && p.state === 'rollout' && !S.tdSeen.has(p)) { S.tdSeen.add(p); S.td.push(WW.game.roundTime); }
+    let waiting = false;
+    for (const p of PL) {
+      if (!B || p.carrier !== B || !p.alive || p.removed || !p.variant) continue;
+      const r = arec(p);
+      if (p.state === 'landing' && r.land0 === null) { r.land0 = WW.game.roundTime; r.dmg = !!p.crippled || p.hp < p.maxHp * 0.6; }
+      if (p.state === 'rollout' && r.td === null && r.land0 !== null) r.td = WW.game.roundTime;
+      if (p.state === 'landing' && p.rwPh === 'circuit' && !p.cleared) waiting = true;
+      if (!BIG[p.variant] && p.state === 'landing' && phase(p) !== 'app') {
+        r.hold += DT; r.holdY += p.y * DT; if (Math.hypot(p.x - B.x, p.z - B.z) < 110) r.isle += DT;
+      }
+    }
+    if (B && B.ops && waiting && B.ops.mode === 'launch') { S.lw += DT; S.lwRun += DT; S.lwMax = Math.max(S.lwMax, S.lwRun); } else S.lwRun = 0;
     for (const p of PL) {
       if (!big(p) || !p.alive || p.removed) continue;
       const r = rec(p), ph = phase(p);
@@ -104,6 +129,9 @@ function install() {
     const gaps = []; for (let i = 1; i < S.td.length; i++) if (S.td[i] - S.td[i - 1] < 60) gaps.push(S.td[i] - S.td[i - 1]);
     const o = { gaps, tdN: S.td.length, homeLoss: S.homeLoss, sorties: S.sorties, home: S.home, dmg: S.dmg, lost: S.lost, drops: S.drops.map(d => ({ sp: d.sp, v: d.v, y: d.y, alt: d.alt, ship: d.ship, tt: d.tt, hi: d.hi, hit: d.hit, miss: d.miss })),
       hold: rs.filter(r => r.hold > 0).map(r => ({ v: r.v, t: r.hold, y: r.holdY / r.hold, aa: r.holdAA, f: r.holdF, isle: r.holdIsle })) };
+    const LG = WW.landGround && WW.landGround.stats;
+    o.all = [...S.allSeen.values()].filter(r => r.land0 !== null).map(r => ({ v: r.v, t: r.td !== null ? r.td - r.land0 : null, dmg: r.dmg, hold: r.hold, holdY: r.holdY, isle: r.isle }));
+    o.aLost = S.aLost; o.lw = S.lw; o.lwMax = S.lwMax; o.tows = LG ? LG.tows : 0; o.aborts = LG ? LG.aborts : 0;
     fresh(); return o;
   };
 }
@@ -124,6 +152,7 @@ function install() {
   await Promise.all(Array.from({ length: Math.min(HL.WORKERS, list.length) }, worker));
   await b.close(); console.log('');
   const f1 = x => (isFinite(x) ? x.toFixed(1) : '-'), pc = (a, n) => (n ? (100 * a / n).toFixed(1) + '%' : '-');
+  const BIG_V = { b17: 1, b26: 1, g4m: 1, g4mL: 1 };
   const med = a => { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
   for (const sc of ONLY.concat(ONLY.length > 1 ? ['ALL'] : [])) {
     const L = sc === 'ALL' ? res : res.filter(r => r.scen === sc), N = L.length || 1;
@@ -140,6 +169,16 @@ function install() {
     for (const ph of PH) console.log('             ' + ph.padEnd(6) + SRC.map(s => f1((dm[ph + '|' + s] || 0) / N).padStart(9)).join('') + String(lo[ph] || 0).padStart(9));
     console.log('  lost going home (base dist / height / by / crippled): ' + L.flatMap(r => r.homeLoss).map(h => `${h.db}/${h.y}/${h.by}${h.crip ? '/c' : ''}`).join(' '));
     console.log(`  ditched after a hold ${lo.ditchHold || 0}, diverted ${lo.divert || 0}, other ditch ${Object.keys(lo).filter(k => /^ditch:/.test(k)).map(k => k + ' ' + lo[k]).join(' ') || 0}`);
+    const AL = L.flatMap(r => r.all), al = add('aLost'), VS = [...new Set(AL.map(r => r.v))].sort();
+    console.log('  every base plane: class   home->td healthy med/max (n)   damaged med/max (n)   never landed   lost home/hold/app/leave/ditch/divert');
+    for (const v of VS) {
+      const R = AL.filter(r => r.v === v), hl = R.filter(r => !r.dmg && r.t !== null).map(r => r.t), dg = R.filter(r => r.dmg && r.t !== null).map(r => r.t);
+      const lo2 = ['home', 'hold', 'app', 'leave', 'ditch', 'divert'].map(k => al[v + '|' + k] || 0).join('/');
+      console.log(`    ${v.padEnd(5)} ${(f1(med(hl)) + '/' + f1(hl.length ? Math.max(...hl) : NaN) + ' (' + hl.length + ')').padStart(22)} ${(f1(med(dg)) + '/' + f1(dg.length ? Math.max(...dg) : NaN) + ' (' + dg.length + ')').padStart(22)} ${String(R.filter(r => r.t === null).length).padStart(13)}   ${lo2}`);
+    }
+    const SM = AL.filter(r => !BIG_V[r.v] && r.hold > 0), st = SM.reduce((s, r) => s + r.hold, 0);
+    console.log(`  small planes waiting: ${f1(st / N)} plane-s/rd (median ${f1(med(SM.map(r => r.hold)))} s, max ${f1(Math.max(0, ...SM.map(r => r.hold)))}), mean height ${f1(st ? SM.reduce((s, r) => s + r.holdY, 0) / st : NaN)} u, over the island ${pc(SM.reduce((s, r) => s + r.isle, 0), st)}`);
+    console.log(`  field in launch mode while a plane waits to land: ${f1(L.reduce((s, r) => s + r.lw, 0) / N)} s/rd, longest ${f1(Math.max(0, ...L.map(r => r.lwMax)))} s (median round max ${f1(med(L.map(r => r.lwMax)))}); ground tows ${f1(L.reduce((s, r) => s + r.tows, 0) / N)}/rd, aborted take-offs ${f1(L.reduce((s, r) => s + r.aborts, 0) / N)}/rd`);
     for (const v of ['b17', 'g4mL']) for (const ship of [true, false]) {
       const D = DR.filter(d => d.v === v && d.ship === ship); if (!D.length) continue;
       const miss = D.filter(d => d.miss !== null).map(d => d.miss);
