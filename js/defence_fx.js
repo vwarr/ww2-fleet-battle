@@ -222,7 +222,8 @@ window.WW = window.WW || {};
     props.mg42.count = 0; props.mortar.count = 0;
     let shots = 0;
     for (const o of built) {
-      const e = o.e, s = S(e), sup = e.alive && e.suppressedUntil > now;
+      // a silenced strongpoint's last men (an observation post) keep their heads down like a suppressed crew
+      const e = o.e, s = S(e), sup = e.alive && (e.suppressedUntil > now || !!(e.wn && e.wn.silenced));
       const act = e.alive && !sup && now - s.actT < 0.9;
       // the crew: as many as are left (the slots of the dead hold bodies; a knocked-out position two bodies)
       const n = !e.alive || e.dormant ? 0 : Math.min(o.slots.length, Math.ceil(o.slots.length * e.crew / Math.max(1, e.crew0) - 1e-6));

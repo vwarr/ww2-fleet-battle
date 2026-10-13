@@ -39,7 +39,7 @@ window.WW = window.WW || {};
     if (MAT) return MAT;
     const grad = WW.models && WW.models._grad ? WW.models._grad() : null;
     const toon = c => new THREE.MeshToonMaterial({ color: c, vertexColors: true, gradientMap: grad });
-    MAT = { body: toon(0xffffff), burnt: toon(0x8a847c), scar: new THREE.MeshToonMaterial({ color: 0x3a3631, gradientMap: grad }), scorch: new THREE.MeshBasicMaterial({ color: C.scorch, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }) };
+    MAT = { body: toon(0xffffff), burnt: toon(0x8a847c), scar: new THREE.MeshToonMaterial({ color: 0x3a3631, gradientMap: grad }), soot: toon(0xffffff), scorch: new THREE.MeshBasicMaterial({ color: C.scorch, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }) };
     return MAT;
   }
   const prims = () => WW.soldierModel.prims();
@@ -218,7 +218,7 @@ window.WW = window.WW || {};
       for (let i = 0; i < 4; i++) S.push(part(cyl, C.crack, [0.018, 0.4 + R() * 0.3, 0.018], [cx + (R() - 0.5) * 0.6, top + 0.2, cz + (R() - 0.5) * 0.6], [(R() - 0.5) * 1.2, 0, (R() - 0.5) * 1.2]));
     }
     g.add(mesh(WW.soldierModel.merge(P), M.burnt));
-    if (S.length) { const m = mesh(WW.soldierModel.merge(S), M.scar); m.castShadow = false; g.add(m); }
+    if (S.length) { const m = mesh(WW.soldierModel.merge(S), M.soot); m.castShadow = false; g.add(m); }
     const sc = new THREE.Mesh(new THREE.CircleGeometry(r * 1.7, 14), M.scorch);   // the scorch on the ground
     sc.rotation.x = -Math.PI / 2; sc.position.set(0, gnd(0, 0) + 0.06, 0); sc.renderOrder = 1;
     g.add(sc);
