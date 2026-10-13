@@ -29,7 +29,7 @@ window.WW = window.WW || {};
   'use strict';
   var FIRE_P = { bomb: 0.35, torpedo: 0.1, torpCv: 0.3, big: 0.15, med: 0.08 }, FIRE_MAX = 8, FIRE_DPS = 3, AVGAS_K = 2.5;
   var OUT_P = 0.035, SPREAD_P = 0.012, CHAIN_P = 0.012, CHAIN_DMG = 380;
-  var DECK_MIN = 2, DECK_P0 = 0.25, DECK_P1 = 0.08, DECK_BOOM = 25, DECK_BOOM_MAX = 400;
+  var DECK_MIN = 2, DECK_P0 = 0.25, DECK_P1 = 0.08, DECK_BOOM = 25, DECK_BOOM_MAX = 400, HANGAR_K = 0.4;
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
   var BREACH_DPS = 0.003, SHORE_P = 0.03, COUNTER = 0.75, CAPSIZE = 0.19, CAPSIZE_P = 0.05, CAPSIZE_ROLL = 1.7;
   // magazine: chance per heavy hit by type, x MAG_KIND, x MAG_CLS (class key), x MAG_TURRET within MAG_R of a main turret
@@ -58,11 +58,13 @@ window.WW = window.WW || {};
     if (cv.rearm) n += cv.rearm.length;
     return n;
   }
+  // The hangar counts too (ship_deck.js hangarLoad, HANGAR_K a plane): bombers being armed and fuelled below for the
+  // next strike (Akagi, Kaga at Midway). Returns the load that went up (0: none).
   function deckHit(cv, x, z) {
-    var load = deckLoad(cv), n = cv.nation;
-    if (load < DECK_MIN) { stats.deckSafe[n]++; return; }
+    var SD = WW.shipDeck, hg = SD ? SD.hangarLoad(cv) : 0, onDeck = deckLoad(cv), load = onDeck + hg * HANGAR_K, n = cv.nation;
+    if (load < DECK_MIN) { stats.deckSafe[n]++; return 0; }
     var pr = Math.min(0.9, (DECK_P0 + DECK_P1 * load) * (doc(n).avgas > 0 ? doc(n).avgas : 1));
-    if (WW.rand() >= pr) { stats.deckSafe[n]++; return; }
+    if (WW.rand() >= pr) { stats.deckSafe[n]++; return 0; }
     // the spotted strike, the planes on deck and those rearming go up with the deck
     var lost = 0, q = cv.ai && cv.ai.queue, D = cv._deck;
     if (q) for (var i = q.length - 1; i >= 0; i--) if (q[i].target) { if (cv.hangar && cv.hangar[q[i].kind] > 0) { cv.hangar[q[i].kind]--; lost++; } q.splice(i, 1); }
@@ -72,12 +74,16 @@ window.WW = window.WW || {};
       p.remove(); lost++;
     }
     if (cv.rearm) { lost += cv.rearm.length; cv.rearm.length = 0; }
+    var below = hg > 0 && onDeck < DECK_MIN;   // the hangar went up, the deck was all but empty (Akagi)
+    if (hg > 0) lost += SD.hangarBoom(cv);
+    load = Math.round(load);
     stats.deckHits[n]++; stats.deckPlanes[n] += lost;
     cv.fireN = Math.min(FIRE_MAX, (cv.fireN || 0) + 2 + Math.floor(load / 3)); cv.avgas = true;
     stats.deckFires[n]++; stats.started[n] += 2 + Math.floor(load / 3);
-    WW.emit('deckHit', { ship: cv, load: load, planes: lost, x: x, z: z });
+    WW.emit('deckHit', { ship: cv, load: load, planes: lost, x: x, z: z, hangar: below, armed: hg });
     cv.takeDamage(Math.min(DECK_BOOM_MAX, DECK_BOOM * load), x, z, 'deck');
     if (!WW.simOnly && WW.fx) for (var k = 0; k < 3; k++) { var w = cv.toWorld((Math.random() - 0.5) * cv.stats.length * 0.7, (Math.random() - 0.5) * 2); WW.fx.explosion(w[0], 2.5, w[1], 1.6); }
+    return load;
   }
 
   // ---- magazine: the chance a heavy hit sets one off (pure: the probe sums it), then the roll ----
@@ -115,7 +121,10 @@ window.WW = window.WW || {};
   function hit(ship, amount, kind, cal, x, z) {
     if (!battle() || !ship.alive || ship.hp <= 0 || !(amount > 0) || kind === 'deck' || kind === 'dc' || kind === 'magazine' || ship.type === 'submarine') return;
     if (magazine(ship, kind, cal, x, z)) return;
-    if (kind === 'bomb' && ship.type === 'carrier') deckHit(ship, x, z);
+    if (kind === 'bomb' && ship.type === 'carrier') {   // the deck load, then the hole in the flight deck (ship_deck.js)
+      var boom = deckHit(ship, x, z);
+      if (WW.shipDeck && ship.alive) WW.shipDeck.bombHit(ship, amount, x, z, boom);
+    }
     var cvT = kind === 'torpedo' && ship.type === 'carrier', p = cvT ? FIRE_P.torpCv : FIRE_P[kind === 'shell' ? cal : kind] || 0;
     if (p && ship.alive && WW.rand() < p) { ship.fireN = Math.min(FIRE_MAX, (ship.fireN || 0) + 1); stats.started[ship.nation]++; if (cvT) ship.avgas = true; }
     if (kind === 'torpedo' && ship.alive) { ship.breach = (ship.breach || 0) + 1; stats.breaches[ship.nation]++; }

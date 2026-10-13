@@ -46,13 +46,14 @@ window.WW = window.WW || {};
     let s = (i >= 0 ? 0 : d / p.pt.speed) + ahead * TRAP_S + (D.mode === 'launch' ? 10 : 0);
     if (c.hp < c.maxHp * 0.45) s += 60;
     if ((c.fireN || 0) >= 3) s += 45;
+    if (c.deckOut) s += 300;   // holed (ship_deck.js)
     return s;
   }
   function divert(p) {
     const own = p.carrier; if (own.isBase || !own.alive) return;
     let best = own, bs = deckScore(p, own) - 12;  // a margin: stay with your own ship unless the other is clearly sooner
     for (const s of WW.world.ships) {
-      if (s === own || !s.alive || s.sinking || s.isBase || s.type !== 'carrier' || !s.hangar || s.nation !== p.nation) continue;
+      if (s === own || !s.alive || s.sinking || s.isBase || s.type !== 'carrier' || !s.hangar || s.nation !== p.nation || s.deckOut) continue;
       const v = deckScore(p, s); if (v < bs) { bs = v; best = s; }
     }
     if (best === own) return false;
@@ -190,7 +191,8 @@ window.WW = window.WW || {};
         const tw = c.toWorld(D.k.tdX, D.run), dh = WW.dist(p.x, p.z, tw[0], tw[1]), b = Math.atan2(tw[1] - p.z, tw[0] - p.x);
         let wave = false;
         if (togo < 22 && togo > 2) {
-          if (togo < 8 && !clearAft(D)) wave = 'foul';                                          // deck still foul a second out
+          if (c.deckOut) wave = 'holed';                                                       // the deck is out of action (ship_deck.js)
+          else if (togo < 8 && !clearAft(D)) wave = 'foul';                                          // deck still foul a second out
           else if (p.waveOffs < 3 && dh < 25 && dh > 4 && Math.abs(WW.angleDiff(c.heading, b)) > 0.5) wave = 'line'; // lined up badly
           else if (p.waveOffs < 3 && Math.abs(c.turnRate || 0) > 0.2) wave = 'swing';              // ship swinging
           else if (p.waveOffs < 3 && togo < 10 && Math.abs(lz - D.run) > 3) wave = 'off';
