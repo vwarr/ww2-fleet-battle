@@ -168,8 +168,45 @@ window.WW = window.WW || {};
     if (!veh[k]) {
       const m = new THREE.InstancedMesh(WW.baseModels.vehicle(kind, base.nation), WW.models._mat(0xffffff), VCAP[kind]);
       m.castShadow = true; m.count = 0; m.frustumCulled = false; WW.scene.add(m); veh[k] = { mesh: m, kind, list: null };
+      if (kind === 'crash') { // the roof monitors, and their foam (FOAM blobs a truck)
+        const mo = new THREE.InstancedMesh(WW.baseModels.monitor(), m.material, VCAP.crash), fo = new THREE.InstancedMesh(foamGeo(), m.material, VCAP.crash * FOAM);
+        mo.castShadow = true; for (const o of [mo, fo]) { o.count = 0; o.frustumCulled = false; WW.scene.add(o); }
+        veh[k].mon = mo; veh[k].foam = fo;
+      }
     }
     return veh[k];
+  }
+  // a crash truck's monitor: stowed along the truck on the road; standing by, it slews round to the plane (then its
+  // wreck) and dips to it, and while the wreck burns throws a foam jet onto it (white blobs streaming along the arc
+  // from the nozzle, fresh each frame: visual only, Math.random)
+  const FOAM = 14, _mp = new THREE.Vector3(), _ms = new THREE.Vector3();
+  let FG = null;
+  function foamGeo() { if (!FG) { FG = new THREE.IcosahedronGeometry(0.5, 1); const c = []; for (let i = 0; i < FG.attributes.position.count; i++) c.push(0.97, 0.97, 0.95); FG.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); } return FG; }
+  function drawMonitor(vm, i, q, y0, K) {
+    const t = q.trip, c = Math.cos(q.h), s = Math.sin(q.h), M0 = WW.baseModels.MON;
+    const px = q.x + c * M0[0] * K, pz = q.z + s * M0[0] * K, py = y0 + M0[1] * K;   // the pivot on the roof
+    const w = q.aim, dx = w ? w.x - px : 0, dz = w ? w.z - pz : 0, d = Math.hypot(dx, dz), ty = w ? gy(w.x, w.z) + 0.55 * K : 0;
+    let rel = 0, dip = 0;
+    if (w && d > 1) { rel = Math.atan2(dz, dx) - q.h; rel = Math.atan2(Math.sin(rel), Math.cos(rel)); dip = WW.clamp(0.4 * (py - ty) / d, 0, 0.35); }
+    if (t) { // slew (sim time: still when paused)
+      const st = burnDt * 1.8, a = t.mon || 0, p = t.monDip || 0; let e = rel - a; e = Math.atan2(Math.sin(e), Math.cos(e));
+      t.mon = a + WW.clamp(e, -st, st); t.monDip = p + WW.clamp(dip - p, -st * 0.4, st * 0.4); rel = t.mon; dip = t.monDip;
+    }
+    const yaw = q.h + rel;
+    _q.setFromEuler(_e.set(0, -yaw, -dip)); _p.set(px, py, pz); _s.setScalar(K);
+    vm.mon.setMatrixAt(i, _m.compose(_p, _q, _s));
+    // the foam: the wreck still burning and the monitor on it
+    const now = WW.time.now, off = Math.atan2(dz, dx) - yaw;
+    if (!q.wr || now - q.wr.t > 40 || d <= 1 || Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) > 0.12) return;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), tip = 0.68 * K, sx = px + cy * tip * Math.cos(dip), sz = pz + sy * tip * Math.cos(dip), sy0 = py - tip * Math.sin(dip);
+    const ex = w.x - cy * 0.3 * K, ez = w.z - sy * 0.3 * K, drop = sy0 - ty;   // on the near side of the fuselage
+    for (let j = 0; j < FOAM && vm.foam.count < vm.foam.instanceMatrix.count; j++) {
+      const f = ((now * 1.7 + j / FOAM) % 1 + rr(-0.02, 0.02) + 1) % 1, sp = 0.15 * K * f;
+      _mp.set(sx + (ex - sx) * f + rr(-sp, sp), sy0 - drop * (0.35 * f + 0.65 * f * f) + rr(-sp, sp) * 0.5, sz + (ez - sz) * f + rr(-sp, sp));
+      _ms.setScalar((0.16 + 0.5 * f * f) * K * rr(0.8, 1.15));
+      vm.foam.setMatrixAt(vm.foam.count++, _m.compose(_mp, _q.identity(), _ms));
+    }
+    if (R() < 0.12) WW.fx.smoke(ex + rr(-0.5, 0.5) * K, ty + 0.2, ez + rr(-0.5, 0.5) * K, false, 0.6);   // steam where it lands
   }
   const fixed = {}; // vehicles placed directly this frame (the roller)
   const vehNow = []; // this frame's drawn vehicles { x, z, h, kind } (base_life.js keeps its people out of them)
@@ -193,13 +230,15 @@ window.WW = window.WW || {};
     vehNow.length = 0;
     for (const kind in VCAP) {
       const list = per[kind] || [], vm = list.length || veh[kind + base.nation] ? vehMesh(kind) : null; if (!vm) continue;
-      const n = Math.min(list.length, VCAP[kind]);
+      const n = Math.min(list.length, VCAP[kind]); if (vm.foam) vm.foam.count = 0;
       for (let i = 0; i < n; i++) {
         const q = list[i]; vehNow.push({ x: q.x, z: q.z, h: q.h, kind }); if (trace) trace.veh.push({ kind, x: q.x, z: q.z, h: q.h, t: q.trip && { p0: q.trip.pts[0], n: q.trip.pts.length, out: (WW.time.now - q.trip.t0) * VSPD[kind], len: q.trip.len } });
         _q.setFromEuler(_e.set(0, -q.h, 0)); _p.set(q.x, gy(q.x, q.z) + 0.02, q.z); _s.setScalar(WW.baseModels.VEH_K || 1);
         vm.mesh.setMatrixAt(i, _m.compose(_p, _q, _s));
+        if (vm.mon) drawMonitor(vm, i, q, _p.y, _s.x);
       }
       vm.mesh.count = n; vm.mesh.visible = n > 0; vm.mesh.instanceMatrix.needsUpdate = true;
+      if (vm.mon) { vm.mon.count = n; vm.mon.visible = n > 0; vm.mon.instanceMatrix.needsUpdate = true; vm.foam.visible = vm.foam.count > 0; vm.foam.instanceMatrix.needsUpdate = true; }
     }
   }
   function closing(q, a, L, t) { // a step from q to a (ahead) comes within a truck's length of another truck, and nearer (or level with an older trip)
@@ -276,7 +315,7 @@ window.WW = window.WW || {};
     }
     const out = (now - t.t0) * sp; if (out < 0) return null;   // not out of the garage yet
     if (out < t.len) return along(t.pts, out);
-    if (now < t.until) { const q = along(t.pts, t.len); if (t.kind === 'crash' && R() < 0.15) WW.fx.smoke(q.x, gy(q.x, q.z) + 1, q.z, false, 0.8); return q; }
+    if (now < t.until) { const q = along(t.pts, t.len); if (t.follow) { q.aim = t.follow.wreck || t.follow; q.wr = t.follow.wreck; } return q; }   // standing by: the monitor on the plane / wreck
     const back = (now - t.until) * sp; if (back >= t.len) { t.done = true; return null; }
     const q = along(t.pts, t.len - back); q.h += Math.PI; return q;
   }
@@ -437,7 +476,7 @@ window.WW = window.WW || {};
     for (const m of planes.values()) WW.air._pool.release(m);
     for (const m of wrecks.values()) WW.air._pool.release(m);
     planes.clear(); wrecks.clear(); prev.clear(); crews.clear(); ways.clear(); facK.clear(); trips = [];
-    for (const k in veh) { veh[k].mesh.count = 0; veh[k].mesh.visible = false; }
+    for (const k in veh) for (const m of [veh[k].mesh, veh[k].mon, veh[k].foam]) if (m) { m.count = 0; m.visible = false; }
     base = null;
   }
   WW.on('baseEvent', onEvent);

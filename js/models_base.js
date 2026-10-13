@@ -257,9 +257,10 @@ window.WW = window.WW || {};
       M._bar(g, C.steel, 1.5, 0.1, 0.9, -0.45, 0.3, 0); M._bar(g, C.steel, 0.5, 0.06, 0.08, 0.35, 0.35, 0);
       for (var b = -1; b <= 1; b++) M._xc(g, C.bomb, 0.17, 1.1, -0.45, 0.58, b * 0.3);
       wheels(g, [0.95, -0.2, -0.75], 0.38);
-    } else if (kind === 'crash') { // red crash / fire truck with a white stripe and a monitor
+    } else if (kind === 'crash') { // red crash / fire truck with a white stripe and the roof monitor's turntable (the
+      // monitor itself is a separate part, monitor(): it turns to the wreck)
       M._box(g, C.fire, 2.3, 1.0, 1.05, 0, 0.28, 0); M._bar(g, C.paint, 2.32, 0.12, 1.07, 0, 0.75, 0);
-      M._bar(g, C.cab, 0.08, 0.35, 0.8, 1.16, 0.8, 0); M._cyl(g, C.steel, 0.12, 0.35, -0.3, 1.28, 0);
+      M._bar(g, C.cab, 0.08, 0.35, 0.8, 1.16, 0.8, 0); M._cyl(g, C.steel, 0.15, 0.1, MON[0], 1.28, 0);
       wheels(g, [0.75, -0.75], 0.47);
     } else {                       // roller (crater repair): a drum in front, an engine box
       M._xc(g, C.steel, 0.45, 1.1, 0.65, 0.45, 0); M._box(g, body, 1.0, 0.75, 0.9, -0.35, 0.2, 0); M._bar(g, C.pole, 0.06, 0.6, 0.06, -0.5, 0.95, 0);
@@ -267,6 +268,18 @@ window.WW = window.WW || {};
     }
     VEH[k] = bake(g); return VEH[k];
   }
-  WW.baseModels = { build: build, wreck: wreck, vehicle: vehicle, revetWalls: revetWalls, VEH_K: VEH_K, C: C,
+  // the crash truck's roof monitor (foam cannon): a barrel along +x from its pivot on the turntable (truck-local
+  // MON = [x, y]), drawn as its own instances so it lies stowed along the truck on the road and turns and dips to the
+  // wreck when the truck stands by (base_ground_fx.js)
+  var MON = [-0.3, 1.38], MONG = null;
+  function monitor() {
+    if (MONG) return MONG;
+    templates();
+    var g = new THREE.Group();
+    M._sph(g, C.steel, 0.2, 0.18, 0.2, 0, 0.02, 0);                     // the swivel
+    M._xc(g, C.steel, 0.065, 0.62, 0.3, 0.04, 0); M._xc(g, C.gun, 0.085, 0.12, 0.62, 0.04, 0);   // the barrel, the nozzle
+    MONG = bake(g); return MONG;
+  }
+  WW.baseModels = { build: build, wreck: wreck, vehicle: vehicle, monitor: monitor, MON: MON, revetWalls: revetWalls, VEH_K: VEH_K, C: C,
     _bake: bake, _ring: ring, _arch: function () { archGeo(); return { arch: arch, end: archEnd }; }, _tpl: function () { return templates(); } };
 })();
