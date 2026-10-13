@@ -31,7 +31,7 @@ window.WW = window.WW || {};
   // point (80-100 u out) (balance pass: 1, the run was out of reach until the drop)
   var LIGHT = { interval: 0.25, maxAlt: 24, hitK: 0.38, dmgK: 1.25, rangeK: 2 };
   var JINK = { decay: 0.3, hitMul: 0.45, steadyMul: 1.35, turn: 0.4, climb: 3 };
-  var TR_SPEED = 85, TR_LEN = 3.0, TR_W = 0.42;   // light-AA rounds: long, fat, additive so they read at battle distance
+  var TR_SPEED = 85, TR_LEN = 2.4, TR_W = 0.22;   // light-AA rounds: thin hot lines (widened with distance so they read at battle range)
 
   // ---------- helpers ----------
   function I() { return WW.combat && WW.combat._i; }
@@ -171,16 +171,17 @@ window.WW = window.WW || {};
     I().place(p, p.x0 + p.vx * tt, p.y0 + p.vy0 * tt, p.z0 + p.vz * tt);
     var f = Math.min(1, (p.life - tt) / (p.life * 0.35));
     // fade out rounds that pass right by the camera (close chase / over-the-shoulder shots), else they fill the frame
-    var cp = WW.camera && WW.camera.position, mp = p.mesh && p.mesh.position, k = cp && mp ? Math.min(1, Math.max(0, (mp.distanceTo(cp) - 6) / 14)) : 1;
-    if (p.mesh) { p.mesh.visible = k > 0.03; p.mesh.scale.set(p.len * f * k, p.w * (0.5 + 0.5 * f) * k, p.w * (0.5 + 0.5 * f) * k); }
+    var cp = WW.camera && WW.camera.position, mp = p.mesh && p.mesh.position, dc = cp && mp ? mp.distanceTo(cp) : 40, k = Math.min(1, Math.max(0, (dc - 6) / 14));
+    var wk = k * Math.min(2, Math.max(1, dc / 45));   // thin up close, a little wider far off so the stream still reads at battle range
+    if (p.mesh) { p.mesh.visible = k > 0.03; p.mesh.scale.set(p.len * f * k, p.w * (0.5 + 0.5 * f) * wk, p.w * (0.5 + 0.5 * f) * wk); }
   }
   // one round = a solid hot core + a wider additive glow sheath on the same path (two pooled projectiles)
   function tracerRound(ci, mat, sx, sy, sz, vx, vy, vz, delay, life) {
     for (var g = 0; g < 2; g++) {
       var p = ci.acquire('aatracer', ci.G.shell, g ? V.trGlow : mat);
       p.x0 = sx; p.y0 = sy; p.z0 = sz; p.vx = vx; p.vy0 = vy; p.vz = vz;
-      p.delay = delay; p.life = life; p.len = g ? TR_LEN * 1.25 : TR_LEN; p.w = g ? TR_W * 2.8 : TR_W;
-      if (p.mesh) { p.mesh.scale.set(p.len, p.w, p.w); p.mesh.visible = delay <= 0; }
+      p.delay = delay; p.life = life; p.len = g ? TR_LEN * 1.25 : TR_LEN; p.w = g ? TR_W * 2.2 : TR_W;
+      if (p.mesh) { p.mesh.scale.set(p.len, p.w, p.w); p.mesh.visible = false; }   // shown (and faded near the camera) by updateTracerAA
       ci.place(p, sx, sy, sz); ci.orient(p, vx, vy, vz);
     }
   }
