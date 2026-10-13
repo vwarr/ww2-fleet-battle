@@ -124,7 +124,11 @@ window.WW = window.WW || {};
         const a = e.alarm, b3 = String(a.bearing).padStart(3, '0');
         if (a.kind === 'raid') return [n + ': air raid!', 'Enemy planes bearing ' + b3 + (usn ? ', the siren wails: man the guns' : ', the alarm sounds: man the guns'), 2];
         if (a.kind === 'planes') return [n + ': enemy planes!', 'Bearing ' + b3 + ', closing', 2];
-        if (a.kind === 'patrol') return [n + ': ' + (a.by === 'H6K' ? 'the Mavis' : 'the PBY') + ' reports the enemy!', (a.cv ? (a.cv > 1 ? a.cv + ' carriers' : 'A carrier') : 'Enemy ' + (CV[a.what] || 'ships')) + ' bearing ' + b3 + (usn ? ': the fighters scramble, the bombers go out' : ': the Zeros scramble, the bombers go out'), 2];
+        if (a.kind === 'patrol') { // the own flying boat's report (base_alert.js): carriers in it, all planes up; else the fighters
+          const boat = a.by === 'H6K' ? 'Mavis' : 'PBY';
+          if (a.cv) return [n + ': ' + boat + ' reports carriers! All planes up!', (a.cv > 1 ? a.cv + ' carriers' : 'A carrier') + ' bearing ' + b3 + (usn ? ': the fighters scramble, the bombers go for them' : ': the Zeros scramble, the bombers go for them'), 2];
+          return [n + ': the ' + boat + ' reports the enemy!', 'Enemy ' + (CV[a.what] || 'ships') + ' bearing ' + b3 + (usn ? ': the siren, the fighters scramble' : ': the alarm, the Zeros scramble'), 2];
+        }
         if (a.kind === 'ship') return [n + ': enemy warships!', 'Enemy ' + (CV[a.what] || 'ships') + ' sighted bearing ' + b3 + ': general quarters', 2];
         return [n + (a.kind === 'bombed' ? ': bombs falling!' : ': under fire!'), a.kind === 'bombed' ? 'The raid came in unseen: take cover' : 'Shells from the sea: take cover', 2];
       }
@@ -156,12 +160,12 @@ window.WW = window.WW || {};
     if (WW.simOnly || !e || !e.base) return;
     const L = line(e); if (!L) return;
     diary(e, L);
-    if (!WW.ui || !WW.ui.caption) return;
+    if (!WW.ui || !WW.ui.caption || (WW.camBase && WW.camBase.owns(e.kind))) return;   // (the alarm sequence captions it with its pictures, camera_base.js)
     const t = performance.now() / 1000;
     if ((L[2] < 2 && t - capT < 12) || (WW.ui.captionOn && WW.ui.captionOn() && L[2] < 2)) { if (L[2] >= 1) capQ = { e, t }; return; }
     capT = t; WW.ui.caption(L[0], L[1], 4.5, true);
   }
-  function retry() { if (capQ && performance.now() / 1000 - capQ.t < 10 && performance.now() / 1000 - capT > 12) { const e = capQ.e; capQ = null; caption(e); } }
+  function retry() { if (capQ && performance.now() / 1000 - capQ.t < 16 && performance.now() / 1000 - capT > 12) { const e = capQ.e; capQ = null; caption(e); } }
 
   // ---------- camera candidates ----------
   (WW.camHooks = WW.camHooks || []).push((add, dur) => {
