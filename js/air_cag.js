@@ -139,7 +139,7 @@ window.WW = window.WW || {};
   // Retarget for a plane (aircraft.js validTarget): its wave's target, else the best visible target nearby, else any known.
   function retarget(pl) {
     const w = pl.wave;
-    if (w && w.target && w.target.alive && !w.target.submerged) return w.target;
+    if (w && w.target && w.target.alive && !w.target.submerged && (pl.kind === 'fighter' || !WW.airOps || WW.airOps.bombsFor(w.target))) return w.target;   // (a strike sent at a PT reported as something bigger: no bombs for her)
     if (!WW.airOps) return WW.shipAI ? WW.shipAI.pickStrikeTarget(pl) : null;
     const home = WW.dist(pl.x, pl.z, pl.carrier.x, pl.carrier.z) / pl.pt.speed, R = WW.clamp((pl.fuel - home - 25) * pl.pt.speed * 0.5, RT_R, RT_MAX);
     const big = !!(pl.carrier && pl.carrier.isBase && pl.kind !== 'fighter');   // land bombers: the big ships only (air_ops.js opts.big)
