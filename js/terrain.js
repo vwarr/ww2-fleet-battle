@@ -129,6 +129,12 @@ window.WW = window.WW || {};
       roofMat: new THREE.MeshLambertMaterial({ color: 0xd88a6a })
     };
     shared.leafGeo.scale(1, 0.55, 1);
+    // the land above the waterline toned down under a high sun (sky_time.js landK); the seabed as it was
+    if (WW.skyTime) shared.floorMat.onBeforeCompile = sh => {
+      sh.uniforms.landK = WW.skyTime.landK;
+      sh.vertexShader = 'varying float vWy;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWy = (modelMatrix * vec4(transformed, 1.0)).y;');
+      sh.fragmentShader = 'uniform float landK; varying float vWy;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(1.0, landK, smoothstep(-0.4, 0.1, vWy));');
+    };
   }
 
   // Indexed grid with smooth normals and per-vertex gradient colours.

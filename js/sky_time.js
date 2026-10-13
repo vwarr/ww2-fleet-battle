@@ -52,6 +52,15 @@ window.WW = window.WW || {};
     tint:   [[0.36, 0.44, 0.68], [0.5, 0.52, 0.74], [0.88, 0.7, 0.76], [1, 0.84, 0.78], [1, 0.95, 0.92], [1, 1, 1], [1, 1.01, 1.02], [0.99, 1.01, 1.03]]
   };
   const RAIN_FOG = C(0x8c98ac), MOON_GLIT = new THREE.Color(1.25, 1.3, 1.5);
+  // Land at a high sun: the flat ground (sand, grass, the base's strips and berms) faces a high sun square on, and its
+  // light (sun x sin(elevation) + sky fill) went from ~1.0 at 17:00 to ~1.75 at noon: the colours ran past the tone
+  // curve's shoulder (post.js, 0.72) and rolled to near-white. So the land's colour is scaled by LAND_CAP / that light,
+  // capped at 1 (the sun below ~25 deg: dawn, the golden afternoon and dusk unchanged). The terrain floor takes it in
+  // its shader above the waterline only (landK; the seabed shows through the water, which must not darken); the toon
+  // base materials (addLand: models_base.js) barely brighten with the sun's height (their gradient's top steps), so
+  // they take its square root. Ships, planes and buildings are left alone.
+  const LAND_CAP = 1.15, LAND_TOON = 0.75, LAND = [], landK = { value: 1 };
+  const lum = c => c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
   const MOON = new THREE.Vector3(0.82, 0.26, -0.5).normalize();   // a low moon (~15 deg) in the east: a long glitter path
   let wx = 0, t = 0, cloudMat = null;
   const domeSun = new THREE.Vector3(), lightDir = new THREE.Vector3(), glitDir = new THREE.Vector3(), tmp = new THREE.Color(), tmp2 = new THREE.Color(), v3 = new THREE.Vector3();
@@ -98,6 +107,9 @@ window.WW = window.WW || {};
     WW.sky.SUN_DIR.copy(lightDir);
     col('light', P.sun.color); P.sun.intensity = num(NUM.lightI) * dim;
     col('hemiSky', P.hemi.color); col('hemiGnd', P.hemi.groundColor); P.hemi.intensity = num(NUM.hemiI) * (1 - 0.2 * wx);
+    const lk = Math.min(1, LAND_CAP / (P.sun.intensity * Math.max(0, lightDir.y) * lum(P.sun.color) + P.hemi.intensity * lum(P.hemi.color)));
+    landK.value = lk;
+    for (const m of LAND) m.color.setScalar(Math.pow(lk, LAND_TOON));
     // fog and background
     const fog = WW.scene.fog;
     if (fog) {
@@ -135,5 +147,7 @@ window.WW = window.WW || {};
     if (WW.nightFx) WW.nightFx.update(rdt || 0);      // night_fx.js: lights, star shells, searchlights
     if (WW.weatherFx) WW.weatherFx.update(rdt || 0);  // weather_fx.js: rain curtains, cloud decks
   }
-  WW.skyTime = { update, MOON, wx: () => wx, elev: () => E };
+  // a toon land material (white: its vertex colours carry the albedo)
+  function addLand(m) { if (!LAND.includes(m)) LAND.push(m); return m; }
+  WW.skyTime = { update, addLand, landK, MOON, wx: () => wx, elev: () => E };
 })(window.WW);
