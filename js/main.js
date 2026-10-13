@@ -371,6 +371,7 @@ window.WW = window.WW || {};
     call('normandyProps', 'update', rdt); // Normandy: the beach obstacles still standing (terrain_normandy_props.js), visual only
     call('waves', 'update', rdt);         // Normandy: the rough sea and the surf (waves.js), visual only; before what rides it
     call('normandySky', 'update', rdt);   // Normandy: the low cloud deck, smoke from the bluffs (normandy_sky.js), visual only
+    call('normandyFleet', 'update', rdt); // Normandy: the transport area, the boats before the sim has them (normandy_fleet.js), visual only; before landingFx
     call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
     call('beachheadFx', 'update', rdt);   // Normandy: craters, scorch, wire, hulks, debris (beachhead_fx.js), visual only

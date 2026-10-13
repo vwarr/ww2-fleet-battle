@@ -125,7 +125,25 @@ window.WW = window.WW || {};
       names: ['Carmick', 'McCook', 'Frankford', 'Doyle', 'Emmons', 'Baldwin', 'Harding', 'Thompson', 'Satterlee'],
       hull: { top: 0.68, bowF: 0.26, sternW: 0.7, sheer: 0.35 }, mod: { hp: 0.95 }, guns: [{ cal: 'small', count: 4, range: 260 }] }),
     C({ key: 'hunt', type: 'destroyer', nation: 'USN', only: 'normandy', build: 'benson', name: 'Hunt class (Type III)', lenM: 85.3, beamM: 10.2, tons: 1050,
-      names: ['Talybont'], hull: { top: 0.62, bowF: 0.27, sternW: 0.72, sheer: 0.3 }, mod: { hp: 0.75, speed: 0.9, turn: 1.1 }, guns: [{ cal: 'small', count: 3, range: 220 }] })
+      names: ['Talybont'], hull: { top: 0.62, bowF: 0.27, sternW: 0.72, sheer: 0.3 }, mod: { hp: 0.75, speed: 0.9, turn: 1.1 }, guns: [{ cal: 'small', count: 3, range: 220 }] }),
+    // ---------------- Normandy transport area (visual only: normandy_fleet.js, never sim ships) ----------------
+    // The mother ships that launched the landing craft ~11 miles out, Hall's and Kirk's flagships, the control vessels at
+    // the line of departure. type 'cruiser' only so models.classOf finds them; guns: [] (no turrets). Builders:
+    // models_normandy_transports.js.
+    C({ key: 'apa', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'C3 attack transport (APA / AP)', lenM: 150, beamM: 21, tons: 16000,
+      names: ['Samuel Chase', 'Henrico', 'Thomas Jefferson', 'Charles Carroll', 'Dorothea L. Dix', 'Anne Arundel'],
+      hull: { top: 1.05, bowF: 0.15, sternW: 0.78, sheer: 0.3 }, guns: [] }),
+    C({ key: 'lsil', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'LSI(L) (C1-S-AY1)', lenM: 120, beamM: 18, tons: 11650,
+      names: ['Empire Javelin', 'Empire Anvil'], hull: { top: 0.95, bowF: 0.16, sternW: 0.78, sheer: 0.28 }, guns: [] }),
+    C({ key: 'ferry', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'LSI(S) / LSI(H) (cross-channel ferry)', lenM: 110, beamM: 14.5, tons: 3200,
+      names: ['Prince Charles', 'Prince Leopold', 'Ben Machree', 'Amsterdam'], hull: { top: 0.82, bowF: 0.18, sternW: 0.7, sheer: 0.25 }, guns: [] }),
+    C({ key: 'agc', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'AGC amphibious force flagship', lenM: 150, beamM: 19, tons: 14000,
+      names: ['Ancon'], hull: { top: 1.0, bowF: 0.17, sternW: 0.75, sheer: 0.3 }, guns: [] }),
+    C({ key: 'pc', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'PC-461 class submarine chaser (control vessel)', lenM: 53, beamM: 7, tons: 450,
+      names: ['PC-552', 'PC-553', 'PC-568'], hull: { top: 0.42, bowF: 0.28, sternW: 0.7, sheer: 0.18 }, guns: [] }),
+    // the LCC (a 56 ft control craft) and the RN motor launch, drawn ~1.3x true like the landing craft
+    C({ key: 'lcc', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'LCC control craft', lenM: 22, beamM: 5, tons: 30,
+      names: ['LCC-20', 'LCC-30', 'LCC-60', 'ML 304'], hull: { top: 0.28, bowF: 0.3, sternW: 0.8, sheer: 0.1 }, guns: [] })
   ];
   var BY = {}, LIST = { USN: {}, IJN: {}, GER: {} };
   K.forEach(function (c) {
