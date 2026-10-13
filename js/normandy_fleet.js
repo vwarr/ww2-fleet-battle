@@ -11,22 +11,27 @@
 // nets (LOAD_T) -> out to its wave's rendezvous circle near the transports, circling (the first boat lowered the
 // longest) -> the run in: a smooth curve onto its lane that arrives at (r.x, shoreZ(r.x) - r.s0) at r.spawnT heading
 // shoreward (+z), so the sim craft takes over where it is. LCTs and LCI(L)s crossed from England under their own
-// power: they come in from the north edge. The LCTs that launched the 741st's DD tanks lie at the launch points at
-// round start, ramps down, then back off and head out. Davit slots no plan boat still needs carry an empty boat (the
-// plan is about half the craft of the day: the follow-up waves' boats). Assignment: by unit to the ships that
-// carried it (MOTHER), the nearest by lane x among them, spread over them per wave; LCMs ride the cargo booms.
+// power: they come in from the north edge, each wave down one track. The LCTs that launched the 741st's DD tanks lie
+// at the launch points at round start, ramps down, then back off and head out. Of the davit slots no plan boat uses
+// ~75% carry an empty boat (the plan is about half the craft of the day: the follow-up waves' boats); the rest are
+// away in the holding circles (HOLD: loaded boats circling off the transports all round, as they milled about
+// offshore all morning). Assignment: by unit to the ships that carried it (MOTHER), the nearest by lane x among them,
+// spread over them per wave; LCMs ride the cargo booms. The ships wear the Channel's greys (models.weather: USN
+// Measure 22, the RN's Admiralty greys) and about half the transports fly a barrage balloon, streaming downwind.
+// The hand-over is exact: at spawnT - 0.02 s a boat is within 0.04 u of the sim's spawn point, heading pi/2, at the
+// craft's speed (3% from the arc-length table).
 // Interface (the landing-craft renderer reads it after this module's update in the main.js frame):
 //   boats()  craft-like objects, reused frame to frame: { type, C, x, z, heading, men, tanks, state: 'run', rampDown,
 //            pose } (heading: travel along (cos, sin) in (x, z); pose: null rides the waves, else { y: the waterline's
 //            world height, pitch, roll } for a boat in the davits or being lowered)
 //   ships()  the transport-area ships { name, cls, x, z, heading, len } (camera, labels)
-//   debugDraw  true: draw the boats here as plain boxes (until the renderer reads boats())
+//   debugDraw  true: also draw the boats here as plain boxes (debugging the timelines)
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   const PI = Math.PI, N = 24;
   const HEAD = 0.39 + PI;                          // anchored head to the WNW wind and the flood stream (scenario.js wind a)
-  const LOWER_T = 10, LOAD_T = 24, CIRC_T = 80, STAG_T = 9, CIRC_K = 0.5, OUT_K = 0.8, RESERVE_P = 0.6;
+  const LOWER_T = 10, LOAD_T = 24, CIRC_T = 80, STAG_T = 9, CIRC_K = 0.5, OUT_K = 0.8, RESERVE_P = 0.75;
   // the holding circles: loaded follow-up boats circling off the transports all morning (from 08:30 the beachmasters
   // held back the follow-up waves; craft milled about offshore for hours): [x, u off the waterline, boats, craft]
   const HOLD = [[690, 985, 5, 'lca'], [1315, 975, 6, 'lca'], [1505, 960, 7, 'lcvp'], [1720, 935, 8, 'lcvp'], [1925, 975, 7, 'lcvp'], [2045, 950, 5, 'lcvp']];
@@ -139,7 +144,7 @@ window.WW = window.WW || {};
   function ride(s) {
     const L = s.len * 0.45, B = s.beam * 0.5, hb = wh(wx(s, L, 0), wz(s, L, 0)), hs = wh(wx(s, -L, 0), wz(s, -L, 0));
     const hp = wh(wx(s, 0, B), wz(s, 0, B)), hn = wh(wx(s, 0, -B), wz(s, 0, -B)), hm = wh(s.x, s.z), k = clamp(9 / s.len, 0.25, 1);
-    s.y = (hb + hs + hp + hn + hm) / 5 * 0.4 * k;
+    s.y = (hb + hs + hp + hn + hm) / 5 * clamp(6 / s.len, 0.35, 1);                        // the small control vessels heave with the sea
     s.pitch = Math.atan((hb - hs) / (2 * L)) * 0.35 * k + Math.sin(clk * 0.5 + s.ph) * 0.004;
     s.roll = -Math.atan((hp - hn) / (2 * B)) * 0.12 * k + Math.sin(clk * 0.37 + s.ph * 2) * 0.01 * k;
     s.group.position.y = s.y; s.group.rotation.set(s.roll, -s.heading, s.pitch);

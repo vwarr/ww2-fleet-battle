@@ -10,7 +10,9 @@
 //   texas      USS Texas on her bombardment line, Pointe du Hoc beyond (sim 30 s: the pre-planned fire)
 //   transports the Transport Area (sim 80 s): Dorothea L. Dix lowering the 11:00 wave's LCVPs, men on the cargo nets,
 //              empty boats in the other davits (normandy_fleet.js boats(), drawn by models_landing.js)
-//   rendezvous the 11:00 wave circling off the transports (sim 200 s), the transports beyond
+//   lod        a wave reaching the line of departure past its control vessel (the hand-over to the sim's craft)
+//   rendezvous the last LCVP wave circling off the transports as its boats peel off for the run in, the transports beyond
+//   anchorage  the transport area down the line from Ancon: the transports, the barrage balloons, the holding circles
 //   ddrun      a destroyer closed on the beach firing along it (sim 300 s, after the H+60 close)
 //   run_in     the first wave running in to Dog Green (sim 50 s): LCVPs in line abreast, the DD tanks swimming
 //   lcvp_close / dd_close / lct_close / lci_close / lci_ramps: the craft up close (men aboard, riding the sea)
@@ -42,7 +44,9 @@ const SHOTS = [
   ['wn62', () => { const e = WW.coastDefence.wnOf('WN62').elements[0]; return [e.x - 26, e.y + 9, e.z - 22, e.x + 4, e.y, e.z + 2]; }],
   ['texas', () => { const s = WW.world.ships.find(q => q.name === 'Texas'); return [s.x - 30, 9, s.z - 22, s.x + 10, 2, s.z + 40]; }],
   ['transports', () => { __sim.fastForward(Math.max(0, 80 - WW.game.roundTime)); WW.normandyFleet.update(0); const t = WW.game.roundTime, q = WW.normandyFleet.recs.find(r => r.kind === 'davit' && r.slot && r.tLower - 5 < t && t < r.tLeave) || WW.normandyFleet.recs.find(r => r.kind === 'reserve'), s = q.ship, c = Math.cos(s.heading), n = Math.sin(s.heading), k = q.slot.side; return [s.x - n * 12 * k + c * 6, 4.5, s.z + c * 12 * k + n * 6, s.x - c * 1.5, 1.0, s.z - n * 1.5]; }],
-  ['rendezvous', () => { __sim.fastForward(Math.max(0, 200 - WW.game.roundTime)); WW.normandyFleet.update(0); const t = WW.game.roundTime, q = WW.normandyFleet.recs.find(r => r.kind === 'davit' && r.tJoin < t && t < r.tr) || WW.normandyFleet.recs.find(r => r.kind === 'davit'), w = q.w; return [w.cx + 14, 8, w.cz + 26, w.cx - 2, 0, w.cz - 12]; }],
+  ['lod', () => { __sim.fastForward(Math.max(0, Math.min(...WW.normandyFleet.recs.filter(r => r.kind === 'davit' && r.r.wave === 32).map(r => r.r.spawnT)) - 6 - WW.game.roundTime)); WW.normandyFleet.update(0); const o = WW.normandyFleet.recs.find(r => r.kind === 'davit' && r.r.wave === 32).o, c = WW.normandyFleet.ships().filter(s => s.cls === 'lcc' || s.cls === 'pc').sort((a, b) => Math.abs(a.x - o.x) - Math.abs(b.x - o.x))[0], mx = (o.x + c.x) / 2, mz = (o.z + c.z) / 2; return [mx - 2, 9, mz + 34, mx, 0.2, mz - 2]; }],
+  ['rendezvous', () => { const R = WW.normandyFleet.recs, qs = R.filter(r => r.kind === 'davit' && r.r.wave === 37), tr = Math.min(...qs.map(q => q.tr)); __sim.fastForward(Math.max(0, tr + 3 - WW.game.roundTime)); WW.normandyFleet.update(0); const w = qs[0].w; return [w.cx + 3, 3.2, w.cz + w.R + 9, w.cx - 1, 0, w.cz - 6]; }],
+  ['anchorage', () => { const s = WW.normandyFleet.ships().find(q => q.name === 'Ancon'); return [s.x - 25, 10, s.z - 28, s.x - 185, 5, s.z - 103]; }],
   ['ddrun', () => { __sim.fastForward(300); const s = WW.world.ships.filter(q => q.type === 'destroyer' && q.alive).sort((a, b) => b.z - a.z)[0]; return [s.x - 25, 7, s.z - 25, s.x + 10, 2, s.z + 50]; }],
   ['run_in', () => { __sim.fastForward(20); const u = WW.landingCraft.live.find(q => q.sector === 'dogGreen' && q.state === 'run') || WW.landingCraft.live[0]; return [u.x - 18, 5, u.z - 16, u.x + 6, 0.5, u.z + 30]; }],
   ['lcvp_close', () => { const u = WW.landingCraft.live.find(q => q.type === 'lcvp' && q.state === 'run'); const c = Math.cos(u.heading), s = Math.sin(u.heading); return [u.x - c * 3 + s * 2.2, 1.8, u.z - s * 3 - c * 2.2, u.x + c * 0.4, 0.2, u.z + s * 0.4]; }],
