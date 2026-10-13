@@ -119,7 +119,7 @@ window.WW = window.WW || {};
   // ---- the director (visual; Math.random as camera.js) ----
   (WW.camHooks = WW.camHooks || []).push(function (add, dur) {
     if (WW.simOnly || !WW.fleetCmd || !night()) return;
-    (WW.sides ? WW.sides() : ['USN', 'IJN']).forEach(function (n) {
+    WW.sides().forEach(function (n) {
       var B = WW.fleetCmd.side(n), ec = B && (B.enemyCentre || B.searchPoint);   // before any contact: steaming out into the dark
       if (!B || !ec || !(B.nightMode === 'seek' || B.nightMode === 'accept') || B.posture === 'withdraw') return;
       var best = null, bd = 1e9;

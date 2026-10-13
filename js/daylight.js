@@ -83,7 +83,7 @@ window.WW = window.WW || {};
       if (STRIKING[s.type]) force[s.nation] = true;
       if (FLEET[s.type]) fleet[s.nation] = true;
     }
-    var sd = WW.sides ? WW.sides() : ['USN', 'IJN'];
+    var sd = WW.sides();
     for (i = 0; i < sd.length; i++) {
       var n = sd[i], e = WW.enemyOf(n);
       if ((force[n] || (dd[n] && !cv[n])) && fleet[e]) return true;
