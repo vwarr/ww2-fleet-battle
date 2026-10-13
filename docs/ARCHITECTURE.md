@@ -110,6 +110,7 @@ js/landing_craft.js     WW.landingCraft: LCVP / LCA / LCM / LCT / LCI / DD tanks
 js/infantry_routes.js   WW.infRoutes: beach zones and cover, wire gaps, climb points between the draws, assault points, the Pointe du Hoc ropes
 js/infantry.js          WW.infantry: squads ashore (wade, cross, shingle, shelf, climb, top, assault, hold; Rangers' ropes and the 155s; tanks)
 js/infantry_fire.js     WW.infFire: MG cone and mortar casualties, suppression, fire back, assaults capturing positions, tank fire, shells on men
+js/air_offmap.js        WW.offmapAir: Normandy's planes from off the map: B-24 boxes (cloud: bombs ~3 mi inland), P-47 flights on call, Spitfire top cover, Fw 190s; flak
 js/land_air.js          WW.landAir: the base air group (roster, CAP, strikes), the runway (takeoff, circuit, landing), level bombing
 js/air_flyingboats.js   WW.flyingBoats, WW.FlyingBoat: flying boats from off the map; the Catalina "Dumbo" rescue (endgame.js tasks)
 js/air_patrol.js        WW.patrol: long-range patrol flying boats (search, shadow from standoff, evade fighters, Mavis bombing); bad-report strike metrics
@@ -127,6 +128,7 @@ js/air_captions.js      WW.airCaptions: squadron / leader film captions for what
 js/models_landing.js    WW.landingFx: the landing craft on screen (instanced hulls, ramps, tanks, DD screens, wrecks)
 js/models_soldier.js    WW.soldierModel: the GI figure (legs, boots, jacket, webbing, pack, arms, M1 rifle, face, M1 helmet) per pose: run (2 frames), stand, crouch, prone, fallen
 js/models_infantry.js   WW.infantryFx: instanced soldiers posed by state (running stride, crouch, prone), the fallen, Sherman tanks ashore
+js/air_offmap_fx.js     WW.offmapAirFx: the Normandy planes on screen (the existing plane kit; falls when shot down)
 js/models_bunker.js     WW.bunkerModels: casemates, gun pits, Tobruks, MG nests, mortar pits, flak, the 155s (visual)
 js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, parked planes, captions, diary, camera hooks)
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)

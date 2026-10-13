@@ -15,6 +15,8 @@
 // of its sector (the flood current sets them east), and with the DD tanks launched far most of them founder.
 // P7 infantry: squads come ashore, some reach the bluff tops by 400 s, at least one strongpoint is silenced by then,
 // and the infantry step (infantry.js update, fire included) averages under 1.5 ms.
+// P8 air: the B-24 boxes drop their sticks ~3 mi inland (cloud: no bomb within 200 u of the bluff tops), and a P-47
+// flight strikes a strongpoint by 400 s.
 // Usage: node tests/normandy_probe.js [seeds=1,2,3] [secs=400]
 const crypto = require('crypto');
 const H = require('./headless');
@@ -51,6 +53,7 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     const nations = new Set(WW.world.ships.map(s => s.nation));
     let infMs = 0, infN = 0;
     const iu = WW.infantry.update; WW.infantry.update = dt => { const t0 = performance.now(); iu(dt); infMs += performance.now() - t0; infN++; };
+    const b24z = []; WW.on('weaponImpact', e => { if (e.kind === 'bomb' && e.proj && e.proj.nation === 'USN' && e.proj.dmg > 0 && b24z.length < 200 && e.proj.target === null) b24z.push(e.z - WW.normandyTerrain.bluffTopZ(e.x)); });
     const C0 = WW.coastDefence, nm = WW.world.ships.filter(s => s.nation === 'USN').map(s => s.name + (s.flag !== 'USN' ? '/' + s.flag : '')).join(',');
     let ddMin = 99;
     for (let t = 5; t <= secs + 1e-9 && G.state === 'battle'; t += 5) {
@@ -68,7 +71,7 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     const lc = { launched: LS.launched, men: LS.menLanded, lost: LS.menLost, foundered: LS.foundered, dd: WW.landingCraft.plan.filter(r => r.craft === 'dd').length, stray };
     const C = WW.coastDefence, def = { els: C.elements.length, wns: C.wns.length, shots: 0 };
     return { terr: terr.slice(0, 6), layout, obst: T.obstacles.length, def, sides, nations: [...nations].join(','), ships: WW.world.ships.length, state: G.state, t: +G.roundTime.toFixed(1), winner: G.winner, reason: G.endReason,
-      shots, dHits, lc, inf, nm, ddMin, out: C0.stats.out, sunk: WW.world.ships.filter(s => !s.alive || s.sinking).map(s => s.nation + ' ' + s.type).join(', '), shells: WW.stats.shellsFired, bad: bad.slice(0, 5), tr };
+      shots, dHits, lc, inf, nm, air: { b24: b24z.length, b24Near: b24z.filter(z => z < 200).length, p47: WW.offmapAir.stats.p47Bombs }, ddMin, out: C0.stats.out, sunk: WW.world.ships.filter(s => !s.alive || s.sinking).map(s => s.nation + ' ' + s.type).join(', '), shells: WW.stats.shellsFired, bad: bad.slice(0, 5), tr };
   }, [seed, SECS]);
   let layout0 = null;
   // the damage model, on a fresh round (after the seeded runs: it draws WW.rand)
@@ -109,12 +112,15 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     if (SECS >= 400 && !(a.inf.top > 0)) probs.push('no squad on the bluff top');
     if (SECS >= 400 && !(a.inf.sil > 0)) probs.push('no strongpoint silenced');
     if (a.inf.ms > 1.5) probs.push(`infantry step ${a.inf.ms.toFixed(2)} ms`);
+    if (SECS >= 400 && !(a.air.b24 > 0)) probs.push('no B-24 bomb fell');
+    if (a.air.b24Near) probs.push(`${a.air.b24Near} B-24 bombs within 200 u of the bluffs under cloud`);
+    if (SECS >= 400 && !(a.air.p47 > 0)) probs.push('no P-47 strike');
     if (a.ddMin < 3) probs.push(`a closing destroyer in ${a.ddMin.toFixed(1)} u of water`);
     if (layout0 === null) layout0 = a.layout;
     else if (a.layout.some((q, i) => Math.abs(q[0] - layout0[i][0]) > 0.01 || Math.abs(q[1] - layout0[i][1]) > 1.2)) probs.push(`layout ${JSON.stringify(a.layout)} differs from the first seed's`);
     if (ha !== hc) probs.push(`replay differs ${ha} / ${hc}`);
     if (probs.length) fail++;
-    console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} GER shots ${a.shots} hits on defences ${a.dHits} out ${a.out} craft ${a.lc.launched} men ashore ${a.lc.men} lost ${a.lc.lost} DD foundered ${a.lc.foundered}/${a.lc.dd} squads ${a.inf.squads} on top ${a.inf.top} lost ${a.inf.lost} WN silenced ${a.inf.sil} inf ${a.inf.ms.toFixed(3)} ms dd depth >= ${a.ddMin.toFixed(1)} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
+    console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} GER shots ${a.shots} hits on defences ${a.dHits} out ${a.out} craft ${a.lc.launched} men ashore ${a.lc.men} lost ${a.lc.lost} DD foundered ${a.lc.foundered}/${a.lc.dd} squads ${a.inf.squads} on top ${a.inf.top} lost ${a.inf.lost} WN silenced ${a.inf.sil} inf ${a.inf.ms.toFixed(3)} ms B-24 bombs ${a.air.b24} P-47 bombs ${a.air.p47} dd depth >= ${a.ddMin.toFixed(1)} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
   }
   const u = await unit();
   console.log('damage model: ' + (u.length ? 'FAIL ' + u.join('; ') : 'ok'));

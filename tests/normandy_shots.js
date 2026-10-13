@@ -15,6 +15,8 @@
 //   bluff      the men climbing the bluff between the draws (sim 300 s)
 //   soldiers   close up on a squad ashore (the figures: run / crouch / prone poses, the fallen)
 //   pinned     close up on men pinned down (prone: the test forces their suppression for the still)
+//   b24        a B-24 box crossing the coast at ~6,000 m (sim 40 s)
+//   p47        a P-47 flight diving on a strongpoint (sim 240 s)
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
@@ -39,6 +41,8 @@ const SHOTS = [
   ['bluff', () => { __sim.fastForward(270); const q = WW.infantry.squads.find(q => q.alive && q.state === 'climb') || WW.infantry.squads.find(q => q.alive); return [q.x - 16, q.y + 6, q.z - 16, q.x, q.y, q.z + 3]; }],
   ['soldiers', () => { __sim.fastForward(140); const q = WW.infantry.squads.filter(q => q.alive && q.kind !== 'tank' && q.men > 6).sort((a, b) => b.speed - a.speed)[0]; return [q.x - 3.2, q.y + 1.3, q.z - 2.6, q.x, q.y + 0.2, q.z]; }],
   ['pinned', () => { __sim.fastForward(190); const q = WW.infantry.squads.filter(q => q.alive && q.kind !== 'tank' && (q.state === 'shingle' || q.state === 'cross')).sort((a, b) => b.men - a.men)[0] || WW.infantry.squads.find(q => q.alive); WW.infantry.squads.forEach(o => { if (o.alive && Math.hypot(o.x - q.x, o.z - q.z) < 12) o.sup = 3; }); return [q.x - 3.5, q.y + 1.6, q.z - 4, q.x, q.y, q.z - 0.5]; }],
+  ['b24', () => { __sim.fastForward(25); const p = WW.offmapAir.planes.find(q => q.alive && q.kind === 'b24'); return [p.x - 40, p.y - 6, p.z - 30, p.x, p.y, p.z + 10]; }],
+  ['p47', () => { __sim.fastForward(160); for (let i = 0; i < 200 && !WW.offmapAir.planes.some(q => q.alive && q.kind === 'p47' && q.state === 'dive'); i++) __sim.fastForward(0.5); const p = WW.offmapAir.planes.find(q => q.alive && q.kind === 'p47' && q.state === 'dive') || WW.offmapAir.planes.find(q => q.alive && q.kind === 'p47'); return [p.x - 20, p.y + 4, p.z - 18, p.x + 8, p.y - 4, p.z + 20]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
 ];

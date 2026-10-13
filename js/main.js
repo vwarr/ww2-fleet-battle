@@ -341,6 +341,7 @@ window.WW = window.WW || {};
     call('coastDefence', 'update', dt); // Normandy: the strongpoints' guns, MG cones and mortar zones (coast_defence*.js)
     call('landingCraft', 'update', dt); // Normandy: the landing craft (landing_craft.js)
     call('infantry', 'update', dt);     // Normandy: the squads ashore and their fight (infantry*.js)
+    call('offmapAir', 'update', dt);    // Normandy: B-24s, P-47s, Spitfires, Fw 190s from off the map (air_offmap.js)
     call('endgame', 'update', dt);  // escapes off the map, survivor pickups, scuttling (endgame.js)
     call('shipFires', 'update', dt); // fires, flooding, damage control (ship_fires.js)
     call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)
@@ -370,6 +371,7 @@ window.WW = window.WW || {};
     call('normandyProps', 'update', rdt); // Normandy: the beach obstacles still standing (terrain_normandy_props.js), visual only
     call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
+    call('offmapAirFx', 'update', rdt);   // Normandy: the planes from England (air_offmap_fx.js), visual only
     call('dmgVis', 'draw', rdt);    // scorch / hole decals and deck wrecks on the posed hulls
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);
