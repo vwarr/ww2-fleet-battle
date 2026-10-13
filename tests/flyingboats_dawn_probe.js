@@ -32,7 +32,7 @@ function install() {
   });
   WW.on('contact', e => { if (e && e.first && S.contact[e.nation] === null && e.unit && !e.unit.isBase) S.contact[e.nation] = t(); });
   WW.on('report', e => { if (e && e.by && e.by.kind === 'flyingboat' && S.fbReport[e.nation] === null) S.fbReport[e.nation] = t(); });
-  WW.on('baseAlarm', e => { if (!S.alarm) { S.alarm = { t: t(), kind: e.kind }; L('ALARM ' + e.kind); } });
+  WW.on('baseAlarm', e => { if (!S.alarm) { S.alarm = { t: t(), kind: e.kind, d: Math.round(WW.dist(e.x, e.z, e.tx, e.tz)) }; L('ALARM ' + e.kind + ' at ' + S.alarm.d); } });
   WW.on('baseEvent', e => {
     if (e.kind === 'scramble' && S.scramble === null) { S.scramble = t(); L('scramble'); }
     if (e.kind === 'strikeOut' && S.baseStrike === null) { S.baseStrike = t(); L('base strike at ' + (e.target ? e.target.type : '?')); }
@@ -77,6 +77,7 @@ function install() {
     const st = R.flatMap(r => r.station.filter(s => s.n === own)), so = R.flatMap(r => r.station.filter(s => s.n === oth));
     console.log(`SUMMARY ${sc}: ramp departures ${mean(col(r => r.ramp[own]))}/rd, lagoon landings ${mean(col(r => r.lagoon[own]))}/rd, patrol launches ${own} ${mean(col(r => r.launches[own]))} ${oth} ${mean(col(r => r.launches[oth]))}`);
     console.log(`  first contact (median s) ${own} ${med(col(r => r.contact[own]))} ${oth} ${med(col(r => r.contact[oth]))} | boat's first sighting ${own} ${med(col(r => r.fbSight[own]))} (${col(r => r.fbSight[own]).filter(v => v !== null).length}/${R.length}) ${oth} ${med(col(r => r.fbSight[oth]))}`);
+    console.log(`  alarm: reported enemy's range from the base median ${med(col(r => r.alarm && r.alarm.kind === 'patrol' ? r.alarm.d : null))} (base strike reach 560)`);
     console.log(`  base alarm median ${med(col(r => r.alarm && r.alarm.t))} kinds ${JSON.stringify(R.reduce((m, r) => { const k = r.alarm ? r.alarm.kind : 'none'; m[k] = (m[k] || 0) + 1; return m; }, {}))} | alarm - boat sighting median ${med(da)} | scramble median ${med(col(r => r.scramble))} | base strike median ${med(col(r => r.baseStrike))}, minus boat sighting median ${med(d)}`);
     console.log(`  first strike launch median ${own} ${med(col(r => r.strike[own]))} ${oth} ${med(col(r => r.strike[oth]))} | boat sorties ${own} ${st.length} mean airborne ${mean(st.map(s => s.up))}s lost ${st.filter(s => s.lost).length} | ${oth} ${so.length} mean ${mean(so.map(s => s.up))}s lost ${so.filter(s => s.lost).length} | wins ${JSON.stringify(R.reduce((m, r) => { m[r.winner || 'draw'] = (m[r.winner || 'draw'] || 0) + 1; return m; }, {}))}`);
   }
