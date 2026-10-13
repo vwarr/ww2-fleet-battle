@@ -66,13 +66,14 @@ window.WW = window.WW || {};
     }
     return p.fly(p.x + Math.cos(h) * 60, p.z + Math.sin(h) * 60, alt, dt, spd, rate);
   }
-  // the best enemy ship this flying boat itself sees right now
+  // the best enemy ship this flying boat itself sees right now (a warship: a PT boat or a surfaced submarine is not the
+  // fleet it is looking for; intel has the contact anyway, and the search goes on)
   function found(p) {
     if (!WW.intel) return null;
     var cs = WW.intel.enemyShips(p.nation, { fresh: 1 }), best = null, bv = 0;
     for (var i = 0; i < cs.length; i++) {
-      var c = cs[i], u = c.unit; if (c.by !== p || !u || !u.alive || u.sinking || u.submerged) continue;
-      var v = (VAL[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 1) / (1 + WW.dist(p.x, p.z, u.x, u.z) / 200);
+      var c = cs[i], u = c.unit, ty = WW.intel.typeOf ? WW.intel.typeOf(c) : u && u.type; if (c.by !== p || !u || !u.alive || u.sinking || u.submerged || u.isBase || ty === 'pt' || ty === 'submarine') continue;
+      var v = (VAL[ty] || 1) / (1 + WW.dist(p.x, p.z, u.x, u.z) / 200);
       if (v > bv) { bv = v; best = u; }
     }
     return best;
