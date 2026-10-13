@@ -85,5 +85,23 @@ window.WW = window.WW || {};
     T.mesh.instanceMatrix.needsUpdate = true; T.dirty = false;
   }
 
-  WW.planeTracers = { spawn: spawnTracer, update: updateTracers, clear: clearTracers, T };
+  // A short burst from one gun at (x,y,z) toward the aim point (ax,ay,az): n rounds a few ms apart along the stream
+  // (jittered), plus a muzzle flash. Plane velocity (vx,vy,vz) is added to the rounds. A round heading down ends at the
+  // water (or the aim point's height). The strafing passes (air_strafe.js) and the bombers' guns (air_gunners.js).
+  const BV = 190;
+  function burst(x, y, z, ax, ay, az, n, vx, vy, vz, spread) {
+    if (!initTracers()) return;
+    const dx = ax - x, dy = ay - y, dz = az - z, dl = Math.hypot(dx, dy, dz) || 1, j = spread || 0.02;
+    const ux = dx / dl, uy = dy / dl, uz = dz / dl;
+    for (let i = 0; i < n; i++) {
+      const rx = ux + (Math.random() - 0.5) * j, ry = uy + (Math.random() - 0.5) * j, rz = uz + (Math.random() - 0.5) * j;
+      const wx = (vx || 0) + rx * BV, wy = (vy || 0) + ry * BV, wz = (vz || 0) + rz * BV, lead = i * 0.016;
+      const floor = Math.max(0, Math.min(ay, 0.2)), tw = wy < -1 ? (y - floor) / -wy : 9;   // time to the water / deck
+      const life = Math.min(dl / BV * (1.15 + Math.random() * 0.4), tw) - lead;   // a round fired earlier is further on
+      if (life > 0.02) spawnTracer(x + wx * lead, y + wy * lead, z + wz * lead, wx, wy, wz, life);
+    }
+    spawnTracer(x + ux * 0.9, y + uy * 0.9, z + uz * 0.9, (vx || 0) + ux * 6, (vy || 0) + uy * 6, (vz || 0) + uz * 6, 0.05, true); // muzzle flash
+  }
+
+  WW.planeTracers = { spawn: spawnTracer, update: updateTracers, clear: clearTracers, burst, T };
 })();

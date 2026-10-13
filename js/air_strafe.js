@@ -17,6 +17,46 @@ window.WW = window.WW || {};
   const small = u => u && u.alive && !u.sinking && SMALL[u.type] && !u.submerged && (u.type !== 'destroyer' || u.hp < u.maxHp * 0.5);
   const fresh = (n, u, age) => { const c = WW.intel && WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= age ? c : null; };
 
+  // ---------- the burst seen (visual only: Math.random, nothing the sim reads) ----------
+  // The burst is spread over its BURST_T as VOLLEYS volleys, one round from each wing gun (and a muzzle flash) per
+  // volley, the aim walking along the plane's track from ~10 short of the boat onto it (a miss: past it, off to one
+  // side). Each volley's rounds land as a pair of bullet splashes on the water, or sparks and a hit puff on the deck.
+  // A small queue stepped from WW.air.update (the dogfight's tracer step).
+  const PK = WW.cfg.PLANE_K || 1, WING = 1.25 * PK, FXQ = [], VOLLEYS = 8, BV = 190;
+  function burstFx(pl, u, hit) {
+    if (!WW.planeTracers || !WW.planeTracers.burst || !WW.fx) return;
+    const off = hit ? 0 : (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 3), deckL = Math.max(2.5, ((u.stats && u.stats.length) || 8) * 0.4);
+    for (let i = 0; i < VOLLEYS && FXQ.length < 160; i++) {
+      const k = -10 + i * (hit ? 11 : 15) / (VOLLEYS - 1);   // along the track from the aim point (-: short of it)
+      FXQ.push({ t: i * BURST_T / VOLLEYS, pl, u, k, off, deck: hit && Math.abs(k) < deckL });
+    }
+  }
+  function volley(q) {
+    const pl = q.pl, u = q.u, TR = WW.planeTracers;
+    if (!pl.alive) return;
+    const ch = Math.cos(pl.heading), sh = Math.sin(pl.heading);
+    const ax = u.x - sh * q.off + ch * q.k + (Math.random() - 0.5) * 1.2, az = u.z + ch * q.off + sh * q.k + (Math.random() - 0.5) * 1.2, ay = q.deck ? 1.3 : 0;
+    for (let side = -1; side <= 1; side += 2) {
+      const gx = pl.x - sh * side * WING + ch * 0.5, gy = pl.y - 0.25 * PK, gz = pl.z + ch * side * WING + sh * 0.5;
+      TR.burst(gx, gy, gz, ax - sh * side * 0.6, ay, az + ch * side * 0.6, 1, ch * pl.speed, pl.vy, sh * pl.speed, 0.01);
+    }
+    FXQ.push({ t: Math.hypot(ax - pl.x, ay - pl.y, az - pl.z) / BV, x: ax, z: az, deck: q.deck, hitFx: true });
+  }
+  function stepFx(dt) {
+    let w = 0;
+    const n = FXQ.length;
+    for (let i = 0; i < n; i++) {
+      const q = FXQ[i];
+      if ((q.t -= dt) > 0) { FXQ[w++] = q; continue; }
+      if (!q.hitFx) { volley(q); continue; }
+      if (q.deck) { WW.fx.sparks(q.x, 1.4, q.z); if (Math.random() < 0.3 && WW.fx.smoke) WW.fx.smoke(q.x, 1.2, q.z, true, 0.25); }
+      else if (WW.terrain && WW.terrain.depthAt && WW.terrain.depthAt(q.x, q.z) < 0.3) WW.fx.sparks(q.x, 0.4, q.z);   // over land: dust and sparks
+      else WW.fx.splash(q.x, q.z, 0.18 + Math.random() * 0.1);
+    }
+    for (let i = n; i < FXQ.length; i++) FXQ[w++] = FXQ[i];   // splashes queued by this step's volleys
+    FXQ.length = w;
+  }
+
   function stop(pl) {
     const home = pl.sf && pl.sf.home;
     if (pl.sf && pl.sf.cap) pl.target = null; // back to CAP
@@ -40,11 +80,13 @@ window.WW = window.WW || {};
       const err = pl.fly(px, pz, RUN_ALT + Math.min(15, d * 0.2), dt, pl.pt.speed, 1.4);
       if (d < FIRE_R && Math.abs(err) < 0.25 && S.fT <= 0) {
         S.fT = BURST_T; ST.bursts++;
-        if (WW.rand() < P_HIT) {
+        const hit = WW.rand() < P_HIT;
+        if (hit) {
           const dmg = BURST * (pl.pt.gun || 1);
           ST.hits++; ST.dmg += dmg;
           u.takeDamage(dmg, u.x + (WW.rand() - 0.5) * 2, u.z + (WW.rand() - 0.5) * 2, 'strafe', 'mg');
-        } else if (WW.fx && WW.fx.splash && !WW.simOnly) WW.fx.splash(u.x + (Math.random() - 0.5) * 8, u.z + (Math.random() - 0.5) * 8, 0.3);
+        }
+        if (!WW.simOnly) burstFx(pl, u, hit);
       }
       if (d < 10 || S.t > 12 || (d > 25 && Math.abs(err) > 1.6)) { S.ph = 'out'; S.t = 0; }
     } else { // break off past the boat, climb and extend, then set up from a fresh bearing
@@ -117,6 +159,13 @@ window.WW = window.WW || {};
       return r;
     };
   }
-  WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; });
+  if (WW.dogfight && !WW.simOnly) { const up0 = WW.dogfight.update; WW.dogfight.update = function (dt) { if (FXQ.length) stepFx(dt); return up0.apply(this, arguments); }; }
+  // the director (camera.js candidates, via WW.camHooks): a strafing run in progress, from behind the fighter with the
+  // boat ahead (the torpedo-run framing), worth about a dogfight
+  (WW.camHooks = WW.camHooks || []).push((add, dur) => {
+    for (const p of WW.world.planes) if (p.alive && p.strafe && p.sf && p.sf.ph === 'run' && p.strafe.alive && WW.dist(p.x, p.z, p.strafe.x, p.strafe.z) < 80)
+      add(6.8 + (p.ace ? 1 : 0), 'chase', p, { dur: dur(8, 11), target: p.strafe });
+  });
+  WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; FXQ.length = 0; });
   WW.strafe = { stats: ST, small };
 })();
