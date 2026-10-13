@@ -288,7 +288,7 @@ window.WW = window.WW || {};
       for (const s of WW.world.ships) {
         if (!s.alive || s.sinking || s.nation !== p.nation) continue;
         const d = WW.dist(p.x, p.z, s.x, s.z);
-        if (VAR[p.variant] && VAR[p.variant].carrier && s.type === 'carrier' && s.hangar && d < cd && deckRoom(s) > 0) { cd = d; cv = s; }
+        if ((!p.variant || VAR[p.variant].carrier) && s.type === 'carrier' && s.hangar && !s.deckOut && d < cd && deckRoom(s) > 0) { cd = d; cv = s; }   // (not a holed deck, ship_deck.js)
         if (s.type !== 'submarine' && d < sd) { sd = d; ship = s; }
       }
       const i = b.ai.lq.indexOf(p); if (i >= 0) b.ai.lq.splice(i, 1);

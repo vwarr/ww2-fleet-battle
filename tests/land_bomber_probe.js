@@ -30,7 +30,7 @@ const spec = (sc, seed) => ({ seed, A: SC[sc].A, B: SC[sc].B, aNation: SC[sc].aN
 function install() {
   const R = window.__lb = {}, BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 }, DT = 0.5;
   let S = null, next = 0, seen = null;
-  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0, lwo: 0, lwoRun: 0, lwoMax: 0, tdL: 0, aDmg: {}, shutC: 0, shutF: 0 }; next = 0; seen = new Map(); };
+  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0, lwo: 0, lwoRun: 0, lwoMax: 0, tdL: 0, aDmg: {}, shutC: 0, shutF: 0, guestTd: 0, gLost: {} }; next = 0; seen = new Map(); };
   fresh(); WW.on('roundStart', fresh);
   const inc = (o, k, v) => { o[k] = (o[k] || 0) + (v === undefined ? 1 : v); };
   const big = p => p && p.carrier && p.carrier.isBase && BIG[p.variant];
@@ -62,7 +62,9 @@ function install() {
     }
     return D0.apply(this, arguments);
   };
+  const guest = p => p && p.carrier && p.carrier.isBase && !p.variant && p.alive;
   P.shotDown = function () {
+    if (guest(this)) inc(S.gLost, 'shot:' + this.state);
     if (own(this) && this.alive) { const ph = phase(this); if (ph !== 'out' && ph !== 'ground') inc(S.aLost, this.variant + '|' + ph); }
     if (big(this) && this.alive) {
       const ph = phase(this), kb = this.killedBy, B = this.carrier;
@@ -71,7 +73,7 @@ function install() {
     }
     return SD0.apply(this, arguments);
   };
-  P.ditch = function () { if (own(this) && this.alive) { const ph = phase(this); if (ph !== 'out' && ph !== 'ground') inc(S.aLost, this.variant + '|ditch'); } if (big(this) && this.alive) { const ph = phase(this); inc(S.lost, ph === 'leave' ? 'ditchHold' : 'ditch:' + ph); rec(this).end = 'ditch'; } return DI0.apply(this, arguments); };
+  P.ditch = function () { if (guest(this)) inc(S.gLost, 'ditch:' + this.state + (this.leaving ? ':leave' : '')); if (own(this) && this.alive) { const ph = phase(this); if (ph !== 'out' && ph !== 'ground') inc(S.aLost, this.variant + '|ditch'); } if (big(this) && this.alive) { const ph = phase(this); inc(S.lost, ph === 'leave' ? 'ditchHold' : 'ditch:' + ph); rec(this).end = 'ditch'; } return DI0.apply(this, arguments); };
   WW.on('baseEvent', e => { if (e && e.kind === 'divert' && e.plane && e.plane.variant) inc(S.aLost, e.plane.variant + '|divert'); if (e && e.kind === 'divert' && big(e.plane)) inc(S.lost, 'divert'); });
   WW.on('weaponDropped', e => {
     const p = e && e.plane; if (!big(p) || !p.level || e.kind !== 'bomb') return;
@@ -91,7 +93,7 @@ function install() {
   };
   function sample() {
     const PL = WW.world.planes, B = WW.islandBase && WW.islandBase.base;
-    for (const p of PL) if (B && p.carrier === B && p.alive && p.state === 'rollout' && !S.tdSeen.has(p)) { S.tdSeen.add(p); S.td.push(WW.game.roundTime); if (B.ops && B.ops.mode === 'launch') S.tdL++; }
+    for (const p of PL) if (B && p.carrier === B && p.alive && p.state === 'rollout' && !S.tdSeen.has(p)) { S.tdSeen.add(p); S.td.push(WW.game.roundTime); if (B.ops && B.ops.mode === 'launch') S.tdL++; if (!p.variant) S.guestTd++; }
     let waiting = false;
     for (const p of PL) {
       if (!B || p.carrier !== B || !p.alive || p.removed || !p.variant) continue;
@@ -134,7 +136,9 @@ function install() {
       hold: rs.filter(r => r.hold > 0).map(r => ({ v: r.v, t: r.hold, y: r.holdY / r.hold, aa: r.holdAA, f: r.holdF, isle: r.holdIsle })) };
     const LG = WW.landGround && WW.landGround.stats;
     o.all = [...S.allSeen.values()].filter(r => r.land0 !== null).map(r => ({ v: r.v, t: r.td !== null ? r.td - r.land0 : null, dmg: r.dmg, shut: r.shut, lm: r.lm, hold: r.hold, holdY: r.holdY, isle: r.isle }));
-    o.aLost = S.aLost; o.aDmg = S.aDmg; o.shutC = S.shutC; o.shutF = S.shutF; o.crashes = LG ? LG.crashes : 0; o.tdL = S.tdL; o.flow = WW.landFlow ? Object.assign({}, WW.landFlow.stats) : {}; o.lw = S.lw; o.lwMax = S.lwMax; o.lwo = S.lwo; o.lwoMax = S.lwoMax; o.tows = LG ? LG.tows : 0; o.towLog = WW.landGround.towLog.splice(0); o.aborts = LG ? LG.aborts : 0;
+    o.aLost = S.aLost; o.aDmg = S.aDmg; o.shutC = S.shutC; o.shutF = S.shutF; o.crashes = LG ? LG.crashes : 0; o.guestTd = S.guestTd; o.gLost = S.gLost;
+    const SD = WW.shipDeck && WW.shipDeck.stats, AF = WW.airFlight && WW.airFlight.stats;
+    o.deck = { deckOut: SD ? SD.out.USN + SD.out.IJN : 0, held: SD ? SD.held : 0, diverted: SD ? SD.diverted : 0, ditched: SD ? SD.ditched : 0, afDiverts: AF ? AF.diverts : 0, afDitchBy: AF ? AF.ditchBy : 0, toBase: WW.landFlow && WW.landFlow.stats.guests || 0 }; o.tdL = S.tdL; o.flow = WW.landFlow ? Object.assign({}, WW.landFlow.stats) : {}; o.lw = S.lw; o.lwMax = S.lwMax; o.lwo = S.lwo; o.lwoMax = S.lwoMax; o.tows = LG ? LG.tows : 0; o.towLog = WW.landGround.towLog.splice(0); o.aborts = LG ? LG.aborts : 0;
     fresh(); return o;
   };
 }
@@ -185,6 +189,8 @@ function install() {
     console.log(`  of the wait to land (median per plane): runway shut ${f1(med(LM.map(r => r.shut)))} s (max ${f1(Math.max(0, ...LM.map(r => r.shut)))}), runway open but the field launching ${f1(med(LM.map(r => r.lm)))} s (max ${f1(Math.max(0, ...LM.map(r => r.lm)))}); planes waiting > 60 s on a launch: ${AL.filter(r => r.lm > 60).length}`);
     if (argv.includes('--seedlog')) console.log('  slow (> 150 s): ' + LM.filter(r => r.t > 150).map(r => `${r.v}${r.dmg ? '/d' : ''} ${r.t} shut ${r.shut} launch ${r.lm}`).join('; '));
     console.log(`  planes waiting with the main runway shut: cratered ${f1(L.reduce((s, r) => s + r.shutC, 0) / N)} s/rd, fouled by a wreck ${f1(L.reduce((s, r) => s + r.shutF, 0) / N)} s/rd; crash landings ${f1(L.reduce((s, r) => s + r.crashes, 0) / N)}/rd`);
+    const dk = add('deck');
+    console.log(`  carrier planes, deck out (ship_deck.js, /rd): decks out ${f1(dk.deckOut / N)}, held ${f1(dk.held / N)}, diverted ${f1(dk.diverted / N)}, ditched ${f1(dk.ditched / N)}; every orphan (air_flight.js): diverts ${f1(dk.afDiverts / N)}, ditchBy ${f1(dk.afDitchBy / N)}; taken in by the base ${f1(dk.toBase / N)}, landed there ${f1(L.reduce((s, r) => s + r.guestTd, 0) / N)}, lost there ${JSON.stringify(add('gLost'))}`);
     const ad = add('aDmg');
     console.log('  small planes damage /rd by phase (ship AA / base AA / own AA / fighter): ' + ['out', 'home', 'hold', 'app'].map(ph => ph + ' ' + ['shipAA', 'baseAA', 'ownAA', 'fighter'].map(k => f1((ad[ph + '|' + k] || 0) / N)).join('/')).join(', '));
     const SM = AL.filter(r => !BIG_V[r.v] && r.hold > 0), st = SM.reduce((s, r) => s + r.hold, 0);
