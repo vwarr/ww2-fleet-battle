@@ -4,7 +4,7 @@ window.WW = window.WW || {};
 (function () {
   const TAU = Math.PI * 2;
   let nextId = 1;
-  const SUB_DEPTH = -1.6, DRIFT_MAX = 15;
+  const SUB_DEPTH = -1.6;
   const SPACE = { carrier: 70, battleship: 45, cruiser: 42, destroyer: 30, pt: 12, submarine: 12 }; // personal space (centre to centre; BB / CA ~1.7 L, DD ~1.15 L: a screen keeps 2-3 L)
   // the largest personal-space radius (SPACE or the default 20): with the hull term, an upper bound of the separation
   // radius in Ship.move, for an early skip of far pairs (the other hull is taken as up to 100 units long: the longest
@@ -15,22 +15,9 @@ window.WW = window.WW || {};
   const BAND = 0.35, HELM = 0.4; // turn rate is proportional below BAND rad of heading error; HELM s to full rudder
 
   const wreckShips = [];             // settled wrecks (not in WW.world.ships)
-  let wreckCol = null;
   if (WW.world && !WW.world.wrecks) WW.world.wrecks = []; // [{x, z, radius, top}]
-  // A settled wreck or another sinking ship whose footprint overlaps a circle of radius r at (x, z).
-  function wreckNear(x, z, r, self) {
-    const w = WW.world.wrecks || [];
-    for (let i = 0; i < w.length; i++) { const R = r + w[i].radius; if (WW.dist2(x, z, w[i].x, w[i].z) < R * R) return true; }
-    const s = WW.world.ships;
-    for (let i = 0; i < s.length; i++) {
-      const o = s[i]; if (o === self || !o.sinking) continue;
-      const R = r + o.stats.length * 0.5 + 3; if (WW.dist2(x, z, o.x, o.z) < R * R) return true;
-    }
-    return false;
-  }
   const nav = (x, z, d) => WW.shipNav.nav(x, z, d), wreckAt = (x, z) => WW.shipNav.wreckAt(x, z); // ships_nav.js
   function wrap(a) { a %= TAU; return a < 0 ? a + TAU : a; }
-  const vr = (a, b) => a + (b - a) * Math.random(); // visual-only randomness (sinking booms, fires, wreck smoke): keeps WW.rand for the sim
 
   class Ship {
     constructor(type, nation, x, z, heading, clsKey, flag) {
@@ -328,111 +315,7 @@ window.WW = window.WW || {};
       this.applyLook();
     }
 
-    startSinking() {
-      this.alive = false; this.sinking = true; this.sinkT = 0; this.target = null; this.startY = this.depthY;
-      if (Math.abs(this.listRoll) > 0.02) this.sinkRoll = Math.sign(this.listRoll) * Math.abs(this.sinkRoll);
-      const L = this.stats.length;
-      // Drift a little (<= DRIFT_MAX) toward nearby shallows so wrecks often stay visible, but never onto another wreck.
-      let bd = WW.terrain.depthAt(this.x, this.z) - 2, bh;
-      this.sx0 = this.x; this.sz0 = this.z;
-      for (let k = 0; k < 16; k++) {
-        const a = (k / 16) * TAU;
-        for (const r of [6, 10, 14]) {
-          const px = this.x + Math.cos(a) * r, pz = this.z + Math.sin(a) * r, d = WW.terrain.depthAt(px, pz);
-          if (d > 0.8 && d < bd && !wreckNear(px, pz, L * 0.5 + 3, this)) { bd = d; bh = a; }
-        }
-      }
-      if (bh !== undefined) { this.driftH = bh; this.speed = WW.clamp(this.speed, 2, 3); }
-      else if (wreckNear(this.x, this.z, L * 0.5 + 3, this)) { // sinking on top of a wreck: slide clear of it
-        let ax = 0, az = 0;
-        for (const w of WW.world.wrecks) { const d = WW.dist(this.x, this.z, w.x, w.z) + 0.1; if (d < 40) { ax += (this.x - w.x) / d; az += (this.z - w.z) / d; } }
-        this.pushH = Math.atan2(az, ax || 1e-3); this.speed = 4; // slides sideways; no visible yaw snap
-      } else this.speed = Math.min(this.speed, 2);
-      WW.fx.explosion(this.x, 2 + this.depthY, this.z, WW.clamp(L / 7, 1.2, 3.5));
-      WW.fx.oilSlick(this.x, this.z, L * 0.5);
-      WW.stats.shipsSunk++;
-      WW.emit('shipSunk', this);
-    }
-
-    updateSinking(dt) {
-      this.sinkT += dt;
-      const L = this.stats.length, k = Math.min(1, this.sinkT / 8), g = this.group;
-      this.speed = Math.max(0, this.speed - dt * 0.7);
-      const N = WW.shipNav, dep = (p) => Math.max(0, WW.terrain.depthAt(p[0], p[1]));
-      if (this.driftH !== undefined) { // swing toward the drift heading unless an end would touch the shallows
-        const nh = this.heading + WW.clamp(WW.angleDiff(this.heading, this.driftH), -0.3 * dt, 0.3 * dt);
-        if (N.hullMin(this, this.x, this.z, nh) >= N.GROUND) this.heading = nh;
-      }
-      const mh = this.pushH !== undefined ? this.pushH : this.heading;
-      const nx = this.x + Math.cos(mh) * this.speed * dt, nz = this.z + Math.sin(mh) * this.speed * dt;
-      if (WW.dist(nx, nz, this.sx0, this.sz0) > DRIFT_MAX || (wreckNear(nx, nz, L * 0.5 + 3, this) && !wreckNear(this.x, this.z, L * 0.5 + 3, this))) this.speed = 0; // stay near the sinking spot, apart from other wrecks
-      else if (WW.terrain.isNavigable(nx, nz, Math.max(1.2, L * 0.1)) && N.hullMin(this, nx, nz, this.heading) >= N.GROUND) { this.x = nx; this.z = nz; }
-      else this.speed = 0; // grounded: no hull sample reaches the beach
-      // Ease down to rest on the seabed (shallow water leaves the upperworks above the surface).
-      // The deeper end goes down (bow up when the stern has deeper water); keels follow the seabed.
-      const Dm = dep([this.x, this.z]), Db = dep(this.toWorld(L * 0.5, 0)), Ds = dep(this.toWorld(-L * 0.5, 0));
-      if (Math.abs(Db - Ds) > 0.5) this.pitchSgn = Ds > Db ? 1 : -1;
-      const sg = this.pitchSgn || Math.sign(this.sinkPitch || 1), fy = d => Math.min(-1, -d - this.hullBot * 0.8);
-      const flatY = fy(sg > 0 ? Ds : Db), snMin = Math.max((fy(sg > 0 ? Db : Ds) - flatY) / L, (fy(Dm) - flatY) / (L * 0.5));
-      // In shallow water one end rests on the seabed and the other end rears clear of the surface.
-      const want = WW.clamp(L * 0.2, 1.6, 5);             // how far the raised end should show
-      let roll = this.sinkRoll, sn = (want - flatY - this.hullTop * 0.85) / L;
-      if (sn > 0.5) sn = 0;                               // too deep: settle flat on the bottom
-      else { sn = WW.clamp(sn, 0.24, 0.5); roll *= 0.6; } // clearly tilted: reads as a wreck, not a ship
-      sn = WW.clamp(Math.max(sn, snMin), 0, 0.7);         // never let the high end or midships sink into the seabed
-      for (let r = 0; r < 3; r++) { // don't roll the upperworks over a beach
-        const p = this.toWorld(0, this.hullTop * Math.sin(roll)); if (WW.terrain.depthAt(p[0], p[1]) >= N.GROUND) break; roll *= 0.4;
-      }
-      const th = Math.asin(sn) * sg;
-      this.restY = flatY + L * 0.5 * sn;
-      this.restTop = flatY + this.hullTop * Math.cos(roll) + L * sn;
-      g.position.set(this.x, WW.lerp(this.startY, this.restY, k * k), this.z);
-      g.rotation.set(WW.lerp(this.listRoll + this.heel, roll, Math.min(1, this.sinkT / 4)), // heel at the fatal hit eases out
-        -this.heading, WW.lerp(this.sinkPitch, th || this.sinkPitch, k) * k);
-      if (!wreckCol) wreckCol = new THREE.Color(0x7a5a44); // rust: stays visible under the water
-      this.model.hullMats.forEach((m, i) => {
-        if (m.color && this.baseColors[i]) m.color.copy(this.baseColors[i]).multiplyScalar(0.7).lerp(wreckCol, k * 0.75);
-        if (this.type === 'submarine') m.opacity = Math.max(m.opacity, k);
-      });
-      this.boomT -= dt;
-      if (this.boomT <= 0 && this.sinkT < 5) {
-        this.boomT = vr(1.4, 2.8);
-        const p = this.toWorld(vr(-L * 0.4, L * 0.4), 0);
-        WW.fx.explosion(p[0], 1, p[1], WW.clamp(L / 12, 0.6, 1.8));
-        WW.emit('shipBoom', { ship: this, x: p[0], y: 1, z: p[1], size: WW.clamp(L / 16, 0.5, 1.4) }); // sound hook
-      }
-      if (this.sinkT < 6 && !this.dmgSites.length) { // damaged ships burn at their hit sites (WW.damage)
-        this.fireT -= dt;
-        if (this.fireT <= 0) {
-          this.fireT = 0.12;
-          const p = this.toWorld(vr(-L * 0.3, L * 0.3), 0);
-          WW.fx.fire(p[0], 0.8, p[1]);
-          if (Math.random() < 0.4) WW.fx.smoke(p[0], 2, p[1], true, 1.5);
-        }
-      }
-      if (!this.slickDone && this.sinkT > 3) { this.slickDone = true; WW.fx.oilSlick(this.x, this.z, L * 0.8); }
-      if (this.sinkT > 5 && this.sinkT - dt <= 5) WW.fx.splash(this.x, this.z, WW.clamp(L / 7, 1, 4));
-      if (this.sinkT >= 8.5) this.becomeWreck();
-    }
-
-    // Settled: stays in the scene until clearAll; leaves WW.world.ships; blocks navigation if it breaks the surface.
-    becomeWreck() {
-      this.sinking = false; this.wreck = true; this.wreckT = 0;
-      const top = this.restTop;
-      this.wreckInfo = { x: this.x, z: this.z, radius: this.stats.length * 0.5 + 3, top, born: WW.time.now, type: this.type };
-      WW.world.wrecks.push(this.wreckInfo);
-      wreckShips.push(this);
-    }
-
-    updateWreck(dt) {
-      this.wreckT += dt;
-      if (this.wreckT > 30 || this.wreckInfo.top < 0.3) return;
-      this.smokeT -= dt;
-      if (this.smokeT <= 0) {
-        this.smokeT = vr(0.6, 1.2) * (this.dmgSites.length ? 2.5 : 1); // lighter when hit sites smoke too
-        WW.fx.smoke(this.x + vr(-1, 1), Math.max(0.5, Math.min(this.wreckInfo.top, 4)), this.z + vr(-1, 1), true, 0.5);
-      }
-    }
+    // startSinking / updateSinking / becomeWreck / updateWreck: ship_sinking.js (run-on, drift, settling, wreck)
 
     remove() {
       if (this.removed) return;
@@ -451,6 +334,7 @@ window.WW = window.WW || {};
 
   WW.Ship = Ship;
   WW.ships = {
+    _wreckShips: wreckShips, // settled wrecks (ship_sinking.js becomeWreck)
     init() {},
     spawn(type, nation, x, z, heading, cls, flag) { // cls: optional class key (ship_classes.js), else picked; flag: WW.FLAGS key
       const md = WW.SHIP_TYPES[type].minDepth;
