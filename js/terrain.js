@@ -47,8 +47,11 @@ window.WW = window.WW || {};
     }
     return reachSq[i];
   }
+  // a scenario's own map (scenario.js terrain: Normandy's coast, terrain_normandy.js), set by generate; null: islands
+  let custom = null;
   // raw terrain height (negative = under water) anywhere, including outside the map
   function heightRaw(x, z) {
+    if (custom) return custom.heightRaw(x, z);
     let h = -BASE_DEPTH + (fbm(x * 0.012, z * 0.012) - 0.5) * 8;
     // fleet start zones (x<120, x>W-120) stay open, except along the top/bottom edges
     const open = Math.min(smooth(95, 135, x), 1 - smooth(W - 135, W - 95, x));
@@ -139,7 +142,8 @@ window.WW = window.WW || {};
     let p = 0;
     for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
       const x = x0 + i * step, z = z0 + j * step, h = hs[j * NX + i];
-      const c = h > 0 ? ramp(LAND, h) : ramp(FLOOR, -h);
+      const cs = custom && custom.color ? custom.color(x, z, h, Math.hypot(hAt(i + 1, j) - hAt(i - 1, j), hAt(i, j + 1) - hAt(i, j - 1)) / (2 * step)) : null;
+      const c = cs || (h > 0 ? ramp(LAND, h) : ramp(FLOOR, -h));
       // baked ambient occlusion: darken creases/hollows and the band where land meets water
       const nb = (hAt(i + 1, j) + hAt(i - 1, j) + hAt(i, j + 1) + hAt(i, j - 1)) * 0.25;
       const crease = WW.clamp((nb - h) * 0.35, 0, 0.22);
@@ -165,6 +169,7 @@ window.WW = window.WW || {};
 
   function buildProps() {
     propsGroup = new THREE.Group();
+    if (custom) { if (WW.normandyProps) WW.normandyProps.build(propsGroup); root.add(propsGroup); return; } // villages, hedgerows, obstacles
     let palms = 0, huts = 0;
     for (let tries = 0; tries < 12000 && palms < 120; tries++) {
       const x = rr(0, W), z = rr(0, H), h = -depthAt(x, z);
@@ -209,9 +214,17 @@ window.WW = window.WW || {};
     floorMesh = new THREE.Mesh(buildFloorGeo(-MARGIN, -MARGIN, W + MARGIN, H + MARGIN, FLOOR_STEP), shared.floorMat);
     floorMesh.receiveShadow = true;
     root.add(floorMesh);
+    // a scenario's coast runs on past the map (Normandy: France to the south, the coast east and west): coarse skirts
+    // beyond the floor, overlapping it by a step, so the land does not end at the floor's margin
+    if (custom && custom.skirts) for (const r of custom.skirts(W, H, MARGIN)) {
+      const m = new THREE.Mesh(buildFloorGeo(r[0], r[1], r[2], r[3], r[4]), shared.floorMat); m.receiveShadow = true; m.position.y = -0.05; root.add(m);
+    }
     buildProps();
     WW.scene && WW.scene.add(root);
-    if (WW.water) WW.water.setDepth(rawDepth, -MARGIN, -MARGIN, W + 2 * MARGIN, H + 2 * MARGIN);
+    // the water's depth texture: the floor, and a scenario's skirts too (outside the texture the sea is deep and opaque,
+    // and at a distance it would z-fight the land there)
+    const ext = custom && custom.waterExtent ? custom.waterExtent(W, H, MARGIN) : [-MARGIN, -MARGIN, W + 2 * MARGIN, H + 2 * MARGIN];
+    if (WW.water) WW.water.setDepth(rawDepth, ext[0], ext[1], ext[2], ext[3]);
   }
 
   function generate(seed) {
@@ -219,6 +232,15 @@ window.WW = window.WW || {};
     disposeOld();
     rs = (seed >>> 0) || 1;
     seedNoise();
+    const sc = WW.scn && WW.scn().terrain;
+    custom = sc || null;
+    if (custom) { // the scenario's map: a fixed layout, seeded noise for detail only; no islands, no land-share tuning
+      features = []; radScale = 1; custom.build(KIT);
+      buildGrid();
+      if (!WW.simOnly) buildMeshes();
+      WW.terrain.seed = seed; WW.terrain.landFraction = gridLand();
+      return;
+    }
     makeFeatures();
     // tune the size of the free islands (not the atoll or the airfield island) so land covers ~4.5-7% of the old
     // 960 x 600 map, and on a bigger map that share / sqrt(area ratio): the open ocean grows faster than the land
@@ -254,6 +276,7 @@ window.WW = window.WW || {};
   }
 
   WW.terrain = { init() {}, generate, depthAt, isNavigable, randomSeaPoint, update, seed: 0, landFraction: 0,
-    get site() { return TI().site; }, padDist: (x, z) => TI().padDist(x, z), PAD_H: 1.2,
+    get site() { return custom ? null : TI().site; }, padDist: (x, z) => (custom ? 1e9 : TI().padDist(x, z)), PAD_H: 1.2,
+    get custom() { return custom; }, heightRaw: (x, z) => heightRaw(x, z),
     _props: () => propsGroup };   // palms and huts (tests/base_clip.js)
 })(window.WW);

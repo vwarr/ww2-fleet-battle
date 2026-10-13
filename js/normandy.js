@@ -39,14 +39,17 @@ window.WW = window.WW || {};
   };
 
   // the forces (P1: a placeholder bombardment group and an S-boat patrol; P5 / P6 bring the real order of battle)
+  // positions: x along the coast, z by the distance off the waterline (normandyTerrain.shoreZ: north is -z)
   N.composition = function () {
-    const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, out = [];
-    const put = (type, nation, x, z, extra) => out.push(Object.assign({ type, nation, x, z }, extra || {}));
-    put('battleship', 'USN', W * 0.32, H * 0.42, { heading: PI / 2 });   // Texas, off Pointe du Hoc
-    put('battleship', 'USN', W * 0.7, H * 0.38, { heading: PI / 2 });    // Arkansas, off Omaha
-    put('cruiser', 'USN', W * 0.82, H * 0.35, { heading: PI / 2, flag: 'RN' });   // HMS Glasgow
-    for (let i = 0; i < 6; i++) put('destroyer', 'USN', W * (0.42 + i * 0.08), H * 0.55, { heading: PI / 2 });
-    for (let i = 0; i < 3; i++) put('pt', 'GER', W * (0.12 + i * 0.05), H - 260 + i * 20, { heading: -PI / 2, cls: 'sboot' });
+    const out = [], T = WW.normandyTerrain;
+    const off = (x, d) => T.shoreZ(x) - d;
+    const put = (type, nation, x, d, extra) => out.push(Object.assign({ type, nation, x, z: off(x, d) }, extra || {}));
+    const E = 0;   // heading east, along the coast (the bombardment ships steamed slow lines parallel to the beach)
+    put('battleship', 'USN', 820, 470, { heading: E });     // Texas, off Pointe du Hoc
+    put('battleship', 'USN', 1720, 450, { heading: E });    // Arkansas, off Omaha
+    put('cruiser', 'USN', 1480, 420, { heading: E, flag: 'RN' });    // HMS Glasgow
+    for (let i = 0; i < 6; i++) put('destroyer', 'USN', 1000 + i * 190, 260 + (i % 2) * 40, { heading: E });
+    for (let i = 0; i < 3; i++) put('pt', 'GER', 60 + i * 40, 380 + i * 30, { heading: E, cls: 'sboot' });   // S-boats out of Cherbourg
     return out;
   };
 

@@ -35,9 +35,12 @@ js/audio_air.js         aircraft sounds: engines, wing guns, hits, ordnance rele
 js/sky.js               WW.sky: sky dome, clouds, lights, fog
 js/water.js             WW.water: water shader, foam, contact shadows
 js/terrain_islands.js   WW.terrainIslands: the island layout (atoll or volcanic island), the airfield pad and site
+js/terrain_normandy_data.js WW.normandyData: the Normandy coast's stations (cross-shore profiles), draws, sectors, villages, obstacle belts
+js/terrain_normandy.js  WW.normandyTerrain: the Normandy coast height function (past the map edges too), ground colours, the beach obstacles (sim data)
 js/sky_time.js          WW.skyTime: the look of the time of day and the rain (palettes, sun / moon light, fog, water, bloom)
 js/weather_fx.js        WW.weatherFx: rain curtains and cloud decks over the squalls (visual)
-js/terrain.js           WW.terrain: sea floor, islands, depth grid
+js/terrain.js           WW.terrain: sea floor, islands, depth grid (a scenario's own map: scn.terrain)
+js/terrain_normandy_props.js WW.normandyProps: Normandy villages and churches, hedgerows, the sea wall, the beach obstacles (visual)
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
 js/models_planes.js     WW.models.buildPlane
