@@ -22,9 +22,12 @@ window.WW = window.WW || {};
   //   D3A1 Val: 2 x 7.7 mm cowl, 1 x 7.7 mm flexible.           B5N2 Kate: no forward guns, 1 x 7.7 mm flexible.
   //   B-26B Marauder: .50 nose, dorsal turret, tail.            B-17E: twin .50 dorsal / ball / tail turrets + waist.
   //   G4M1 Betty: 20 mm tail cannon, 7.7 mm dorsal / waist / nose.
+  //   PBY-5 Catalina: .30 bow, a .50 in each waist blister, .30 tunnel (abeam and aft). H6K Mavis: 7.7 mm bow,
+  //   dorsal and waist, a 20 mm tail cannon. Defensive only (boat(): flying boats, air_flyingboats.js): enough to make
+  //   a lone fighter careful, never to fight off a CAP.
   WW.PLANE_GUNS = {
-    USN: { dive: { fwd: 1, rear: 1.6, arc: 1.6 }, torpedo: { fwd: 0.3, rear: 1, arc: 1.5 } },
-    IJN: { dive: { fwd: 0.45, rear: 1, arc: 1.6 }, torpedo: { fwd: 0, rear: 1, arc: 1.5 } },
+    USN: { dive: { fwd: 1, rear: 1.6, arc: 1.6 }, torpedo: { fwd: 0.3, rear: 1, arc: 1.5 }, flyingboat: { fwd: 0, rear: 1.8, arc: 2.4 } },
+    IJN: { dive: { fwd: 0.45, rear: 1, arc: 1.6 }, torpedo: { fwd: 0, rear: 1, arc: 1.5 }, flyingboat: { fwd: 0, rear: 2, arc: 2.6 } },
     _: { dive: { fwd: 0.5, rear: 1, arc: 1.5 }, torpedo: { fwd: 0.3, rear: 1, arc: 1.5 } },
     variant: { b26: { fwd: 0.6, rear: 3, arc: 3.2 }, b17: { fwd: 0.3, rear: 5, arc: 3.2 },
                g4m: { fwd: 0.2, rear: 2.2, arc: 2.2 }, g4mL: { fwd: 0.2, rear: 2.2, arc: 2.2 } }
@@ -42,6 +45,7 @@ window.WW = window.WW || {};
     return (p.gd = V || N[p.kind] || NOGUN);
   }
   const AIR = { transit: 1, attack: 1, 'return': 1 };
+  const FB_AIR = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, 'return': 1 };   // a flying boat's flight states
   // the enemy fighter the gunner can bear on: in the rear arc within REAR_R, coming at us (its foe) or very close
   function rearTarget(p, g) {
     let best = null, bd = REAR_R;
@@ -63,7 +67,7 @@ window.WW = window.WW || {};
     return P0 * WW.clamp(1.15 - d / REAR_R, 0.15, 1) * WW.clamp(1.3 - rel / 22, 0.25, 1);
   }
   function rear(p, g, s, dt) {
-    if (p.phase === 'roll' || p.phase === 'dive' || p.phase === 'pull' || !AIR[p.state] || p.y < 1) { s.at = null; return; }
+    if (p.phase === 'roll' || p.phase === 'dive' || p.phase === 'pull' || !(p.kind === 'flyingboat' ? FB_AIR : AIR)[p.state] || p.y < 1) { s.at = null; return; }
     if ((s.t -= dt) > 0) { s.fireT -= dt; return; }
     s.t = BURST_T;
     const q = rearTarget(p, g);
@@ -155,5 +159,7 @@ window.WW = window.WW || {};
       add(6.4, 'chase', p, { dur: dur(8, 10) });
   });
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; });
-  WW.gunners = { stats: ST, guns, suppress, REAR_R };
+  // a flying boat's waist / tail guns (FlyingBoat.update calls this: its own states never reach Plane.update)
+  function boat(p, dt) { if (dt > 0 && p.alive && !p.removed) { const g = guns(p); if (g.rear > 0) rear(p, g, st(p), dt); } }
+  WW.gunners = { stats: ST, guns, suppress, boat, REAR_R };
 })();

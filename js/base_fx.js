@@ -124,6 +124,7 @@ window.WW = window.WW || {};
         const a = e.alarm, b3 = String(a.bearing).padStart(3, '0');
         if (a.kind === 'raid') return [n + ': air raid!', 'Enemy planes bearing ' + b3 + (usn ? ', the siren wails: man the guns' : ', the alarm sounds: man the guns'), 2];
         if (a.kind === 'planes') return [n + ': enemy planes!', 'Bearing ' + b3 + ', closing', 2];
+        if (a.kind === 'patrol') return [n + ': ' + (a.by === 'H6K' ? 'the Mavis' : 'the PBY') + ' reports the enemy!', (a.cv ? (a.cv > 1 ? a.cv + ' carriers' : 'A carrier') : 'Enemy ' + (CV[a.what] || 'ships')) + ' bearing ' + b3 + (usn ? ': the fighters scramble, the bombers go out' : ': the Zeros scramble, the bombers go out'), 2];
         if (a.kind === 'ship') return [n + ': enemy warships!', 'Enemy ' + (CV[a.what] || 'ships') + ' sighted bearing ' + b3 + ': general quarters', 2];
         return [n + (a.kind === 'bombed' ? ': bombs falling!' : ': under fire!'), a.kind === 'bombed' ? 'The raid came in unseen: take cover' : 'Shells from the sea: take cover', 2];
       }

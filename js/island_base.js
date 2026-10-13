@@ -239,11 +239,11 @@ window.WW = window.WW || {};
   // The alarm ("oh no" moment), once per round: base.alarm { t, kind, x, z (the threat), bearing (deg from the base) };
   // a 'baseEvent' kind 'alarm' (caption, war diary) and 'baseAlarm' { x, z (the base), t, kind, tx, tz, bearing, base }
   // for the cameras. kind: 'ship' (warships sighted), 'raid' / 'planes' (planes closing), 'shelled' / 'bombed' (hit
-  // before anyone reported them)
+  // before anyone reported them), 'patrol' (the own flying boat's sighting report, base_alert.js: o.what, o.n, o.cv)
   function raiseAlarm(kind, x, z, o) {
     if (!base || base.alarm) return;
     const brg = Math.round((Math.atan2(x - base.x, -(z - base.z)) * 180 / Math.PI + 360) % 360) % 360;
-    base.alarm = { t: WW.time.now, kind, x, z, bearing: brg, n: (o && o.n) || 0, what: (o && o.what) || null };
+    base.alarm = { t: WW.time.now, kind, x, z, bearing: brg, n: (o && o.n) || 0, what: (o && o.what) || null, cv: (o && o.cv) || 0, by: (o && o.by) || null };
     stats.alarmAt = WW.game ? WW.game.roundTime : WW.time.now; stats.alarmKind = kind;
     ev('alarm', { alarm: base.alarm, x: base.x, z: base.z });
     // the focus for the cameras: the camp (huts, tents, the mess), else the base's centre
@@ -334,7 +334,7 @@ window.WW = window.WW || {};
     scan: (nation, sight) => { if (base) scan(nation, sight); },
     shooters: out => { if (base) for (const f of base.facilities) if (f.unit && f.kind === 'aa' && !f.out) out.push(f.unit); },
     owns: t => !!(t && t.isBase), bombardRange: (ship, pref) => (WW.baseAI && WW.baseAI.bombardRange ? WW.baseAI.bombardRange(ship, pref) : pref) });
-  WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, roofAt, runwayOpen: () => runwayOpen(),
+  WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, roofAt, runwayOpen: () => runwayOpen(), alarm: raiseAlarm, // alarm: base_alert.js (a patrol boat's report)
     opsOpen: () => !!base && WW.landGround.opsOpen(base),   // main runway open, not fouled by a wreck, base not neutralized
     get stats() { return stats; }, TUNE, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };
   stats = newStats();
