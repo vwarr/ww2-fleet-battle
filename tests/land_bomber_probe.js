@@ -30,7 +30,7 @@ const spec = (sc, seed) => ({ seed, A: SC[sc].A, B: SC[sc].B, aNation: SC[sc].aN
 function install() {
   const R = window.__lb = {}, BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 }, DT = 0.5;
   let S = null, next = 0, seen = null;
-  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0 }; next = 0; seen = new Map(); };
+  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0, lwo: 0, lwoRun: 0, lwoMax: 0, tdL: 0, aDmg: {} }; next = 0; seen = new Map(); };
   fresh(); WW.on('roundStart', fresh);
   const inc = (o, k, v) => { o[k] = (o[k] || 0) + (v === undefined ? 1 : v); };
   const big = p => p && p.carrier && p.carrier.isBase && BIG[p.variant];
@@ -38,7 +38,7 @@ function install() {
   const A = () => S.all;
   function arec(p) { // every base plane: one record per sortie
     let r = S.allSeen.get(p);
-    if (!r) { r = { v: p.variant, land0: null, dmg: false, td: null, hold: 0, holdY: 0, isle: 0 }; S.allSeen.set(p, r); }
+    if (!r) { r = { v: p.variant, land0: null, dmg: false, td: null, hold: 0, holdY: 0, isle: 0, shut: 0, lm: 0 }; S.allSeen.set(p, r); }
     return r;
   }
   function phase(p) {
@@ -55,6 +55,7 @@ function install() {
   }
   const P = WW.Plane.prototype, D0 = P.damage, SD0 = P.shotDown, DI0 = P.ditch;
   P.damage = function (amt) {
+    if (own(this) && !big(this) && this.alive) { const kb = this.killedBy; inc(S.aDmg, phase(this) + '|' + (kb && kb.isBasePit ? (kb.nation === this.nation ? 'ownAA' : 'baseAA') : kb && kb.stats ? 'shipAA' : 'fighter'), Math.min(amt, Math.max(0, this.hp))); }
     if (big(this) && this.alive) {
       const kb = this.killedBy, src = kb && kb.isBasePit ? (kb.nation === this.nation ? 'ownAA' : 'baseAA') : kb && kb.stats ? 'shipAA' : 'fighter';
       inc(S.dmg, phase(this) + '|' + src, Math.min(amt, Math.max(0, this.hp)));
@@ -90,19 +91,20 @@ function install() {
   };
   function sample() {
     const PL = WW.world.planes, B = WW.islandBase && WW.islandBase.base;
-    for (const p of PL) if (B && p.carrier === B && p.alive && p.state === 'rollout' && !S.tdSeen.has(p)) { S.tdSeen.add(p); S.td.push(WW.game.roundTime); }
+    for (const p of PL) if (B && p.carrier === B && p.alive && p.state === 'rollout' && !S.tdSeen.has(p)) { S.tdSeen.add(p); S.td.push(WW.game.roundTime); if (B.ops && B.ops.mode === 'launch') S.tdL++; }
     let waiting = false;
     for (const p of PL) {
       if (!B || p.carrier !== B || !p.alive || p.removed || !p.variant) continue;
       const r = arec(p);
       if (p.state === 'landing' && r.land0 === null) { r.land0 = WW.game.roundTime; r.dmg = !!p.crippled || p.hp < p.maxHp * 0.6; }
       if (p.state === 'rollout' && r.td === null && r.land0 !== null) r.td = WW.game.roundTime;
-      if (p.state === 'landing' && p.rwPh === 'circuit' && !p.cleared) waiting = true;
+      if (p.state === 'landing' && p.rwPh === 'circuit' && !p.cleared) { waiting = true; if (!WW.landGround.opsOpen(B)) r.shut += DT; else if (B.ops.mode === 'launch') r.lm += DT; }
       if (!BIG[p.variant] && p.state === 'landing' && phase(p) !== 'app') {
         r.hold += DT; r.holdY += p.y * DT; if (Math.hypot(p.x - B.x, p.z - B.z) < 110) r.isle += DT;
       }
     }
     if (B && B.ops && waiting && B.ops.mode === 'launch') { S.lw += DT; S.lwRun += DT; S.lwMax = Math.max(S.lwMax, S.lwRun); } else S.lwRun = 0;
+    if (B && B.ops && waiting && B.ops.mode === 'launch' && WW.landGround.opsOpen(B)) { S.lwo += DT; S.lwoRun += DT; S.lwoMax = Math.max(S.lwoMax, S.lwoRun); } else S.lwoRun = 0;
     for (const p of PL) {
       if (!big(p) || !p.alive || p.removed) continue;
       const r = rec(p), ph = phase(p);
@@ -130,8 +132,8 @@ function install() {
     const o = { gaps, tdN: S.td.length, homeLoss: S.homeLoss, sorties: S.sorties, home: S.home, dmg: S.dmg, lost: S.lost, drops: S.drops.map(d => ({ sp: d.sp, v: d.v, y: d.y, alt: d.alt, ship: d.ship, tt: d.tt, hi: d.hi, hit: d.hit, miss: d.miss })),
       hold: rs.filter(r => r.hold > 0).map(r => ({ v: r.v, t: r.hold, y: r.holdY / r.hold, aa: r.holdAA, f: r.holdF, isle: r.holdIsle })) };
     const LG = WW.landGround && WW.landGround.stats;
-    o.all = [...S.allSeen.values()].filter(r => r.land0 !== null).map(r => ({ v: r.v, t: r.td !== null ? r.td - r.land0 : null, dmg: r.dmg, hold: r.hold, holdY: r.holdY, isle: r.isle }));
-    o.aLost = S.aLost; o.lw = S.lw; o.lwMax = S.lwMax; o.tows = LG ? LG.tows : 0; o.aborts = LG ? LG.aborts : 0;
+    o.all = [...S.allSeen.values()].filter(r => r.land0 !== null).map(r => ({ v: r.v, t: r.td !== null ? r.td - r.land0 : null, dmg: r.dmg, shut: r.shut, lm: r.lm, hold: r.hold, holdY: r.holdY, isle: r.isle }));
+    o.aLost = S.aLost; o.aDmg = S.aDmg; o.tdL = S.tdL; o.flow = WW.landFlow ? Object.assign({}, WW.landFlow.stats) : {}; o.lw = S.lw; o.lwMax = S.lwMax; o.lwo = S.lwo; o.lwoMax = S.lwoMax; o.tows = LG ? LG.tows : 0; o.towLog = WW.landGround.towLog.splice(0); o.aborts = LG ? LG.aborts : 0;
     fresh(); return o;
   };
 }
@@ -154,6 +156,8 @@ function install() {
   const f1 = x => (isFinite(x) ? x.toFixed(1) : '-'), pc = (a, n) => (n ? (100 * a / n).toFixed(1) + '%' : '-');
   const BIG_V = { b17: 1, b26: 1, g4m: 1, g4mL: 1 };
   const med = a => { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+  if (argv.includes('--seedlog')) for (const r of res) console.log(r.scen, r.seed, JSON.stringify(r.aLost), 'lw', r.lw, 'lwo', r.lwo);
+  if (argv.includes('--towlog')) for (const r of res) if (r.towLog.length) console.log(r.scen, r.seed, r.towLog.join(' | '));
   for (const sc of ONLY.concat(ONLY.length > 1 ? ['ALL'] : [])) {
     const L = sc === 'ALL' ? res : res.filter(r => r.scen === sc), N = L.length || 1;
     const add = k => { const o = {}; for (const r of L) for (const x in r[k]) o[x] = (o[x] || 0) + r[k][x]; return o; };
@@ -176,9 +180,16 @@ function install() {
       const lo2 = ['home', 'hold', 'app', 'leave', 'ditch', 'divert'].map(k => al[v + '|' + k] || 0).join('/');
       console.log(`    ${v.padEnd(5)} ${(f1(med(hl)) + '/' + f1(hl.length ? Math.max(...hl) : NaN) + ' (' + hl.length + ')').padStart(22)} ${(f1(med(dg)) + '/' + f1(dg.length ? Math.max(...dg) : NaN) + ' (' + dg.length + ')').padStart(22)} ${String(R.filter(r => r.t === null).length).padStart(13)}   ${lo2}`);
     }
+    const LM = AL.filter(r => r.t !== null);
+    console.log(`  of the wait to land (median per plane): runway shut ${f1(med(LM.map(r => r.shut)))} s (max ${f1(Math.max(0, ...LM.map(r => r.shut)))}), runway open but the field launching ${f1(med(LM.map(r => r.lm)))} s (max ${f1(Math.max(0, ...LM.map(r => r.lm)))}); planes waiting > 60 s on a launch: ${AL.filter(r => r.lm > 60).length}`);
+    if (argv.includes('--seedlog')) console.log('  slow (> 150 s): ' + LM.filter(r => r.t > 150).map(r => `${r.v}${r.dmg ? '/d' : ''} ${r.t} shut ${r.shut} launch ${r.lm}`).join('; '));
+    const ad = add('aDmg');
+    console.log('  small planes damage /rd by phase (ship AA / base AA / own AA / fighter): ' + ['out', 'home', 'hold', 'app'].map(ph => ph + ' ' + ['shipAA', 'baseAA', 'ownAA', 'fighter'].map(k => f1((ad[ph + '|' + k] || 0) / N)).join('/')).join(', '));
     const SM = AL.filter(r => !BIG_V[r.v] && r.hold > 0), st = SM.reduce((s, r) => s + r.hold, 0);
     console.log(`  small planes waiting: ${f1(st / N)} plane-s/rd (median ${f1(med(SM.map(r => r.hold)))} s, max ${f1(Math.max(0, ...SM.map(r => r.hold)))}), mean height ${f1(st ? SM.reduce((s, r) => s + r.holdY, 0) / st : NaN)} u, over the island ${pc(SM.reduce((s, r) => s + r.isle, 0), st)}`);
-    console.log(`  field in launch mode while a plane waits to land: ${f1(L.reduce((s, r) => s + r.lw, 0) / N)} s/rd, longest ${f1(Math.max(0, ...L.map(r => r.lwMax)))} s (median round max ${f1(med(L.map(r => r.lwMax)))}); ground tows ${f1(L.reduce((s, r) => s + r.tows, 0) / N)}/rd, aborted take-offs ${f1(L.reduce((s, r) => s + r.aborts, 0) / N)}/rd`);
+    console.log(`  field in launch mode while a plane waits to land: ${f1(L.reduce((s, r) => s + r.lw, 0) / N)} s/rd, longest ${f1(Math.max(0, ...L.map(r => r.lwMax)))} s (median round max ${f1(med(L.map(r => r.lwMax)))}); with the main runway open ${f1(L.reduce((s, r) => s + r.lwo, 0) / N)} s/rd, longest ${f1(Math.max(0, ...L.map(r => r.lwoMax)))} s (median ${f1(med(L.map(r => r.lwoMax)))}); ground tows ${f1(L.reduce((s, r) => s + r.tows, 0) / N)}/rd, aborted take-offs ${f1(L.reduce((s, r) => s + r.aborts, 0) / N)}/rd`);
+    const fl = add('flow');
+    console.log(`  touchdowns in launch mode ${f1(L.reduce((s, r) => s + r.tdL, 0) / N)}/rd; land_flow: ${Object.keys(fl).map(k => k + ' ' + f1(fl[k] / N)).join(', ') || 'n/a'} (/rd)`);
     for (const v of ['b17', 'g4mL']) for (const ship of [true, false]) {
       const D = DR.filter(d => d.v === v && d.ship === ship); if (!D.length) continue;
       const miss = D.filter(d => d.miss !== null).map(d => d.miss);
