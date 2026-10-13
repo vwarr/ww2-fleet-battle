@@ -27,8 +27,8 @@ window.WW = window.WW || {};
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
   var BREACH_DPS = 0.003, SHORE_P = 0.03, COUNTER = 0.75, CAPSIZE = 0.19, CAPSIZE_P = 0.05, CAPSIZE_ROLL = 1.7;
   var MAG_P = 0.0004, MAG_TURRET = 3, MAG_R = 3;   // magazine: chance per heavy hit on a BB / CA, x3 within MAG_R of a turret
-  var NATIONS = ['USN', 'IJN'], tick = 0, stats = null;
-  function per() { return { USN: 0, IJN: 0 }; }
+  var tick = 0, stats = null;
+  function per() { return WW.perSide(0); }
   function reset() {
     tick = 0;
     stats = { started: per(), out: per(), deckHits: per(), deckFires: per(), deckPlanes: per(), deckSafe: per(), chain: per(),

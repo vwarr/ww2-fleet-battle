@@ -15,7 +15,7 @@ window.WW = window.WW || {};
   var SMOKE_R = 18, SMOKE_LIFE = 40, SMOKE_DT = 2, SMOKE_MAX = 60;
   var CHARGE_R = 320, CHARGE_T = 75, CLOSING_R = 300, COOL = 90, TRIG0 = 0.6, TRIG1 = 0.6;
   var clouds = [], tick = 0, puffT = 0, stats = null;
-  function per() { return { USN: 0, IJN: 0 }; }
+  function per() { return WW.perSide(0); }
   function reset() {
     clouds.length = 0; tick = 0;
     stats = { charges: per(), ships: per(), lost: per(), torpHits: per(), turned: per(), cvSunk: per(), smoke: per() };

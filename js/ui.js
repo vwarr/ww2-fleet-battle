@@ -77,10 +77,13 @@ window.WW = window.WW || {};
     // setup palette
     el.setup = $('div', 'panel setup', root);
     $('div', 'row title', el.setup, 'Fleet setup');
+    // the battle type (scenario.js): the Pacific fleet battle or the Normandy beach assault
+    const scr = $('div', 'row', el.setup);
+    el.scn = ['pacific', 'normandy'].map(id => btn(scr, WW.scenarios[id].name, () => pickScenario(id)));
     $('div', 'row dim small', el.setup, 'The fleets are ready. Press Start, or change them first.');
     const pr = $('div', 'row grid', el.setup);
     el.typeBtns = TYPES.map(t => btn(pr, WW.SHIP_TYPES[t].name, () => { selType = t; }));
-    el.nat = btn($('div', 'row', el.setup), 'Side: USN', b => { selNation = WW.enemyOf(selNation); b.textContent = 'Side: ' + selNation; b.style.color = (selNation === 'USN' ? '#3d6fb0' : '#c0504a'); });
+    el.nat = btn($('div', 'row', el.setup), 'Side: USN', b => { selNation = WW.enemyOf(selNation); b.textContent = 'Side: ' + selNation; b.style.color = sideCol(selNation); });
     el.base = btn($('div', 'row', el.setup), 'Base: -', cycleBase); // the island air base's owner (island_base.js)
     el.base.title = 'Who holds the island airfield';
     $('div', 'row dim small', el.setup, 'Click water: place    Right-click: remove');
@@ -225,9 +228,20 @@ window.WW = window.WW || {};
     const next = { USN: 'IJN', IJN: 'none', none: 'USN' }[baseNow()];
     WW.game.baseChoice = next; WW.islandBase.build(next); baseLabel();
   }
+  const sideCol = n => (n === WW.sides()[0] ? '#3d6fb0' : '#c0504a');
+  // Pacific | Normandy: a new map and new fleets for that battle type (the URL keeps it: ?scn=, a reload stays there)
+  function pickScenario(id) {
+    if (WW.scn().id === id) return;
+    WW.setScenario(id); selNation = WW.sides()[0];
+    WW.game.composition = null; WW.game.custom = false; WW.game.baseChoice = null;
+    try { const u = new URL(location.href); if (id === 'pacific') u.searchParams.delete('scn'); else u.searchParams.set('scn', id); history.replaceState(null, '', u); } catch (e) { /* file:// */ }
+    WW.game.enterSetup(true, true);
+    say(WW.scn().name);
+  }
   function startBattle() {
     const c = WW.game.composition || [];
-    if (!c.some(s => s.nation === 'USN') || !c.some(s => s.nation === 'IJN')) return uiError('Both sides need ships');
+    // the sides that must field ships (Normandy: the Germans hold the coast with no fleet needed)
+    if (!(WW.scn().fleetSides || WW.sides()).every(n => c.some(s => s.nation === n))) return uiError('Both sides need ships');
     WW.game.baseChoice = baseNow(); // the base the ready screen shows
     if (WW.admirals) WW.admirals.startFromPreview(); // the admirals shown on the panel
     WW.game.startRound({ keepMap: true });
@@ -251,8 +265,8 @@ window.WW = window.WW || {};
       const t = g.state === 'battle' ? Math.max(0, WW.cfg.ROUND_TIMEOUT - g.roundTime) : 0;
       el.round.textContent = g.state === 'battle' ? 'Battle   ' + Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') + ' left'
         : g.state === 'setup' ? 'Ready' : 'Battle over';
-      el.usn.textContent = sideLine('USN');
-      el.ijn.textContent = sideLine('IJN');
+      el.usn.textContent = sideLine(WW.sides()[0]);
+      el.ijn.textContent = sideLine(WW.sides()[1]);
       const since = k => WW.stats[k] - (inSetup || !s0 ? WW.stats[k] : s0[k]);
       el.info.textContent = 'Sunk ' + since('shipsSunk') + '   planes lost ' + since('planesLost') + (WW.aces ? WW.aces.infoText() : '');
       el.speed.forEach((b, i) => b.classList.toggle('on', WW.time.scale === [1, 2, 4][i]));
@@ -263,9 +277,11 @@ window.WW = window.WW || {};
       if (inSetup) {
         el.typeBtns.forEach((b, i) => b.classList.toggle('on', TYPES[i] === selType));
         el.nat.textContent = 'Side: ' + selNation;
-        el.nat.style.color = (selNation === 'USN' ? '#3d6fb0' : '#c0504a');
+        el.nat.style.color = sideCol(selNation);
         const c = g.composition || [];
-        el.count.textContent = 'USN ' + c.filter(s => s.nation === 'USN').length + '  IJN ' + c.filter(s => s.nation === 'IJN').length;
+        el.count.textContent = WW.sides().map(n => n + ' ' + c.filter(s => s.nation === n).length).join('  ');
+        el.scn.forEach((b, i) => b.classList.toggle('on', WW.scn().id === ['pacific', 'normandy'][i]));
+        el.base.style.display = WW.scn().base ? 'none' : '';
       }
     }
     // HUD shows in setup; in battle it fades away (H shows it again). Infinite: the corner stays (even in fullscreen) until idle.

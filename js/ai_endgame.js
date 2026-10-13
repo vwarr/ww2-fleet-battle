@@ -36,7 +36,7 @@ window.WW = window.WW || {};
 
   // ---- broken: home and off the map ----
   function retreat(ship, B, d) {
-    ship.escapeEdge = ship.nation === 'USN' ? -1 : 1;
+    ship.escapeEdge = WW.endgame.homeX(ship.nation) === 0 ? -1 : 1;
     ship.throttle = 1;
     if (d.rescue) {
       if (ship.rescue) return rescueSteer(ship, B);                       // survivors first

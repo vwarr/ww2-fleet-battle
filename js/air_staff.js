@@ -56,7 +56,7 @@ window.WW = window.WW || {};
     acc += dt; if (acc < 1) return; acc = 0;
     if (!WW.intel) return;
     const now = WW.time.now;
-    for (const n of ['USN', 'IJN']) {
+    for (const n of WW.sides()) {
       const M = mem[n] || (mem[n] = new Map());
       // a CAP is fighters over the enemy's ships or airfield (escorts seen over our own fleet are not a strongpoint)
       const S = WW.intel.enemyShips(n, { fresh: 120 }).slice(), b = ebase(n);   // (a copy: intel filters into one scratch array)

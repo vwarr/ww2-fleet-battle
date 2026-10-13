@@ -22,7 +22,7 @@ window.WW = window.WW || {};
   var RING_A = [0, 1.15, -1.15, 2.2, -2.2, PI];          // ring slot bearings off the threat axis
   var LOOSE = [[80, 0], [40, -70], [40, 70], [-60, -55], [-60, 55]]; // the loose ring (ringR 0): (forward, lateral) off the threat axis
   var ZIG = [0.5, -0.35, 0.3, -0.55, 0.4, -0.3], LEG = 22, ZIG_R = 300, ZIG_AGE = 75, ZIG_HIT = 75;
-  var subHit = { USN: -1e9, IJN: -1e9 };                  // sim time a side last saw or felt a sub's torpedo
+  var subHit = {};                  // sim time a side last saw or felt a sub's torpedo
 
   // Ring escorts: which ships of the side guard the carriers (assign()). Returns { bb: n, ca: n, dd: n } counts.
   function ringCounts(B, ncv, nbb, nca, ndd) {
@@ -158,7 +158,7 @@ window.WW = window.WW || {};
     var o = e && e.kind === 'torpedo' && e.ship && e.proj && e.proj.owner;
     if (o && o.type === 'submarine' && subHit[e.ship.nation] !== undefined) subHit[e.ship.nation] = WW.time.now;
   });
-  function reset() { subHit.USN = subHit.IJN = -1e9; }
+  function reset() { subHit = WW.perSide(-1e9); }
   WW.on('roundStart', reset); WW.on('setupStart', reset);
   function subThreat(B) {
     var n = B.nation, now = WW.time.now;

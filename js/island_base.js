@@ -303,7 +303,8 @@ window.WW = window.WW || {};
     if (!(WW.time.now - (s._bombT || -1e9) < 30)) { stats.bombardRuns++; ev('bombard', { by: s }); }
     s._bombT = WW.time.now; base.shelledT = WW.time.now;
   });
-  function choice() { const g = WW.game; return g ? g.baseChoice : null; }
+  // the scenario's fixed owner (Normandy: 'none', with no WW.rand roll), else the setup choice
+  function choice() { const g = WW.game; return WW.scn().base || (g ? g.baseChoice : null); }
   // round start: the setup choice, else a WW.rand roll (USN 40%, IJN 40%, none 20%)
   WW.on('roundStart', () => {
     let o = choice();
@@ -313,6 +314,7 @@ window.WW = window.WW || {};
   // setup: show the base the Start button will use (a preview roll on Math.random until the user picks one)
   WW.on('setupStart', () => {
     const g = WW.game;
+    if (WW.scn().base) return build(WW.scn().base);
     if (g && !g.baseChoice && (!g.basePreview || g.basePreviewSeed !== WW.terrain.seed)) { const r = Math.random(); g.basePreview = r < 0.4 ? 'USN' : r < 0.8 ? 'IJN' : 'none'; g.basePreviewSeed = WW.terrain.seed; }
     build(g ? g.baseChoice || g.basePreview : null);
   });

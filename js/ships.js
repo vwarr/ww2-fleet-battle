@@ -33,7 +33,7 @@ window.WW = window.WW || {};
   const vr = (a, b) => a + (b - a) * Math.random(); // visual-only randomness (sinking booms, fires, wreck smoke): keeps WW.rand for the sim
 
   class Ship {
-    constructor(type, nation, x, z, heading, clsKey) {
+    constructor(type, nation, x, z, heading, clsKey, flag) {
       // The 1942 class (ship_classes.js): forced by clsKey, a carrier's from its slot name, else WW.rand. It sets the
       // ship's true size, its model, its name and small stat differences from the type (per-nation torpedoes: core.js).
       let slot = 0;
@@ -41,6 +41,7 @@ window.WW = window.WW || {};
       const cls = WW.pickClass ? WW.pickClass(type, nation, clsKey, slot) : null;
       const st0 = WW.shipType ? WW.shipType(type, nation) : WW.SHIP_TYPES[type], st = cls ? WW.classStats(st0, cls) : st0;
       this.id = nextId++; this.type = type; this.stats = st; this.nation = nation;
+      this.flag = flag || nation; // the hull's flag (WW.FLAGS): RN / FNFL hulls on the USN side (scenario.js)
       this.cls = cls; this.mk = cls ? cls.key : type; // mk: the model key (per-class geometry: crew stations, deck, parts)
       const R = type === 'carrier' && WW.CV_ROSTER ? WW.CV_ROSTER[nation] : null; // carriers: the slot's name (air_squadrons.js)
       // a forced class (tests, lineups) whose slot name belongs to another class takes one of its own names
@@ -451,7 +452,7 @@ window.WW = window.WW || {};
   WW.Ship = Ship;
   WW.ships = {
     init() {},
-    spawn(type, nation, x, z, heading, cls) { // cls: optional class key (ship_classes.js), else picked
+    spawn(type, nation, x, z, heading, cls, flag) { // cls: optional class key (ship_classes.js), else picked; flag: WW.FLAGS key
       const md = WW.SHIP_TYPES[type].minDepth;
       if (!nav(x, z, md)) { // nudge to the nearest navigable point (spiral search)
         outer: for (let r = 2; r <= 80; r += 2) {
@@ -461,8 +462,8 @@ window.WW = window.WW || {};
           }
         }
       }
-      if (heading === undefined) heading = nation === 'USN' ? 0 : Math.PI;
-      const s = new Ship(type, nation, x, z, heading, cls);
+      if (heading === undefined) heading = WW.sideSpec(nation).heading;
+      const s = new Ship(type, nation, x, z, heading, cls, flag);
       WW.shipNav.placeHull(s, nav);  // whole hull clear of land too, not just the centre
       if (WW.scene) WW.scene.add(s.group);
       WW.world.ships.push(s);

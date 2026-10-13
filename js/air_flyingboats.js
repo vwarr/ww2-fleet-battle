@@ -22,7 +22,7 @@ window.WW = window.WW || {};
   var OWN = { inbound: 1, search: 1, shadow: 1, evade: 1, bomb: 1, circle: 1, alight: 1, afloat: 1, liftoff: 1, 'return': 1, depart: 1, alightHome: 1, taxiIn: 1 };
   var WATER = { afloat: 1, liftoff: 1, depart: 1, taxiIn: 1 };   // depart / alightHome / taxiIn: the island's seaplane ramp (seaplane_base.js)
 
-  function per() { return { USN: 0, IJN: 0 }; }
+  function per() { return WW.perSide(0); }
   function reset() {
     stats = { dispatched: 0, landed: 0, rescues: 0, survivors: 0, pilots: 0, catLost: 0, aborted: 0, waited: 0,
       patrols: per(), sightings: per(), lost: per(), home: per(), bombs: per(), bombHits: per(), shadowT: per(), evades: per() };

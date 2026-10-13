@@ -33,12 +33,12 @@ window.WW = window.WW || {};
   };
   var T = { TICK: 0.5, FRESH: 3, SHIP_TTL: 180, PLANE_TTL: 10, REGAIN: 30, SPOT_HOLD: 20 }; // SHIP_TTL 180 (was 90): the plot keeps a last-known position longer on the big map (the searches go back to it)
   var CAPITAL = { carrier: 1, battleship: 1 };
-  var NATIONS = ['USN', 'IJN'];
   var side = {}, tickT = 0, losCache = new Map(), scratch = [];
   var stats = { ticks: 0, los: 0, losHit: 0, contacts: 0, reports: 0, misid: 0, resolved: 0, errSum: 0, wrongStrikes: 0, wrongRedirects: 0 };
 
   function newSide() { return { list: [], map: new Map(), ships: [], planes: [], ever: new Set(), first: new Set(), torps: [] }; }
   function clear() {
+    var NATIONS = WW.sides(); side = {};
     for (var i = 0; i < NATIONS.length; i++) {
       side[NATIONS[i]] = newSide();
     }
@@ -210,6 +210,7 @@ window.WW = window.WW || {};
   // Pooled projectiles are reused, so a track ends on the torpedo's own events (weaponImpact when it ends,
   // weaponDropped when the pooled object is fired again), never on the pool's state: replays stay exact.
   function dropTrack(proj) {
+    var NATIONS = WW.sides();
     for (var n = 0; n < NATIONS.length; n++) { var T = sideOf(NATIONS[n]).torps; for (var i = T.length - 1; i >= 0; i--) if (T[i].proj === proj) T.splice(i, 1); }
   }
   WW.on('weaponImpact', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
@@ -243,6 +244,7 @@ window.WW = window.WW || {};
     try {
       var now = WW.time.now;
       losCache.clear(); stats.ticks++;
+      var NATIONS = WW.sides();
       for (var i = 0; i < NATIONS.length; i++) { scan(NATIONS[i], now); scanTorps(NATIONS[i], now); }
     } catch (e) { console.error('intel', e); }
   }

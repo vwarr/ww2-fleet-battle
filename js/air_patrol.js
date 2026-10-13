@@ -163,10 +163,10 @@ window.WW = window.WW || {};
 
   // ---- schedule: one per side early, then occasional ones; one patrol up per side, two USN boats at most ----
   function schedule(dt) {
-    if (!battle() || location.search.includes('nopatrol')) return;
+    if (!battle() || location.search.includes('nopatrol') || WW.scn().patrol === false) return;   // (Normandy: no flying-boat patrols)
     tick -= dt; if (tick > 0) return; tick = 1;
     var now = WW.game.roundTime;
-    ['USN', 'IJN'].forEach(function (n) {
+    WW.sides().forEach(function (n) {
       var S = sched[n] || (sched[n] = { n: 0, at: 0, up: null, dawn: true });
       if (S.up && (S.up.removed || !S.up.alive)) { var ev = (WW.fleetCmd.doctrine(n) || {}).patrolEvery || 215; S.up = null; S.at = Math.min(S.at > now ? S.at : 1e9, now + WW.randRange(ev * 0.8, ev * 1.2)); }
       // relief on station: a shadower turning for home with the enemy still in its plot sends for the next boat at once

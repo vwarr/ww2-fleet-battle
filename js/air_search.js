@@ -59,7 +59,7 @@ window.WW = window.WW || {};
   }
   function noteSwept(pl) {
     const B = side(pl.nation); if (!B) return;
-    for (let k = 0; k < B.sectors.length; k++) if (WW.dist2(pl.x, pl.z, B.sectors[k].x, B.sectors[k].z) < SWEPT_R * SWEPT_R) ST.searched[pl.nation].add(k);
+    for (let k = 0; k < B.sectors.length; k++) if (WW.dist2(pl.x, pl.z, B.sectors[k].x, B.sectors[k].z) < SWEPT_R * SWEPT_R) (ST.searched[pl.nation] || (ST.searched[pl.nation] = new Set())).add(k);
   }
 
   // ---------- threats to a searcher ----------

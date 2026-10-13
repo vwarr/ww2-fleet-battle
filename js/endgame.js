@@ -27,11 +27,10 @@ window.WW = window.WW || {};
   var SCUT_T = 4, SCUT_P = 0.08, SCUT_HP = 0.25, SCUT_K = 0.6, SCUT_GRACE = 30, SCUT_FAST = 1.3; // check interval, chance per check,
                                                   // hp share and speedK below which, s after the break, pursuer speed ratio
   var HULK_HP = 0.15, HULK_T = 20, HULK_QUIET = 12, SCUT_R = 340, TORP_D = 45, TORP_CD = 20, FOUNDER_T = 35, FOUNDER_HP = 0.012;
-  var NATIONS = ['USN', 'IJN'];
   var MAJOR = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var tasks = [], nextId = 1, tick = 0, scutT = 0, broke = {}, stats = null, last = {};
 
-  function per() { return { USN: 0, IJN: 0 }; }
+  function per() { return WW.perSide(0); }
   function reset() {
     tasks.length = 0; nextId = 1; tick = 0; scutT = 0; broke = {}; last = {}; watchReset();
     stats = { escaped: per(), sunk: per(), scuttled: per(), abandoned: per(), rescues: per(), survivors: per(), lost: per(),
@@ -41,7 +40,9 @@ window.WW = window.WW || {};
   function side(n) { return WW.fleetCmd ? WW.fleetCmd.side(n) : null; }
   function doctrine(n) { var d = WW.fleetCmd && WW.fleetCmd.doctrine(n); return d || {}; }
   function broken(n) { var B = side(n); return !!(B && B.brokenAt && B.posture === 'withdraw'); }
-  function homeX(n) { return n === 'USN' ? 0 : WW.cfg.MAP_W; }
+  // the x of side n's home edge (scenario.js side spec; Pacific: USN west, IJN east). A scenario whose home edges
+  // are not east / west (Normandy: north / south) has no escapes (scn.escapes false)
+  function homeX(n) { var h = WW.sideSpec(n).home; return h.x < 0 ? 0 : h.x > 0 ? WW.cfg.MAP_W : WW.sideSpec(n).cx; }
   function battle() { return WW.game && WW.game.state === 'battle'; }
 
   // A destroyer in a gun fight: a fresh (3 s) enemy gun ship inside its main battery's range + 20.
@@ -207,6 +208,7 @@ window.WW = window.WW || {};
   WW.on('shipHit', function (e) { if (e && e.ship && e.amount > 0) e.ship.egHitT = WW.time.now; });
   // The cripples a side without the rescue doctrine leaves behind when it breaks.
   function breakCheck() {
+    var NATIONS = WW.sides();
     for (var i = 0; i < NATIONS.length; i++) {
       var n = NATIONS[i]; if (broke[n] || !broken(n)) continue;
       broke[n] = true; stats.brokenAt[n] = +WW.game.roundTime.toFixed(0);
@@ -237,7 +239,7 @@ window.WW = window.WW || {};
   var WATCH_T = 5, BITE_T = 25, CLOSE_V = 0.6, CLOSE_T = 12, CLOSE_D = 4, NIGHT_AHEAD = 150, NIGHT_T = 20;
   var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
   var W8 = null;
-  function watchReset() { W8 = { t: 0, gap: new Map(), closeT: { USN: -1e9, IJN: -1e9 }, subBest: 1e9, subT: 0, nightT: 0 }; }
+  function watchReset() { W8 = { t: 0, gap: new Map(), closeT: WW.perSide(-1e9), subBest: 1e9, subT: 0, nightT: 0 }; }
   function fitGun(s) { return s.alive && !s.sinking && !s.escaped && GUN[s.type] && s.hp >= WW.fleetGroups.CRIP * s.maxHp; }
   function watch(dt) {
     var rt = WW.game.roundTime, S = WW.world.ships, i, k;
@@ -262,8 +264,8 @@ window.WW = window.WW || {};
     W8.subBest = Math.min(W8.subBest, sm);
   }
   function lullDead() {
-    var G = WW.game, A = WW.fleetCmd && WW.fleetCmd.side('USN'), B = WW.fleetCmd && WW.fleetCmd.side('IJN');
-    if (!A || !B || (A.hadFit && B.hadFit) || !G.lastHit || subOnly('USN') || subOnly('IJN') || G.roundTime - G.lastHit < LULL_T) return false; // after the first attack; a submarine side has its own stall (main.js)
+    var G = WW.game, sd = WW.sides(), A = WW.fleetCmd && WW.fleetCmd.side(sd[0]), B = WW.fleetCmd && WW.fleetCmd.side(sd[1]);
+    if (!A || !B || (A.hadFit && B.hadFit) || !G.lastHit || subOnly(sd[0]) || subOnly(sd[1]) || G.roundTime - G.lastHit < LULL_T) return false; // after the first attack; a submarine side has its own stall (main.js)
     var P = WW.world.planes;
     for (var i = 0; i < P.length; i++) { var p = P[i]; if (p.alive && p.ordnance && OUTB[p.state] && (p.kind === 'dive' || p.kind === 'torpedo')) return false; }
     return true;
@@ -277,17 +279,18 @@ window.WW = window.WW || {};
       if (fitGun(s) || (s.type === 'pt' && (!WW.supply || WW.supply.torpLeft(s) > 0))) fights[s.nation] = true;
       if (FLEET[s.type]) fleet[s.nation] = true;
     }
-    return !(fights.USN && fleet.IJN) && !(fights.IJN && fleet.USN);
+    var a = WW.sides()[0], b = WW.sides()[1];
+    return !(fights[a] && fleet[b]) && !(fights[b] && fleet[a]);
   }
 
   function update(dt) {
     if (!battle()) return;
     try { watch(dt); } catch (e) { console.error('endgame watch', e); }
     var now = WW.time.now, W = WW.cfg.MAP_W, ships = WW.world.ships;
-    if (!(WW.game && WW.game.noRetire)) for (var i = 0; i < ships.length; i++) {
+    if (!(WW.game && WW.game.noRetire) && WW.scn().escapes !== false) for (var i = 0; i < ships.length; i++) {
       var s = ships[i];
       if (!s.alive || s.sinking) continue;
-      var edge = s.escapeEdge || (s.ai && s.ai.withdrawing && s.type !== 'submarine' && s.type !== 'pt' ? (s.nation === 'USN' ? -1 : 1) : 0); // a cripple sent home (ships_ai.js) leaves too: no hulk parked on the edge
+      var edge = s.escapeEdge || (s.ai && s.ai.withdrawing && s.type !== 'submarine' && s.type !== 'pt' ? (homeX(s.nation) === 0 ? -1 : 1) : 0); // a cripple sent home (ships_ai.js) leaves too: no hulk parked on the edge
       if (edge && (edge < 0 ? s.x <= EXIT : s.x >= W - EXIT)) escape(s);
     }
     pickup(dt);

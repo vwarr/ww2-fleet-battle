@@ -91,7 +91,7 @@ window.WW = window.WW || {};
       lightAt: now + STAR.FLIGHT, until: now + STAR.FLIGHT + STAR.LIFE, lit: false, r: STAR.LIT, fromX: s.x, fromZ: s.z };
     shells.push(sh);
     s.firedAt = now; s.firedCal = 'med';   // the star shell gun's flash (intel.js)
-    stats.starShells[s.nation]++;
+    stats.starShells[s.nation] = (stats.starShells[s.nation] || 0) + 1;
     WW.emit('starShell', sh);
   }
   function tryStar(s, now) {
@@ -121,7 +121,7 @@ window.WW = window.WW || {};
     s.searchOn = true; s.searchTgt = t;
     lights.push({ ship: s, target: t, until: now + SL.ON });
     nextLight.set(s.id, now + SL.ON + SL.CD);
-    stats.searchlights[s.nation]++;
+    stats.searchlights[s.nation] = (stats.searchlights[s.nation] || 0) + 1;
     WW.emit('searchlight', { ship: s, on: true, target: t });
   }
   function update(dt) {

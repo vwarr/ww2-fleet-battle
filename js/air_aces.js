@@ -211,7 +211,7 @@ window.WW = window.WW || {};
       var out = [], seen = {};
       function add(pl) { if (pl && !seen[pl.id]) { seen[pl.id] = 1; out.push(pl); } }
       flying.forEach(function (p) { add(p.pilot); });
-      ['USN', 'IJN'].forEach(function (n) { rosters[n].forEach(function (r) { r.idle.forEach(add); }); });
+      Object.keys(rosters).forEach(function (n) { rosters[n].forEach(function (r) { r.idle.forEach(add); }); });
       return out;
     },
     count: function (nation) { return this.pilots().filter(function (pl) { return pl.ace && (!nation || pl.nation === nation); }).length; },

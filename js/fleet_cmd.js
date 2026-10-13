@@ -8,7 +8,6 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var TICK = 2;
-  var NATIONS = ['USN', 'IJN'];
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
@@ -56,10 +55,10 @@ window.WW = window.WW || {};
   var sides = {}, stats = { ticks: 0, ms: 0, steps: 0 };
 
   function newSide(n) {
-    var B = { nation: n, t: -1e9, tickT: n === 'USN' ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
+    var B = { nation: n, t: -1e9, tickT: n === WW.sides()[0] ? 0 : TICK / 2, posture: 'search', postureAt: 0, late: false, timeLeft: 0,
       strength: { own: 0, known: 0, ratio: 1 }, fit: 0, hadFit: false, brokenAt: 0, doctrine: WW.fleetGroups.rollDoctrine(n),
       startTons: -1, fitTons: 0, foeSeen: new Map(), foeLook: new Map(), foeFit: 0, foeTons: 0, pursueAt: 0, airWar: false, closeAt: 0, holdEnd: 0, foeCV: new Map(),
-      axis: { x: 0, z: 0, h: n === 'USN' ? 0 : Math.PI }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
+      axis: { x: 0, z: 0, h: WW.sideSpec(n).heading }, enemyCentre: null, searchPoint: { x: 0, z: 0 },
       groups: {}, orders: new Map(), focus: {}, incoming: new Map(), strikes: new Map(), airRaid: null, defend: [], sectors: [] };
     ['main', 'carrier', 'screen', 'flotilla', 'pt', 'sub'].forEach(function (g) { B.groups[g] = { members: [], guide: { x: 0, z: 0 } }; B.focus[g] = []; });
     var W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
@@ -67,7 +66,7 @@ window.WW = window.WW || {};
     return B;
   }
   // Doctrine is rolled at round start with WW.rand (after the fleets spawn), so a seed replays the same round.
-  function reset() { sides = {}; for (var i = 0; i < NATIONS.length; i++) sides[NATIONS[i]] = newSide(NATIONS[i]); }
+  function reset() { var NATIONS = WW.sides(); sides = {}; for (var i = 0; i < NATIONS.length; i++) sides[NATIONS[i]] = newSide(NATIONS[i]); }
 
   function gunDps(st, d) {
     var v = 0;
@@ -341,7 +340,11 @@ window.WW = window.WW || {};
     var S = B.sectors, ships = WW.world.ships, planes = WW.world.planes, own = [], i, k, W = WW.cfg.MAP_W;
     for (i = 0; i < ships.length; i++) if (ships[i].alive && ships[i].nation === B.nation) own.push(ships[i]);
     for (i = 0; i < planes.length; i++) if (planes[i].alive && planes[i].nation === B.nation) own.push(planes[i]);
-    var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], enemyHalfEast = B.nation === 'USN';
+    var cs = WW.intel ? WW.intel.enemyShips(B.nation) : [], H = WW.cfg.MAP_H;
+    // the enemy's half of the map (away from the own home edge) and the band before the enemy's home edge (scenario.js)
+    var oh = WW.sideSpec(B.nation).home, xh = WW.sideSpec(WW.enemyOf(B.nation)).home;
+    var enemyHalf = function (q) { return oh.x ? (q.x - W / 2) * oh.x < 0 : (q.z - H / 2) * oh.z < 0; };
+    var nearFoeEdge = function (q) { return xh.x ? Math.abs(q.x - (xh.x > 0 ? W : 0)) < W * 0.42 : Math.abs(q.z - (xh.z > 0 ? H : 0)) < H * 0.42; };
     var best = null;
     // the enemy's half first; after a long fruitless search (fleet_search.js searchFor) it may be anywhere, even
     // behind us (two lone searchers sweeping each other's halves pass in the night)
@@ -351,9 +354,9 @@ window.WW = window.WW || {};
       for (i = 0; i < own.length; i++) if (WW.dist2(own[i].x, own[i].z, sc.x, sc.z) < LOOK_R * LOOK_R) { sc.looked = now; break; }
       sc.stale = 0;
       for (i = 0; i < cs.length; i++) if (now - cs[i].seenAt > 20 && Math.abs(cs[i].x - sc.x) < W / SECT_X / 2 && Math.abs(cs[i].z - sc.z) < WW.cfg.MAP_H / SECT_Z / 2) sc.stale++;
-      sc.prio = Math.min(120, now - sc.looked) + ((sc.x > W / 2) === enemyHalfEast ? eh : 0) + 80 * Math.min(1, sc.stale);
+      sc.prio = Math.min(120, now - sc.looked) + (enemyHalf(sc) ? eh : 0) + 80 * Math.min(1, sc.stale);
       // pursuit: the enemy's escape route, the band in front of its home edge
-      if (B.posture === 'pursue' && Math.abs(sc.x - (enemyHalfEast ? W : 0)) < W * 0.42) sc.prio += 70;
+      if (B.posture === 'pursue' && nearFoeEdge(sc)) sc.prio += 70;
       if (!best || sc.prio > best.prio) best = sc;
     }
     // while searching: the nearest of the high-priority enemy-half sectors to the main body
@@ -367,6 +370,7 @@ window.WW = window.WW || {};
     if (!WW.game || WW.game.state !== 'battle') return;
     var t0 = performance.now();
     stats.steps++;
+    var NATIONS = WW.sides();
     for (var i = 0; i < NATIONS.length; i++) {
       var B = sides[NATIONS[i]];
       B.tickT -= dt;

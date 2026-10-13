@@ -101,9 +101,15 @@ window.WW = window.WW || {};
       hull: { top: 0.42, bowF: 0.3, sternW: 0.25, sheer: 0.2 }, mod: { hp: 1.05, speed: 1.02, turn: 0.92 } }),
     C({ key: 'gyoraitei', type: 'pt', nation: 'IJN', name: 'Gyoraitei T-14', lenM: 20, beamM: 4.4, tons: 20,
       names: ['Gyoraitei 1', 'Gyoraitei 3', 'Gyoraitei 7', 'Gyoraitei 11', 'Gyoraitei 14', 'Gyoraitei 22', 'Gyoraitei 25', 'Gyoraitei 31'],
-      hull: { top: 0.25, bowF: 0.36, sternW: 0.85, sheer: 0.1 }, mod: { hp: 0.9, speed: 0.96, turn: 1.05 } })
+      hull: { top: 0.25, bowF: 0.36, sternW: 0.85, sheer: 0.1 }, mod: { hp: 0.9, speed: 0.96, turn: 1.05 } }),
+    // ---------------- GER (Normandy, scenario.js) ----------------
+    // S-boats of the 5th (Cherbourg) and 9th (Le Havre) S-boat flotillas, out on the night of 5-6 June 1944. A round-bilge
+    // 35 m hull, much bigger and more seaworthy than a PT; the model is the Elco kit at true length for now (build).
+    C({ key: 'sboot', type: 'pt', nation: 'GER', build: 'elco', name: 'S-38 class Schnellboot', lenM: 34.9, beamM: 5.3, tons: 100,
+      names: ['S-84', 'S-100', 'S-136', 'S-138', 'S-139', 'S-140', 'S-142', 'S-130', 'S-144', 'S-145', 'S-146', 'S-150'],
+      hull: { top: 0.3, bowF: 0.32, sternW: 0.8, sheer: 0.12 }, mod: { hp: 1.2, speed: 0.95, turn: 0.9 } })
   ];
-  var BY = {}, LIST = { USN: {}, IJN: {} };
+  var BY = {}, LIST = { USN: {}, IJN: {}, GER: {} };
   K.forEach(function (c) {
     c.len = +(c.lenM * U).toFixed(2); c.beam = +(c.beamM * U).toFixed(2);
     if (c.deckM) {   // flight deck: true length; width (and so the hull) widened by DECK_K for the plane scale

@@ -83,7 +83,18 @@ window.WW = window.WW || {};
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
       patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
       air: { cap: 'overhead', press0: 1, pressT: 0, sweep: true },
-      risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } }
+      risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } },
+    // Normandy (scenario.js): the German side. Its fleet is a few S-boats (the 5th / 9th S-boat flotillas out of
+    // Cherbourg and Le Havre: hit-and-run torpedo raids at night, no radar to speak of, no carriers); the coast
+    // defences are not ships (coast_defence.js) and have their own doctrine
+    GER: { aggression: 0.55, rangeFrac: 0.8, torpedo: 0.85, carrier: 0, night: 0.75, nightEye: 0.4, radar: 0.2, searchlight: 0.4, cvStandoff: 200, screenAhead: 60, flotilla: 2,
+      pressRatio: 1.15, withdrawRatio: 0.5, damageControl: 1.1, avgas: 1, escortCharge: 0.5, rescue: false, scuttle: true, reportErr: 0.08, misId: 0.15,
+      jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
+      ringR: 0, cvSpread: 90, ringDD: 1, ringBB: false, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: false,
+      aaAmmo: 1, ddFuel: 1, torpReloads: 1,
+      patrolStandoff: 110, patrolShadowT: 120, patrolEvery: 215, patrolBombs: 0,
+      air: { cap: 'overhead', press0: 0.6, pressT: 120, sweep: false },
+      risk: { carrier: 0, battleship: 0.5, cruiser: 0.5, destroyer: 0.5, submarine: 0.4, pt: 0.35 } }
   };
   var FIXED = { cvSpread: 1, jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1, air: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)

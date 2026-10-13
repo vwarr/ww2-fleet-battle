@@ -65,9 +65,20 @@ window.WW = window.WW || {};
 
   WW.NATIONS = {
     USN: { id: 'USN', name: 'USN', hull: 0x7d8a99, deck: 0x9a8f78, super: 0x6c7a8a, accent: 0x2b4f8c, mark: 'star', ui: '#7fb2ff' },
-    IJN: { id: 'IJN', name: 'IJN', hull: 0x6b7366, deck: 0x8c7a5a, super: 0x5d6658, accent: 0xb02a2a, mark: 'disc', ui: '#ff7a6b' }
+    IJN: { id: 'IJN', name: 'IJN', hull: 0x6b7366, deck: 0x8c7a5a, super: 0x5d6658, accent: 0xb02a2a, mark: 'disc', ui: '#ff7a6b' },
+    // Normandy (scenario.js): the German side. Kriegsmarine light grey S-boats, field-grey coast defences
+    GER: { id: 'GER', name: 'Germany', hull: 0x8a8f8c, deck: 0x7d7a6e, super: 0x9a9e9a, accent: 0x3b3b3b, mark: 'cross', ui: '#d9c27a' }
   };
-  WW.enemyOf = n => (n === 'USN' ? 'IJN' : 'USN');
+  // Allied flags within a side (ship.flag): the side key stays USN for every Allied hull; only the palette, the ensign,
+  // the crew's uniform, class picking and doctrine shading read the flag
+  WW.FLAGS = {
+    USN: { id: 'USN', name: 'USN', nation: 'USN' },
+    RN: { id: 'RN', name: 'Royal Navy', nation: 'USN', hull: 0x8f969c, deck: 0x9a8f78, super: 0xa3a9ad, accent: 0xb03030, mark: 'roundel', ui: '#9fc2ff' },
+    FNFL: { id: 'FNFL', name: 'Forces navales françaises libres', nation: 'USN', hull: 0x7f8890, deck: 0x9a8f78, super: 0x8d969c, accent: 0x2b4f8c, mark: 'roundel', ui: '#9fb8ff' }
+  };
+  // side -> the other side: a table set by the scenario (scenario.js WW.setScenario; Pacific USN <-> IJN)
+  WW.ENEMY = { USN: 'IJN', IJN: 'USN' };
+  WW.enemyOf = n => WW.ENEMY[n];
 
   WW.SHIP_TYPES = {
     carrier:    { name: 'Carrier',    hp: 900, speed: 5.6, turn: 0.25, length: 26, minDepth: 6, tons: 30000,
@@ -127,7 +138,9 @@ window.WW = window.WW || {};
     IJN: { ship: { rangeK: 1.4, speed: 8.4, dud: 0, sight: 0.7, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7, dmgK: 1.2 },
            pt: { rangeK: 1, speed: 14, dud: 0, sight: 1, dmgK: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1, dmgK: 1.1 } },
     USN: { ship: { rangeK: 0.95, speed: 7.9, dud: 0.2, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.3, sight: 1.1, dmgK: 0.8 },
-           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1, dmgK: 1 } }
+           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1, dmgK: 1 } },
+    // Normandy (scenario.js): S-boat G7a / G7e, 44 kn and 30 kn, 280 kg warheads, reliable by 1944
+    GER: { pt: { rangeK: 1.2, speed: 12, dud: 0.03, sight: 0.9, dmgK: 1.15 } }
   };
   WW.torpSpec = function (nation, launcher) { // launcher: a ship type, or 'air'
     const N = WW.TORPEDO_NATION[nation] || {};

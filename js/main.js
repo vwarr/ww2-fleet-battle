@@ -8,8 +8,9 @@ window.WW = window.WW || {};
   const SUB_STALL = 60;       // see updateGame
   const SUB_CLOSE = 150;      // ... and starts this long after first contact (time to close: a sub makes 3.5 u/s)
   const SUB_SEARCH = 240 + (W - 960) / 8; // a subs-only side that never made contact: the stall ends the round after this long (240 s on the old 960 map, + the crossing of the bigger one at 8 u/s: 420 s)
-  // start zones hug the west / east edges; the open sea between them is the approach
-  const SIDE = { USN: { x0: 15, x1: 115, cx: 65, heading: 0 }, IJN: { x0: W - 115, x1: W - 15, cx: W - 65, heading: Math.PI } };
+  // start zones (scenario.js side specs): Pacific hugs the west / east edges, the open sea between them is the approach
+  const SIDE = n => WW.sideSpec(n);
+  const scn = () => WW.scn();
 
   const call = (mod, fn, ...a) => { const m = WW[mod]; if (m && typeof m[fn] === 'function') return m[fn](...a); };
   const ALL_MODULES = ['fx', 'combat', 'air', 'ships'];
@@ -55,8 +56,9 @@ window.WW = window.WW || {};
     destroyer: [[98, -56], [100, 0], [98, 56]], submarine: [[118, -30]], pt: [[112, 32], [108, 84]]
   };
   function randomComposition() {
+    if (scn().composition) return scn().composition();
     const out = [];
-    for (const nation of ['USN', 'IJN']) {
+    for (const nation of WW.sides()) {
       const counts = { carrier: WW.rand() < 0.25 ? 2 : 1, battleship: WW.randInt(1, 2), cruiser: 2, destroyer: 3, submarine: 1, pt: 2 };
       const dir = nation === 'USN' ? 1 : -1, rearX = nation === 'USN' ? 26 : W - 26, cz = WW.randRange(H / 2 - 70, H / 2 + 70);
       const placed = [];
@@ -98,7 +100,7 @@ window.WW = window.WW || {};
   // keep the fleet shape, move its centre into the side's start zone, then fix each ship onto good water
   function repositionComposition(comp) {
     const out = [];
-    for (const nation of ['USN', 'IJN']) {
+    for (const nation of WW.sides()) {
       const mine = comp.filter(c => c.nation === nation);
       if (!mine.length) continue;
       let mx = 0, mz = 0;
@@ -106,16 +108,18 @@ window.WW = window.WW || {};
       mx /= mine.length; mz /= mine.length;
       const placed = [];
       for (const c of mine) {
-        const x = WW.clamp(c.x - mx + SIDE[nation].cx, 5, W - 5), z = WW.clamp(c.z - mz + H / 2, 8, H - 8);
+        const x = WW.clamp(c.x - mx + SIDE(nation).cx, 5, W - 5), z = WW.clamp(c.z - mz + SIDE(nation).cz, 8, H - 8);
         const p = nearestOk(x, z, c.type, placed);
         placed.push(p);
-        out.push({ type: c.type, nation, x: p.x, z: p.z });
+        const o = { type: c.type, nation, x: p.x, z: p.z };
+        if (c.flag) o.flag = c.flag; if (c.cls) o.cls = c.cls;
+        out.push(o);
       }
     }
     return out;
   }
   function spawnComposition(comp) {
-    for (const c of comp) call('ships', 'spawn', c.type, c.nation, c.x, c.z, SIDE[c.nation].heading);
+    for (const c of comp) call('ships', 'spawn', c.type, c.nation, c.x, c.z, c.heading !== undefined ? c.heading : SIDE(c.nation).heading, c.cls, c.flag);
   }
   function clearModules() {
     ALL_MODULES.forEach(m => call(m, 'clearAll'));
@@ -127,7 +131,7 @@ window.WW = window.WW || {};
   const game = {
     mode: 'setup', state: 'setup', composition: null, winner: null, custom: false,
     roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, contactT: null, metT: null, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
-    hadMajor: { USN: true, IJN: true },
+    hadMajor: {},
     // opts.keepMap: start on the current map (used by "Start battle" in setup mode)
     startRound(opts) {
       opts = opts || {};
@@ -137,14 +141,14 @@ window.WW = window.WW || {};
       }
       clearModules();
       WW.stats.round++;
-      game.winner = null; game.endReason = null; game.roundTime = 0; clearT.USN = clearT.IJN = 0; harmT.USN = harmT.IJN = 0; game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.metT = null; game.lastHit = 0;
+      game.winner = null; game.endReason = null; game.roundTime = 0; sideReset(); game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.metT = null; game.lastHit = 0;
       let comp;
       if (game.composition && game.composition.length) {
         comp = opts.keepMap ? game.composition : repositionComposition(game.composition);
       } else comp = randomComposition();
       game.state = 'battle';  // set before spawn so ships know a battle is live
       spawnComposition(comp);
-      game.hadMajor = { USN: afloat('USN', true) > 0, IJN: afloat('IJN', true) > 0 }; game.hadCV = WW.world.ships.some(s => s.type === 'carrier');
+      game.hadMajor = WW.perSide(n => afloat(n, true) > 0); game.hadCV = WW.world.ships.some(s => s.type === 'carrier');
       WW.emit('roundStart', { round: WW.stats.round, seed: game.seed });
     },
     // setup mode: fleets placed and waiting for Start (ships do not act in 'setup').
@@ -210,7 +214,7 @@ window.WW = window.WW || {};
   //    broken side from counting as clear; both sides with nothing to fight a night action with end it ('night',
   //    WW.endgame.nightOut).
   const ACT_T = 30, CONTACT_K = 0.75;
-  const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = { USN: 0, IJN: 0 }, harmT = { USN: 0, IJN: 0 }, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
+  const GUNS = { battleship: 1, cruiser: 1, destroyer: 1 }, clearT = {}, harmT = {}, OUT = { transit: 1, inbound: 1, attack: 1 }; // OUT: a bomber on its way in (not one flying home armed)
   WW.on('shipHit', e => { if (e && e.ship && harmT[e.ship.nation] !== undefined) harmT[e.ship.nation] = game.roundTime; });
   const FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 }; // the surface fleets (not PT pickets, submarines or the island's batteries)
   WW.on('shellFired', e => { // the fleets have met: a fleet ship's gun (not MG) fired at an enemy fleet ship
@@ -243,9 +247,11 @@ window.WW = window.WW || {};
   // gun ship in reach (SPENT_GUN x its range; merge A/B: kills 19 -> 17% without this): the side retires even
   // though enemy guns or strikes are still about (a pursuit that scores only the odd hit is no finish; the tail after
   // the climax was 2-3 minutes)
-  const SPENT_T = 75, SPENT_HIT = 20, SPENT_AIR = 200, SPENT_GUN = 1.5, lostT = { USN: 0, IJN: 0 };
+  const SPENT_T = 75, SPENT_HIT = 20, SPENT_AIR = 200, SPENT_GUN = 1.5, lostT = {};
   WW.on('shipSunk', s => { if (s && lostT[s.nation] !== undefined && game.state === 'battle') lostT[s.nation] = game.roundTime; });
-  WW.on('roundStart', () => { lostT.USN = lostT.IJN = 0; });
+  // per-side clocks, zeroed for this scenario's sides at round start
+  function sideReset() { for (const n of WW.sides()) clearT[n] = harmT[n] = 0; }
+  WW.on('roundStart', () => { for (const n of WW.sides()) lostT[n] = 0; });
   function spent(n, B) {
     const t = game.roundTime;
     if (t - Math.max(B.brokenAt, lostT[n]) < SPENT_T || t - harmT[n] < SPENT_HIT) return false;
@@ -278,7 +284,7 @@ window.WW = window.WW || {};
     const T0 = WW.cfg.ROUND_TIMEOUT, MAX = T0 + EXT_MAX;
     let T = Math.max(T0, Math.min(MAX, (game.lastHit || 0) + ACT_T));
     if (!game.hadCV && game.contactT !== null) T = Math.max(T, Math.min(T0 + 2 * EXT_MAX, game.contactT + CONTACT_K * T0));
-    if (WW.fleetCmd) for (const n of ['USN', 'IJN']) {
+    if (WW.fleetCmd) for (const n of WW.sides()) {
       const B = WW.fleetCmd.side(n);
       if (B && B.brokenAt && afloat(n, true)) T = Math.max(T, Math.min(MAX, B.brokenAt + PURSUE_T));
     }
@@ -288,6 +294,7 @@ window.WW = window.WW || {};
   const lastEscaped = n => !!(WW.endgame && WW.endgame.lastOut && WW.endgame.lastOut(n) === 'escaped');
 
   function updateGame(dt) {
+    if (scn().updateGame && scn().updateGame(dt, game)) return; // the scenario's own ending rules (Normandy: normandy_game.js)
     if (game.state === 'battle') {
       game.roundTime += dt;
       // A side left with only submarines ends the round when nothing has been sunk, hit or attacked (a weapon dropped or fired) for SUB_STALL s since the

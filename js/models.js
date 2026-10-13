@@ -7,7 +7,11 @@ window.WW = window.WW || {};
   // Art palette (soft, desaturated pastels). Nation ids still come from WW.NATIONS.
   var PAL = {
     USN: { id: 'USN', hull: 0x7f94aa, deck: 0xa98f70, super: 0x91a5ba, accent: 0x34507e, band: 0x2b3b58, gun: 0x525c68, mark: 'star' },
-    IJN: { id: 'IJN', hull: 0x8a8670, deck: 0xa88d6a, super: 0xa49f84, accent: 0xc4524a, band: 0x8a3a32, gun: 0x57564c, mark: 'disc' }
+    IJN: { id: 'IJN', hull: 0x8a8670, deck: 0xa88d6a, super: 0xa49f84, accent: 0xc4524a, band: 0x8a3a32, gun: 0x57564c, mark: 'disc' },
+    // Normandy (scenario.js): the Kriegsmarine's light grey, and the RN / Free French Western Approaches greys (ship.flag)
+    GER: { id: 'GER', hull: 0x9a9d98, deck: 0x9a8c74, super: 0xaeb1ac, accent: 0x4a4a4a, band: 0x3a3a3a, gun: 0x55585a, mark: 'cross' },
+    RN: { id: 'RN', hull: 0x96a3ab, deck: 0xa98f70, super: 0xb4bfc4, accent: 0x5a7590, band: 0x2f4a62, gun: 0x5a6068, mark: 'roundel' },
+    FNFL: { id: 'FNFL', hull: 0x8796a2, deck: 0xa98f70, super: 0xa3afb8, accent: 0x34507e, band: 0x2b3b58, gun: 0x525c68, mark: 'roundel' }
   };
   var C = { white: 0xefe8da, dark: 0x464b53, gun: 0x585e66, red: 0xd2564c, glass: 0x34465a, wood: 0x9a7650, line: 0x2b313a };
 

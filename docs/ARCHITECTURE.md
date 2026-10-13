@@ -21,6 +21,8 @@ This document tells you how the code is organized. Read it before you change a m
 ```
 vendor/three.min.js     Three.js r149 (UMD build, global THREE)
 js/core.js              WW.cfg, data tables, helpers, event bus
+js/scenario.js          WW.scenarios, WW.scn(), WW.sides(), WW.perSide(), WW.sideSpec(): the battle type (Pacific | Normandy, ?scn=)
+js/normandy.js          the Normandy scenario's hooks: forces, commanders, the round's ending (docs/NORMANDY_PLAN.md)
 js/daylight.js          WW.dayNight, WW.daylight: the round's clock (day / dusk / night), no flying after dusk, night landings
 js/audio.js             WW.audio: synthesized sound engine (buses, voices, spatial model, loops)
 js/audio_synth.js       WW.audio.syn: noise buffers, envelopes, bursts, booms, crackle

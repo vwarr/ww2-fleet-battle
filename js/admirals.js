@@ -58,7 +58,6 @@ window.WW = window.WW || {};
         say: { strike: 'aircraft, attack', press: 'all destroyers, charge!', retire: 'make smoke and retire' } }
     ]
   };
-  var NATIONS = ['USN', 'IJN'];
   var cur = {}, preview = null, usePreview = false;
   var stats = { flagLost: 0, transfers: 0, leaderless: 0, confusionSec: 0, orders: {} };
   var NAMES = { // flagship / successor names for ships that have none (carriers take their squadron group's name)
@@ -66,10 +65,12 @@ window.WW = window.WW || {};
     IJN: { battleship: ['Kirishima', 'Hiei', 'Haruna'], cruiser: ['Nagara', 'Chikuma', 'Tone', 'Jintsu'], destroyer: ['Nowaki', 'Arashi', 'Kagero', 'Yukikaze', 'Amatsukaze'] }
   };
 
-  function byKey(n, k) { var L = ROSTER[n] || []; for (var i = 0; i < L.length; i++) if (L[i].key === k) return L[i]; return null; }
+  // the scenario's own rosters (scenario.js admirals, e.g. Normandy's Hall / Kraiss), else these
+  function rosterOf(n) { var R = WW.scn().admirals; return (R && R[n]) || ROSTER[n] || []; }
+  function byKey(n, k) { var L = rosterOf(n); for (var i = 0; i < L.length; i++) if (L[i].key === k) return L[i]; return null; }
   function hasType(n, t) { return WW.world.ships.some(function (s) { return s.alive && s.nation === n && s.type === t; }); }
   function pickKey(n, r) {
-    var L = ROSTER[n], ok = L.filter(function (p) { return p.flag !== 'carrier' || hasType(n, 'carrier'); });
+    var L = rosterOf(n), ok = L.filter(function (p) { return p.flag !== 'carrier' || hasType(n, 'carrier'); });
     if (!ok.length) ok = L;
     return ok[Math.min(ok.length - 1, Math.floor(r * ok.length))].key;
   }
@@ -79,14 +80,14 @@ window.WW = window.WW || {};
     return s.name || WW.SHIP_TYPES[s.type].name;
   }
   function nameShips() {
-    var used = { USN: {}, IJN: {} };
+    var used = WW.perSide(function () { return {}; });
     WW.world.ships.forEach(function (s) {
       var L = NAMES[s.nation] && NAMES[s.nation][s.type]; if (!L || s.name) return;
       var u = used[s.nation][s.type] = (used[s.nation][s.type] || 0) + 1;
       s.name = L[(u - 1) % L.length] + (u > L.length ? ' II' : '');
     });
   }
-  var FLAG_PREF = { carrier: ['carrier', 'battleship', 'cruiser'], battleship: ['battleship', 'cruiser', 'carrier'], cruiser: ['cruiser', 'battleship', 'destroyer', 'carrier'] };
+  var FLAG_PREF = { pt: ['pt'], carrier: ['carrier', 'battleship', 'cruiser'], battleship: ['battleship', 'cruiser', 'carrier'], cruiser: ['cruiser', 'battleship', 'destroyer', 'carrier'] };
   function firstOf(n, types) {
     for (var k = 0; k < types.length; k++) for (var i = 0; i < WW.world.ships.length; i++) { var s = WW.world.ships[i]; if (s.alive && s.nation === n && s.type === types[k]) return s; }
     return null;
@@ -111,7 +112,7 @@ window.WW = window.WW || {};
     stats.flagLost = stats.transfers = stats.leaderless = stats.confusionSec = 0; stats.orders = {};
     if (!WW.fleetCmd || !WW.fleetGroups) return;
     nameShips();
-    NATIONS.forEach(function (n) {
+    WW.sides().forEach(function (n) {
       var key = fromPreview && preview && byKey(n, preview[n]) ? preview[n] : pickKey(n, WW.rand());
       var P = byKey(n, key), B = WW.fleetCmd.side(n);
       if (B) apply(B.doctrine, P);
@@ -185,12 +186,12 @@ window.WW = window.WW || {};
       order(A, 'reserve', A.title + ' holds his reserve', { carrier: e.carrier });
   });
   WW.on('victory', function () {
-    NATIONS.forEach(function (n) { var A = cur[n]; if (A && A.confusedUntil) { stats.confusionSec += WW.time.now - A.confusedAt; A.confusedUntil = 0; } });
+    WW.sides().forEach(function (n) { var A = cur[n]; if (A && A.confusedUntil) { stats.confusionSec += WW.time.now - A.confusedAt; A.confusedUntil = 0; } });
   });
   WW.on('roundStart', function () { roll(usePreview); usePreview = false; });
   WW.on('setupStart', function () { cur = {}; reroll(); });
   function reroll() { // setup panel preview (Math.random: setup is not replayable; Start uses it)
-    preview = {}; NATIONS.forEach(function (n) { preview[n] = pickKey(n, Math.random()); });
+    preview = {}; WW.sides().forEach(function (n) { preview[n] = pickKey(n, Math.random()); });
     WW.emit('admiralsPreview', preview);
   }
 
@@ -198,7 +199,7 @@ window.WW = window.WW || {};
     ROSTER: ROSTER, FLAG_K: FLAG_K, stats: stats, before: before, after: after, reroll: reroll,
     startFromPreview: function () { usePreview = true; },  // ui.js Start: the next round keeps the admirals the panel shows
     of: function (n) { return cur[n] || null; },
-    list: function () { return NATIONS.map(function (n) { return cur[n]; }).filter(Boolean); },
+    list: function () { return WW.sides().map(function (n) { return cur[n]; }).filter(Boolean); },
     preview: function (n) { return preview && byKey(n, preview[n]); },
     isFlag: function (s) { var A = s && cur[s.nation]; return !!(A && A.flagship === s); },
     targetK: function (s) { var A = s && cur[s.nation]; return A && A.flagship === s && !A.confusedUntil ? FLAG_K : 1; },
