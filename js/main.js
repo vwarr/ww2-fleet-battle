@@ -360,10 +360,12 @@ window.WW = window.WW || {};
     requestAnimationFrame(frame);
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
+    call('shipSwell', 'unpose');   // Normandy: the swell's pose comes off first (ship_swell.js)
     call('dmgVis', 'unpose');      // the sim never sees the visual settling / trim (damage_visuals.js)
     // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
     call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
+    call('shipSwell', 'pose', rdt); // Normandy: the ships heave, pitch and roll on the swell (ship_swell.js), visual only
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
@@ -375,6 +377,7 @@ window.WW = window.WW || {};
     call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
     call('beachheadFx', 'update', rdt);   // Normandy: craters, scorch, wire, hulks, debris (beachhead_fx.js), visual only
+    call('rocketBarrage', 'update', rdt); // Normandy: the LCT(R)s' rockets at H-5 (rocket_barrage.js), visual only
     call('defenceFx', 'update', rdt);     // Normandy: the German crews, MG 42 tracers, gun flashes (defence_fx.js), visual only
     call('offmapAirFx', 'update', rdt);   // Normandy: the planes from England (air_offmap_fx.js), visual only
     call('dmgVis', 'draw', rdt);    // scorch / hole decals and deck wrecks on the posed hulls
@@ -389,6 +392,7 @@ window.WW = window.WW || {};
   // onStep: optional test hook, called after every sim step of fastForward
   function fastForward(seconds, onStep) {
     let left = seconds;
+    call('shipSwell', 'unpose');
     call('dmgVis', 'unpose');
     while (left > 1e-9) { const d = Math.min(STEP, left); step(d); left -= d; if (onStep) onStep(d); }
   }
