@@ -28,6 +28,11 @@
 //   p47        a P-47 flight diving on a strongpoint (sim 240 s)
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
+//   dozer / hoc_grapnels / hoc_ropes / hoc_ladder / leader / lci91 / lci85 / dukw_swim / vehicles_jam / lane_marked /
+//   ditch / prisoners / exit_e1: the realism pass: a dozer at a gap lane, the Rangers' grapnels going up and the men on
+//              the ropes, the fire-brigade ladder up, Cota on the shingle, the two burning LCIs, a 111th FA DUKW low in the
+//              chop, the vehicle jam at the shingle, a marked lane's buoys and flags, E-3's ditch, prisoners marched down
+//              (forced: WN 65 taken), vehicles going up E-1 (forced: its block blown)
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
 const { chromium } = require('playwright');
 const path = require('path'), OUT = path.join(__dirname, 'shots', 'normandy');
@@ -82,7 +87,22 @@ const SHOTS = [
   ['mg_fire', () => { __sim.fastForward(Math.max(0, 130 - WW.game.roundTime)); const now = WW.time.now; let e = null, t = null; for (let i = 0; i < 40 && !t; i++) { for (const q of WW.coastDefence.elements) { const st = WW.defenceFx._state(q); if (q.alive && q.kind === 'mg' && st && st.tgt && st.tgt.isSquad && st.tgt.alive && WW.terrain.heightRaw(st.tgt.x, st.tgt.z) > 0.05 && now - st.actT < 1) { e = q; t = st.tgt; break; } } if (!t) __sim.fastForward(1); } if (!t) { e = WW.coastDefence.elements.find(q => q.alive && q.kind === 'mg'); t = e; } warm(); const dx = e.x - t.x, dz = e.z - t.z, d = Math.hypot(dx, dz), ux = dx / d, uz = dz / d; const px = t.x - ux * 4 + uz * 12, pz = t.z - uz * 4 - ux * 12; return [px, Math.max(0, WW.terrain.heightRaw(px, pz)) + 2.6, pz, (t.x * 3 + e.x) / 4, 0.8, (t.z * 3 + e.z) / 4]; }],
   ['wn_out', () => { __sim.fastForward(Math.max(0, 200 - WW.game.roundTime)); const now = WW.time.now; const e = WW.coastDefence.elements.filter(q => !q.alive && !q.dormant && q.type !== 'wall').sort((a, b) => (b.K.wall ? 1 : 0) - (a.K.wall ? 1 : 0) || b.outAt - a.outAt)[0] || WW.coastDefence.elements[0]; warm(); return [e.x - 7, e.y + 4, e.z - 6, e.x, e.y + 0.3, e.z]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
-  ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
+  ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }],
+  // the realism pass (vehicles.js, beach_engineers.js, leaders.js, hoc_climb.js, prisoners.js; drawn by vehicles_fx.js
+  // and hoc_fx.js), in clock order; the last ones force the state they show (a lane marked, E-1 open, a surrender)
+  ['dozer', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 50)) __sim.fastForward(1); const v = WW.vehicles.live.find(q => q.K.dozer && q.working) || WW.vehicles.live.find(q => q.K.dozer) || WW.vehicles.all[0]; return [v.x - 3.5, 1.8, v.z - 3, v.x, 0.2, v.z]; }],
+  ['hoc_grapnels', () => { for (let i = 0; i < 2000 && !WW.hocClimb.ropes.length; i++) __sim.fastForward(0.25); __sim.fastForward(0.7); const r = WW.hocClimb.ropes[0], u = r.craft; return [u.x + 4, 2.5, u.z - 9, r.x, 2.4, r.zFoot]; }],
+  ['hoc_ropes', () => { let q; for (let i = 0; i < 200 && !(q = WW.infantry.squads.find(s => s.alive && s.state === 'rope' && s.rope && s.ropeP > 0.3)); i++) __sim.fastForward(0.5); q = q || WW.infantry.squads.find(s => s.sector === 'hoc'); const r = q.rope || { x: q.x, zFoot: T.bluffFootZ(q.x) }; return [r.x + 5, 3.2, r.zFoot - 6, r.x, 2.2, r.zFoot + 1]; }],
+  ['hoc_ladder', () => { let u; for (let i = 0; i < 120 && !(u = WW.landingCraft.live.find(q => q.type === 'dukw' && q.ladderUp)); i++) __sim.fastForward(1); __sim.fastForward(6); u = u || WW.landingCraft.craft.find(q => q.type === 'dukw' && q.ladder); return [u.x + 5, 2.5, u.z - 5, u.x, 2.2, u.z + 2]; }],
+  ['leader', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(7 * 60 + 36)) __sim.fastForward(1); const L = WW.leaders.list.find(q => q.key === 'cota' && q.ashore) || WW.leaders.list.find(q => q.ashore) || WW.leaders.list[0]; return [L.cx - 3, 1.4, L.z - 3, L.cx, 0.3, L.z]; }],
+  ['lci91', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(7 * 60 + 50)) __sim.fastForward(1); const u = WW.landingCraft.craft.find(q => q.named === 'LCI(L)-91'); return [u.x - 9, 3.5, u.z - 8, u.x, 0.4, u.z]; }],
+  ['lci85', () => { const u = WW.landingCraft.craft.find(q => q.named === 'LCI(L)-85'); return [u.x - 10, 4, u.z - 9, u.x, 0.4, u.z]; }],
+  ['dukw_swim', () => { let u; for (let i = 0; i < 200 && !(u = WW.landingCraft.live.find(q => q.type === 'dukw' && !q.ladder && q.state === 'run')); i++) __sim.fastForward(1); u = u || WW.landingCraft.craft.find(q => q.type === 'dukw'); return [u.x - 2.6, 1.2, u.z - 2.2, u.x, 0.1, u.z]; }],
+  ['vehicles_jam', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(8 * 60 + 20)) __sim.fastForward(1); const L = WW.vehicles.live.filter(v => v.state === 'jam'), v = L.sort((a, b) => L.filter(o => Math.abs(o.x - b.x) < 5).length - L.filter(o => Math.abs(o.x - a.x) < 5).length)[0] || WW.vehicles.all[0]; return [v.x - 6, 2.6, v.z - 6, v.x + 1, 0.3, v.z + 0.5]; }],
+  ['lane_marked', () => { const E = WW.beachEng, L = E.lanes.find(l => l.marked) || Object.assign(E.lanes[0], { marked: true }); const z = T.shoreZ(L.x); return [L.x - 10, 4, z - 40, L.x, 0.3, z - 6]; }],
+  ['ditch', () => { const b = WW.beachEng.blocks.find(q => q.id === 'E-3'); return [b.x - 6, 3, b.z - 7, b.x, gy0(b.x, b.z), b.z]; }],
+  ['prisoners', () => { const C = WW.coastDefence, w = C.wnOf('WN65'); if (!w.silenced) { const q = WW.infantry.squads.find(s => s.alive && s.kind !== 'tank'); q.state = 'top'; q.x = w.x; q.z = w.z + 2; w.elements.forEach(e => C.knockOut(e)); } __sim.fastForward(40); const r = WW.prisoners.recs.find(x => x.state === 'march') || WW.prisoners.recs[0], p = WW.prisoners.pos(r); return [p.x + 3, gy0(p.x, p.z) + 1.6, p.z - 3, p.x, gy0(p.x, p.z) + 0.2, p.z]; }],
+  ['exit_e1', () => { const C = WW.coastDefence; for (const id of ['WN65', 'WN64']) C.wnOf(id).elements.forEach(e => C.knockOut(e)); __sim.fastForward(2); const b = WW.beachEng.blocks.find(q => q.id === 'E-1'); b.prog = 1.2; __sim.fastForward(22); return [b.x - 9, 4, b.z - 10, b.x, gy0(b.x, b.z), b.z + 6]; }]
 ];
 (async () => {
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -96,6 +116,7 @@ const SHOTS = [
     WW.game.composition = null; WW.game.mode = 'auto'; WW.game.startRound({ keepMap: true });
     __sim.fastForward(30); WW.time.scale = 0.0001;
     window.T = WW.normandyTerrain;
+    window.gy0 = (x, z) => Math.max(0, WW.terrain.heightRaw(x, z));
     window.warm = () => { for (let i = 0; i < 36; i++) { __sim.fastForward(1 / 30); WW.defenceFx.update(); } };
   }, SEED);
   const done = [];

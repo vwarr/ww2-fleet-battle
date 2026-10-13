@@ -34,7 +34,7 @@ window.WW = window.WW || {};
     const nd = drawCheck(game), top = WW.infantry ? WW.infantry.stats.onTop : 0;
     if (nd >= DRAWS_WIN && top >= TOP_WIN) { beachheadT = game.roundTime; game.endRound('USN', 'beachhead', 'GER'); return true; }
     const L = WW.landingCraft;
-    const spent = L && L.plan.length && L.craft.length >= L.plan.length && !L.live.length;
+    const spent = L && L.planAll.length && L.craft.length >= L.planAll.length && !L.live.length;
     if (spent && menAshore() < HELD) { game.endRound('GER', 'repulsed', 'USN'); return true; }
     if (game.roundTime >= WW.cfg.ROUND_TIMEOUT) game.endRound('GER', 'time', 'USN');
     return true;
@@ -43,7 +43,10 @@ window.WW = window.WW || {};
     const I = WW.infantry ? WW.infantry.stats : {}, L = WW.landingCraft ? WW.landingCraft.stats : {}, C = WW.coastDefence ? WW.coastDefence.stats : {};
     return { landed: I.landed || 0, lost: (I.lost || 0) + (L.menLost || 0), onTop: I.onTop || 0, tanksLanded: L.tanksLanded || 0, tanksLost: (L.tanksLost || 0) + (I.tanksLost || 0),
       craft: L.launched || 0, craftLost: L.wrecked || 0, mined: L.mined || 0, foundered: L.foundered || 0, silenced: C.silenced || 0, wns: WW.coastDefence ? WW.coastDefence.wns.length : 0,
-      out: C.out || 0, draws: Object.assign({}, open), hocGuns: !!I.hocGuns, beachheadT, bySector: I.bySector || {} };
+      out: C.out || 0, draws: Object.assign({}, open), hocGuns: !!I.hocGuns, beachheadT, bySector: I.bySector || {},
+      // the realism pass: the gap lanes, the exits (open for vehicles), the vehicles, the prisoners
+      lanes: WW.beachEng ? Object.assign({}, WW.beachEng.stats) : null, exits: WW.beachEng ? WW.beachEng.blocks.filter(b => b.state === 'open').map(b => ({ id: b.id, t: b.openT })) : [],
+      vehicles: WW.vehicles ? Object.assign({}, WW.vehicles.stats) : null, prisoners: WW.prisoners ? WW.prisoners.stats.men : 0 };
   }
   N.updateGame = updateGame;
   WW.on('roundStart', reset);

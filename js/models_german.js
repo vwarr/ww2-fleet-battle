@@ -104,5 +104,6 @@ window.WW = window.WW || {};
     geos.mortar = mortar();
     return geos;
   }
-  WW.germanModel = { build, COLORS: C, POSES: ['stand', 'aim', 'gunner', 'kneel', 'duck', 'runA', 'runB', 'fallen'] };
+  // figure: the figure's parts for a pose (build() first: the helmet's flare), for the poses made elsewhere (vehicles_fx.js: the prisoners)
+  WW.germanModel = { build, figure, COLORS: C, POSES: ['stand', 'aim', 'gunner', 'kneel', 'duck', 'runA', 'runB', 'fallen'] };
 })(window.WW);

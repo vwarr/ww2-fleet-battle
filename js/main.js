@@ -377,6 +377,8 @@ window.WW = window.WW || {};
     call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
     call('beachheadFx', 'update', rdt);   // Normandy: craters, scorch, wire, hulks, debris (beachhead_fx.js), visual only
+    call('vehicleFx', 'update', rdt);     // Normandy: vehicles, DUKWs, lane markers, draw blocks, leaders, prisoners (vehicles_fx.js), visual only
+    call('hocFx', 'update', rdt);         // Normandy: the Rangers' ropes and ladders at Pointe du Hoc (hoc_fx.js), visual only
     call('rocketBarrage', 'update', rdt); // Normandy: the LCT(R)s' rockets at H-5 (rocket_barrage.js), visual only
     call('defenceFx', 'update', rdt);     // Normandy: the German crews, MG 42 tracers, gun flashes (defence_fx.js), visual only
     call('offmapAirFx', 'update', rdt);   // Normandy: the planes from England (air_offmap_fx.js), visual only

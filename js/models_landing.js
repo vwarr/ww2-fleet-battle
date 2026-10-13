@@ -230,6 +230,7 @@ window.WW = window.WW || {};
     if (D.tanks) for (let k = 0; k < Math.min(u.tanks || 0, D.tanks.length) && tank.count < MAX_TANK; k++) {
       _W.multiplyMatrices(M, local(D.tanks[k], 0.03, 0, 0, 0)); tank.setMatrixAt(tank.count++, _W);
     }
+    if (u.cargo && u.cargo.length && WW.vehicleFx) WW.vehicleFx.onDeck(u, M, D);   // a vehicle LCT's cargo (vehicles_fx.js)
   }
   // a DD tank: the same Sherman from the LCT's ramp to the beach. Afloat it rides with ~0.27 u of screen over the sea,
   // lower as it floods (sim u.flood); where the bottom comes up under it the tracks take its weight, it climbs out on
