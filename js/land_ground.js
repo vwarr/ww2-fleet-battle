@@ -7,8 +7,9 @@
 //         pivot nose-out -> rearm
 // The airfield is in one mode at a time, like a carrier deck: 'launch' (only outbound planes move) or 'recover'
 // (only inbound), switched when the current mode's movers are done (the one waiting longer first; a scramble goes
-// first). With traffic one-way per mode there is no head-on meeting and no deadlock. The runway takes one plane at a
-// time (occ), the hold-short line is a FIFO, and a plane never moves to a place closer than its clearance radius
+// first). With traffic one-way per mode there is no head-on meeting and no deadlock; the one exception, a landing slot
+// during a launch (land_flow.js), keeps the runway until it has turned off and crosses to its column only when clear.
+// The runway takes one plane at a time (occ), the hold-short line is a FIFO, and a plane never moves to a place closer than its clearance radius
 // (0.42 x length) plus a gap to another plane on the ground (parked ones included): no overlaps, ever. A plane that
 // waits too long (TOW_T) for any other reason is towed (back to its spot or into it). Nothing lines up, and a roll in
 // progress stops, while the main runway is closed (craters); a neutralized base freezes: the planes on the ground stay
@@ -102,7 +103,7 @@ window.WW = window.WW || {};
       var q = O[i]; if (q.p === p || (q.slot && q.slot === p.slot && !q.p)) continue;
       var d0 = Math.hypot(q.x - p.x, q.z - p.z), d1 = Math.hypot(q.x - nx, q.z - nz), min = rp + q.r + GAP;
       if (d1 < min && d1 < d0) { p.gs = 0; p.blk = q; return 'blocked'; }
-      if (q.p && p.rwPh !== 'lineup' && q.p.rwPh !== 'hold' && q.p.rwPh !== 'warm' && d0 < min + FOLLOW && ((q.x - p.x) * dx + (q.z - p.z) * dz) / d > d0 * 0.7) { // a plane ahead in the queue
+      if (q.p && p.rwPh !== 'lineup' && q.p.rwPh !== 'hold' && q.p.rwPh !== 'warm' && !q.p.xWait && d0 < min + FOLLOW && ((q.x - p.x) * dx + (q.z - p.z) * dz) / d > d0 * 0.7) { // a plane ahead in the queue
         if (!(aheadOf(q.p, p) && p.gid < q.p.gid)) { p.gs = 0; p.blk = q; return 'blocked'; } // facing each other: the older plane goes
       }
     }
@@ -124,6 +125,7 @@ window.WW = window.WW || {};
   // the revetment to the parallel taxiway (path point 3); a scrambling fighter waiting for the same column goes first.
   function colFree(p, b) {
     var key = p.path.lanes[1], P = WW.world.planes;
+    if (WW.landFlow.colBusy(p, b)) return false;   // a plane taxiing in up this column (mixed operations, land_flow.js)
     for (var i = 0; i < P.length; i++) {
       var q = P[i]; if (q === p || q.carrier !== b || !q.alive || q.removed || q.state !== 'takeoff' || !q.path || q.path.lanes[1] !== key) continue;
       if (q.rwPh === 'taxi' && q.pi <= TOKEN_PI) return false;
@@ -155,7 +157,7 @@ window.WW = window.WW || {};
       var lt = p.path[p.path.holdShort + 1]; p.heading += WW.clamp(WW.angleDiff(p.heading, Math.atan2(lt.z - p.z, lt.x - p.x)), -PIVOT * dt, PIVOT * dt);
       if (!opsOpen(b)) { ST.launchClosed++; if ((p.closedT = (p.closedT || 0) + dt) > SHUT_T * 2) shutDown(p, b); return; } // a long closure: engines off, towed back
       p.closedT = 0;
-      if (o.holdQ[0] === p && !o.occ && WW.time.now - o.lastRoll >= ROLL_GAP && !finalPlane(b)) { o.occ = p; o.holdQ.shift(); p.rwPh = 'lineup'; }
+      if (o.holdQ[0] === p && !o.occ && WW.time.now - o.lastRoll >= ROLL_GAP && !finalPlane(b) && !WW.landFlow.inbound(b)) { o.occ = p; o.holdQ.shift(); p.rwPh = 'lineup'; } // (a lander coming in: hold short)
       return;
     }
     if (ph === 'lineup') {
@@ -237,14 +239,15 @@ window.WW = window.WW || {};
       var ah = aheadGap(p, b);
       if (ah < 1e9) p.rollV = Math.min(p.rollV, Math.max(0, (ah - 4) * 1.5));          // a plane ahead on the runway
       p.x += Math.cos(p.heading) * p.rollV * dt; p.z += Math.sin(p.heading) * p.rollV * dt;
-      if (o.occ === p && Math.hypot(p.x - p.tdX, p.z - p.tdZ) > LAND_SEP) o.occ = null;
+      if (o.occ === p && o.mode !== 'launch' && Math.hypot(p.x - p.tdX, p.z - p.tdZ) > LAND_SEP) o.occ = null;   // (launching: once off the runway)
       if (p.rollV <= TAXI) {
         if (p.emergency) { p.rwPh = 'towed'; p.rwT = 0; }
         else { p.rwPh = 'taxiIn'; p.pi = 0; var q = b.layout.toL(p.x, p.z); p.path = WW.airfieldLayout.inPath(b.layout, p.slot.spot, q.u); p.gs = TAXI; }
       }
-    } else if (p.rwPh === 'taxiIn') {
-      var r = move(p, b, p.path, p.pi <= p.path.offRunway ? TAXI_RWY : TAXI, dt);
-      if (o.occ === p && (p.pi > p.path.offRunway || Math.hypot(p.x - p.tdX, p.z - p.tdZ) > LAND_SEP)) o.occ = null; // the next may land
+    } else if (p.rwPh === 'taxiIn') { // (launching: it crosses the taxiway when no departure is coming, land_flow.js)
+      p.xWait = p.pi === p.path.offRunway + 1 && !WW.landFlow.cross(p, b);   // (not a plane ahead in a queue, move)
+      var r = p.xWait ? (p.gs = 0, 'waiting') : move(p, b, p.path, p.pi <= p.path.offRunway ? TAXI_RWY : TAXI, dt);
+      if (o.occ === p && (p.pi > p.path.offRunway || (o.mode !== 'launch' && Math.hypot(p.x - p.tdX, p.z - p.tdZ) > LAND_SEP))) o.occ = null; // the next may land
       if (r === 'arrived') p.rwPh = 'park';
       wait(p, b, r === 'blocked', dt);
     } else if (p.rwPh === 'park') { // pivot nose-out in the spot
@@ -298,6 +301,7 @@ window.WW = window.WW || {};
     else if (wantLand) o.mode = 'recover';
     else if (!outN && !inN) o.mode = 'idle';
     if (o.mode !== prev) { ST.modeSwitches++; o.modeT = now; age = 0; }
+    o.scr = scr;
     o.yield = o.mode === 'launch' && !scr && wantLand && age > (strike ? STRIKE_WAIT : TURN_WAIT);
     o.hold = o.mode === 'recover' && wantLaunch && (scr || age > TURN_WAIT * 3);   // a long recovery window: the circuit empties
     // slots: rearmed planes are ready; a plane lost in the air leaves its spot empty

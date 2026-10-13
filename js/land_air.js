@@ -13,8 +13,9 @@
 //    the base is neutralized or it is dusk; queued launches wait for the runway to be repaired.
 //  - Home: every plane holds at a fix away from the island and the enemy's ships (land_hold.js: the land bombers, B-17,
 //    B-26, Betty, high and far out, kept off while a raid is over the field; the small planes closer in and lower),
-//    cleared to land in turn when the field is recovering (the next as the one ahead passes the outer marker); final
-//    down the centreline into the wind, touchdown. Main runway closed: an emergency landing on the cross
+//    cleared to land in turn when the field is recovering (the next as the one ahead passes the outer marker), or in a
+//    landing slot between take-offs while it launches, the emergencies first (land_flow.js); final down the centreline
+//    into the wind, touchdown. Main runway closed: an emergency landing on the cross
 //    runway if it is open (the plane is towed off), else the plane holds for HOLD_MAX s (HOLD_BIG for the land bombers,
 //    which had the fuel to wait out the runway repairs; a neutralized base: LEAVE_T s) and then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room nearby;
 //    every other type (B-17, B-26, Betty, ...) ditches beside the nearest friendly ship, where it can be rescued.
@@ -103,6 +104,7 @@ window.WW = window.WW || {};
   function update(b, dt) {
     const a = b.ai, now = WW.time.now;
     G().update(b, dt);
+    WW.landFlow.update(b);   // the landing queue by need, a landing slot between take-offs (land_flow.js)
     if (b.neutralized) { a.queue.length = 0; return; }
     a.capT -= dt;
     if (a.capT <= 0) {
@@ -225,12 +227,12 @@ window.WW = window.WW || {};
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); } // the circuit clears the hills
-      // cleared to approach while the field recovers: at most two on the approach (cleared, not
+      // cleared to approach while the field recovers (or in a landing slot): at most two on the approach (cleared, not
       // yet on final), the second in trail once the one ahead is past the outer marker (a plane far out at its fix as
       // soon as the one ahead is cleared: its run in is long); a cleared approach is never cancelled by the field changing mode (only a
       // closed runway sends it round, and a raid over the field a land bomber short of the outer marker: land_hold.js)
       const ox = R.x - c * 150, oz = R.z - s * 150, up = i > 0 ? a.lq[i - 1] : null;
-      const clear = R.main ? o.mode === 'recover' && !o.hold : !o.crossOcc;
+      const clear = R.main ? WW.landFlow.clear(p, b) : !o.crossOcc;   // the field recovering, or a landing slot (land_flow.js)
       let ahead = 0; for (let k = 0; k < i; k++) if (a.lq[k].cleared && a.lq[k].rwPh !== 'final') ahead++;
       const next = ahead === 0 || (ahead === 1 && up && up.cleared && up.rwPh !== 'final' && (up.apOut || LH.far(p, ox, oz)));
       const off = bg && LH.raidHold(p, b, dt);
