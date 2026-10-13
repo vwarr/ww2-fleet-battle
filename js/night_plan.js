@@ -40,7 +40,7 @@ window.WW = window.WW || {};
   if (/[?&]noflares/.test(Q)) FLARE = {};
   var SEEK_ON = !/[?&]noseek/.test(Q), CVOPEN_ON = !/[?&]nocvopen/.test(Q);
   var GUN = { battleship: 1, cruiser: 1, destroyer: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
-  var stats = { modes: {}, flares: { USN: 0, IJN: 0 }, stowedS: 0 };
+  var stats = { modes: {}, flares: { USN: 0, IJN: 0 } };
   var left = new Map(), nextFl = new Map();
 
   function D() { return WW.dayNight; }
