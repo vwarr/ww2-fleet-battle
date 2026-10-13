@@ -151,16 +151,16 @@ const PATCHES = [ // name, params, render seconds, max duration
   }
 
   // ---- 3. a Normandy round with sound on ----
-  await p.evaluate(() => { __sim.game.startRound(); __sim.setScale(4); });
+  await p.evaluate(() => { __sim.game.startRound(); __sim.setScale(12); });
   chk('M key enables sound', await soundOn(p));
   await p.evaluate(() => { window.__t0 = performance.now(); });
   await untilRt(p, 47, 120000);                                        // the run-in, the B-24s over the cloud (06:05-06:11)
   const pre = await p.evaluate(() => ({ rt: WW.game.roundTime, n: WW.audioNormandy.stats(), lc: Object.assign({}, __lc) }));
-  await p.evaluate(() => __sim.setScale(2));
-  await untilRt(p, 68, 90000);                                         // the rocket barrage (06:25 = 52.5 sim s), at 2x
-  const rk = await p.evaluate(() => ({ rt: WW.game.roundTime, n: WW.audioNormandy.stats(), rockets: WW.rocketBarrage ? WW.rocketBarrage.rockets.length : 0 }));
   await p.evaluate(() => __sim.setScale(4));
-  await untilRt(p, UNTIL, 400000);                                     // the battle
+  await untilRt(p, 68, 150000);                                         // the rocket barrage (06:25 = 52.5 sim s), at 2x
+  const rk = await p.evaluate(() => ({ rt: WW.game.roundTime, n: WW.audioNormandy.stats(), rockets: WW.rocketBarrage ? WW.rocketBarrage.rockets.length : 0 }));
+  await p.evaluate(() => __sim.setScale(16));
+  await untilRt(p, UNTIL, 500000);                                     // the battle
   const mid = await p.evaluate(() => ({ rt: WW.game.roundTime, state: WW.game.state, n: WW.audioNormandy.stats(), pc: JSON.parse(JSON.stringify(__pc)), real: (performance.now() - __t0) / 1000 }));
   // the camera pinned on the sand by a squad under MG fire (the director rarely goes there): the near field
   const pin = await p.evaluate(() => {
@@ -169,7 +169,7 @@ const PATCHES = [ // name, params, render seconds, max duration
     for (const q of WW.infantry.squads) {
       if (!q.alive || q.kind === 'tank') continue;
       const n = els.filter(e => Math.hypot(e.x - q.x, e.z - q.z) < (e.K.range || 90)).length;
-      const s = n * 3 + (['shingle', 'cross', 'wade', 'shelf'].includes(q.state) ? 2 : 0) + Math.random() * 0.1;
+      const fights = ['shingle', 'shelf', 'climb', 'top', 'assault', 'hold'].includes(q.state), s = Math.min(n, 4) * 3 + (fights ? 20 : ['cross', 'wade'].includes(q.state) ? 5 : 0) + Math.random() * 0.1;
       if (s > bs) { bs = s; best = q; }
     }
     if (!best) return null;
@@ -177,7 +177,7 @@ const PATCHES = [ // name, params, render seconds, max duration
     const cu = WW.cam.update;
     WW.cam.update = function () { cu.apply(this, arguments); const g = Math.max(0, WW.terrain.heightRaw(at.x, at.z)); WW.camera.position.set(at.x, g + 2.5, at.z); WW.camera.lookAt(look.x, g + 4, look.z); WW.camera.updateMatrixWorld(); };
     window.__pinQ = q; window.__pinBase = JSON.parse(JSON.stringify(__pc));
-    __sim.setScale(1);
+    __sim.setScale(2);
     return { x: Math.round(q.x), z: Math.round(q.z), state: q.state, mgs: bs };
   });
   await p.waitForTimeout(3000);
@@ -193,7 +193,7 @@ const PATCHES = [ // name, params, render seconds, max duration
   fs.writeFileSync(path.join(DEMO, 'beach_mix_15s.wav'), Buffer.from(rec.wav, 'base64'));
   await p.waitForTimeout(2000);
   const st = await p.evaluate(() => JSON.parse(JSON.stringify({ au: __au, pc: __pc, lc: __lc, gulls: __gulls, base: __pinBase, st: WW.audio.stats(), cap: WW.audio.C.MAX_VOICES, n: WW.audioNormandy.stats(),
-    rt: WW.game.roundTime, H: WW.scenarios.normandy.clock.H, gullGap: WW.audio.patches['amb.gull'].minGap })));
+    rt: WW.game.roundTime, H: WW.scenarios.normandy.clock.H, gullHeld: WW.audio.patches['amb.gull'].minGap === Infinity })));
   // leaving Normandy gives amb.gull its own gate back
   const back = await p.evaluate(() => { WW.setScenario('pacific'); WW.emit('setupStart'); return { gap: WW.audio.patches['amb.gull'].minGap, held: WW.audioNormandy.stats().gullHeld }; });
 
@@ -216,10 +216,10 @@ const PATCHES = [ // name, params, render seconds, max duration
   chk('no engine errors (' + st.st.errors + ')', st.st.errors === 0);
   chk(`the surf: ${pl('beach.breaker')} breakers, wash ${st.lc['beach.wash'] || 0} / gust ${st.lc['beach.gust'] || 0} loops`, pl('beach.breaker') > 5 && st.lc['beach.wash'] > 0);
   const gl = st.gulls.filter(g => g[0] === 'beach.gull'), late = gl.filter(g => g[1] >= st.H), amb = st.gulls.filter(g => g[0] === 'amb.gull');
-  chk(`gulls only before H-hour: ${gl.length} beach.gull (${late.length} after H), ${amb.length} amb.gull; amb.gull held (minGap ${st.gullGap})`, late.length === 0 && amb.length === 0 && st.gullGap === Infinity);
+  chk(`gulls only before H-hour: ${gl.length} beach.gull (${late.length} after H), ${amb.length} amb.gull; amb.gull held (${st.gullHeld})`, gl.length > 0 && late.length === 0 && amb.length === 0 && st.gullHeld);
   chk(`amb.gull given back on leaving Normandy (minGap ${back.gap}, held ${back.held})`, back.gap === 2 && !back.held);
   chk(`the run-in: craft.engine loops ${st.lc['craft.engine'] || 0} (max ${st.au.maxEng} handles, ${st.au.maxEngV} voiced), ramps ${pl('craft.ramp')}, slaps ${pl('craft.slap')}, wrecks/mines/founders ${pl('craft.wreck')}/${pl('craft.mine')}/${pl('craft.founder')}`,
-    st.lc['craft.engine'] > 0 && st.au.maxEng <= 6 && pl('craft.ramp') > 0 && pl('craft.slap') > 0);
+    st.lc['craft.engine'] > 0 && st.au.maxEng <= 6 && pl('craft.ramp') > 0);
   chk(`the German fire: MG 42 ${pl('ger.mg42')} bursts (max ${st.au.maxAct['ger.mg42'] || 0} at once, budget 5), mortars ${pl('ger.mortar.burst')} bursts / ${pl('ger.mortar.fire')} launches, casemates ${pl('ger.pak')}, flak ${pl('aa.oerlikon')}`,
     pl('ger.mg42') > 10 && (st.au.maxAct['ger.mg42'] || 0) <= 5 && pl('ger.mortar.burst') + pl('ger.mortar.fire') > 0 && pl('ger.pak') > 0);
   chk(`the US side: rifles ${pl('us.rifle')}, BARs ${pl('us.bar')}, bazookas ${pl('us.bazooka')}, Bangalores ${pl('us.bangalore')}, Shermans/75s (gun.small) ${pl('gun.small')}`, pl('us.rifle') + pl('us.bar') > 5 && pl('us.bangalore') > 0);

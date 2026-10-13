@@ -177,7 +177,7 @@ window.WW = window.WW || {};
       if (!u.alive) continue;
       const d = A.distTo(u.x, 0, u.z) * (eng.has(u) ? 0.85 : 1);
       if (d < ENG_FAR) want.push({ u, d, far: ENG_FAR });
-      if (u.state === 'run' && d < 50) {   // the bow slamming into the seas
+      if (u.state === 'run' && d < 70) {   // the bow slamming into the seas
         const t = now(), n = slapT.get(u) || 0;
         if (t >= n) { if (n) queue('craft.slap', { x: u.x + Math.cos(u.heading) * u.C.len * 0.4, y: 0.2, z: u.z + Math.sin(u.heading) * u.C.len * 0.4, size: u.C.len > 3 ? 1.3 : R(0.7, 1.1) }, 0.6); slapT.set(u, t + R(0.9, 2.6)); }
       }
@@ -233,11 +233,11 @@ window.WW = window.WW || {};
     // the waterline bed
     beds.at.x = x; beds.at.z = wz; beds.at.y = 0.2;
     if (!beds.wash || !beds.wash.alive) beds.wash = A.loop('beach.wash', { at: beds.at, vol: 0 });
-    beds.wash.set({ vol: 0.9 * calmK * (1 - sm(40, 160, h)) });
+    beds.wash.set({ vol: 0.6 * calmK * (1 - sm(40, 160, h)) });
     // the gusts low over the beach, from the WNW
     const w = WW.wind || { x: 1, z: 0 }, wl = Math.hypot(w.x, w.z) || 1, pan = -(w.x * L.rx + w.z * L.rz) / wl;
     if (!beds.gust || !beds.gust.alive) beds.gust = A.loop('beach.gust', { ui: true, vol: 0, pan });
-    beds.gust.set({ vol: 0.55 * calmK * (1 - sm(25, 200, dShore)) * (1 - sm(12, 60, h - gy(L.x, L.z))) * clamp(wl / 0.85, 0.4, 1.3), pan });
+    beds.gust.set({ vol: 0.4 * calmK * (1 - sm(25, 200, dShore)) * (1 - sm(12, 60, h - gy(L.x, L.z))) * clamp(wl / 0.85, 0.4, 1.3), pan });
     // the breaker line: where the flat is ~1 u deep, offshore of the waterline (recomputed every 0.5 s)
     if ((brk.t -= dt) <= 0 || Math.abs(x - brk.x) > 20) {
       brk.t = 0.5; brk.x = x;
@@ -248,7 +248,11 @@ window.WW = window.WW || {};
     const C = WW.scenarios.normandy && WW.scenarios.normandy.clock;
     if (C && rt() < C.H && (beds.gullT -= dt) <= 0) {
       beds.gullT = R(5, 14);
-      if (h < 60 && dShore < 220 && Math.random() < 0.7) play('beach.gull', { x: x + R(-40, 40), y: R(8, 25), z: wz + R(-40, 25), vol: R(0.5, 0.9) });
+      // over the flat by the camera when it is near the beach; offshore, a few following the boats out at the transports
+      if (h < 60 && Math.random() < 0.7) {
+        const near = dShore < 220, a = Math.random() * 6.283, r = R(10, 35);
+        play('beach.gull', near ? { x: x + R(-40, 40), y: R(8, 25), z: wz + R(-40, 25), vol: R(0.5, 0.9) } : { x: L.x + Math.cos(a) * r, y: R(6, 18), z: L.z + Math.sin(a) * r, vol: R(0.4, 0.7) });
+      }
     }
   }
   function breakers() {

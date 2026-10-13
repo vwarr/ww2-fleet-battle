@@ -109,7 +109,7 @@ window.WW = window.WW || {};
 
   // ======================= the beach =======================
   A.register('beach.breaker', {
-    bus: 'ambience', ref: 26, max: 4, minGap: 0.05, sos: true, reverb: 0.25, dur: 4, params: { size: 1 },
+    bus: 'ambience', ref: 26, max: 4, minGap: 0, sos: true, reverb: 0.25, dur: 4, params: { size: 1 },
     build(ctx, out, p) {
       const r = p.rate, t = p.t, k = clamp(p.size || 1, 0.3, 1.6), parts = [];
       // the lip coming over: pink noise whose low-pass opens with the crash, then closes as it spills
@@ -130,10 +130,10 @@ window.WW = window.WW || {};
     bus: 'ambience', ref: 20, max: 1, reverb: 0.15, dur: Infinity, params: { rough: 0.8 },
     build(ctx, out, p) {
       const t = p.t, m = S.gain(ctx, 0, out); m.gain.setTargetAtTime(1, t, 0.8);
-      const a = S.src(ctx, 'pink', t), ab = S.filter(ctx, 'bandpass', V(600), 0.6), ag = S.gain(ctx, 0.12, m); a.connect(ab); ab.connect(ag);
-      const b = S.src(ctx, 'white', t), bb = S.filter(ctx, 'bandpass', V(1900), 0.7), bg = S.gain(ctx, 0.035, m); b.connect(bb); bb.connect(bg);
+      const a = S.src(ctx, 'pink', t), ab = S.filter(ctx, 'bandpass', V(600), 0.6), ag = S.gain(ctx, 0.2, m); a.connect(ab); ab.connect(ag);
+      const b = S.src(ctx, 'pink', t), bb = S.filter(ctx, 'bandpass', V(1500), 0.7), bg = S.gain(ctx, 0.1, m); b.connect(bb); bb.connect(bg);
       const l1 = osc(ctx, 'sine', V(0.21, 0.2), t), l2 = osc(ctx, 'sine', V(0.13, 0.2), t);
-      l1.connect(S.gain(ctx, 0.07, ag.gain)); l2.connect(S.gain(ctx, 0.025, bg.gain));   // the bore surging, the swash breathing
+      l1.connect(S.gain(ctx, 0.12, ag.gain)); l2.connect(S.gain(ctx, 0.04, bg.gain));   // the bore surging, the swash breathing
       const srcs = [a, b, l1, l2];
       return { dur: Infinity, stop: loopEnd(srcs),
         set(q) { const now = ctx.currentTime; if (q.rate) { a.playbackRate.setTargetAtTime(q.rate, now, 0.1); b.playbackRate.setTargetAtTime(q.rate, now, 0.1); } } };
@@ -145,12 +145,12 @@ window.WW = window.WW || {};
       const t = p.t, m = S.gain(ctx, 0, out); m.gain.setTargetAtTime(1, t, 1);
       const pn = ctx.createStereoPanner(); pn.pan.value = clamp(p.pan || 0, -0.8, 0.8); pn.connect(m);
       // two gust bands (low buffeting, the wire singing a little) on slow random-ish curves (sum of slow sines)
-      const n = S.src(ctx, 'pink', t), lp = S.filter(ctx, 'bandpass', 380, 0.5), g = S.gain(ctx, 0.12, pn); n.connect(lp); lp.connect(g);
-      const w = S.src(ctx, 'white', t), bp = S.filter(ctx, 'bandpass', V(1250), 4), wg = S.gain(ctx, 0.008, pn); w.connect(bp); bp.connect(wg);
-      const s = S.src(ctx, 'white', t), sb = S.filter(ctx, 'bandpass', 3200, 0.8), sg = S.gain(ctx, 0.012, pn); s.connect(sb); sb.connect(sg); // sand blowing
+      const n = S.src(ctx, 'pink', t), lp = S.filter(ctx, 'bandpass', 380, 0.5), g = S.gain(ctx, 0.36, pn); n.connect(lp); lp.connect(g);
+      const w = S.src(ctx, 'pink', t), bp = S.filter(ctx, 'bandpass', V(1250), 4), wg = S.gain(ctx, 0.03, pn); w.connect(bp); bp.connect(wg);
+      const s = S.src(ctx, 'pink', t), sb = S.filter(ctx, 'bandpass', 2200, 0.9), sg = S.gain(ctx, 0.03, pn); s.connect(sb); sb.connect(sg); // sand blowing
       const l1 = osc(ctx, 'sine', V(0.11, 0.3), t), l2 = osc(ctx, 'sine', V(0.29, 0.3), t), l3 = osc(ctx, 'sine', V(0.07, 0.3), t);
-      l1.connect(S.gain(ctx, 0.07, g.gain)); l2.connect(S.gain(ctx, 0.04, g.gain)); l2.connect(S.gain(ctx, 0.006, wg.gain));
-      l1.connect(S.gain(ctx, 160, lp.frequency)); l3.connect(S.gain(ctx, 0.008, sg.gain)); l3.connect(S.gain(ctx, 90, bp.frequency));
+      l1.connect(S.gain(ctx, 0.2, g.gain)); l2.connect(S.gain(ctx, 0.12, g.gain)); l2.connect(S.gain(ctx, 0.022, wg.gain));
+      l1.connect(S.gain(ctx, 160, lp.frequency)); l3.connect(S.gain(ctx, 0.02, sg.gain)); l3.connect(S.gain(ctx, 90, bp.frequency));
       const srcs = [n, w, s, l1, l2, l3];
       return { dur: Infinity, stop: loopEnd(srcs),
         set(q) { const now = ctx.currentTime; if (q.pan != null) pn.pan.setTargetAtTime(clamp(q.pan, -0.8, 0.8), now, 0.5); } };
@@ -215,7 +215,7 @@ window.WW = window.WW || {};
     }
   });
   A.register('craft.ground', {
-    ref: 8, max: 2, minGap: 0.2, sos: true, reverb: 0.1, dur: 1.5,
+    ref: 8, max: 2, minGap: 0.05, sos: true, reverb: 0.1, dur: 1.5,
     build(ctx, out, p) {
       const r = p.rate, t = p.t;
       return S.done(p, [
@@ -226,7 +226,7 @@ window.WW = window.WW || {};
     }
   });
   A.register('craft.ramp', {
-    ref: 10, max: 3, minGap: 0.1, sos: true, reverb: 0.25, dur: 2.2,
+    ref: 10, max: 3, minGap: 0.03, sos: true, reverb: 0.25, dur: 2.2,
     build(ctx, out, p) {
       const r = p.rate, t = p.t, parts = [], td = t + R(0.35, 0.55) / r;
       parts.push(S.crackle(ctx, out, t, { dur: td - t + 0.02, f: 1800, q: 0.9, gain: 0.35, density: 1.4, rate: r }));       // the chain paying out
@@ -296,8 +296,8 @@ window.WW = window.WW || {};
     build(ctx, out, p) {
       const r = p.rate, t = p.t, big = p.big ? 1 : 0;
       return S.done(p, [
-        S.burst(ctx, out, t, { type: 'bandpass', f: V(2100 - 600 * big), f1: 900, q: 0.7, a: 0.001, d: 0.06, gain: 0.45, rate: r }),   // the whip-crack
-        S.burst(ctx, out, t, { type: 'bandpass', f: V(800), f1: 300, q: 0.8, a: 0.002, d: 0.12, gain: 0.3, rate: r }),
+        S.burst(ctx, out, t, { noise: 'pink', type: 'bandpass', f: V(1300 - 300 * big), f1: 700, q: 1.1, a: 0.001, d: 0.06, gain: 0.55, rate: r }),   // the whip-crack
+        S.burst(ctx, out, t, { noise: 'pink', type: 'bandpass', f: V(800), f1: 300, q: 0.8, a: 0.002, d: 0.12, gain: 0.35, rate: r }),
         S.burst(ctx, out, t + R(0.12, 0.25) / r, { noise: 'pink', type: 'bandpass', f: V(700), f1: 260, q: 0.6, a: 0.01, d: 0.4 + 0.3 * big, gain: 0.2, rate: r }) // the slap-back
       ]);
     }
@@ -341,8 +341,8 @@ window.WW = window.WW || {};
     build(ctx, out, p) {
       const r = p.rate, t = p.t;
       return S.done(p, [
-        S.burst(ctx, out, t, { type: 'bandpass', f: V(2600, 0.15), q: 0.6, a: 0.0005, d: 0.012, gain: 0.5, rate: r }),
-        S.burst(ctx, out, t + 0.003, { type: 'bandpass', f: V(1100), q: 1, a: 0.001, d: 0.04, gain: 0.2, rate: r })
+        S.burst(ctx, out, t, { noise: 'pink', type: 'lowpass', f: V(2100, 0.15), q: 0.9, a: 0.0005, d: 0.014, gain: 0.7, rate: r }),
+        S.burst(ctx, out, t + 0.003, { noise: 'pink', type: 'bandpass', f: V(1100), q: 1, a: 0.001, d: 0.04, gain: 0.25, rate: r })
       ]);
     }
   });
@@ -406,7 +406,7 @@ window.WW = window.WW || {};
     build(ctx, out, p) {
       const r = p.rate, t = p.t;
       return S.done(p, [
-        S.boom(ctx, out, t, { f0: V(78), f1: 34, dur: 1.3, gain: 0.52, body: 0.95, crack: 0.65, bright: 1.1, rate: r }),
+        S.boom(ctx, out, t, { f0: V(78), f1: 34, dur: 1.3, gain: 0.44, body: 0.95, crack: 0.65, bright: 1.1, rate: r }),
         S.crackle(ctx, out, t + 0.02 / r, { dur: 0.5, f: 2200, q: 0.8, gain: 0.3, density: 1.2, rate: r }),      // the wire whipping
         S.burst(ctx, out, t + R(0.35, 0.6) / r, { noise: 'pink', type: 'lowpass', f: 1400, f1: 400, q: 0.4, a: 0.15, d: 0.9, gain: 0.16, rate: r }),
         S.crackle(ctx, out, t + R(0.4, 0.7) / r, { dur: 0.9, f: 1300, q: 0.6, gain: 0.16, density: 0.5, rate: r })   // the shingle coming down
