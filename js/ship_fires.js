@@ -80,9 +80,8 @@ window.WW = window.WW || {};
     stats.deckHits[n]++; stats.deckPlanes[n] += lost;
     cv.fireN = Math.min(FIRE_MAX, (cv.fireN || 0) + 2 + Math.floor(load / 3)); cv.avgas = true;
     stats.deckFires[n]++; stats.started[n] += 2 + Math.floor(load / 3);
-    WW.emit('deckHit', { ship: cv, load: load, planes: lost, x: x, z: z, hangar: below, armed: hg });
+    WW.emit('deckHit', { ship: cv, load: load, planes: lost, x: x, z: z, hangar: below, armed: hg });   // fx_critical.js: the chain along the deck
     cv.takeDamage(Math.min(DECK_BOOM_MAX, DECK_BOOM * load), x, z, 'deck');
-    if (!WW.simOnly && WW.fx) for (var k = 0; k < 3; k++) { var w = cv.toWorld((Math.random() - 0.5) * cv.stats.length * 0.7, (Math.random() - 0.5) * 2); WW.fx.explosion(w[0], 2.5, w[1], 1.6); }
     return load;
   }
 
@@ -108,11 +107,6 @@ window.WW = window.WW || {};
     stats.magazine[ship.nation]++;
     var hx = x !== undefined && isFinite(x) ? x : ship.x, hz = z !== undefined && isFinite(z) ? z : ship.z;
     WW.emit('magazine', { ship: ship, x: ship.x, z: ship.z, hx: hx, hz: hz, kind: kind, cal: cal });   // fx_critical.js: the fireball, the column
-    if (!WW.simOnly && WW.fx) {
-      var L = ship.stats.length;
-      for (var k = 0; k < 5; k++) { var w = ship.toWorld((Math.random() - 0.5) * L * 0.6, 0); WW.fx.explosion(w[0], 2 + Math.random() * 3, w[1], 3 + Math.random() * 1.5); }
-      for (var j = 0; j < 8; j++) WW.fx.smoke(ship.x + (Math.random() - 0.5) * 6, 4 + j * 2.5, ship.z + (Math.random() - 0.5) * 6, true, 3 + j * 0.4);
-    }
     ship.takeDamage(ship.hp + 1, x, z, 'magazine');
     return true;
   }

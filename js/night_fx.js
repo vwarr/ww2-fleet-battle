@@ -184,5 +184,7 @@ window.WW = window.WW || {};
     if (S.toggle) { const tg = S.toggle; S.toggle = function () { if (dark() && !(S.active && S.active())) return 'Follow: no flight ops in the dark'; return tg.apply(this, arguments); }; }
     if (S.follow) { const fo = S.follow; S.follow = function () { if (dark()) return false; return fo.apply(this, arguments); }; }
   }
-  WW.nightFx = { update, stats: () => ({ lights: lights.filter(L => L.intensity > 0).length, pools: pools.filter(m => m.visible).length, cones: cones.filter(m => m.visible).length }) };
+  // a big flash that lights the scene at night (fx_critical.js: a magazine, a hangar going up)
+  function flash(x, y, z, i, life, dist) { if (n > 0.2) addFlash(x, y, z, i, life, dist); }
+  WW.nightFx = { update, flash, stats: () => ({ lights: lights.filter(L => L.intensity > 0).length, pools: pools.filter(m => m.visible).length, cones: cones.filter(m => m.visible).length }) };
 })(window.WW);
