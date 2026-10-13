@@ -211,7 +211,7 @@ window.WW = window.WW || {};
     const w = pl.wave;
     if (!w || pl.sk !== 'form') return false;
     tick(w);
-    const brk = pl.kind === 'dive' ? (S.wheelR ? S.wheelR(pl.pt) : 30) + 60 : pl.kind === 'torpedo' ? (S.SET_R || 140) + 40 : 60;
+    const brk = pl.kind === 'dive' ? (S.wheelR ? S.wheelR(pl.pt) : 30) + 60 : pl.kind === 'torpedo' ? (S.SET_R || 140) + (S.vtBreak ? S.vtBreak(pl, w) : 40) : 60;   // under fire the torpedo planes break off further out (air_attack.js)
     if (w.done || (w.go && w.dT < brk)) { pl.sk = 'atk'; return false; }
     // an escort whose strike has no bombers left (shot down, or gone home) has nothing to escort: it leaves the formation
     if (pl.kind === 'fighter' && w.go && !w.members.some(b => b.alive && b.kind !== 'fighter' && b.ordnance)) { pl.sk = 'atk'; return false; }
