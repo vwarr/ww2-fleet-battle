@@ -5,6 +5,7 @@ window.WW = window.WW || {};
 (function () {
   const STRIKE_PRIO = { carrier: 250, battleship: 180, cruiser: 80, destroyer: 20, submarine: 0, pt: -20 };
   const H = WW.shipAI.h, blend = H.blend;
+  const wrecked = s => !!(WW.shipDeck && WW.shipDeck.wrecked(s));   // the flight deck out for good (ship_deck.js)
 
   // Strikes go only after what the side knows: a fresh contact, or one seen in the last STRIKE_AGE s (at a penalty).
   // ship may be a bare { x, z, nation } (air_strikes.js wave guide) or a Plane.
@@ -16,7 +17,7 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(ship.nation, { fresh: STRIKE_AGE })) {
       const o = c.unit;
       if (!o || !o.alive || o.submerged) continue;
-      const s = WW.dist(ship.x, ship.z, c.x, c.z) - (STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;
+      const s = WW.dist(ship.x, ship.z, c.x, c.z) - (wrecked(o) ? STRIKE_PRIO.battleship : STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;   // a wrecked deck: a heavy hull to finish, no air threat
       if (s < bs) { bs = s; best = o; }
     }
     return best;
@@ -26,6 +27,9 @@ window.WW = window.WW || {};
   // around it), runs from any known gun ship inside 1.5x that ship's gun reach (+ margin), turns into the wind for
   // flight ops only while no danger is near, and every heading goes through WW.threat.bestHeading with risk 0
   // (no known danger, away from map edges). It handles its own cripple withdrawal (it always withdraws).
+  // Her flight deck out for good (ship_deck.js wrecked): no use to the battle, she is sent home (Shokaku after Coral
+  // Sea): best speed for her home edge (still running from known gun ships first), no turns into the wind, no air ops;
+  // ai.withdrawing, so endgame.js takes her off the map there. fleet_groups.js gives her an escort of her own.
   const PI = Math.PI, CV_ORBIT = 90, WIND_RUN = 220, PT_NEAR = 80, DD_FLEE = 1.2, DD_MIN = 160; // the on-station circle's radius (~3.5 carrier lengths)
   // FLEE_AGE: a contact older than this is a ghost (to GHOST_AGE): kept off the bow, not run from; the carrier ran from 90 s
   // old reports with flight ops blocked (Fable F25)
@@ -58,8 +62,9 @@ window.WW = window.WW || {};
     return n ? Math.atan2(z, x) : null;
   }
   function carrierAI(ship, dt) {
-    const a = ship.ai, o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
+    const a = ship.ai, o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null, wr = wrecked(ship);
     a.ownWithdraw = true;
+    if (wr) a.withdrawing = true;
     const fl = fleeFrom(ship);
     let want, calm = false;
     if (fl !== null) { want = fl; ship.throttle = 1; } // run from every known gun ship close by
@@ -77,7 +82,10 @@ window.WW = window.WW || {};
     // With one inside RUN_D, the run away comes first (station keeping, which cvSafe already slides clear of known gun
     // ships, used to override it: a carrier kept its station while a destroyer closed on it in the dark)
     else if (near && a.thrD < RUN_D) { /* want = fl */ }
-    else if (o) {
+    else if (wr && WW.endgame) { // home: for her edge at about her own z (ai_endgame.js retreat)
+      const hx = WW.endgame.homeX(ship.nation), tz = WW.clamp(ship.z, 150, WW.cfg.MAP_H - 150);
+      want = Math.atan2((tz - ship.z) * 0.5, hx - ship.x); ship.throttle = 1;
+    } else if (o) {
       // On station the carrier steams a wide, slow circle round it (CV_ORBIT): its operating area. It used to turn
       // a tight circle on the spot (heading + 0.25 rad), and its ring escorts circled with it (sanity S8c).
       const d = WW.dist(ship.x, ship.z, o.sx, o.sz);
@@ -108,7 +116,7 @@ window.WW = window.WW || {};
     const D = ship._deck, ops = !!(D && (D.mode !== 'idle' || D.launchers.length || D.lq.length));
     const onStation = !o || WW.dist(ship.x, ship.z, o.sx, o.sz) < (a.windOn ? WIND_RUN : 120), wary = WW.time.now - (a.cvWary || -1e9) < 10; // a gun ship known within WIND_SAFE
     a.windOn = false;
-    if (WW.airDeck && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) { WW.airDeck.steer(ship, false); a.windOn = ops; }
+    if (WW.airDeck && !wr && fl === null && !wary && here < 1 && onStation && !(WW.threat && WW.threat.edge(ship.x, ship.z) > 0)) { WW.airDeck.steer(ship, false); a.windOn = ops; }
     // An enemy ship closing inside ~90 units: turn away from it (allies are spaced by ships.js SPACE).
     const n = a.near;
     if (n && n.alive && n.nation !== ship.nation && WW.dist(ship.x, ship.z, n.x, n.z) < 90) {
@@ -123,7 +131,7 @@ window.WW = window.WW || {};
     // Then the safest heading: no known danger (risk 0), a wide edge band (room to run), and never within CONE of
     // the bearing of a known gun ship inside 1.5x its reach + CONE_PAD (into the wind and station keeping included).
     if (WW.threat) ship.desiredHeading = WW.threat.bestHeading(ship, ship.desiredHeading, B ? B.doctrine.risk.carrier : 0,
-      { look: 80, k: calm ? 2 : 4, edge: EDGE_BAND, avoid: cone, cone: CONE });
+      { look: 80, k: calm ? 2 : 4, edge: wr ? 25 : EDGE_BAND, avoid: cone, cone: CONE });   // going home: the edge is where she is bound
     ship.navAvoid = cone.slice(); ship.navAvoidT = now; // ships_nav planNav: no detour toward them either
     // Coming about while pointed at a known gun ship: back the engines (a slow carrier turning away is not charging);
     // with one already close (URGENT_D) keep way on instead: a crawling carrier hardly turns, and is run down in the dark.
@@ -136,7 +144,7 @@ window.WW = window.WW || {};
       const tb = WW.angleDiff(ship.heading, a.thrB);
       if (Math.sign(tb) === Math.sign(dd) && Math.abs(tb) < Math.abs(dd)) ship.desiredHeading = ship.heading - Math.sign(dd) * 1.5;
     }
-    if (!WW.air || !ship.hangar) return;
+    if (!WW.air || !ship.hangar || wr) return;
     airOps(ship, dt);
   }
 

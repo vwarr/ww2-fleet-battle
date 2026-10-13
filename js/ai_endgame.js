@@ -130,11 +130,12 @@ window.WW = window.WW || {};
   }
 
   // ---- pursuit seams (ai_surface.js) ----
-  // A carrier that may be run down: crippled (hp or speed) or with no fit known gun ship of its own within
-  // ESCORTED_R. Only for a side that pursues.
+  // A carrier that may be run down: crippled (hp or speed), her flight deck wrecked for good (she cannot strike at the
+  // pursuers: the enemy's strikes reported it), or with no fit known gun ship of its own within ESCORTED_R. Only for a
+  // side that pursues.
   function fairGame(ship, cv, B) {
     if (!B || B.posture !== 'pursue' || !cv || cv.type !== 'carrier') return false;
-    if (isCripple(cv) || vmax(cv) < 0.95 * vmax(ship)) return true;
+    if (isCripple(cv) || vmax(cv) < 0.95 * vmax(ship) || (WW.shipDeck && WW.shipDeck.wrecked(cv))) return true;   // a wrecked flight deck (ship_deck.js): no air to cover her
     if (!WW.intel) return false;
     const now = WW.time.now, k = WW.intel.known(ship.nation, cv); if (!k) return false;
     for (const c of WW.intel.enemyShips(ship.nation)) {

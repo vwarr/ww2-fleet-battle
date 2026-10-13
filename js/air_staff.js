@@ -24,7 +24,8 @@
 //    losses, jettisons and turns for home; how much it takes rises with doctrine press (the IJN veterans press on).
 //  - Sun and cloud (seeK, intel.js): a plane high in a low sun's glare, or in cloud, is seen visually at a shorter range.
 //  - The enemy air group spent (airSpent): no enemy bomber and no more than a section of fighters (< SPENT_F) seen for SPENT_T s, and every enemy carrier the side
-//    knows of is crippled or proven bare (a strike of ours went in over it and met no fighters: its PRIOR goes too).
+//    knows of is crippled or proven bare (a strike of ours went in over it and met no fighters: its PRIOR goes too; or
+//    our bombs wrecked its flight deck for good, ship_deck.js: the strike's crews saw it, Shokaku at Coral Sea).
 //    Then the strikes go in packets (a division of PACKET_DIV on a small ship, a squadron of PACKET_SQN on a heavy one),
 //    the CAP shrinks to one standing section (ai_carrier.js capWanted) and the pursuit reserve goes (air_boss.js).
 // Events: 'airOrder' { carrier, order: 'breakOff' | 'mauled', wave?, n? }; 'admiralOrder' order 'airDefensive'.
@@ -47,6 +48,7 @@ window.WW = window.WW || {};
   { const m = typeof location !== 'undefined' && /[?&]staff=([^&]*)/.exec(location.search); if (m) decodeURIComponent(m[1]).split(',').forEach(kv => { const q = kv.split(':'); if (q.length === 2) TUNE[q[0]] = +q[1]; }); }
   let mem = {}, side = {}, acc = 0, raidMem = {}, seenAir = {}, bare = {};   // seenAir[n]: when n last saw an enemy combat plane; bare[n]: enemy carriers proven bare
 
+  const wrecked = s => !!(WW.shipDeck && WW.shipDeck.wrecked(s));   // the flight deck out for good (ship_deck.js)
   const doc = n => { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null, a = d && d.air; return Object.assign({}, DOC[n] || DOC.USN, a || {}); };
   const sideOf = n => side[n] || (side[n] = { escK: 1, defensive: false });
   const ebase = n => { const b = WW.islandBase && WW.islandBase.base; return b && b.nation !== n && !b.neutralized ? b : null; };
@@ -225,7 +227,7 @@ window.WW = window.WW || {};
     if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'mauled', squadron: null });
     const S = sideOf(cv.nation), B = WW.fleetCmd && WW.fleetCmd.side(cv.nation);
     if (S.defensive || !B) return;
-    if (!B.groups.carrier.members.every(s => s.type !== 'carrier' || !s.alive || (s.ai && s.ai.led && s.ai.led.mauled))) return;
+    if (!B.groups.carrier.members.every(s => s.type !== 'carrier' || !s.alive || (s.ai && s.ai.led && s.ai.led.mauled) || wrecked(s))) return;   // a wrecked deck flies nothing
     S.defensive = true; B.doctrine.cvStandoff *= 1.15;   // the air groups are spent: the carriers hang back behind the battle line
     const A = WW.admirals && WW.admirals.of(cv.nation), fl = A && A.flagship;
     if (WW.emit) WW.emit('admiralOrder', { nation: cv.nation, admiral: A ? A.name : '', title: A ? A.title : '', order: 'airDefensive',
@@ -261,6 +263,8 @@ window.WW = window.WW || {};
     }
     return true;
   }
+  // our bombs wrecked an enemy flight deck for good (ship_deck.js deckOut perm): the strike reports her out of the air war
+  WW.on('deckOut', e => { const u = e && e.ship; if (u && e.perm && !u.isBase) { const n = WW.enemyOf(u.nation); (bare[n] || (bare[n] = new Set())).add(u); } });
   WW.on('weaponDropped', e => { try { const p = e && e.plane; if (p && p.kind !== 'fighter' && p.nation) dropSeen(p); } catch (er) { console.error('staff', er); } });
 
   // ---------- strike sizing (air_boss.js orderStrike) ----------

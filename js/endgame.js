@@ -12,6 +12,8 @@
 //    down with a torpedo (ship.scuttle, ai_endgame.js steers; the USN scuttled Lexington, Hornet, Yorktown's
 //    screen tried; the IJN Hiryu, Akagi). Unless one is already on the way, flooding finishes her FOUNDER_T s after
 //    she was wrecked (FOUNDER_HP of her hp a second; a wrecked PT boat too): no hulk drifts on to the time limit.
+//    An IJN carrier whose flight deck is out for good (ship_deck.js), crippled and slowed, is given up the same way
+//    (hopeless; no foundering). An escaping carrier's planes divert only to a deck that can take them.
 //  - Stats per round (WW.endgame.stats), reset on roundStart.
 window.WW = window.WW || {};
 (function () {
@@ -122,12 +124,12 @@ window.WW = window.WW || {};
     WW.emit('shipEscaped', s);
     // its planes still up: another own deck takes them (they divert there); else those near her land on her past the
     // edge, and the rest ditch (a destroyer may pick the crews up) rather than vanish in mid-air
-    var P = WW.world.planes, alt = null, ad = 1e18;
-    for (var j = 0; j < WW.world.ships.length; j++) { var c = WW.world.ships[j]; if (c !== s && c.alive && !c.sinking && !c.escaped && c.type === 'carrier' && c.hangar && c.nation === s.nation) { var q = WW.dist2(c.x, c.z, s.x, s.z); if (q < ad) { ad = q; alt = c; } } }
+    var P = WW.world.planes, alt = null, ad = 1e18, wr = wrecked(s);   // (a wrecked deck, ship_deck.js: none land on her)
+    for (var j = 0; j < WW.world.ships.length; j++) { var c = WW.world.ships[j]; if (c !== s && c.alive && !c.sinking && !c.escaped && c.type === 'carrier' && c.hangar && c.nation === s.nation && !wrecked(c)) { var q = WW.dist2(c.x, c.z, s.x, s.z); if (q < ad) { ad = q; alt = c; } } }
     for (var k = 0; k < P.length; k++) {
       var pl = P[k]; if (pl.carrier !== s || !pl.alive) continue;
       if (alt) { var D = s._deck; if (D && D.lq) { var ix = D.lq.indexOf(pl); if (ix >= 0) D.lq.splice(ix, 1); } pl.carrier = alt; if (pl.state === 'landing') { pl.state = 'return'; pl.deckPh = null; } }
-      else if (WW.dist2(pl.x, pl.z, s.x, s.z) < ESC_PLANE_R * ESC_PLANE_R) { if (pl.remove) pl.remove(); }
+      else if (!wr && WW.dist2(pl.x, pl.z, s.x, s.z) < ESC_PLANE_R * ESC_PLANE_R) { if (pl.remove) pl.remove(); }
       else if (pl.ditch) pl.ditch();
     }
     s.remove();
@@ -159,16 +161,22 @@ window.WW = window.WW || {};
       s = ships[i];
       if (s.scuttle && (!s.alive || s.escaped || !s.scuttle.alive || s.scuttle.sinking || engaged(s))) { s.scuttle.scuttleBy = null; s.scuttle = null; } // done, or called away to fight
       if (!s.alive || s.sinking || s.isBase || s.type === 'submarine') continue;
-      if (s.hp >= HULK_HP * s.maxHp) { s.hulkAt = 0; continue; }
+      var wreck = s.hp < HULK_HP * s.maxHp;
+      if (!wreck && !hopeless(s)) { s.hulkAt = 0; continue; }
       if (!s.hulkAt) s.hulkAt = now;
       var sb = s.scuttleBy, onWay = sb && sb.alive && sb.scuttle === s && WW.dist2(sb.x, sb.z, s.x, s.z) < 120 * 120;
-      if (now - s.hulkAt > FOUNDER_T && !onWay) s.founder = true;
+      if (wreck && now - s.hulkAt > FOUNDER_T && !onWay) s.founder = true;
       if (s.type === 'pt') continue;
       if (now - s.hulkAt < HULK_T || now - (s.egHitT || 0) < HULK_QUIET) continue; // the enemy may still finish her
       var by = s.scuttleBy;
       if (!by || !by.alive || by.scuttle !== s) { s.scuttleBy = by = scuttler(s); if (by) by.scuttle = s; }
     }
   }
+  // A carrier the IJN gave up (doctrine.scuttle): her flight deck out for good (ship_deck.js), crippled and slowed:
+  // no deck to fight with and no speed to get home on, she is sent down by her own destroyers (Akagi and Hiryu at
+  // Midway, burning and dead in the water); not left to founder.
+  function wrecked(s) { return !!(WW.shipDeck && WW.shipDeck.wrecked(s)); }
+  function hopeless(s) { return s.type === 'carrier' && doctrine(s.nation).scuttle && wrecked(s) && s.hp < WW.fleetGroups.CRIP * s.maxHp && s.speedK < SCUT_K; }
   function scuttler(h) {
     var best = null, bd = SCUT_R * SCUT_R, ships = WW.world.ships;
     for (var k = 0; k < ships.length; k++) {

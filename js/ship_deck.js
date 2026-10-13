@@ -17,6 +17,13 @@
 // the side or ditch by a friendly ship (air_flight.js orphan / ditchBy). Events: 'deckOut' { ship, until, perm,
 // hits, x, z }, 'deckBack' { ship, out }. Also the hangar load (hangarLoad): bombers being armed and fuelled below
 // for a strike about to go (Akagi at Midway: the strike re-arming in the hangar when Best's bomb hit).
+// Out for good (wrecked(cv): Shokaku at Coral Sea, sent home; Akagi, Hiryu, scuttled): the planes waiting below are struck
+// down into the hangar and the launch queue goes (they are hangar planes now: nothing waits to launch); her planes in
+// the air go to another open deck of the side at once (in fuel reach: a searcher or strike plane in flight is re-homed
+// before it turns for home), and one on its way home diverts or ditches wherever it is, not only once over her. The AI
+// reads wrecked(): no air cover, no air-war hold, no strike orders, a withdraw role (fleet_cmd.js, fleet_groups.js);
+// she makes for her home edge with an escort (ai_carrier.js, fleet_groups.js); to the enemy a high-value hull to
+// finish, but no air threat (fleet_cmd.js strike value, air_staff.js bare, ai_endgame.js fair game).
 window.WW = window.WW || {};
 (function () {
   'use strict';
@@ -26,9 +33,10 @@ window.WW = window.WW || {};
   var BOOM_PERM = 6, BOOM_T = 2;       // a deck-load explosion: this big a load wrecks the deck for the round, a smaller one BOOM_T x as long
   var stats = null, tick = 0;
   function per() { return { USN: 0, IJN: 0 }; }
-  function reset() { tick = 0; stats = { out: per(), perm: per(), back: per(), outS: per(), held: 0, diverted: 0, ditched: 0, hangarBooms: per() }; S.stats = stats; }
+  function reset() { tick = 0; stats = { out: per(), perm: per(), back: per(), outS: per(), held: 0, diverted: 0, ditched: 0, hangarBooms: per(), struck: 0, rehomed: 0 }; S.stats = stats; }
   function dcOf(s) { var d = WW.fleetCmd && WW.fleetCmd.doctrine(s.nation); return d && d.damageControl > 0 ? d.damageControl : 1; }
   function out(cv) { return !!(cv && cv.deckOut); }
+  function wrecked(cv) { return !!(cv && cv.deckOut && cv.deckOut.perm); }   // out for good
 
   // Bombers being armed and fuelled below: while a strike is ordered (the next deck load readied as the first is
   // spotted: the bombers in the hangar not already in the launch queue, which the deck load counts), or while the
@@ -63,9 +71,22 @@ window.WW = window.WW || {};
     if (perm) stats.perm[cv.nation]++;
     WW.emit('deckOut', { ship: cv, until: D.until, perm: D.perm, hits: D.hits, x: x, z: z, boom: !!boom });
     hold(cv);
+    if (perm) strikeBelow(cv);
   }
   // the deck shut: planes queued below stay there (air_deck.js holds them), the boss stops ordering
   function hold(cv) { if (cv.ai) cv.ai.launchT = Math.max(cv.ai.launchT || 0, 1); }
+  // out for good: the planes waiting below or spotted go back into the hangar (as daylight.js strikes them below at
+  // dusk), the launch queue is dropped
+  var BELOW = { queued: 1, rise: 1, taxi: 1, hold: 1 };
+  function strikeBelow(cv) {
+    var D = cv._deck, h = cv.hangar;
+    if (D) for (var i = 0; i < D.launchers.length; i++) {
+      var p = D.launchers[i];
+      if (!p.alive || p.removed || p.state !== 'takeoff' || !BELOW[p.deckPh]) continue;
+      h[p.kind] = (h[p.kind] || 0) + 1; p.alive = false; p.remove(); stats.struck++;
+    }
+    if (cv.ai && cv.ai.queue) cv.ai.queue.length = 0;
+  }
 
   // another open deck of the side
   function otherDeck(p) {
@@ -80,7 +101,7 @@ window.WW = window.WW || {};
       var s = ships[i], D = s.deckOut; if (!D) continue;
       if (!s.alive) continue;
       stats.outS[s.nation]++;
-      if (D.perm) continue;
+      if (D.perm) { if (s.ai && s.ai.queue && s.ai.queue.length) strikeBelow(s); continue; }
       if ((s.fireN || 0) >= 3) D.until += 0.5;   // half the parties are fighting the fires
       if (now >= D.until) { s.deckOut = null; stats.back[s.nation]++; WW.emit('deckBack', { ship: s, out: now - D.t0 }); }
     }
@@ -88,9 +109,13 @@ window.WW = window.WW || {};
     if (!F) return;
     for (var j = 0; j < planes.length; j++) {
       var p = planes[j], c = p.carrier;
+      // (a scout floatplane alights beside its cruiser or battleship: no flight deck to lose)
       if (!p.alive || p.removed || !c || !c.deckOut || !c.alive || p.ditchTo || p.kind === 'flyingboat' || p.kind === 'scout') continue;
-      // decided on arrival: in the stack, or on the way home within HOME_R
-      if (!(p.state === 'landing' ? p.deckPh !== 'final' && p.deckPh !== 'trap' : p.state === 'return' && WW.dist2(p.x, p.z, c.x, c.z) < HOME_R * HOME_R)) continue;
+      var perm = c.deckOut.perm, home = p.state === 'return' || p.state === 'landing';
+      // out for good: a plane still out on its sortie (a searcher, a strike, the CAP) takes another open deck in reach now
+      if (perm && (p.state === 'transit' || p.state === 'attack')) { var b = F.nearestDeck(p); if (b) { p._deckOutDiv = true; F.divertTo(p, b); stats.rehomed++; } continue; }
+      // decided on arrival: in the stack, or on the way home within HOME_R (out for good: anywhere on the way home)
+      if (!home || (p.state === 'landing' ? p.deckPh === 'final' || p.deckPh === 'trap' : !perm && WW.dist2(p.x, p.z, c.x, c.z) >= HOME_R * HOME_R)) continue;
       var left = c.deckOut.perm ? Infinity : c.deckOut.until - now;
       if (p.fuel > left + HOLD_FUEL && (left < HOLD_S || !otherDeck(p))) { if (!p._deckHeld) { p._deckHeld = true; stats.held++; } continue; }
       p._deckOutDiv = true;
@@ -107,7 +132,7 @@ window.WW = window.WW || {};
     try { second(); } catch (e) { console.error('shipDeck', e); }
   }
 
-  var S = WW.shipDeck = { bombHit: bombHit, hangarLoad: hangarLoad, hangarBoom: hangarBoom, out: out, update: update, stats: null };
+  var S = WW.shipDeck = { bombHit: bombHit, hangarLoad: hangarLoad, hangarBoom: hangarBoom, out: out, wrecked: wrecked, update: update, stats: null };
   // run with the fires' second (main.js calls WW.shipFires.update)
   if (WW.shipFires) { var u0 = WW.shipFires.update; WW.shipFires.update = function (dt) { u0(dt); update(dt); }; }
   WW.on('roundStart', reset);
