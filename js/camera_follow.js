@@ -6,6 +6,8 @@
 //   Tab / Shift+Tab   next / previous upcoming attack, in time order;  8 next dogfight;  9 next ship in danger.
 // A small label (bottom left) says what is followed and, while waiting, "strike reaches the cruiser in ~25 s".
 // It also adds the finder's imminent moments to the director's candidates (WW.camHooks).
+// Normandy (camera_normandy.js on): F, Tab, 8 and 9 and the label are the land battle's (WW.camNormandy.f / cycle /
+// label: follow a landing craft, a squad, a tank), the Pacific ones otherwise.
 // Visual only: Math.random / wall clock, never WW.rand; reads the sim. Load after camera_story.js and camera_finder.js.
 window.WW = window.WW || {};
 (function (WW) {
@@ -74,8 +76,10 @@ window.WW = window.WW || {};
     return best ? { subj: best, label: nameOf(best) + ' in action', etaReal: 0 } : null;
   }
 
+  const nd = () => !!(WW.camNormandy && WW.camNormandy.on());
   function f() {
     ST.f++;
+    if (nd()) return WW.camNormandy.f();
     if (!WW.game || WW.game.state !== 'battle') return 'Follow: only during a battle';
     if (following()) { handBack(); return 'Follow: off · director camera'; }
     const L = WW.camFinder ? WW.camFinder.list().filter(i => i.subj && !i.subj.removed && (i.etaReal >= 0)) : [];
@@ -87,6 +91,7 @@ window.WW = window.WW || {};
   }
   // Tab / Shift+Tab (dir +1 / -1) through the upcoming attacks; kinds narrows the list ('dogfight', 'danger')
   function cycle(dir, which) {
+    if (nd() && WW.game && WW.game.state === 'battle') { ST.cycles++; return WW.camNormandy.cycle(dir, which); }
     if (!WW.game || WW.game.state !== 'battle' || !WW.camFinder) return '';
     ST.cycles++;
     let L;
@@ -111,6 +116,7 @@ window.WW = window.WW || {};
   function labelText() {
     const st = WW.game && WW.game.state;
     if (st !== 'battle' || !WW.cam || WW.cam.mode === 'map') return '';
+    if (nd()) return WW.camNormandy.label();
     const fc = WW.freecam && WW.freecam.active();
     const fo = fc && WW.freecam.following();
     if (fc && fo) return 'Following ' + nameOf(fo) + '  ·  drag: orbit  ·  scroll: zoom  ·  O: ' + (WW.freecam.rel() ? 'heading-relative' : 'world-fixed') + '  ·  F: director';

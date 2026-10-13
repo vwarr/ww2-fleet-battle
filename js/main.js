@@ -112,14 +112,18 @@ window.WW = window.WW || {};
         const p = nearestOk(x, z, c.type, placed);
         placed.push(p);
         const o = { type: c.type, nation, x: p.x, z: p.z };
-        if (c.flag) o.flag = c.flag; if (c.cls) o.cls = c.cls;
+        for (const k of ['flag', 'cls', 'name', 'fs', 'heading']) if (c[k] !== undefined) o[k] = c[k];
         out.push(o);
       }
     }
     return out;
   }
   function spawnComposition(comp) {
-    for (const c of comp) call('ships', 'spawn', c.type, c.nation, c.x, c.z, c.heading !== undefined ? c.heading : SIDE(c.nation).heading, c.cls, c.flag);
+    for (const c of comp) {
+      const s = call('ships', 'spawn', c.type, c.nation, c.x, c.z, c.heading !== undefined ? c.heading : SIDE(c.nation).heading, c.cls, c.flag);
+      if (s && c.fs) s.fs = c.fs;           // a scenario role (Normandy fire support: ai_fire_support.js)
+      if (s && c.name) s.name = c.name;     // a historical name (the composition knows which ship it is)
+    }
   }
   function clearModules() {
     ALL_MODULES.forEach(m => call(m, 'clearAll'));
@@ -334,6 +338,10 @@ window.WW = window.WW || {};
     call('fleetCmd', 'update', dt); // side commanders + danger fields (fleet_cmd.js, ai_threat.js), every ~2 s
     call('ships', 'update', dt);
     call('islandBase', 'update', dt); // the island air base: repairs, coastal guns, base planes (island_base.js, land_air.js)
+    call('coastDefence', 'update', dt); // Normandy: the strongpoints' guns, MG cones and mortar zones (coast_defence*.js)
+    call('landingCraft', 'update', dt); // Normandy: the landing craft (landing_craft.js)
+    call('infantry', 'update', dt);     // Normandy: the squads ashore and their fight (infantry*.js)
+    call('offmapAir', 'update', dt);    // Normandy: B-24s, P-47s, Spitfires, Fw 190s from off the map (air_offmap.js)
     call('endgame', 'update', dt);  // escapes off the map, survivor pickups, scuttling (endgame.js)
     call('shipFires', 'update', dt); // fires, flooding, damage control (ship_fires.js)
     call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)
@@ -352,16 +360,29 @@ window.WW = window.WW || {};
     requestAnimationFrame(frame);
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
+    call('shipSwell', 'unpose');   // Normandy: the swell's pose comes off first (ship_swell.js)
     call('dmgVis', 'unpose');      // the sim never sees the visual settling / trim (damage_visuals.js)
     // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
     call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
+    call('shipSwell', 'pose', rdt); // Normandy: the ships heave, pitch and roll on the swell (ship_swell.js), visual only
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
     if (WW.afterCamera) for (const f of WW.afterCamera) f(rdt); // camera-facing visuals re-faced to this frame's camera (a cut: no frame sized for the old view)
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
     call('baseFx', 'update', rdt);  // the island base: craters, fires, parked planes (base_fx.js), visual only
     call('normandyProps', 'update', rdt); // Normandy: the beach obstacles still standing (terrain_normandy_props.js), visual only
+    call('waves', 'update', rdt);         // Normandy: the rough sea and the surf (waves.js), visual only; before what rides it
+    call('normandySky', 'update', rdt);   // Normandy: the low cloud deck, smoke from the bluffs (normandy_sky.js), visual only
+    call('normandyFleet', 'update', rdt); // Normandy: the transport area, the boats before the sim has them (normandy_fleet.js), visual only; before landingFx
+    call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
+    call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
+    call('beachheadFx', 'update', rdt);   // Normandy: craters, scorch, wire, hulks, debris (beachhead_fx.js), visual only
+    call('vehicleFx', 'update', rdt);     // Normandy: vehicles, DUKWs, lane markers, draw blocks, leaders, prisoners (vehicles_fx.js), visual only
+    call('hocFx', 'update', rdt);         // Normandy: the Rangers' ropes and ladders at Pointe du Hoc (hoc_fx.js), visual only
+    call('rocketBarrage', 'update', rdt); // Normandy: the LCT(R)s' rockets at H-5 (rocket_barrage.js), visual only
+    call('defenceFx', 'update', rdt);     // Normandy: the German crews, MG 42 tracers, gun flashes (defence_fx.js), visual only
+    call('offmapAirFx', 'update', rdt);   // Normandy: the planes from England (air_offmap_fx.js), visual only
     call('dmgVis', 'draw', rdt);    // scorch / hole decals and deck wrecks on the posed hulls
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);
@@ -374,6 +395,7 @@ window.WW = window.WW || {};
   // onStep: optional test hook, called after every sim step of fastForward
   function fastForward(seconds, onStep) {
     let left = seconds;
+    call('shipSwell', 'unpose');
     call('dmgVis', 'unpose');
     while (left > 1e-9) { const d = Math.min(STEP, left); step(d); left -= d; if (onStep) onStep(d); }
   }

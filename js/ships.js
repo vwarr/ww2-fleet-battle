@@ -40,7 +40,7 @@ window.WW = window.WW || {};
       this.escapeEdge = 0; // -1 / +1: leaving the map over the west / east edge (endgame.js), no edge avoidance there
       this.alive = true; this.sinking = false; this.removed = false;
       this.submerged = type === 'submarine';
-      this.model = WW.models.buildShip(type, nation, this.mk);
+      this.model = WW.models.buildShip(type, this.flag, this.mk);   // the palette of the hull's flag (RN, FNFL; else the side's)
       this.group = this.model.group;
       this.ownKids = new Set(this.group.children); // the model's own parts (not flags / parked planes added later): ship_breakup.js
       this.group.rotation.order = 'YXZ'; // yaw, then roll (x = long axis), then pitch (z)
@@ -138,6 +138,9 @@ window.WW = window.WW || {};
           if (d > bd) { bd = d; this.escapeH = a; } // most open water for the whole hull (never off the map edge)
         }
         this.escapeT = 3; this.escHold = 0; this.escAstern = false;
+        // the open water is astern (a bow run into a blind inlet): back out along it rather than try to swing on the spot
+        // (a cruiser pressing a target into a shoal pocket swung between two escapes for 100 s, sim_behaviour stuck)
+        if (Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 2.3) { this.asternT = 4; this.escAstern = true; }
       }
       // A jammed swing (an end against the shallows or a wreck, turn rate 0 for 1 s): come about the other
       // way instead, as an escape toward the clearest heading on the free side. An escape that jams again

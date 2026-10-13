@@ -171,15 +171,17 @@ window.WW = window.WW || {};
       var tz = wo.semi * 0.97, ta = at(tz);
       tpl.fx[k < 0 ? 'tipL' : 'tipR'] = new THREE.Vector3(ta.le - ta.c * 0.5, ta.y + wo.y, k * (tz + wo.z0));
     });
-    // payload hangs at the keel (the Betty's half-recessed bay)
-    var pl = new THREE.Group(), ks = stAt(st0, 0.1), by = ks[3] - ks[2] - 0.02;
+    // payload at the keel, at the airframe's scale (~0.22 units/m): the B-26's Mk 13 (4.1 m x 0.57 m) on an external rack
+    // under the keel; the Betty's Type 91 (5.3 m x 0.45 m) and her two 250 kg bombs half-recessed in the doorless bay
+    var pl = new THREE.Group(), keel = function (x) { var s = stAt(st0, x); return s[3] - s[2]; }, J = nat === 'IJN';
     if (T.torpedo) {
-      K.meshOf(pl, K.tube(K.bodyRings(K.smooth([[-0.75, 0.02, 0.02, 0], [-0.6, 0.09, 0.09, 0], [0.5, 0.1, 0.1, 0], [0.7, 0.07, 0.07, 0], [0.77, 0.01, 0.01, 0]], 3), 10, 2, function () { return nat === 'IJN' ? 0x7a7e80 : 0x8a9098; }), true, true));
-      M._bar(pl, 0x4a4e54, 0.13, 0.012, 0.24, -0.68, -0.006, 0); M._bar(pl, 0x4a4e54, 0.13, 0.24, 0.012, -0.68, -0.12, 0);
-      tpl.payload = { geo: K.bake(pl), pos: [0.1, by, 0] };
+      var tl = J ? 1.17 : 0.91, tr = J ? 0.05 : 0.063;
+      K.ordnance(pl, true, tl, tr, J ? 0x7a7e80 : 0x8a9098);
+      if (!J) K.swayBraces(pl, [-0.28 * tl, 0.22 * tl], tr, tr + 0.04);
+      tpl.payload = { geo: K.bake(pl), pos: [0.1, keel(0.1) - (J ? tr * 0.3 : tr - 0.006), 0] };
     } else if (T.bombs) {
-      [-0.12, 0.12].forEach(function (z) { K.meshOf(pl, K.tube(K.bodyRings(K.smooth([[-0.3, 0.03, 0.03, 0], [-0.15, 0.08, 0.08, 0], [0.12, 0.09, 0.09, 0], [0.26, 0.05, 0.05, 0], [0.3, 0.01, 0.01, 0]], 3), 10, 2, function () { return 0x585e66; }), true, true), 0, 0, z); });
-      tpl.payload = { geo: K.bake(pl), pos: [0.2, by + 0.02, 0] };
+      [-0.07, 0.07].forEach(function (z) { var g = new THREE.Group(); g.position.z = z; pl.add(g); K.ordnance(g, false, 0.42, 0.045, 0x585e66); });
+      tpl.payload = { geo: K.bake(pl), pos: [0.2, keel(0.2) - 0.045 * 0.3, 0] };
     }
     tpl.pg = blades(T.prop, P); tpl.discMat = K.discMat(nat, P.tip);
     var ex = T.wing.qc + 0.2;

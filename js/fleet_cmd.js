@@ -91,7 +91,7 @@ window.WW = window.WW || {};
     for (i = 0; i < cs.length; i++) {
       c = cs[i]; var u = c.unit; if (!u || !u.alive) continue;
       var age = now - c.seenAt, w = Math.max(0.3, 1 - age / 90);
-      known += (u.isBase ? u.power : pw(u, B.nation)) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power
+      known += (u.isBase || u.isLand ? u.power : pw(u, B.nation)) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power; land units (Normandy)
       ex += c.x * w; ez += c.z * w; ew += w;
       if (age <= ENGAGE_AGE) for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine' && s.type !== 'pt') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); } // 'engage' on a current picture, not a stale report
     }
@@ -135,6 +135,7 @@ window.WW = window.WW || {};
     if (B.posture !== prev) B.postureAt = now;
     if (B.posture === 'withdraw' && !B.brokenAt && WW.game && WW.game.metT !== null && now - B.postureAt >= WD_BREAK) B.brokenAt = now; // F15: a real retirement
     var aw = airWar(B, cs, rt); if (B.airWar && !aw) B.holdEnd = rt; B.airWar = aw; // holdEnd: when the surface force was let go (tests)
+    if (WW.nightPlan) WW.nightPlan.tick(B, cs, now); // night orders: B.nightMode, the carriers' night station, flares (night_plan.js)
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
     var tgt = B.enemyCentre || B.searchPoint;
@@ -262,7 +263,7 @@ window.WW = window.WW || {};
       var cv = cvs[k], e = null, ed = DEFEND_R; if (cv.type !== 'carrier') continue;
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit;
-        if (!u || !u.alive || u.submerged || !GUNSHIP[u.type] || u.isBase || now - c.seenAt > 30) continue; // an island cannot close on a carrier; a PT boat is no gun ship (no deck load at it)
+        if (!u || !u.alive || u.submerged || !GUNSHIP[u.type] || u.isBase || u.isLand || now - c.seenAt > 30) continue; // an island cannot close on a carrier; a PT boat is no gun ship (no deck load at it)
         var d = WW.dist(cv.x, cv.z, c.x, c.z); if (d < ed) { ed = d; e = u; }
       }
       if (e) B.defend.push({ carrier: cv, enemy: e, d: ed });

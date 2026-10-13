@@ -7,11 +7,18 @@
 // Whose plot: G cycles Omniscient (true positions) -> USN plot -> IJN plot (only what that side knows: WW.intel).
 // X toggles the danger layer (the owner's WW.threat field: red guns / torpedoes, blue AA umbrella).
 // Rules: Math.random only (wood grain, paper fibres); reads the sim, never writes it; nothing in sim-only mode.
+// The chart's view (V): the whole map in the Pacific; a scenario's own window (Normandy, plot_normandy.js VIEW: Omaha
+// and Pointe du Hoc from the line of departure to the plateau) when WW.plotNormandy is on; its plots are Omniscient ->
+// USN -> GER, and its symbols (sectors, lanes, waves, strongpoints, draws, the beachhead line) are plot_normandy.js's.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   if (WW.simOnly) return;
-  const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, BORDER = 34, OWNERS = [null, 'USN', 'IJN'];
+  const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, BORDER = 34, OWNERS0 = [null, 'USN', 'IJN'];
+  const V = { x: 0, z: 0, w: W, h: H, rose: [70, H - 70] };   // the chart's window on the world (the whole map by default)
+  const nd = () => !!(WW.plotNormandy && WW.plotNormandy.on());
+  const owners = () => (nd() ? WW.plotNormandy.OWNERS : OWNERS0);
+  function view() { const v = nd() ? WW.plotNormandy.VIEW : null; V.x = v ? v.x : 0; V.z = v ? v.z : 0; V.w = v ? v.w : W; V.h = v ? v.h : H; V.rose = v ? v.rose : [70, H - 70]; }
   const P = { owner: null, danger: false, cv: null, ctx: null, base: null, key: '', s: 1, ox: 0, oy: 0, dpr: 1, vw: 0, vh: 0, px: 0, py: 0, pw: 0, ph: 0, onT: 0, active: false };
   let dz = null, dzT = -1, dzOwner = null;
 
@@ -25,12 +32,12 @@ window.WW = window.WW || {};
   function layout() {
     const vw = window.innerWidth, vh = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
     const R = vw > 900 ? Math.min(330, vw * 0.27) : 0, pad = Math.max(18, Math.min(vw, vh) * 0.045);
-    const aw = vw - R - pad * 2, ah = vh - pad * 2, s = Math.min(aw / (W + BORDER * 2), ah / (H + BORDER * 2));
-    const pw = (W + BORDER * 2) * s, ph = (H + BORDER * 2) * s, px = pad + (aw - pw) / 2, py = pad + (ah - ph) / 2;
+    const aw = vw - R - pad * 2, ah = vh - pad * 2, s = Math.min(aw / (V.w + BORDER * 2), ah / (V.h + BORDER * 2));
+    const pw = (V.w + BORDER * 2) * s, ph = (V.h + BORDER * 2) * s, px = pad + (aw - pw) / 2, py = pad + (ah - ph) / 2;
     Object.assign(P, { vw, vh, dpr, s, pw, ph, px, py, ox: px + BORDER * s, oy: py + BORDER * s });
     if (P.cv.width !== Math.round(vw * dpr) || P.cv.height !== Math.round(vh * dpr)) { P.cv.width = Math.round(vw * dpr); P.cv.height = Math.round(vh * dpr); }
   }
-  const sx = x => P.ox + x * P.s, sy = z => P.oy + z * P.s;
+  const sx = x => P.ox + (x - V.x) * P.s, sy = z => P.oy + (z - V.z) * P.s;
 
   // ---------- the static chart ----------
   function wood(g, w, h) {
@@ -65,8 +72,8 @@ window.WW = window.WW || {};
   }
   // depth samples every 2 units; returns { v, nx, nz }
   function sampleDepth() {
-    const c = 2, nx = Math.floor(W / c) + 1, nz = Math.floor(H / c) + 1, v = new Float32Array(nx * nz);
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) v[j * nx + i] = WW.terrain.depthAt(i * c, j * c);
+    const c = 2, nx = Math.floor(V.w / c) + 1, nz = Math.floor(V.h / c) + 1, v = new Float32Array(nx * nz);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) v[j * nx + i] = WW.terrain.depthAt(V.x + i * c, V.z + j * c);
     return { v, nx, nz, c };
   }
   // marching squares: the contour at depth `lvl` as segments in world units
@@ -77,7 +84,7 @@ window.WW = window.WW || {};
       const a = v[j * nx + i], b = v[j * nx + i + 1], d = v[(j + 1) * nx + i], e = v[(j + 1) * nx + i + 1];
       const k = (a > lvl ? 1 : 0) | (b > lvl ? 2 : 0) | (e > lvl ? 4 : 0) | (d > lvl ? 8 : 0);
       if (k === 0 || k === 15) continue;
-      const x = i * c, z = j * c, p = [];
+      const x = V.x + i * c, z = V.z + j * c, p = [];
       if ((k & 1) !== ((k >> 1) & 1)) p.push([x + lerp(a, b) * c, z]);
       if (((k >> 1) & 1) !== ((k >> 2) & 1)) p.push([x + c, z + lerp(b, e) * c]);
       if (((k >> 2) & 1) !== ((k >> 3) & 1)) p.push([x + lerp(d, e) * c, z + c]);
@@ -97,35 +104,38 @@ window.WW = window.WW || {};
     }
     rg.putImageData(img, 0, 0);
     g.save(); g.scale(d, d);
-    g.fillStyle = 'rgba(150,185,200,0.10)'; g.fillRect(P.ox, P.oy, W * P.s, H * P.s); // a faint sea wash
-    g.imageSmoothingEnabled = true; g.drawImage(r, P.ox, P.oy, W * P.s, H * P.s);
+    g.fillStyle = 'rgba(150,185,200,0.10)'; g.fillRect(P.ox, P.oy, V.w * P.s, V.h * P.s); // a faint sea wash
+    g.imageSmoothingEnabled = true; g.drawImage(r, P.ox, P.oy, V.w * P.s, V.h * P.s);
     // hatch the land: diagonal pencil lines kept to the land by the raster's alpha
-    const hc = document.createElement('canvas'); hc.width = Math.ceil(W * P.s * d); hc.height = Math.ceil(H * P.s * d);
+    const hc = document.createElement('canvas'); hc.width = Math.ceil(V.w * P.s * d); hc.height = Math.ceil(V.h * P.s * d);
     const hg = hc.getContext('2d'); hg.drawImage(r, 0, 0, hc.width, hc.height);
     hg.globalCompositeOperation = 'source-in'; hg.strokeStyle = 'rgba(110,80,40,0.45)'; hg.lineWidth = d * 0.8;
     hg.beginPath(); for (let t = -hc.height; t < hc.width; t += 5 * d) { hg.moveTo(t, hc.height); hg.lineTo(t + hc.height, 0); } hg.stroke();
-    g.globalAlpha = 0.5; g.drawImage(hc, P.ox, P.oy, W * P.s, H * P.s); g.globalAlpha = 1;
+    g.globalAlpha = 0.5; g.drawImage(hc, P.ox, P.oy, V.w * P.s, V.h * P.s); g.globalAlpha = 1;
     // grid with edge letters / numbers
     g.strokeStyle = 'rgba(70,95,120,0.16)'; g.lineWidth = 0.8; g.beginPath();
     const GS = 80;
-    for (let x = GS; x < W; x += GS) { g.moveTo(sx(x), sy(0)); g.lineTo(sx(x), sy(H)); }
-    for (let z = GS; z < H; z += GS) { g.moveTo(sx(0), sy(z)); g.lineTo(sx(W), sy(z)); }
+    const X1 = V.x + V.w, Z1 = V.z + V.h, up = (a, k) => Math.floor(a / GS) * GS + k; // the grid stays on the world's lines (the Pacific: from GS)
+    for (let x = up(V.x, GS); x < X1; x += GS) { g.moveTo(sx(x), sy(V.z)); g.lineTo(sx(x), sy(Z1)); }
+    for (let z = up(V.z, GS); z < Z1; z += GS) { g.moveTo(sx(V.x), sy(z)); g.lineTo(sx(X1), sy(z)); }
     g.stroke();
     g.fillStyle = 'rgba(60,50,40,0.6)'; g.font = Math.max(8, 10 * P.s) + 'px "Special Elite", "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (let x = GS / 2, n = 0; x < W; x += GS, n++) { g.fillText(String.fromCharCode(65 + n), sx(x), P.oy - 8 * P.s); g.fillText(String.fromCharCode(65 + n), sx(x), sy(H) + 8 * P.s); }
-    for (let z = GS / 2, n = 1; z < H; z += GS, n++) { g.fillText(n, P.ox - 9 * P.s, sy(z)); g.fillText(n, sx(W) + 9 * P.s, sy(z)); }
+    for (let x = up(V.x, GS / 2), n = Math.floor(V.x / GS); x < X1; x += GS, n++) { g.fillText(String.fromCharCode(65 + n), sx(x), P.oy - 8 * P.s); g.fillText(String.fromCharCode(65 + n), sx(x), sy(Z1) + 8 * P.s); }
+    for (let z = up(V.z, GS / 2), n = Math.floor(V.z / GS) + 1; z < Z1; z += GS, n++) { g.fillText(n, P.ox - 9 * P.s, sy(z)); g.fillText(n, sx(X1) + 9 * P.s, sy(z)); }
     // coast in ink, the shoal line dotted
     const coast = new Path2D(), shoal = new Path2D();
     contour(D, 0, coast); contour(D, 4, shoal);
     g.strokeStyle = 'rgba(70,90,110,0.45)'; g.lineWidth = 0.7; g.setLineDash([1.5, 2.5]); g.stroke(shoal); g.setLineDash([]);
     g.strokeStyle = '#4a3622'; g.lineWidth = 1.3; g.lineCap = 'round'; g.stroke(coast);
     // neat line: a double frame with a chequered degree scale
-    g.strokeStyle = '#3b3328'; g.lineWidth = 1.2; g.strokeRect(P.ox, P.oy, W * P.s, H * P.s);
-    const o = 4 * P.s; g.lineWidth = 0.6; g.strokeRect(P.ox - o, P.oy - o, W * P.s + 2 * o, H * P.s + 2 * o);
+    g.strokeStyle = '#3b3328'; g.lineWidth = 1.2; g.strokeRect(P.ox, P.oy, V.w * P.s, V.h * P.s);
+    const o = 4 * P.s; g.lineWidth = 0.6; g.strokeRect(P.ox - o, P.oy - o, V.w * P.s + 2 * o, V.h * P.s + 2 * o);
     g.fillStyle = '#3b3328';
-    for (let x = 0; x < W; x += 40) if ((x / 40) % 2 === 0) { g.fillRect(sx(x), P.oy - o, 40 * P.s, o * 0.6); g.fillRect(sx(x), sy(H) + o * 0.4, 40 * P.s, o * 0.6); }
-    for (let z = 0; z < H; z += 40) if ((z / 40) % 2 === 0) { g.fillRect(P.ox - o, sy(z), o * 0.6, 40 * P.s); g.fillRect(sx(W) + o * 0.4, sy(z), o * 0.6, 40 * P.s); }
-    rose(g, 70, H - 70, 48);
+    const c40 = a => Math.ceil(a / 80) * 80;
+    for (let x = c40(V.x); x < X1; x += 40) if ((x / 40) % 2 === 0) { g.fillRect(sx(x), P.oy - o, Math.min(40, X1 - x) * P.s, o * 0.6); g.fillRect(sx(x), sy(Z1) + o * 0.4, Math.min(40, X1 - x) * P.s, o * 0.6); }
+    for (let z = c40(V.z); z < Z1; z += 40) if ((z / 40) % 2 === 0) { g.fillRect(P.ox - o, sy(z), o * 0.6, Math.min(40, Z1 - z) * P.s); g.fillRect(sx(X1) + o * 0.4, sy(z), o * 0.6, Math.min(40, Z1 - z) * P.s); }
+    rose(g, V.rose[0], V.rose[1], 48);
+    if (nd()) WW.plotNormandy.chart(g); // Normandy: the sector names, the draws, the strongpoints' outlines (static ink)
     g.restore();
     // brass pins at the paper corners
     for (const [x, y] of [[P.px + 9, P.py + 9], [P.px + P.pw - 9, P.py + 9], [P.px + 9, P.py + P.ph - 9], [P.px + P.pw - 9, P.py + P.ph - 9]]) pin(g, x * d, y * d, 4 * d, '#c9a24a');
@@ -185,8 +195,8 @@ window.WW = window.WW || {};
     if (on !== P.active) { P.active = on; P.onT = 0; P.cv.classList.toggle('on', on); }
     if (!on) return;
     P.onT += rdt;
-    layout();
-    const key = P.vw + 'x' + P.vh + '@' + P.dpr + '/' + (WW.terrain && WW.terrain.seed);
+    view(); layout();
+    const key = P.vw + 'x' + P.vh + '@' + P.dpr + '/' + (WW.terrain && WW.terrain.seed) + (nd() ? '/normandy' : '');
     if (key !== P.key) { P.key = key; buildBase(); if (WW.plotTokens) WW.plotTokens.resize(); }
     const g = P.ctx;
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(P.base, 0, 0);
@@ -204,12 +214,12 @@ window.WW = window.WW || {};
   if (postRender) WW.post.render = function (scene, camera) { if (P.active && P.onT > 0.8) return; postRender.call(WW.post, scene, camera); };
 
   WW.plot = {
-    P, sx, sy, pin, BORDER, active: () => P.active, owner: () => P.owner,
+    P, V, sx, sy, pin, BORDER, active: () => P.active, owner: () => P.owner,
     set(n) { P.owner = n || null; return 'Plot: ' + (P.owner ? P.owner + ' plot' : 'omniscient'); },
     // G: into map view (the current plot), then Omniscient -> USN -> IJN
     cycle() {
       if (WW.cam && WW.cam.mode !== 'map') { WW.cam.toggle(); return 'Plot: ' + (P.owner ? P.owner + ' plot' : 'omniscient'); }
-      return WW.plot.set(OWNERS[(OWNERS.indexOf(P.owner) + 1) % OWNERS.length]);
+      const O = owners(); return WW.plot.set(O[(O.indexOf(P.owner) + 1) % O.length]);
     },
     toggleDanger() { P.danger = !P.danger; return 'Danger layer ' + (P.danger ? (P.owner ? 'on' : 'on (pick a side with G)') : 'off'); },
     rebuild() { P.key = ''; }

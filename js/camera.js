@@ -6,6 +6,10 @@
 // second and takes the camera to a bigger action elsewhere); a shot committed to an attack is LOCKED (camera_lock.js) until its result,
 // and a sinking or a magazine explosion cuts in through interrupt(). Setup mode (and 'map' mode, key C) uses a
 // high overview of the whole map.
+// Normandy (camera_normandy.js, WW.camNormandy): its land-battle shots carry shot.nd; they get their own goal (before
+// the hand-offs and scenes), their own ground-level sanity (keepSane's floors are for ships: 11 u over a beach), their
+// own lock (camera_lock.js) and a beach establishing shot instead of the fleet 'wide'. Every hook is gated on shot.nd
+// or WW.camNormandy.on(), so the Pacific director is unchanged.
 window.WW = window.WW || {};
 (function (WW) {
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
@@ -122,6 +126,7 @@ window.WW = window.WW || {};
       else if (p.state === 'transit' && p.ordnance) add(3 + ace, 'chase', p, { dur: dur(12, 15) });
     }
     (WW.camHooks || []).forEach(f => { try { f(add, dur); } catch (e) { /* never break the director */ } }); // air_aces.js, air_scouts.js
+    if (WW.camNormandy && WW.camNormandy.on()) WW.camNormandy.damp(out); // Normandy: the ship-scale shots are quiet-moment picks; the land battle leads
     return out;
   }
   function pickShot() {
@@ -142,7 +147,8 @@ window.WW = window.WW || {};
     }
     // a short establishing shot: the round's opening, and now and then in a quiet spell (never two within 5 shots)
     if (opening || (shotCount - lastWide >= 5 && (!best || best.score < 6) && Math.random() < 0.35) || !best) {
-      best = { kind: 'wide', dur: opening ? dur(10, 13) : dur(8, 11) }; lastWide = shotCount;
+      const nw = WW.camNormandy && WW.camNormandy.on() ? WW.camNormandy.wide(opening) : null; // Normandy: the beach, not the fleet
+      best = nw || { kind: 'wide', dur: opening ? dur(10, 13) : dur(8, 11) }; lastWide = shotCount;
     }
     startShot(best);
   }
@@ -225,6 +231,7 @@ window.WW = window.WW || {};
   function shotGoal(rdt) {
     const s = shot.subj, k = Math.min(1, shot.t / shot.dur);
     if (s && !gone(s)) pos(s, shot.last || (shot.last = new THREE.Vector3()));
+    if (shot.nd && WW.camNormandy && WW.camNormandy.goal(shot, gP, gL, rdt)) return; // Normandy's ground-level shots
     if (WW.camAction && WW.camAction.goal(shot, gP, gL, rdt)) return; // bomb / torpedo hand-offs, over-the-shoulder
     if (WW.storyShots && WW.storyShots.goal(shot, gP, gL, rdt)) return; // story mode shots (camera_story_shots.js)
     if (WW.camScenes && WW.camScenes.goal(shot, gP, gL, rdt)) return;   // the gun duel, a sinking, the deck under attack, the base
@@ -293,14 +300,14 @@ window.WW = window.WW || {};
     for (const f of [0.3, 0.6, 0.9]) if (depth(s.x + Math.cos(a) * r * f, s.z + Math.sin(a) * r * f) < 1) return true;
     return false;
   }
-  function keepSane(v, look, low, deck) { // stay over the world, above land, and keep the view line clear of terrain; deck: the ship the camera stands on
+  function keepSane(v, look, low, deck, field) { // stay over the world, above land, and keep the view line clear of terrain; deck: the ship the camera stands on; field: down on the airfield (camera_base.js)
     v.x = WW.clamp(v.x, -120, W + 120); v.z = WW.clamp(v.z, -120, H + 120);
     const d0 = depth(v.x, v.z);
-    v.y = Math.max(v.y, low && d0 >= 4 ? 2 : 5, -d0 + 6, d0 < 3 ? 11 : 0); // over shoals sit higher, so they do not fill the frame; a low shot skims deep water
+    v.y = field ? Math.max(v.y, 2, -d0 + 1.6) : Math.max(v.y, low && d0 >= 4 ? 2 : 5, -d0 + 6, d0 < 3 ? 11 : 0); // over shoals sit higher, so they do not fill the frame; a low shot skims deep water
     let need = v.y;
     for (const f of [0.15, 0.3, 0.45, 0.6, 0.75]) {
       const x = WW.lerp(v.x, look.x, f), z = WW.lerp(v.z, look.z, f), y = WW.lerp(v.y, look.y, f);
-      const ground = Math.max(0, -depth(x, z)) + (depth(x, z) < 2 ? 3 : 1.5);
+      const ground = Math.max(0, -depth(x, z)) + (field ? 0.7 : depth(x, z) < 2 ? 3 : 1.5);
       if (y < ground) need = Math.max(need, v.y + (ground - y) / (1 - f));
     }
     v.y = need;
@@ -312,7 +319,7 @@ window.WW = window.WW || {};
       const cl = 9 * PFK;   // 9 at the 1.7 plane scale
       if (d < cl && d > 0.01) { const k = cl / d; v.x = p.x + dx * k; v.y = p.y + dy * k; v.z = p.z + dz * k; }
     }
-    v.y = Math.max(v.y, low && d0 >= 4 ? 2 : 4);
+    v.y = Math.max(v.y, field ? Math.max(2, -d0 + 1.6) : low && d0 >= 4 ? 2 : 4);
   }
 
   function clearHulls(v, top, except) {
@@ -388,17 +395,7 @@ window.WW = window.WW || {};
         if (WW.camAction && WW.camAction.finale) WW.camAction.finale(3.5);
       });
       WW.on('setupStart', () => { shot = null; forced = null; snapNext = true; });
-      // the island base's alarm (base life: the siren, crews running to the guns and planes): cut to the base for a
-      // low 6-10 s orbit, unless the camera is on a hand-off, an attack in a story, the user's camera or a test shot.
-      // No-op if the event never fires. e.fx / e.fz (island_base.js): the camp where the men run, when it has one.
-      let alarmAt = -1e9;
-      WW.on('baseAlarm', e => {
-        if (!e || e.x === undefined || !camera || cam.mode !== 'director' || (WW.freecam && WW.freecam.active())) return;
-        if (!(WW.game && WW.game.state === 'battle') || forced || performance.now() / 1000 - alarmAt < 60) return;
-        if (shot && (shot.stage || shot.user || shot.pr >= 99 || locked() || (shot.story && WW.camStory && (WW.camStory._dbg() || {}).phase === 'attack'))) return;
-        alarmAt = performance.now() / 1000;
-        startShot({ kind: 'orbit', subj: { x: e.fx !== undefined ? e.fx : e.x, z: e.fz !== undefined ? e.fz : e.z, y: 0, diorama: true }, r: e.fx !== undefined ? 30 : 42, dur: dur(6, 10), w: 0.05, hgt: 0.12, pr: 9, alarm: true });
-      });
+      // the island base's alarm: camera_base.js (the sequence: the camp, the flight line, the scramble, the strike)
       if (WW.camAction) WW.camAction.init();
       if (WW.camStory) WW.camStory.init();
     },
@@ -460,7 +457,7 @@ window.WW = window.WW || {};
       } else if (fc) {
         // the user has the camera: no cut, just ease from wherever we are; the director resumes later
         WW.freecam.goal(gP, gL, rdt);
-        keepSane(gP, gL);
+        if (WW.camNormandy && WW.camNormandy.on()) WW.camNormandy.sane(gP, gL, null); else keepSane(gP, gL);
         manual = true; shot = null; snapNext = false;
       } else {
         manual = false;
@@ -468,8 +465,9 @@ window.WW = window.WW || {};
         if (shot && !forced && shot.t >= shot.dur && locked()) shot.dur = shot.t + 0.5; // the attack lock: hold to the result
         if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && !shot.stage && !shot.story && !locked() && dull(shot.subj))) { forced = null; pickShot(); }
         shotGoal(rdt);
-        keepSane(gP, gL, shot.kind === 'low' || shot.kind === 'profile', shot.deck ? shot.subj : null);
-        if (shot.kind !== 'wide' && (shot.aim || shot.last)) compose(shot.aim || shot.last);
+        if (shot.nd && WW.camNormandy) WW.camNormandy.sane(gP, gL, shot);
+        else keepSane(gP, gL, shot.kind === 'low' || shot.kind === 'profile', shot.deck ? shot.subj : null, !!shot.field);
+        if (shot.kind !== 'wide' && !shot.noCompose && (shot.aim || shot.last)) compose(shot.aim || shot.last);
       }
       if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)
       else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; }
@@ -482,6 +480,7 @@ window.WW = window.WW || {};
         if (!manual && rdt > 0) capTurn(rdt); // smooth moves, never snaps: the view turns at most TURN_MAX rad/s
         // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)
         if (!manual && !cam.isOverview() && P.y < 14) { _c.copy(P); clearHulls(_c, 14, shot && shot.deck ? shot.subj : null); P.lerp(_c, (1 - Math.exp(-rdt * 6)) * Math.min(1, (14 - P.y) / 4)); }
+        if (!cam.isOverview() && ((shot && shot.nd) || (manual && WW.camNormandy && WW.camNormandy.on()))) WW.camNormandy.floor(P); // the eased camera never dips under the sand or the sea
       }
       camera.position.copy(P);
       camera.lookAt(L);

@@ -29,15 +29,15 @@ window.WW = window.WW || {};
         gl_FragColor = vec4(s, 1.0); }`, { tex: { value: null }, dir: { value: new THREE.Vector2() } });
     // Filmic shoulder: colours below the shoulder stay exactly as authored (pastel palette intact);
     // brighter values roll off smoothly toward white, so sand, foam and flashes never clip flat.
-    mComp = mat(`uniform sampler2D tex; uniform sampler2D bloom; uniform float strength, exposure, shoulder, saturation; varying vec2 vUv;
+    mComp = mat(`uniform sampler2D tex; uniform sampler2D bloom; uniform float strength, exposure, shoulder, saturation; uniform vec3 grade; varying vec2 vUv;
       vec3 roll(vec3 x) { vec3 over = max(x - shoulder, 0.0); return min(x, vec3(shoulder)) + (1.0 - shoulder) * (1.0 - exp(-over / (1.0 - shoulder))); }
       void main(){ vec3 c = (texture2D(tex, vUv).rgb + texture2D(bloom, vUv).rgb * strength) * exposure;
         c = roll(c);
         float l = dot(c, vec3(0.3, 0.59, 0.11));
-        c = mix(vec3(l), c, saturation);
+        c = mix(vec3(l), c, saturation) * grade;
         gl_FragColor = vec4(c, 1.0);
       }`, { tex: { value: null }, bloom: { value: null }, strength: { value: BLOOM.strength },
-            exposure: { value: GRADE.exposure }, shoulder: { value: GRADE.shoulder }, saturation: { value: GRADE.saturation } });
+            exposure: { value: GRADE.exposure }, shoulder: { value: GRADE.shoulder }, saturation: { value: GRADE.saturation }, grade: { value: new THREE.Vector3(1, 1, 1) } });
     qScene = new THREE.Scene(); qCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mComp); quad.frustumCulled = false;
     qScene.add(quad);
@@ -71,7 +71,11 @@ window.WW = window.WW || {};
     if (!mBright) return;
     mBright.uniforms.threshold.value = BLOOM.threshold - 0.45 * k;
     mComp.uniforms.strength.value = BLOOM.strength + 0.3 * k;
-    mComp.uniforms.saturation.value = GRADE.saturation + 0.08 * k;
+    mComp.uniforms.saturation.value = GRADE.saturation + 0.08 * k + gSat;
   }
-  WW.post = { init, resize, render, setNight, toggle() { enabled = !enabled; return enabled; } };
+  // A scenario's colour grade (sky_time.js: Normandy's grey morning, a cold desaturated look): a saturation shift and
+  // a per-channel gain applied after the tone curve. The Pacific never sets it (0 and 1, 1, 1: the identity).
+  let gSat = 0;
+  function setGrade(sat, cr, cg, cb) { gSat = sat; if (mComp) mComp.uniforms.grade.value.set(cr, cg, cb); }
+  WW.post = { init, resize, render, setNight, setGrade, toggle() { enabled = !enabled; return enabled; } };
 })(window.WW);

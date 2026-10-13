@@ -5,6 +5,8 @@
 // best pilot (kills this round), and the key moments (the top diary entries). It appears after the victory
 // caption, stays through the victory pause and on the ready screen (setup mode) until the next battle starts; in
 // auto mode it stays into the opening of the next round (AUTO_HOLD s of real time in all). A click hides it.
+// Normandy (aar_normandy.js, WW.aarNormandy.on()): the land battle's report (V Corps: men, craft, strongpoints, draws, the
+// day itself) in place of the fleet report; the same paper, timing and click.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
@@ -34,7 +36,7 @@ window.WW = window.WW || {};
   on('shipEscaped', s => { if (s && escaped[s.nation] !== undefined) escaped[s.nation]++; });
   on('deckHit', e => { if (e.ship && deckLost[e.ship.nation] !== undefined) deckLost[e.ship.nation] += e.planes || 0; }); // planes that burned on deck
   on('planeKill', e => { const p = e.shooter && e.shooter.pilot; if (p) kills.set(p, (kills.get(p) || 0) + 1); });
-  on('victory', d => { last = snapshot(d); showAt = performance.now() + DELAY * 1000; hideAt = 0; });
+  on('victory', d => { last = WW.aarNormandy && WW.aarNormandy.on() ? WW.aarNormandy.snapshot(d) : snapshot(d); showAt = performance.now() + DELAY * 1000; hideAt = 0; });
 
   function snapshot(d) {
     const D = WW.diary, nm = s => D ? D.nameOf(s) : s.type;
@@ -86,7 +88,7 @@ window.WW = window.WW || {};
   }
   function show(r) {
     if (!el) { el = document.createElement('div'); el.id = 'aar'; document.body.appendChild(el); el.addEventListener('click', hide); }
-    el.innerHTML = html(r); el.classList.add('on');
+    el.innerHTML = r.nd ? WW.aarNormandy.html(r) : html(r); el.classList.add('on');
     hideAt = WW.game.mode === 'auto' ? performance.now() + (AUTO_HOLD - DELAY) * 1000 : 0;
   }
   function hide() { if (el) el.classList.remove('on'); hideAt = 0; }

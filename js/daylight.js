@@ -4,7 +4,8 @@
 // expected round length (WW.cfg.ROUND_TIMEOUT), so the sun visibly moves. Kinds (CFG.MIX): dawn (pre-dawn twilight
 // into morning light), day (the sun climbs or sinks through bright day), dusk (a sunset in the middle of the fight,
 // at CFG.SUNSET_AT of the round: golden light, the sun on the horizon, the blue hour, night; the fight builds as the
-// light goes) and night (a night action under the moon).
+// light goes) and night (a night action under the moon; a night with no surface action in it is rolled as a pre-dawn
+// round instead: D.predawn, kind 'dawn').
 // The sun: elevation elevAt(h) = NOON_ELEV x sin(pi (h - SUNRISE) / (SUNSET - SUNRISE)) (negative at night); its
 // azimuth runs east (+x) at sunrise, south (+z) at noon, west (-x) at sunset. Daylight (what the AI sees by, and
 // whether carriers fly) is smoothstep(DARK_E, LIGHT_E, elevation): 1 above +4 deg, 0 below -9 deg (nautical dusk).
@@ -22,7 +23,9 @@ window.WW = window.WW || {};
     DAWN_START: [5.25, 5.9],            // dawn rounds: start hour (twilight, then sunrise early in the round)
     DAY_START: [7.5, 12],               // day rounds: start hour (light all round, even a pursuit-stretched one)
     SUNSET_AT: [0.4, 0.75],             // dusk rounds: the sun sets at this fraction of ROUND_TIMEOUT
-    NIGHT_START: [20, 22]               // night rounds: start hour
+    NIGHT_START: [20, 22],              // night rounds: start hour
+    PREDAWN_START: [4.5, 4.9]           // a night with no surface action in it (carriers alone): a dawn round from the morning
+                                        // watch, first flying light ~175-245 s in (night_plan.js: the deck spotted before it)
   };
   var FLY_MIN = 0.5,                                 // no launches below this daylight (= RECALL: what took off is not turned back at once; the follow caption reads canFly too)
       RECALL = 0.5,                                  // airborne planes recalled below this
@@ -30,10 +33,10 @@ window.WW = window.WW || {};
   var stats = { rounds: 0, kinds: { dawn: 0, day: 0, dusk: 0, night: 0 }, launchesDark: 0, blocked: 0, recalls: 0,
                 nightLandings: 0, nightLandingLoss: 0, struckBelow: 0, nightExempt: 0, nightTorps: { USN: 0, IJN: 0 } };
   var D = {
-    kind: 'day', pin: null, pinHour: null, startHour: 13, t0: 0, force: null, stats: stats, CFG: CFG, FLY_MIN: FLY_MIN,
+    kind: 'day', predawn: false, pin: null, pinHour: null, startHour: 13, t0: 0, force: null, stats: stats, CFG: CFG, FLY_MIN: FLY_MIN,
     hour: 13, sunElev: 50, sunAz: Math.PI / 2,
     perH: function () { return WW.cfg.ROUND_TIMEOUT / CFG.SPAN_H; },          // sim s per game hour
-    hourAt: function (t) { return D.startHour + t / D.perH(); },
+    hourAt: function (t) { var c = WW.scn && WW.scn().clock; return c ? c.minutes(t) / 60 : D.startHour + t / D.perH(); },   // a scenario's own clock (Normandy: normandy.js clock)
     elevAt: function (h) { var x = ((h - CFG.SUNRISE) % 24 + 24) % 24; return CFG.NOON_ELEV * Math.sin(Math.PI * x / (CFG.SUNSET - CFG.SUNRISE)); },
     // azimuth angle in the x-z plane: 0 = +x (east) at sunrise, pi/2 = +z at noon, pi = -x (west) at sunset
     azAt: function (h) { return Math.PI * (h - CFG.SUNRISE) / (CFG.SUNSET - CFG.SUNRISE); },
@@ -56,7 +59,7 @@ window.WW = window.WW || {};
       return v;
     },
     landRisk: function () { var k = (RECALL - WW.daylight) / (RECALL - 0.1); return k <= 0 ? 0 : LAND_RISK * Math.min(1, k); },
-    update: update, roll: roll, setClock: setClock
+    nightAction: nightAction, update: update, roll: roll, setClock: setClock
   };
   WW.daylight = 1;
   WW.dayNight = D;
@@ -65,25 +68,41 @@ window.WW = window.WW || {};
     WW.daylight = D.pin != null ? D.pin : D.lightAt(D.sunElev);
   }
   function span(a, j) { return a[0] + (a[1] - a[0]) * j; }
-  // Both sides have a ship that fights in the dark (a gun ship or PT boats; the ships spawn before roundStart). A
-  // carrier or submarine force alone has nothing to do at night (a night round of four carriers 1400 apart, no launches).
-  var NIGHT_FIGHT = { battleship: 1, cruiser: 1, destroyer: 1, pt: 1 };
-  function nightFleets() {
-    var has = {}, S = WW.world ? WW.world.ships : [];
-    for (var i = 0; i < S.length; i++) if (S[i].alive && !S[i].isBase && NIGHT_FIGHT[S[i].type]) has[S[i].nation] = true;
-    return !!(has.USN && has.IJN);
+  // A night action is there to be fought: a side has a surface striking force (a battleship or cruiser, PT boats, or
+  // destroyers that are not a carrier's screen) and the enemy a fleet ship for it to find (the ships spawn before
+  // roundStart). Carriers with their screens alone have nothing to do at night: in 1942 they did not fly strikes in the
+  // dark and their destroyers stayed with them (Spruance turned east the night of 4 June); such a round starts in the
+  // middle watch instead (PREDAWN_START), so the dawn searches and strikes go a few minutes in.
+  var STRIKING = { battleship: 1, cruiser: 1, pt: 1 }, FLEET = { carrier: 1, battleship: 1, cruiser: 1, destroyer: 1 };
+  function nightAction() {
+    var S = WW.world ? WW.world.ships : [], cv = {}, dd = {}, force = {}, fleet = {}, i, s;
+    for (i = 0; i < S.length; i++) {
+      s = S[i]; if (!s.alive || s.isBase) continue;
+      if (s.type === 'carrier') cv[s.nation] = true;
+      if (s.type === 'destroyer') dd[s.nation] = true;
+      if (STRIKING[s.type]) force[s.nation] = true;
+      if (FLEET[s.type]) fleet[s.nation] = true;
+    }
+    var sd = WW.sides();
+    for (i = 0; i < sd.length; i++) {
+      var n = sd[i], e = WW.enemyOf(n);
+      if ((force[n] || (dd[n] && !cv[n])) && fleet[e]) return true;
+    }
+    return false;
   }
 
   // kind: 'dawn' | 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
   // force: a kind, or a number n: a dusk round whose sun sets n s in (tests).
   function roll() {
-    var r = WW.rand(), j = WW.rand(), f = D.force, M = CFG.MIX, kind;
+    var r = WW.rand(), j = WW.rand(), f = D.force != null ? D.force : WW.scn && WW.scn().daylight ? WW.scn().daylight : D.force, M = CFG.MIX, kind;   // scn.daylight: Normandy's dawn
     if (f === 'dawn' || f === 'day' || f === 'dusk' || f === 'night') kind = f;
     else if (typeof f === 'number') kind = 'dusk';
     else kind = r < M.dawn ? 'dawn' : r < M.dawn + M.day ? 'day' : r < M.dawn + M.day + M.dusk ? 'dusk' : 'night';
-    if (kind === 'night' && f == null && !nightFleets()) kind = 'dusk'; // a side with nothing to fight a night action with: a sunset round instead
+    D.predawn = kind === 'night' && !nightAction(); // no night action to be fought (forced too): a pre-dawn round instead
+    if (D.predawn) kind = 'dawn';
     var L = WW.cfg.ROUND_TIMEOUT, ph = D.perH();
-    if (kind === 'dawn') D.startHour = span(CFG.DAWN_START, j);
+    if (D.predawn) D.startHour = span(CFG.PREDAWN_START, j);
+    else if (kind === 'dawn') D.startHour = span(CFG.DAWN_START, j);
     else if (kind === 'day') D.startHour = span(CFG.DAY_START, j);
     else if (kind === 'night') D.startHour = span(CFG.NIGHT_START, j);
     else D.startHour = CFG.SUNSET - (typeof f === 'number' ? f : span(CFG.SUNSET_AT, j) * L) / ph;
@@ -93,7 +112,7 @@ window.WW = window.WW || {};
     stats.rounds++; stats.kinds[kind]++;
   }
   WW.on('roundStart', roll);
-  WW.on('setupStart', function () { D.kind = 'day'; D.startHour = 15.5; setClock(15.5); }); // setup: the golden afternoon
+  WW.on('setupStart', function () { D.kind = 'day'; D.predawn = false; D.startHour = 15.5; setClock(15.5); }); // setup: the golden afternoon
 
   // No launches after dusk: wrap WW.air.launch once (aircraft.js loads later). Callers already handle null.
   function wrapLaunch() {

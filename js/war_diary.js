@@ -8,6 +8,9 @@
 // important entry flashes as a small caption in the director view through WW.airCaptions.say (its 15 s throttle).
 // Clock: WW.dayNight.hourAt(roundTime) when present, else 0600 + roundTime / 120 h (1 sim s = half a minute).
 // Rules: Math.random never needed; handlers only read the sim and never throw (WW.emit catches anyway).
+// Normandy (diary_normandy.js, WW.diaryNormandy.on()): the land battle writes its own entries on the D-Day clock; the
+// fleet's opening line, the sighting reports (the strongpoints are on the chart from the aerial photographs) and the
+// victory line are the Pacific's and are skipped there; the ships' and the admirals' entries stay.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
@@ -130,11 +133,12 @@ window.WW = window.WW || {};
     round++; entries = []; pend = { USN: [], IJN: [] }; notes = { USN: [], IJN: [] }; sighted = { USN: false, IJN: false }; ever = { USN: new Set(), IJN: new Set() };
     hitSaid = new Set(); reported = new Map(); names.clear(); dirty = true;
     for (const s of WW.world.ships) nameOf(s); // name every ship now: the list shrinks as ships sink
-    add('Task forces at sea. All hands to battle stations.', 0);
+    if (!nd()) add('Task forces at sea. All hands to battle stations.', 0);
   });
   on('setupStart', () => { entries = []; dirty = true; });
-  on('contact', e => { if (e.first) queue(e.nation, e.unit, e.by); });
-  on('report', e => queue(e.nation, e.unit, e.by, { reportedType: e.reportedType, misid: !!e.misid, x: e.x, z: e.z }));
+  const nd = () => !!(WW.diaryNormandy && WW.diaryNormandy.on());
+  on('contact', e => { if (e.first && !nd()) queue(e.nation, e.unit, e.by); });
+  on('report', e => { if (!nd()) queue(e.nation, e.unit, e.by, { reportedType: e.reportedType, misid: !!e.misid, x: e.x, z: e.z }); });
   on('misidResolved', e => {
     const was = reported.get(e.unit), now = e.type || (e.unit && e.unit.type);
     if (was && was !== now) add('Correction: the reported ' + word(was, 1) + ' are ' + word(now, 2), 1, e.nation);
@@ -173,18 +177,19 @@ window.WW = window.WW || {};
   });
   on('ace', e => e.pilot && add(e.pilot.name + ' of ' + (e.plane && e.plane.squadron ? e.plane.squadron.short : 'the air group') + ' makes ace', 2, e.pilot.nation));
   on('flyingBoat', e => e.order === 'lost' && e.plane && add(observer(e.plane) + ' patrol plane lost', 1, e.nation || e.plane.nation));
-  // the patrol boat's radio report (air_patrol.js): "PBY: 2 carriers, 1 battleship bearing 320, 180 miles" from the own
-  // island (else the fleet); a raid: "Many planes heading Midway"
+  // the patrol boat's radio report (air_patrol.js): "Midway PBY: 2 carriers, 1 battleship bearing 320, 180 miles" from
+  // the own island (else "PBY (fleet patrol): ..." from the fleet); a raid: "Many planes heading Midway"
   const NUM = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
   on('flyingBoat', e => {
     if (e.order !== 'sighting' || !e.plane) return;
     const b = WW.islandBase && WW.islandBase.base, home = b && b.nation === e.nation ? b : null, f = home || fleetCentre(e.nation) || e.plane;
     const d = WW.dist(f.x, f.z, e.x, e.z), at = ' bearing ' + bearing(f.x, f.z, e.x, e.z) + ', ' + Math.max(5, Math.round(d / 40) * 5) + ' miles';
-    if (e.planes) { add(observer(e.plane) + ': many planes heading ' + (home ? home.name : 'the fleet') + at, 3, e.nation, { kind: 'sighting' }); return; }
+    const by = home ? home.name + ' ' + observer(e.plane) : observer(e.plane) + ' (fleet patrol)';   // whose boat: the island's own, or one from the edge reporting to the fleet
+    if (e.planes) { add(by + ': many planes heading ' + (home ? home.name : 'the fleet') + at, 3, e.nation, { kind: 'sighting' }); return; }
     const types = Object.keys(e.comp || {}).sort((a, c) => (RANK[c] || 0) - (RANK[a] || 0));
     if (!types.length) return;
     const what = types.map(t => (NUM[e.comp[t]] || e.comp[t]) + ' ' + word(t, e.comp[t])).join(', ');
-    add(observer(e.plane) + ': ' + what + at, e.carriers ? 3 : 2, e.nation, { kind: 'sighting' });
+    add(by + ': ' + what + at, e.carriers ? 3 : 2, e.nation, { kind: 'sighting' });
   });
   on('admiralOrder', e => {
     if (!e.text) return;
@@ -192,6 +197,7 @@ window.WW = window.WW || {};
     add(e.text, pri === undefined ? 1 : pri, e.nation, { kind: 'admiral', order: e.order });
   });
   on('victory', d => {
+    if (nd()) return; // diary_normandy.js: the beachhead won, or the landing repulsed
     const how = d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : d.reason === 'kill' ? 'enemy fleet destroyed' : d.reason === 'stall' ? 'only submarines remain' : d.reason === 'lull' ? 'the raid is spent' : 'night falls on the action';
     add('Action ends: ' + how + '. ' + (d.winner ? d.winner + ' victory' : 'No decision') + '.', 3, d.winner, { kind: 'victory' });
   });
