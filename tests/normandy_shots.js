@@ -7,6 +7,8 @@
 //   plateau    the bluff top and the bocage behind Vierville: fields, hedgerows, the church
 //   wn72       WN 72 at Vierville: the 88 casemate in the sea wall, enfilading Dog Green, the 50 mm beside it
 //   wn62       WN 62 above Easy Red / Fox Green: the two 75 mm casemates on the slope, MG nests, mortar pits
+//   texas      USS Texas on her bombardment line, Pointe du Hoc beyond (sim 30 s: the pre-planned fire)
+//   ddrun      a destroyer closed on the beach firing along it (sim 300 s, after the H+60 close)
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
@@ -23,6 +25,8 @@ const SHOTS = [
   ['hoc', () => { const z = T.shoreZ(725); return [800, 20, z - 60, 725, 3, z + 15]; }],
   ['wn72', () => { const e = WW.coastDefence.wnOf('WN72').elements[0]; return [e.x + 22, e.y + 6, e.z - 16, e.x, e.y + 0.5, e.z]; }],
   ['wn62', () => { const e = WW.coastDefence.wnOf('WN62').elements[0]; return [e.x - 26, e.y + 9, e.z - 22, e.x + 4, e.y, e.z + 2]; }],
+  ['texas', () => { const s = WW.world.ships.find(q => q.name === 'Texas'); return [s.x - 30, 9, s.z - 22, s.x + 10, 2, s.z + 40]; }],
+  ['ddrun', () => { __sim.fastForward(300); const s = WW.world.ships.filter(q => q.type === 'destroyer' && q.alive).sort((a, b) => b.z - a.z)[0]; return [s.x - 25, 7, s.z - 25, s.x + 10, 2, s.z + 50]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
 ];
@@ -36,7 +40,7 @@ const SHOTS = [
   await p.evaluate(seed => {
     WW.terrain.generate(seed); WW.seedRandom(seed);
     WW.game.composition = null; WW.game.mode = 'auto'; WW.game.startRound({ keepMap: true });
-    __sim.fastForward(2); WW.time.scale = 0.0001;
+    __sim.fastForward(30); WW.time.scale = 0.0001;
     window.T = WW.normandyTerrain;
   }, SEED);
   const done = [];

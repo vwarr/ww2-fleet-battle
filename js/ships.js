@@ -53,7 +53,7 @@ window.WW = window.WW || {};
       this.escapeEdge = 0; // -1 / +1: leaving the map over the west / east edge (endgame.js), no edge avoidance there
       this.alive = true; this.sinking = false; this.removed = false;
       this.submerged = type === 'submarine';
-      this.model = WW.models.buildShip(type, nation, this.mk);
+      this.model = WW.models.buildShip(type, this.flag, this.mk);   // the palette of the hull's flag (RN, FNFL; else the side's)
       this.group = this.model.group;
       this.group.rotation.order = 'YXZ'; // yaw, then roll (x = long axis), then pitch (z)
       // Steering inputs (written by AI).

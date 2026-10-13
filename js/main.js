@@ -112,14 +112,18 @@ window.WW = window.WW || {};
         const p = nearestOk(x, z, c.type, placed);
         placed.push(p);
         const o = { type: c.type, nation, x: p.x, z: p.z };
-        if (c.flag) o.flag = c.flag; if (c.cls) o.cls = c.cls;
+        for (const k of ['flag', 'cls', 'name', 'fs', 'heading']) if (c[k] !== undefined) o[k] = c[k];
         out.push(o);
       }
     }
     return out;
   }
   function spawnComposition(comp) {
-    for (const c of comp) call('ships', 'spawn', c.type, c.nation, c.x, c.z, c.heading !== undefined ? c.heading : SIDE(c.nation).heading, c.cls, c.flag);
+    for (const c of comp) {
+      const s = call('ships', 'spawn', c.type, c.nation, c.x, c.z, c.heading !== undefined ? c.heading : SIDE(c.nation).heading, c.cls, c.flag);
+      if (s && c.fs) s.fs = c.fs;           // a scenario role (Normandy fire support: ai_fire_support.js)
+      if (s && c.name) s.name = c.name;     // a historical name (the composition knows which ship it is)
+    }
   }
   function clearModules() {
     ALL_MODULES.forEach(m => call(m, 'clearAll'));

@@ -43,6 +43,7 @@ js/terrain.js           WW.terrain: sea floor, islands, depth grid (a scenario's
 js/terrain_normandy_props.js WW.normandyProps: Normandy villages and churches, hedgerows, the sea wall, the beach obstacles (visual)
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
+js/models_normandy_ships.js the Normandy fire-support classes: Texas, Arkansas (old battleships), HMS Glasgow, Montcalm / Georges Leygues (6-inch cruisers)
 js/models_planes.js     WW.models.buildPlane
 js/models_landplanes.js WW.models.buildPlane for the land planes: B-17, B-26, G4M Betty (models_planes.js lofting kit)
 js/models_base.js       WW.baseModels: the airfield (runways, hangars, tower, fuel tanks, barracks, revetments, AA pits, batteries)
@@ -76,6 +77,7 @@ js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (C
 js/ai_light.js          WW.shipAI.roles.submarine: submarine behaviour; WW.lightAI.h helpers shared with ai_pt.js
 js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_light.js)
 js/ai_endgame.js        WW.endgameAI: a broken side runs for its home edge (doctrine: rescue / escort or best speed), rescue steering, pursuit seams
+js/ai_fire_support.js   WW.fireSupport: Normandy gunfire support (ship.fs): the fire plan, the lift, call fire on revealed strongpoints, destroyers closing the beach
 js/ai_charge.js         WW.smoke (smoke screens that block ship-to-ship sight), WW.charge (escorts charge an enemy closing on their carrier)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_tracers.js       WW.planeTracers: the plane guns' glowing tracer rounds (visual only, pooled)

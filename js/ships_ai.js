@@ -197,7 +197,7 @@ window.WW = window.WW || {};
       ts.reload -= dt;
       if (!ts.gun || ts.disabled) continue; // knocked out by a heavy hit (WW.damage)
       let tgt = a.calTarget && a.calTarget[ts.gun.cal];
-      if (tgt && (!tgt.alive || tgt.submerged || !seen(ship, tgt))) tgt = null; // fire only on a current detection
+      if (tgt && (!tgt.alive || tgt.submerged || !(tgt.isDef ? WW.fireSupport && WW.fireSupport.sees(ship, tgt) : seen(ship, tgt)))) tgt = null; // fire only on a current detection (a strongpoint: the fire plan's target)
       // Aim as an offset from the turret's rest angle (aft turrets rest at PI) so it never swings through the bridge.
       let off = 0, rel = 0, d = 1e9;
       if (tgt) {
@@ -383,7 +383,7 @@ window.WW = window.WW || {};
         if (!turning && ship.clearance(ship.desiredHeading) < ship.lookDist * 0.4) { a.blockedT += 0.5; if (a.blockedT > 6) { a.blockedT = 0; a.orbitDir *= -1; } }
         else if (!turning) a.blockedT = 0;
       }
-      const role = roles[ship.type] || roles.surface;
+      const role = (ship.fs && WW.fireSupport && WW.fireSupport.role) || roles[ship.type] || roles.surface; // ship.fs: Normandy fire support (ai_fire_support.js)
       a.withdrawing = false;
       if (role) role(ship, dt);
       const eg = WW.endgameAI && WW.endgameAI.steer(ship, dt); // broken side home / rescue (ai_endgame.js)

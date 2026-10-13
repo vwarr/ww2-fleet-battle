@@ -23,7 +23,7 @@ window.WW = window.WW || {};
   const isCripple = s => s.hp < crip() * s.maxHp || s.speedK < 0.75;
 
   function steer(ship, dt) {
-    if (ship.type === 'submarine' || !WW.fleetCmd || !WW.endgame) return false;
+    if (ship.type === 'submarine' || !WW.fleetCmd || !WW.endgame || ship.fs) return false;   // ship.fs: fire support holds its station (ai_fire_support.js)
     const B = WW.fleetCmd.side(ship.nation), d = B && B.doctrine;
     if (!B) return false;
     if (ship.scuttle) return scuttleSteer(ship, B);                         // a hulk to send down (endgame.js)

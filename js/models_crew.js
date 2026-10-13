@@ -235,7 +235,7 @@ window.WW = window.WW || {};
   // ---- per-ship crews ----
   function sailor(ship, st) {
     return { st: st, x: st.x, z: st.z, y: st.y, f: st.f + (R() - 0.5) * 0.8, ft: st.f, mode: 'idle', wait: R() * 6, ph: R() * 10,
-      tx: st.x, sc: 0.93 + R() * 0.12, tur: st.t != null ? ship.model.turrets[st.t].obj : null, col: cols(ship.nation, st.role), job: null };
+      tx: st.x, sc: 0.93 + R() * 0.12, tur: st.t != null ? ship.model.turrets[st.t].obj : null, col: cols(ship.flag || ship.nation, st.role), job: null };
   }
   function makeCrew(ship) {
     var all = stations(ship.mk || ship.type, ship.nation), n = COUNT[ship.type] || 0, rec = { ship: ship, sailors: [], spare: [], fireT: R() * 0.5, sink: false, job: null };

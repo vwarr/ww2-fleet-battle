@@ -107,7 +107,25 @@ window.WW = window.WW || {};
     // 35 m hull, much bigger and more seaworthy than a PT; the model is the Elco kit at true length for now (build).
     C({ key: 'sboot', type: 'pt', nation: 'GER', build: 'elco', name: 'S-38 class Schnellboot', lenM: 34.9, beamM: 5.3, tons: 100,
       names: ['S-84', 'S-100', 'S-136', 'S-138', 'S-139', 'S-140', 'S-142', 'S-130', 'S-144', 'S-145', 'S-146', 'S-150'],
-      hull: { top: 0.3, bowF: 0.32, sternW: 0.8, sheer: 0.12 }, mod: { hp: 1.2, speed: 0.95, turn: 0.9 } })
+      hull: { top: 0.3, bowF: 0.32, sternW: 0.8, sheer: 0.12 }, mod: { hp: 1.2, speed: 0.95, turn: 0.9 } }),
+    // ---------------- Normandy fire support (only: 'normandy': forced by key, never picked at random) ----------------
+    // Gun ranges (range) are bombardment ranges, longer than the fleet-action ranges of the types: the ships fired on
+    // the beach from 2-10 km; shore guns have theirs to match (coast_defence_data.js).
+    C({ key: 'newyork', type: 'battleship', nation: 'USN', only: 'normandy', name: 'New York class', lenM: 175, beamM: 29, tons: 27000,
+      names: ['Texas'], hull: { top: 0.95, bowF: 0.22, sternW: 0.75, sheer: 0.4 }, mod: { hp: 0.85, speed: 0.97, turn: 0.95 },
+      guns: [{ cal: 'big', count: 5, range: 560 }, { cal: 'small', count: 2, range: 170 }] }),
+    C({ key: 'wyoming', type: 'battleship', nation: 'USN', only: 'normandy', name: 'Wyoming class', lenM: 171, beamM: 28.4, tons: 26000,
+      names: ['Arkansas'], hull: { top: 0.95, bowF: 0.22, sternW: 0.75, sheer: 0.4 }, mod: { hp: 0.8, speed: 0.97, turn: 0.95 },
+      guns: [{ cal: 'big', count: 6, range: 500 }, { cal: 'small', count: 2, range: 170 }] }),
+    C({ key: 'town', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'Town class (Glasgow)', lenM: 180, beamM: 19, tons: 9100,
+      names: ['Glasgow'], hull: { top: 0.9, bowF: 0.23, sternW: 0.7, sheer: 0.4 }, mod: { hp: 0.95 }, guns: [{ cal: 'med', count: 4, range: 420 }] }),
+    C({ key: 'galissoniere', type: 'cruiser', nation: 'USN', only: 'normandy', name: 'La Galissonnière class', lenM: 179, beamM: 17.5, tons: 7600,
+      names: ['Montcalm', 'Georges Leygues'], hull: { top: 0.88, bowF: 0.24, sternW: 0.7, sheer: 0.4 }, mod: { hp: 0.9, speed: 1.02 }, guns: [{ cal: 'med', count: 3, range: 420 }], torpedoes: null }),
+    C({ key: 'gleaves', type: 'destroyer', nation: 'USN', only: 'normandy', build: 'benson', name: 'Gleaves class', lenM: 106, beamM: 11, tons: 2400,
+      names: ['Carmick', 'McCook', 'Frankford', 'Doyle', 'Emmons', 'Baldwin', 'Harding', 'Thompson', 'Satterlee'],
+      hull: { top: 0.68, bowF: 0.26, sternW: 0.7, sheer: 0.35 }, mod: { hp: 0.95 }, guns: [{ cal: 'small', count: 4, range: 260 }] }),
+    C({ key: 'hunt', type: 'destroyer', nation: 'USN', only: 'normandy', build: 'benson', name: 'Hunt class (Type III)', lenM: 85.3, beamM: 10.2, tons: 1050,
+      names: ['Talybont'], hull: { top: 0.62, bowF: 0.27, sternW: 0.72, sheer: 0.3 }, mod: { hp: 0.75, speed: 0.9, turn: 1.1 }, guns: [{ cal: 'small', count: 3, range: 220 }] })
   ];
   var BY = {}, LIST = { USN: {}, IJN: {}, GER: {} };
   K.forEach(function (c) {
@@ -119,6 +137,7 @@ window.WW = window.WW || {};
     c.navBeam = c.deckW || c.beam;     // the footprint for collision / navigation (the flight deck overhangs)
     c.mod = c.mod || {}; c.weight = c.weight || 1;
     BY[c.key] = c;
+    if (c.only) return;   // a scenario's own class (Normandy): forced by key, never in the random lists
     (LIST[c.nation][c.type] = LIST[c.nation][c.type] || []).push(c);
   });
   WW.SHIP_CLASSES = BY;
@@ -182,7 +201,7 @@ window.WW = window.WW || {};
       st.guns = c.guns.map(function (g) {
         var b = null; for (var i = 0; i < base.guns.length; i++) if (base.guns[i].cal === g.cal) b = base.guns[i];
         b = b || base.guns[0];
-        return Object.assign({}, b, { cal: g.cal, count: g.count, reload: g.reload || +(b.reload * g.count / b.count).toFixed(3) });
+        return Object.assign({}, b, { cal: g.cal, count: g.count, reload: g.reload || +(b.reload * g.count / b.count).toFixed(3) }, g.range ? { range: g.range } : null);
       });
     }
     Object.defineProperty(st, '_base', { value: base, enumerable: false });
