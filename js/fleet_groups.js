@@ -73,7 +73,7 @@ window.WW = window.WW || {};
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
       ringR: 55, cvSpread: 150, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
-      patrolStandoff: 122, patrolShadowT: 110, patrolEvery: 215, patrolBombs: 0,
+      patrolStandoff: 122, patrolShadowT: 60, patrolEvery: 215, patrolBombs: 0,
       air: { cap: 'picket', press0: 0.35, pressT: 160, sweep: true },
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, nightEye: 0.5, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
@@ -81,7 +81,7 @@ window.WW = window.WW || {};
       jointStrike: true, followUp: 'deckload', reserveFrac: 0.4, pursuitReserve: 0.4,
       ringR: 0, cvSpread: 90, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
-      patrolStandoff: 104, patrolShadowT: 150, patrolEvery: 215, patrolBombs: 2,
+      patrolStandoff: 104, patrolShadowT: 90, patrolEvery: 215, patrolBombs: 2,
       air: { cap: 'overhead', press0: 1, pressT: 0, sweep: true },
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.55, destroyer: 0.6, submarine: 0.4, pt: 0.3 } },
     // Normandy (scenario.js): the German side. Its fleet is a few S-boats (the 5th / 9th S-boat flotillas out of
@@ -92,7 +92,7 @@ window.WW = window.WW || {};
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
       ringR: 0, cvSpread: 90, ringDD: 1, ringBB: false, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
-      patrolStandoff: 110, patrolShadowT: 120, patrolEvery: 215, patrolBombs: 0,
+      patrolStandoff: 110, patrolShadowT: 70, patrolEvery: 215, patrolBombs: 0,
       air: { cap: 'overhead', press0: 0.6, pressT: 120, sweep: false },
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.5, destroyer: 0.5, submarine: 0.4, pt: 0.35 } }
   };

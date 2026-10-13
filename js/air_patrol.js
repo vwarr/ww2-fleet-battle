@@ -6,18 +6,25 @@
 // side toward its own home, keeping the contact fresh for its fleet. It runs from fighters (low over the water,
 // toward home) and goes home when hurt or at the end of its time on station. Big and slow, they often died doing it.
 // The IJN Mavis shadows closer and longer (doctrine) and may bomb a lone ship once; it never rescues.
-// Frequency: the DAWN PATROL - one boat per side already out on its search leg when the round opens (launched before
-// dawn hours earlier: the Catalina at Midway found the Kido Butai), placed DAWN_R from the enemy fleet on its own
-// side of it and headed across the enemy's track (it usually finds the enemy in 10-25 s, the first contact of the
-// battle, at ~8x a ship's visual range); the other side's boat is further out on its leg (DAWN_FAR, see lucky) -
-// then occasional ones from the edge.
+// Frequency: the DAWN PATROL. The island's owner (seaplane_base.js ramp up) launches its boats from the lagoon at the
+// round's start (at first light on a dawn round): two Catalinas / Mavises on the water at the ramp taxi out and take
+// off, the first on a sector toward the enemy fleet, the second on a flank sector (Midway, 4 June 1942: the PBYs of
+// VP-23 / VP-44 left the Sand Island lagoon at 04:15 on dawn search sectors; Ady reported the carriers at 05:34). A
+// side without the island has its boat already out on its search leg (from a tender or a distant base: the Mavises
+// flew from Wake and Jaluit), placed DAWN_R from the enemy fleet on its own side of it and headed across the enemy's
+// track (at ~8x a ship's visual range). The lucky side's boat finds the enemy first: a lagoon boat on a sector passing
+// close (DAWN_ERR off the fleet), else wide (DAWN_WIDE: it finds it on the dogleg back); an edge boat DAWN_R off, else
+// DAWN_FAR - then occasional reliefs, from the lagoon for the island's owner, else from the edge.
+// The first sighting goes out at once ('flyingBoat' order 'sighting': the composition the boat has seen, the bearing
+// and range from its base or fleet, for the war diary and the island's alarm, base_alert.js); the boat then shadows
+// briefly (doctrine patrolShadowT: the IJN longer) and goes home, to the lagoon or its edge.
 window.WW = window.WW || {};
 (function () {
   'use strict';
   if (!WW.flyingBoats) { console.error('air_patrol.js must load after air_flyingboats.js'); return; }
   var FB = WW.flyingBoats;
   // per nation: the doctrine (fleet_groups.js patrolStandoff / patrolShadowT / patrolEvery / patrolBombs, rolled per round)
-  var DAWN_R = [360, 560], DAWN_FAR = [1000, 1500], DAWN_A = 0.9, DAWN_ERR = 110, RELIEF = [20, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 4, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
+  var DAWN_R = [360, 560], DAWN_FAR = [1000, 1500], DAWN_A = 0.9, DAWN_ERR = 110, DAWN_WIDE = [200, 280], FLANK_A = 0.55, FLANK_T = 9, TAKEOFF_T = 14, RELIEF = [20, 45], SEARCH_T = 155, ALT = 31, MAX_ROUND = 4, AA_OK = 1.5, HUNT_R = 75, CALM_T = 14;
   var VAL = { carrier: 6, battleship: 5, cruiser: 3, destroyer: 1.5, pt: 0.3, submarine: 0.5 };
   var sched = {}, tick = 0, bombsOut = new Set();
 
@@ -34,6 +41,8 @@ window.WW = window.WW || {};
   function enemyEdgeX(n) { return n === 'USN' ? WW.cfg.MAP_W : 0; }
   function air(n, x, z) { return WW.threat ? WW.threat.danger(n, x, z, { air: true }) : 0; }
   function inMap(x, z) { return { x: WW.clamp(x, 20, WW.cfg.MAP_W - 20), z: WW.clamp(z, 20, WW.cfg.MAP_H - 20) }; }
+  // home: the lagoon (the own island's ramp, while it stands), else the own map edge abreast of z
+  function homeXZ(p, z) { var R = WW.seaplaneBase && WW.seaplaneBase.home(p); return R ? { x: R.wx, z: R.wz } : { x: FB.edgeX(p.nation), z: z }; }
 
   // ---- search legs: the shared sector claims (oddfleets WW.search) when present, else the likely enemy area ----
   function plan(p) {
@@ -57,13 +66,14 @@ window.WW = window.WW || {};
     }
     return p.fly(p.x + Math.cos(h) * 60, p.z + Math.sin(h) * 60, alt, dt, spd, rate);
   }
-  // the best enemy ship this flying boat itself sees right now
+  // the best enemy ship this flying boat itself sees right now (a warship: a PT boat or a surfaced submarine is not the
+  // fleet it is looking for; intel has the contact anyway, and the search goes on)
   function found(p) {
     if (!WW.intel) return null;
     var cs = WW.intel.enemyShips(p.nation, { fresh: 1 }), best = null, bv = 0;
     for (var i = 0; i < cs.length; i++) {
-      var c = cs[i], u = c.unit; if (c.by !== p || !u || !u.alive || u.sinking || u.submerged) continue;
-      var v = (VAL[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 1) / (1 + WW.dist(p.x, p.z, u.x, u.z) / 200);
+      var c = cs[i], u = c.unit, ty = WW.intel.typeOf ? WW.intel.typeOf(c) : u && u.type; if (c.by !== p || !u || !u.alive || u.sinking || u.submerged || u.isBase || ty === 'pt' || ty === 'submarine') continue;
+      var v = (VAL[ty] || 1) / (1 + WW.dist(p.x, p.z, u.x, u.z) / 200);
       if (v > bv) { bv = v; best = u; }
     }
     return best;
@@ -82,11 +92,45 @@ window.WW = window.WW || {};
     return null;
   }
 
+  // ---- the sighting report: radioed the moment the boat finds the enemy (intel already has the contact: no added
+  // latency), again when it first makes out carriers, and once for a raid heading for its own island ("Many planes
+  // heading Midway"). 'flyingBoat' order 'sighting' { comp: { type: n } as the boat believes them, carriers, x, z (the
+  // reported position), planes (a raid: n bombers), unit }: the war diary, the camera, the island's alarm (base_alert.js).
+  // A PT boat or a submarine alone is not the enemy fleet: no report until a warship is in sight.
+  function radio(p, u) {
+    if (!u || !WW.intel || p.cvRadioed) return;
+    var cs = WW.intel.enemyShips(p.nation, { fresh: 3 }), comp = {}, cv = 0, k = 0, c0 = null;
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i], t = WW.intel.typeOf(c); if (c.by !== p || !c.unit || c.unit.isBase || t === 'pt' || t === 'submarine') continue;
+      comp[t] = (comp[t] || 0) + 1; k++; if (t === 'carrier') cv++;
+      if (!c0 || VAL[t] > VAL[WW.intel.typeOf(c0)]) c0 = c;   // the report's position: the biggest ship seen
+    }
+    if (!k || (p.radioed && !cv)) return;
+    p.radioed = true; if (cv) p.cvRadioed = true;
+    FB.stats.radio[p.nation]++;
+    WW.emit('flyingBoat', { plane: p, nation: p.nation, order: 'sighting', x: c0.x, z: c0.z, unit: c0.unit, comp: comp, carriers: cv, planes: 0 });
+  }
+  function raid(p) {   // enemy bombers in sight of the boat, heading for its own island
+    var b = WW.islandBase && WW.islandBase.base;
+    if (p.raidRadioed || !b || b.nation !== p.nation || !WW.intel) return;
+    var ps = WW.intel.enemyPlanes(p.nation), n = 0, x = 0, z = 0;
+    for (var i = 0; i < ps.length; i++) {
+      var c = ps[i], q = c.unit; if (c.by !== p || !q || !q.alive || q.kind === 'fighter' || q.kind === 'scout' || q.kind === 'flyingboat') continue;
+      var d = WW.dist(c.x, c.z, b.x, b.z); if (d < 1 || ((b.x - c.x) * Math.cos(c.heading) + (b.z - c.z) * Math.sin(c.heading)) / d < 0.8) continue;
+      n++; x += c.x; z += c.z;
+    }
+    if (n < 3) return;
+    p.raidRadioed = true; FB.stats.radio[p.nation]++;
+    WW.emit('flyingBoat', { plane: p, nation: p.nation, order: 'sighting', x: x / n, z: z / n, unit: null, comp: null, carriers: 0, planes: n });
+  }
+
   function step(p, dt) {
     var D = doc(p); p.scanT = (p.scanT || 0) - dt;
     if (p.state === 'inbound') { p.state = 'search'; p.stT = 0; p.bombs = D.bombs; p.ordnance = D.bombs > 0; }
-    // fighters on it: run for home, low
-    if (p.state !== 'evade' && FB.hunted(p, HUNT_R)) {
+    // fighters on it: run for home, low. A boat still searching (no report yet) presses on through them until it is
+    // badly hit (FlyingBoat.damage: home): the report first (the snoopers that met a radar-directed CAP mostly got a
+    // sighting off before they went down)
+    if (p.state !== 'evade' && !(p.state === 'search' && !p.radioed) && FB.hunted(p, HUNT_R)) {
       p.resume = p.state === 'bomb' ? 'shadow' : p.state; p.setState('evade'); FB.stats.evades[p.nation]++; FB.emit(p, 'evade');
     }
     switch (p.state) {
@@ -106,7 +150,7 @@ window.WW = window.WW || {};
     if (p.scanT <= 0) {
       p.scanT = 0.5;
       var u = found(p);
-      if (u) { p.shadowOf = u; release(p); p.setState('shadow'); FB.emit(p, 'shadow', u); }
+      if (u) { p.shadowOf = u; release(p); p.setState('shadow'); FB.emit(p, 'shadow', u); radio(p, u); }
     }
   }
   function release(p) { if (WW.search && WW.search.release) try { WW.search.release(p); } catch (e) { /* ignore */ } }
@@ -120,7 +164,7 @@ window.WW = window.WW || {};
       u = p.shadowOf;
     }
     // standoff: on the side toward home, swinging slowly across it, pushed out past the AA umbrella
-    var hb = Math.atan2(0, (FB.edgeX(p.nation)) - u.x), a = hb + Math.sin(p.shadowT * 0.05 + (p.nation === 'USN' ? 0 : 2)) * 1.0, R = D.standoff, x, z;
+    var H = homeXZ(p, u.z), hb = Math.atan2(H.z - u.z, H.x - u.x), a = hb + Math.sin(p.shadowT * 0.05 + (p.nation === 'USN' ? 0 : 2)) * 1.0, R = D.standoff, x, z;
     for (var k = 0; k < 5; k++) {
       var q = inMap(u.x + Math.cos(a) * R, u.z + Math.sin(a) * R); x = q.x; z = q.z;
       if (air(p.nation, x, z) <= AA_OK) break;
@@ -131,6 +175,7 @@ window.WW = window.WW || {};
       p.scanT = 2;
       var b = found(p);   // something better in sight (the screen first, then the main body): shadow that
       if (b && b !== u && (VAL[b.type] || 1) > (VAL[u.type] || 1)) { p.shadowOf = b; FB.emit(p, 'shadow', b); }
+      radio(p, p.shadowOf); raid(p);
       var t = loneTarget(p);
       if (t && WW.rand() < 0.5) { p.bombAt = t; p.setState('bomb'); FB.emit(p, 'bomb', t); }
     }
@@ -153,8 +198,8 @@ window.WW = window.WW || {};
   function evade(p, dt, D) {
     var h = FB.hunted(p, HUNT_R + 25);
     p.calmT = h ? 0 : (p.calmT || 0) + dt;
-    var hx = FB.edgeX(p.nation);
-    p.fly(hx, p.z + (p.z < WW.cfg.MAP_H / 2 ? -40 : 40), 12, dt, p.pt.speed * 1.08, 0.6);
+    var H = homeXZ(p, p.z + (p.z < WW.cfg.MAP_H / 2 ? -40 : 40));
+    p.fly(H.x, H.z, 12, dt, p.pt.speed * 1.08, 0.6);
     if (p.calmT > CALM_T) {
       if (p.hurt || p.hp < p.maxHp * 0.6) return p.setState('return');
       p.setState(p.resume === 'shadow' && p.shadowOf ? 'shadow' : 'search');
@@ -168,6 +213,11 @@ window.WW = window.WW || {};
     var now = WW.game.roundTime;
     WW.sides().forEach(function (n) {
       var S = sched[n] || (sched[n] = { n: 0, at: 0, up: null, dawn: true });
+      if (S.flankAt && now >= S.flankAt) {   // the second dawn boat off the lagoon, once the first has taxied clear
+        S.flankAt = 0;
+        var f = WW.seaplaneBase && WW.seaplaneBase.ramp(n) && S.up && S.up.ramp ? FB.launch(n, 'patrol', S.up.z) : null;
+        if (f) { S.n++; dawn(f, S.up); }
+      }
       if (S.up && (S.up.removed || !S.up.alive)) { var ev = (WW.fleetCmd.doctrine(n) || {}).patrolEvery || 215; S.up = null; S.at = Math.min(S.at > now ? S.at : 1e9, now + WW.randRange(ev * 0.8, ev * 1.2)); }
       // relief on station: a shadower turning for home with the enemy still in its plot sends for the next boat at once
       if (S.up && S.up.alive && S.up.state === 'return' && S.up.shadowT > 30 && !S.relief) { S.relief = true; S.at = now + WW.randRange(RELIEF[0], RELIEF[1]); }
@@ -177,24 +227,41 @@ window.WW = window.WW || {};
       if (FB.count(n) >= (n === 'USN' ? 3 : 2)) return; // a relief may be up while the shadower heads home
       S.up = FB.launch(n, 'patrol', WW.randRange(WW.cfg.MAP_H * 0.2, WW.cfg.MAP_H * 0.8)); if (S.up) S.n++; // null: too dark yet (a dawn round)
       if (S.up) S.relief = false;
-      if (S.up && S.dawn) { S.dawn = false; dawn(S.up); }
+      if (S.up && S.dawn) { S.dawn = false; dawn(S.up); if (S.up.ramp) S.flankAt = now + FLANK_T; }
     });
   }
-  // The dawn patrol: out on its search leg already, DAWN_R from the enemy's surface ships on its own side of them
-  // (within +-DAWN_A rad of the line home), its leg passing up to DAWN_ERR to one side of them, then a dogleg.
-  function dawn(p) {
-    var n = p.nation, S = WW.world.ships, x = 0, z = 0, k = 0;
-    for (var i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && s.nation !== n && !s.isBase && s.type !== 'submarine') { x += s.x; z += s.z; k++; } }
+  // The dawn patrol. A boat off the own lagoon (on the water at the ramp, seaplane_base.js depart) flies a sector toward
+  // the enemy's surface ships: past them DAWN_ERR to one side (the lucky side), else DAWN_WIDE (it sees them on the
+  // dogleg back across their track); `first` given: the flank boat, its sector FLANK_A off the first's. A boat without
+  // the island is out on its search leg already: DAWN_R from the enemy on its own side of them (within +-DAWN_A rad of
+  // the line home; DAWN_FAR if the other side is the lucky one), its leg passing up to DAWN_ERR to one side, then a dogleg.
+  function dawn(p, first) {
+    var n = p.nation, S = WW.world.ships, x = 0, z = 0, vx = 0, vz = 0, k = 0;
+    for (var i = 0; i < S.length; i++) { var s = S[i]; if (s.alive && s.nation !== n && !s.isBase && s.type !== 'submarine') { x += s.x; z += s.z; vx += Math.cos(s.heading) * s.speed; vz += Math.sin(s.heading) * s.speed; k++; } }
     if (!k) return;
     x /= k; z /= k;
     if (!lucky) lucky = WW.rand() < 0.5 ? 'USN' : 'IJN';
-    var a = (n === 'USN' ? Math.PI : 0) + WW.randRange(-DAWN_A, DAWN_A), RR = n === lucky ? DAWN_R : DAWN_FAR, R = WW.randRange(RR[0], RR[1]), e = WW.randRange(-DAWN_ERR, DAWN_ERR);
-    var q = inMap(x + Math.cos(a) * R, z + Math.sin(a) * R), dx = x - q.x, dz = z - q.z, d = Math.hypot(dx, dz) || 1;
-    var t = inMap(x - dz / d * e, z + dx / d * e);                               // the search line, a little off the fleet
-    p.x = q.x; p.z = q.z; p.heading = Math.atan2(t.z - q.z, t.x - q.x); p.state = 'search'; p.stT = 0; p.dawn = true;
-    p.bombs = doc(p).bombs; p.ordnance = p.bombs > 0;
-    p.legs = [t, inMap(t.x + dx / d * 150, t.z + dz / d * 150 + (e < 0 ? -1 : 1) * 160)]; p.leg = 0;
     if (FB.stats) FB.stats.dawn = (FB.stats.dawn || 0) + 1;
+    p.dawn = true; p.bombs = doc(p).bombs; p.ordnance = p.bombs > 0;
+    if (p.ramp) {   // off the lagoon: the take-off first (seaplane_base.js depart), then the sector, laid where the fleet will be
+      var eta = TAKEOFF_T + WW.dist(p.x, p.z, x, z) / p.pt.speed;
+      x += vx / k * eta; z += vz / k * eta;
+      var a0 = Math.atan2(z - p.z, x - p.x), D = WW.dist(p.x, p.z, x, z);
+      if (first) {
+        var fa = a0 + (WW.rand() < 0.5 ? -1 : 1) * FLANK_A;
+        p.legs = [inMap(p.x + Math.cos(fa) * D, p.z + Math.sin(fa) * D), inMap(p.x + Math.cos(fa) * D * 1.25 + Math.cos(a0) * 120, p.z + Math.sin(fa) * D * 1.25 + Math.sin(a0) * 120)]; p.leg = 0;
+        return;
+      }
+      var W2 = n === lucky ? [-DAWN_ERR, DAWN_ERR] : DAWN_WIDE, e = WW.randRange(W2[0], W2[1]) * (n === lucky || WW.rand() < 0.5 ? 1 : -1);
+      var ux = Math.cos(a0), uz = Math.sin(a0), qx = -uz, qz = ux;   // along the sector, and across it
+      p.legs = [inMap(x + qx * e - ux * 60, z + qz * e - uz * 60), inMap(x + ux * 170 - qx * e * 0.6, z + uz * 170 - qz * e * 0.6)]; p.leg = 0;
+      return;
+    }
+    var a = (n === 'USN' ? Math.PI : 0) + WW.randRange(-DAWN_A, DAWN_A), RR = n === lucky ? DAWN_R : DAWN_FAR, R = WW.randRange(RR[0], RR[1]), e2 = WW.randRange(-DAWN_ERR, DAWN_ERR);
+    var q = inMap(x + Math.cos(a) * R, z + Math.sin(a) * R), dx = x - q.x, dz = z - q.z, d = Math.hypot(dx, dz) || 1;
+    var t = inMap(x - dz / d * e2, z + dx / d * e2);                               // the search line, a little off the fleet
+    p.x = q.x; p.z = q.z; p.heading = Math.atan2(t.z - q.z, t.x - q.x); p.state = 'search'; p.stT = 0;
+    p.legs = [t, inMap(t.x + dx / d * 150, t.z + dz / d * 150 + (e2 < 0 ? -1 : 1) * 160)]; p.leg = 0;
   }
   var ou = WW.air.update;
   WW.air.update = function (dt) {
