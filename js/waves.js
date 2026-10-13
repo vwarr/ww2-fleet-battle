@@ -148,18 +148,21 @@ window.WW = window.WW || {};
       col = mix(col, cMid * vec3(1.05, 1.22, 1.1), crest * 0.22);
       // whitecaps: broken patches on the steepest crests out at sea, not whole crests
       float fn = vnoise(vWorld.xz * vec2(1.1, 1.9) + uTime * vec2(0.3, 0.5)) * 0.65 + vnoise(vWorld.xz * 3.7 - uTime * 0.4) * 0.35;
-      float cap = smoothstep(0.5, 0.8, vH) * smoothstep(0.55, 0.72, fn) * smoothstep(0.08, 0.3, 1.0 - n.y + 0.1) * 0.85;
+      float cap = smoothstep(0.5, 0.8, vH) * smoothstep(0.6, 0.74, fn) * smoothstep(0.3, 0.6, vnoise(vWorld.xz * 5.0 + uTime)) * smoothstep(0.08, 0.3, 1.0 - n.y + 0.1) * 0.8 * (1.0 - 0.75 * smoothstep(150.0, 600.0, length(cameraPosition - vWorld)));   // far: no aliasing dashes
       // streaks of old foam drawn out along the wind (WNW: running east-south-east)
       vec2 wq = vec2(dot(vWorld.xz, vec2(0.92, 0.39)), dot(vWorld.xz, vec2(-0.39, 0.92)));
       float streak = smoothstep(0.72, 0.9, vnoise(vec2(wq.x * 0.05, wq.y * 0.7) + uTime * 0.04)) * smoothstep(0.4, 0.7, vnoise(wq * vec2(0.3, 1.6))) * 0.35;
       // the surf (bp: 0..1 along one breaker, 0.25 its crest; the bore and its foam behind it, bp < 0.25)
       float surfZone = 1.0 - smoothstep(0.2, 2.2, d), bb = brkBell(d);
       float bp = fract((${(1 / BRK.L).toFixed(5)}) * vS + ${(BRK.V / BRK.L).toFixed(5)} * uTime);
-      // lace: a network of thin foam lines (ridged noise, two scales), drifting shoreward
-      float l1 = 1.0 - abs(2.0 * vnoise(vWorld.xz * vec2(0.9, 1.3) + vec2(uTime * 0.12, -uTime * 0.5)) - 1.0);
-      float l2 = 1.0 - abs(2.0 * vnoise(vWorld.xz * vec2(2.1, 2.8) - vec2(uTime * 0.2, uTime * 0.7) + 5.0) - 1.0);
-      float patchy = smoothstep(0.35, 0.7, vnoise(vWorld.xz * vec2(0.06, 0.15) + vec2(0.0, -uTime * 0.1)));   // foam in patches, not a net
-      float lace = max(smoothstep(0.9, 0.98, l1), smoothstep(0.93, 0.99, l2) * 0.6) * patchy;
+      // lace: broken streaks of foam lying along the breakers (shore-parallel: x and the offshore distance s), carried
+      // in with the bore; a fine noise tears them into ragged pieces (ridged noise read as a cellular web: dropped)
+      float sb = vS + ${BRK.V.toFixed(2)} * uTime;
+      float l1 = vnoise(vec2(vWorld.x * 0.16 + vWorld.z * 0.05, sb * 1.7));
+      float l2 = vnoise(vec2(vWorld.x * 0.45 - vWorld.z * 0.1, sb * 3.9 + 3.0));
+      float tear = vnoise(vWorld.xz * 2.2 + uTime * 0.3);
+      float patchy = smoothstep(0.3, 0.65, vnoise(vec2(vWorld.x * 0.05, sb * 0.12)));
+      float lace = max(smoothstep(0.64, 0.82, l1), smoothstep(0.7, 0.88, l2) * 0.7) * smoothstep(0.2, 0.6, tear) * patchy;
       lace = mix(lace, 0.15 * patchy, smoothstep(70.0, 240.0, length(cameraPosition - vWorld)));   // far off: soft, not a speckle
       // the lip: a narrow, broken line of white spilling along the crest
       float lipN = vnoise(vec2(vWorld.x * 0.35 + vWorld.z * 0.1, uTime * 0.35)) * 0.7 + vnoise(vWorld.xz * 1.6 + uTime) * 0.3;

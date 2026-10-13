@@ -169,12 +169,12 @@ window.WW = window.WW || {};
   };
   function ov(name, lb, out) { return out.copy(OV[name][0]).lerp(OV[name][1], lb); }
   function overcast(P, g, u, wu) {
-    const lb = WW.clamp((E + 4) / 14, 0, 1), ls = lb * lb * (3 - 2 * lb);   // twilight 0 .. full grey day 1 (-4 .. 10 deg)
+    const lb = WW.clamp((E + 7) / 15, 0, 1), ls = lb * lb * (3 - 2 * lb);   // twilight 0 .. full grey day 1 (-7 .. 8 deg)
     const L = (name, c) => c.lerp(ov(name, ls, tmp), g);
     L('zenith', u.zenith.value); L('away', u.away.value); L('sunSide', u.sunSide.value); L('glow', u.glow.value);
     u.disc.value *= 1 - g; u.halo.value = WW.lerp(u.halo.value, 0.22, g); u.spread.value = WW.lerp(u.spread.value, 1.6, g); u.night.value *= 1 - g;
-    L('light', P.sun.color); P.sun.intensity = WW.lerp(P.sun.intensity, 0.36 * (0.35 + 0.65 * ls), g);
-    L('hemiSky', P.hemi.color); L('hemiGnd', P.hemi.groundColor); P.hemi.intensity = WW.lerp(P.hemi.intensity, 0.78 * (0.55 + 0.45 * ls), g);
+    L('light', P.sun.color); P.sun.intensity = WW.lerp(P.sun.intensity, 0.36 * (0.45 + 0.55 * ls), g);
+    L('hemiSky', P.hemi.color); L('hemiGnd', P.hemi.groundColor); P.hemi.intensity = WW.lerp(P.hemi.intensity, 0.78 * (0.68 + 0.32 * ls), g);
     landK.value = 1; for (const m of LAND) m.color.setScalar(1);
     const fog = WW.scene.fog;
     if (fog) {
@@ -187,7 +187,7 @@ window.WW = window.WW || {};
     }
     if (P.clouds) P.clouds.visible = false;   // no fair-weather cumulus under the deck
     if (wu) {
-      wu.tint.value.setScalar(WW.lerp(1, 0.94, g) * (0.62 + 0.38 * ls));
+      wu.tint.value.setScalar(WW.lerp(1, 0.94, g) * (0.74 + 0.26 * ls));
       if (fog) { wu.hzAway.value.copy(fog.color); wu.hzSun.value.copy(fog.color).lerp(u.sunSide.value, 0.35); }
       L('glit', wu.sunCol.value); wu.moonPath.value *= 1 - g; wu.glit.value.set(0.05, 420, 0.12);
     }
