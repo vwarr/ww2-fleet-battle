@@ -5,11 +5,12 @@
 // fixed range from rolling boats, most fell short in the surf among the obstacles and the boats, and few reached the
 // bluffs (the strongpoints were untouched: the men of the first wave saw it and took heart, then landed under intact
 // guns). Here: SHIPS craft on station from the start, each firing SHOWN rockets (a sample of its 1,000) over RIPPLE s;
-// each rocket arcs with a smoke trail and comes down as a splash in the sea or a burst (and a crater) on the sand.
+// each rocket arcs with a smoke trail (its motor's glare drawn as a streak, to read at a distance) and comes down as a
+// splash in the sea or a burst (and a crater) on the sand.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
-  const XS = [1395, 1480, 1560, 1640, 1720, 1800, 1880, 1960, 2060], OFF = 290, SHOWN = 90, RIPPLE = 9, FLIGHT = 2.6, ARC = 26;
+  const XS = [1395, 1480, 1560, 1640, 1720, 1800, 1880, 1960, 2060], OFF = 290, SHOWN = 150, RIPPLE = 9, FLIGHT = 2.6, ARC = 26;
   const SHORT = [-24, 3];                      // where they came down: u off the H-hour waterline, mostly short (in the surf)
   let root = null, hull = null, rk = null, ships = [], rockets = [], fired = false, built = false;
   const on = () => !WW.simOnly && WW.isScn('normandy') && !!WW.scene && !!WW.normandyTerrain && !!WW.scenarios.normandy.clock;
@@ -31,7 +32,7 @@ window.WW = window.WW || {};
     }
     const mat = new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true, gradientMap: grad });
     hull = new THREE.InstancedMesh(K.merge(parts), mat, XS.length); hull.castShadow = true; hull.frustumCulled = false;
-    rk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.07, 0.7, 6).rotateZ(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffe2b0, fog: false }), XS.length * SHOWN);   // the motor's glare, bigger than the rocket
+    rk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.05, 2.2, 6).rotateZ(Math.PI / 2).translate(-0.9, 0, 0), new THREE.MeshBasicMaterial({ color: 0xffe2b0, fog: false }), XS.length * SHOWN);   // the motor's glare, bigger than the rocket
     rk.frustumCulled = false; rk.count = 0; rk.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     root.add(hull, rk); WW.scene.add(root);
     built = true;

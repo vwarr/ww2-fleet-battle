@@ -64,6 +64,7 @@ const SHOTS = [
   ['bluff_close', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(8 * 60 + 45)) __sim.fastForward(1); const x = 1690, z = T.shingleZ(x); return [x - 14, 5, z - 6, x + 2, 1.5, z + 14]; }],
   ['rockets', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 4) __sim.fastForward(0.5); const z = T.shoreZ(1720) - 290; return [1700, 7, z - 16, 1726, 9, z + 70]; }],
   ['swell_dd', () => { const s = WW.world.ships.find(q => q.name === 'Thompson') || WW.world.ships.find(q => q.type === 'destroyer'); return [s.x - 14, 2.2, s.z - 9, s.x, 1, s.z]; }],
+  ['rockets_beach', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 5) __sim.fastForward(0.5); const z = T.shoreZ(1740); return [1740, 2.5, z + 4, 1730, 9, z - 160]; }],
   ['ramps', () => { __sim.fastForward(110); const z = T.shoreZ(1760); return [1740, 6, z - 40, 1765, 0.5, z + 5]; }],
   ['shingle', () => { __sim.fastForward(120); const q = WW.infantry.squads.find(q => q.alive && q.sector === 'easyRed' && q.kind !== 'tank') || WW.infantry.squads.find(q => q.alive); return [q.x - 14, 5, q.z - 18, q.x + 2, 0.5, q.z + 4]; }],
   ['bluff', () => { __sim.fastForward(270); const q = WW.infantry.squads.find(q => q.alive && q.state === 'climb') || WW.infantry.squads.find(q => q.alive); return [q.x - 16, q.y + 6, q.z - 16, q.x, q.y, q.z + 3]; }],
