@@ -150,13 +150,13 @@ window.WW = window.WW || {};
     p.vy -= GRAV * dt;
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
     I.place(p, p.x, Math.max(0, p.y), p.z); I.orient(p, p.vx, p.vy, p.vz);
-    if (p.y > 0.3) return;
+    if (p.y > 0.3 + (WW.landSites ? WW.landSites.groundAt(p.x, p.z) : 0)) return;   // the ground it bursts on (land_sites.js: the bluffs; 0 at sea)
     var tgt = (p.target && p.target.alive) ? p.target : null;
     var hit = I.findHit(p.nation, p.x, p.z, 0.6, false, tgt);
     if (hit) {
       var vs = WW.BOMB && WW.BOMB.vs && WW.BOMB.vs[hit.type];   // deck armour (core.js WW.BOMB.vs)
-      I.damage(hit, p.dmg * (vs === undefined ? 1 : vs), p.x, p.z, 'bomb');
-      if (!WW.damage) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
+      I.damage(hit, p.dmg * (vs === undefined ? 1 : vs), p.x, p.z, 'bomb', undefined, p);
+      if (!WW.damage || hit.isLand) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
     } else if (WW.landSites && WW.landSites.impact(p.nation, p.x, p.z, p.dmg, 'bomb')) {
       I.fx('explosion', p.x, 1, p.z, 2); I.fx('smoke', p.x, 1.4, p.z, true, 2.2);   // on a land target (land_sites.js: the island base, ...)
     } else if (I.depthAt(p.x, p.z) <= 0) {

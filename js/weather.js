@@ -51,7 +51,8 @@ window.WW = window.WW || {};
     var r = WW.rand(), cx = WW.cfg.MAP_W * (0.3 + 0.4 * WW.rand()), cz = WW.cfg.MAP_H * (0.3 + 0.4 * WW.rand()), cross = 120 + 180 * WW.rand();
     var raw = [];
     for (var i = 0; i < N; i++) raw.push([WW.rand(), WW.rand(), WW.rand()]);
-    var f = W.force, kind = f === 'clear' || f === 'scatter' || f === 'line' ? f : r < P.LINE ? 'line' : r < P.LINE + P.SCATTER ? 'scatter' : 'clear';
+    var f = W.force != null ? W.force : WW.scn && WW.scn().weather ? WW.scn().weather : W.force, kind =   // scn.weather: Normandy's (no squalls; the overcast is a look)
+      f === 'clear' || f === 'scatter' || f === 'line' ? f : r < P.LINE ? 'line' : r < P.LINE + P.SCATTER ? 'scatter' : 'clear';
     if (f === 'line') { cx = WW.cfg.MAP_W / 2; cz = WW.cfg.MAP_H / 2; cross = 140; } // test hook: the line crosses mid-map ~140 s in
     W.kind = kind; cells.length = 0; stats.rounds++; stats.kinds[kind]++;
     if (kind === 'clear') return;

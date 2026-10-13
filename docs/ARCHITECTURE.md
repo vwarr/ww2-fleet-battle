@@ -40,9 +40,11 @@ js/terrain_normandy.js  WW.normandyTerrain: the Normandy coast height function (
 js/sky_time.js          WW.skyTime: the look of the time of day and the rain (palettes, sun / moon light, fog, water, bloom)
 js/weather_fx.js        WW.weatherFx: rain curtains and cloud decks over the squalls (visual)
 js/terrain.js           WW.terrain: sea floor, islands, depth grid (a scenario's own map: scn.terrain)
+js/normandy_villages.js  WW.normandyVillages: the villages' stone houses and churches, shelled and burnt, the villas on the shelf (mostly ruins), the roads up D-1 / D-3 / E-1
 js/terrain_normandy_props.js WW.normandyProps: Normandy villages and churches, hedgerows, the sea wall, the beach obstacles (visual)
 js/models.js            WW.models: ship models
 js/models_detail.js     fine ship detail, merged into one mesh per material
+js/models_normandy_ships.js the Normandy fire-support classes: Texas, Arkansas (old battleships), HMS Glasgow, Montcalm / Georges Leygues (6-inch cruisers)
 js/models_planes.js     WW.models.buildPlane
 js/models_landplanes.js WW.models.buildPlane for the land planes: B-17, B-26, G4M Betty (models_planes.js lofting kit)
 js/models_base.js       WW.baseModels: the airfield (runways, hangars, tower, fuel tanks, barracks, revetments, AA pits, batteries)
@@ -79,6 +81,7 @@ js/ai_carrier.js        WW.shipAI.roles.carrier: carrier movement and air ops (C
 js/ai_light.js          WW.shipAI.roles.submarine: submarine behaviour; WW.lightAI.h helpers shared with ai_pt.js
 js/ai_pt.js             WW.shipAI.roles.pt: PT boat behaviour (loads after ai_light.js)
 js/ai_endgame.js        WW.endgameAI: a broken side runs for its home edge (doctrine: rescue / escort or best speed), rescue steering, pursuit seams
+js/ai_fire_support.js   WW.fireSupport: Normandy gunfire support (ship.fs): the fire plan, the lift, call fire on revealed strongpoints, destroyers closing the beach
 js/ai_charge.js         WW.smoke (smoke screens that block ship-to-ship sight), WW.charge (escorts charge an enemy closing on their carrier)
 js/aircraft.js          WW.air, WW.Plane: carrier planes
 js/air_tracers.js       WW.planeTracers: the plane guns' glowing tracer rounds (visual only, pooled)
@@ -106,6 +109,15 @@ js/island_base.js       WW.islandBase: the island air base (owner, facilities, c
 js/base_ai.js           WW.baseAI: the fight for the island in the AI (objective, bombardment aim, strike value, defence)
 js/land_hold.js         WW.landHold: where the base's planes hold to land (a fix per class clear of enemy ships / planes: bombers high and far, small planes nearer and lower; raid hold)
 js/land_flow.js         WW.landFlow: the field's landing traffic (queue by need: emergencies, low fuel; a landing slot between take-offs; a crippled plane's route home)
+js/coast_defence_data.js WW.defenceData: the German strongpoints (WN 60-75, Pointe du Hoc): element kinds and placements
+js/coast_defence.js     WW.coastDefence: strongpoint elements and WN units (Normandy): embrasure / wall damage, suppression, silencing, intel, land_sites hooks
+js/coast_defence_fire.js WW.coastFire: the strongpoints' direct fire (fireShell, landSites.gunTick) and the abstract MG cones / mortar zones
+js/landing_waves.js     WW.landingWaves: the Omaha / Pointe du Hoc landing schedule (sectors, times, craft, units)
+js/landing_craft.js     WW.landingCraft: LCVP / LCA / LCM / LCT / LCI / DD tanks: run-in, drift, obstacles and mines, beaching, ramps, unloading, hits
+js/infantry_routes.js   WW.infRoutes: beach zones and cover, wire gaps, climb points between the draws, assault points, the Pointe du Hoc ropes
+js/infantry.js          WW.infantry: squads ashore (wade, cross, shingle, shelf, climb, top, assault, hold; Rangers' ropes and the 155s; tanks)
+js/infantry_fire.js     WW.infFire: MG cone and mortar casualties, suppression, fire back, assaults capturing positions, tank fire, shells on men
+js/air_offmap.js        WW.offmapAir: Normandy's planes from off the map: B-24 boxes (cloud: bombs ~3 mi inland), P-47 flights on call, Spitfire top cover, Fw 190s; flak
 js/land_air.js          WW.landAir: the base air group (roster, CAP, strikes), the runway (takeoff, circuit, landing), level bombing
 js/base_alert.js        WW.baseAlert: the island's alarm, scramble and strike on its own flying boat's sighting report
 js/air_flyingboats.js   WW.flyingBoats, WW.FlyingBoat: flying boats from off the map; the Catalina "Dumbo" rescue (endgame.js tasks)
@@ -122,6 +134,11 @@ js/camera_follow.js     WW.camFollow: keys F / Tab / 8 / 9, the follow label, fi
 js/camera_score.js      WW.camScore: one director score (the drama ladder), re-evaluation of the running shot with hysteresis
 js/camera_base.js       WW.camBase: the island base running into action on its alarm (camp, flight line, scramble, strike cuts)
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
+js/models_landing.js    WW.landingFx: the landing craft on screen (instanced hulls, ramps, tanks, DD screens, wrecks)
+js/models_soldier.js    WW.soldierModel: the GI figure (legs, boots, jacket, webbing, pack, arms, M1 rifle, face, M1 helmet) per pose: run (2 frames), stand, crouch, prone, fallen
+js/models_infantry.js   WW.infantryFx: instanced soldiers posed by state (running stride, crouch, prone), the fallen, Sherman tanks ashore
+js/air_offmap_fx.js     WW.offmapAirFx: the Normandy planes on screen (the existing plane kit; falls when shot down)
+js/models_bunker.js     WW.bunkerModels: casemates, gun pits, Tobruks, MG nests, mortar pits, flak, the 155s (visual)
 js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, parked planes, captions, diary, camera hooks)
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)
 js/night_fx.js          WW.nightFx: night lights (pooled), star shell flares, searchlight cones, night camera candidates (visual)

@@ -25,6 +25,7 @@ window.WW = window.WW || {};
     return p;
   }
   function impact(nation, x, z, dmg, kind, cal) {
+    if (WW.emit) WW.emit('landImpact', { nation, x, z, dmg, kind, cal });   // visual hook (Normandy: beachhead_fx.js craters); no sim effect
     for (let i = 0; i < P.length; i++) if (P[i].impact && P[i].impact(nation, x, z, dmg, kind, cal)) return true;
     return false;
   }
@@ -49,5 +50,17 @@ window.WW = window.WW || {};
     for (let i = 0; i < P.length; i++) if (P[i].bombardRange && P[i].owns && P[i].owns(t)) return P[i].bombardRange(ship, pref, t);
     return pref;
   }
-  WW.landSites = { register, impact, hitTest, scan, shooters, roofAt, groundAt, bombardRange, providers: P, hasHit: () => HIT.length > 0 };
+  // A gun on land's reload cycle (the island batteries, the strongpoints): the reload runs down; at 0, pick a target
+  // (none: look again in 1 s), fire at it, and reload for next() x a WW.rand jitter of 0.9-1.15. One draw per shot,
+  // after the shells' own (the order the island batteries always had).
+  function gunTick(f, dt, pick, fire, next) {
+    f.reload -= dt;
+    if (f.reload > 0) return false;
+    const t = pick();
+    if (!t) { f.reload = 1; return false; }
+    fire(t);
+    f.reload = next(t) * WW.randRange(0.9, 1.15);
+    return true;
+  }
+  WW.landSites = { register, gunTick, impact, hitTest, scan, shooters, roofAt, groundAt, bombardRange, providers: P, hasHit: () => HIT.length > 0 };
 })(window.WW);

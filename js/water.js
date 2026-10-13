@@ -195,5 +195,5 @@ window.WW = window.WW || {};
     for (let i = n; i < blobs.length; i++) blobs[i].visible = false;
   }
   function update(dt) { t += dt; if (mat) mat.uniforms.time.value = t; updateBlobs(); }
-  WW.water = { setDepth, update, uniforms: () => mat && mat.uniforms };
+  WW.water = { setDepth, update, uniforms: () => mat && mat.uniforms, mesh: () => mesh };   // mesh: waves.js lowers it under the Normandy sea
 })(window.WW);

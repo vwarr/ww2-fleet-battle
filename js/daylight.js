@@ -36,7 +36,7 @@ window.WW = window.WW || {};
     kind: 'day', predawn: false, pin: null, pinHour: null, startHour: 13, t0: 0, force: null, stats: stats, CFG: CFG, FLY_MIN: FLY_MIN,
     hour: 13, sunElev: 50, sunAz: Math.PI / 2,
     perH: function () { return WW.cfg.ROUND_TIMEOUT / CFG.SPAN_H; },          // sim s per game hour
-    hourAt: function (t) { return D.startHour + t / D.perH(); },
+    hourAt: function (t) { var c = WW.scn && WW.scn().clock; return c ? c.minutes(t) / 60 : D.startHour + t / D.perH(); },   // a scenario's own clock (Normandy: normandy.js clock)
     elevAt: function (h) { var x = ((h - CFG.SUNRISE) % 24 + 24) % 24; return CFG.NOON_ELEV * Math.sin(Math.PI * x / (CFG.SUNSET - CFG.SUNRISE)); },
     // azimuth angle in the x-z plane: 0 = +x (east) at sunrise, pi/2 = +z at noon, pi = -x (west) at sunset
     azAt: function (h) { return Math.PI * (h - CFG.SUNRISE) / (CFG.SUNSET - CFG.SUNRISE); },
@@ -94,7 +94,7 @@ window.WW = window.WW || {};
   // kind: 'dawn' | 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
   // force: a kind, or a number n: a dusk round whose sun sets n s in (tests).
   function roll() {
-    var r = WW.rand(), j = WW.rand(), f = D.force, M = CFG.MIX, kind;
+    var r = WW.rand(), j = WW.rand(), f = D.force != null ? D.force : WW.scn && WW.scn().daylight ? WW.scn().daylight : D.force, M = CFG.MIX, kind;   // scn.daylight: Normandy's dawn
     if (f === 'dawn' || f === 'day' || f === 'dusk' || f === 'night') kind = f;
     else if (typeof f === 'number') kind = 'dusk';
     else kind = r < M.dawn ? 'dawn' : r < M.dawn + M.day ? 'day' : r < M.dawn + M.day + M.dusk ? 'dusk' : 'night';

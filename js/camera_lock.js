@@ -5,6 +5,7 @@
 // is locked nothing ends it (not its duration, not a story phase change, switch or cutaway, not the base alarm);
 // only a much bigger event (a magazine explosion, a big ship going down: pr >= PREEMPT) can cut in, and never in the
 // RELEASE WINDOW (the last seconds before the drop, the dive, a hand-off in progress). Visual only: reads the sim.
+// Normandy's ground-level shots (shot.nd) answer for themselves: WW.camNormandy.lock(shot).
 window.WW = window.WW || {};
 (function (WW) {
   const PREEMPT = 10, DROP_FAR = 100, REL_WIN = 30;   // the release window: a run closer than its drop range + 30 u
@@ -19,6 +20,7 @@ window.WW = window.WW || {};
     if (!shot || shot.user || shot.pr >= 99) return null;      // the user's and the tests' shots are their own business
     if (shot.stage === 'hold') return shot.st < (shot.hold || 0) ? { why: 'hold', release: true } : null; // the beat on the result, then free
     if (shot.stage) return { why: shot.stage, release: true }; // a bomb / torpedo hand-off in flight
+    if (shot.nd) return WW.camNormandy ? WW.camNormandy.lock(shot) : null; // Normandy's shots: a ramp held until the men are off (camera_normandy.js)
     const s = subjectOf(shot);
     if (!s || s.diorama) return null;
     if (s.pt && s.kind) {
@@ -30,7 +32,7 @@ window.WW = window.WW || {};
       if (s.kind === 'torpedo' && s.phase === 'out' && s.ordnance && (s.phaseT || 0) > 0) return { why: 'abort', release: false }; // the beat after an aborted run
       return null;
     }
-    if (s.stats) {
+    if (s.stats && !s.isLand) { // (a wrecked landing craft is 'sinking' with no sinkT: never a lock)
       const u = salvo.get(s); // a gun-duel shot holds its first salvo to the splashes (not a running duel for ever: 12 s at most)
       if (shot.kind === 'duel' && shot.t < 12 && u && wall() < u) return { why: 'salvo', release: false };
       if (s.sinking && (s.sinkT || 0) < 6) return { why: 'sinking', release: false };

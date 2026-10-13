@@ -21,7 +21,10 @@ window.WW = window.WW || {};
   function rnd() { return WW.rand ? WW.rand() : Math.random(); }
   function rr(a, b) { return a + (b - a) * rnd(); }
   function fx(name, a, b, c, d, e) {
-    try { if (WW.fx && typeof WW.fx[name] === 'function') WW.fx[name](a, b, c, d, e); } catch (err) { /* never throw */ }
+    try {
+      if (WW.landFxHook && WW.landFxHook(name, a, b, c, d, e)) return;   // a scenario's own ground bursts (Normandy: beachhead_fx.js); none in the Pacific
+      if (WW.fx && typeof WW.fx[name] === 'function') WW.fx[name](a, b, c, d, e);
+    } catch (err) { /* never throw */ }
   }
   function stat(k, n) { if (WW.stats) WW.stats[k] = (WW.stats[k] || 0) + (n || 1); }
   function depthAt(x, z) {
@@ -56,8 +59,9 @@ window.WW = window.WW || {};
     return null;
   }
   // kind/cal (optional) let WW.damage place the right impact fx and fire site on the hull.
-  function damage(s, amt, x, z, kind, cal) {
-    try { if (s && s.alive && s.takeDamage) { s.takeDamage(amt, x, z, kind, cal); stat('hits'); return true; } } catch (e) { /* ignore */ }
+  // src: the projectile (optional; a land unit reads where it came from: coast_defence.js embrasures)
+  function damage(s, amt, x, z, kind, cal, src) {
+    try { if (s && s.alive && s.takeDamage) { s.takeDamage(amt, x, z, kind, cal, src); stat('hits'); return true; } } catch (e) { /* ignore */ }
     return false;
   }
 
@@ -123,7 +127,7 @@ window.WW = window.WW || {};
         if (isFinite(tmpV.x) && (tmpV.x !== 0 || tmpV.z !== 0)) return { x: tmpV.x, y: Math.max(0.5, tmpV.y), z: tmpV.z };
       }
     } catch (e) { /* fall through */ }
-    return { x: ship.x, y: 2, z: ship.z };
+    return { x: ship.x, y: ship.muzzleY !== undefined ? ship.muzzleY : 2, z: ship.z }; // muzzleY: a gun on land (coast_defence.js)
   }
 
   function fireShell(ship, turret, target, cal) {
@@ -184,8 +188,8 @@ window.WW = window.WW || {};
     var hit = findHit(p.nation, x, z, S.splash * 0.3, false, tgt);
     if (WW.emit) WW.emit('shellLanded', { cal: p.cal, x: x, z: z, ship: hit, proj: p }); // sound hook (audio_naval_wire.js)
     if (hit) {
-      damage(hit, p.dmg, x, z, 'shell', p.cal);
-      if (WW.damage) return;   // impact fx at the hull hit point are placed by WW.damage
+      damage(hit, p.dmg, x, z, 'shell', p.cal, p);
+      if (WW.damage && !hit.isLand) return;   // impact fx at the hull hit point are placed by WW.damage
       var big = p.cal === 'big' || p.cal === 'med';
       if (p.cal === 'mg') fx('sparks', x, 1, z);
       else { fx('explosion', x, 1.2, z, S.splash * 0.6); if (big) fx('sparks', x, 1.5, z); else fx('sparks', x, 1, z); }

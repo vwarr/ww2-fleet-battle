@@ -62,7 +62,7 @@ window.WW = window.WW || {};
   const LAND_CAP = 1.15, LAND_TOON = 0.75, LAND = [], landK = { value: 1 };
   const lum = c => c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
   const MOON = new THREE.Vector3(0.82, 0.26, -0.5).normalize();   // a low moon (~15 deg) in the east: a long glitter path
-  let wx = 0, t = 0, cloudMat = null;
+  let wx = 0, t = 0, cloudMat = null, gradeOn = false;
   const domeSun = new THREE.Vector3(), lightDir = new THREE.Vector3(), glitDir = new THREE.Vector3(), tmp = new THREE.Color(), tmp2 = new THREE.Color(), v3 = new THREE.Vector3();
 
   function seg(e) { let i = 0; while (i < KEYS.length - 2 && e > KEYS[i + 1]) i++; return [i, WW.clamp((e - KEYS[i]) / (KEYS[i + 1] - KEYS[i]), 0, 1)]; }
@@ -90,7 +90,11 @@ window.WW = window.WW || {};
       const tg = WW.cam && WW.cam.target ? WW.cam.target() : null;
       cov = Math.max(WW.weather.cover(WW.camera.position.x, WW.camera.position.z) * 0.8, tg ? WW.weather.cover(tg.x, tg.z) : 0);
     }
-    wx += (cov - wx) * Math.min(1, (rdt || 0.016) * 1.5);
+    // a scenario's overcast (Normandy: the grey morning of 6 June 1944) greys and dims it as a light rain would, with
+    // its haze thinner than a squall's (wr: the fog distance)
+    const oc = (WW.scn && WW.scn().overcast) || 0;
+    wx += (Math.max(cov, oc) - wx) * Math.min(1, (rdt || 0.016) * 1.5);
+    const wr = Math.max(0, wx - oc) + oc * 0.45;
     const dim = 1 - 0.35 * wx;
     // dome: palette, the sun's place, disc and halo, stars and moon
     const u = P.dome.material.uniforms;
@@ -114,7 +118,7 @@ window.WW = window.WW || {};
     const fog = WW.scene.fog;
     if (fog) {
       col('fog', fog.color);
-      if (wx > 0.01) { tmp.copy(RAIN_FOG).multiplyScalar(0.45 + 0.55 * k); fog.color.lerp(tmp, wx * 0.7); fog.near *= 1 - 0.9 * wx; fog.far *= 1 - 0.78 * wx; }
+      if (wx > 0.01) { tmp.copy(RAIN_FOG).multiplyScalar(0.45 + 0.55 * k); fog.color.lerp(tmp, wx * 0.7); fog.near *= 1 - 0.9 * wr; fog.far *= 1 - 0.78 * wr; }
       if (WW.scene.background && WW.scene.background.isColor) WW.scene.background.copy(fog.color);
     }
     // clouds (lit warm from below at sunset: the emissive carries it)
@@ -141,11 +145,52 @@ window.WW = window.WW || {};
       const cells = WW.weather ? WW.weather.cells : [];
       for (let j = 0; j < 4; j++) { const c = cells[j]; if (c) wu.rainC.value[j].set(c.x, c.z, c.r, c.dens); else wu.rainC.value[j].set(0, 0, 0, 0); }
     }
-    // bloom: night, and a warm glow round a low sun
+    if (oc > 0) overcast(P, Math.min(1, oc / 0.7), u, wu);
+    // bloom: night, and a warm glow round a low sun (none behind an overcast; and a greyer grade under it)
     const golden = E > -3 ? WW.clamp((12 - E) / 10, 0, 1) : 0;
-    if (WW.post && WW.post.setNight) WW.post.setNight(Math.max(n, 0.5 * golden));
+    if (WW.post && WW.post.setNight) {
+      if (oc > 0) { const g = Math.min(1, oc / 0.7); WW.post.setGrade(-0.32 * g, 1 - 0.1 * g, 1 - 0.07 * g, 1 - 0.02 * g); WW.post.setNight(n * 0.6); }   // cold, grey, a shade darker
+      else { if (gradeOn) WW.post.setGrade(0, 1, 1, 1); WW.post.setNight(Math.max(n, 0.5 * golden)); }
+      gradeOn = oc > 0;
+    }
     if (WW.nightFx) WW.nightFx.update(rdt || 0);      // night_fx.js: lights, star shells, searchlights
     if (WW.weatherFx) WW.weatherFx.update(rdt || 0);  // weather_fx.js: rain curtains, cloud decks
+  }
+  // A scenario's overcast (Normandy, 6 June 1944: a low grey deck at 1,000-3,000 ft, broken to unbroken; flat,
+  // diffuse light; a grey horizon; moderate visibility in haze and smoke). The fair-weather palette above (pink and
+  // lavender at a low morning sun) is replaced, not tinted: a grey dome a little brighter toward the sun (east) with
+  // no disc, no stars, a neutral weak sun (soft, faint shadows) and a strong grey sky fill, a grey-green sea with no
+  // glitter path, the fog grey and closer, the Pacific's white cumulus hidden (normandy_sky.js draws the deck). g:
+  // the overcast's weight (1: Normandy's 0.7). Twilight (before ~06:00) darkens it toward a blue-grey.
+  const OV = {   // [twilight, day]
+    zenith: pal(0x4c5462, 0x868d94), away: pal(0x5e6674, 0xa2a8ac), sunSide: pal(0x7a7480, 0xc0bfb8),
+    glow: pal(0x8a8088, 0xcfccc2), fog: pal(0x5c6472, 0x9ea4a8), hemiSky: pal(0x8a92a4, 0xdfe2e2),
+    hemiGnd: pal(0x50545c, 0x8e9088), light: pal(0x9a9cb0, 0xe8e4da), glit: pal(0x404450, 0x8a8a84)
+  };
+  function ov(name, lb, out) { return out.copy(OV[name][0]).lerp(OV[name][1], lb); }
+  function overcast(P, g, u, wu) {
+    const lb = WW.clamp((E + 7) / 15, 0, 1), ls = lb * lb * (3 - 2 * lb);   // twilight 0 .. full grey day 1 (-7 .. 8 deg)
+    const L = (name, c) => c.lerp(ov(name, ls, tmp), g);
+    L('zenith', u.zenith.value); L('away', u.away.value); L('sunSide', u.sunSide.value); L('glow', u.glow.value);
+    u.disc.value *= 1 - g; u.halo.value = WW.lerp(u.halo.value, 0.22, g); u.spread.value = WW.lerp(u.spread.value, 1.6, g); u.night.value *= 1 - g;
+    L('light', P.sun.color); P.sun.intensity = WW.lerp(P.sun.intensity, 0.36 * (0.45 + 0.55 * ls), g);
+    L('hemiSky', P.hemi.color); L('hemiGnd', P.hemi.groundColor); P.hemi.intensity = WW.lerp(P.hemi.intensity, 0.78 * (0.68 + 0.32 * ls), g);
+    landK.value = 1; for (const m of LAND) m.color.setScalar(1);
+    const fog = WW.scene.fog;
+    if (fog) {
+      L('fog', fog.color);
+      // the haze thins with height: a high camera (the overview, a map-like view) still reads the whole coast
+      const hy = WW.camera ? WW.clamp(WW.camera.position.y, 0, 900) : 0, ovw = WW.cam && WW.cam.isOverview && WW.cam.isOverview();
+      fog.near = WW.lerp(fog.near, ovw ? 1500 : 260 + hy * 2.4, g);
+      fog.far = WW.lerp(fog.far, ovw ? 4200 : 1500 + hy * 5.5, g);
+      if (WW.scene.background && WW.scene.background.isColor) WW.scene.background.copy(fog.color);
+    }
+    if (P.clouds) P.clouds.visible = false;   // no fair-weather cumulus under the deck
+    if (wu) {
+      wu.tint.value.setScalar(WW.lerp(1, 0.94, g) * (0.74 + 0.26 * ls));
+      if (fog) { wu.hzAway.value.copy(fog.color); wu.hzSun.value.copy(fog.color).lerp(u.sunSide.value, 0.35); }
+      L('glit', wu.sunCol.value); wu.moonPath.value *= 1 - g; wu.glit.value.set(0.05, 420, 0.12);
+    }
   }
   // a toon land material (white: its vertex colours carry the albedo)
   function addLand(m) { if (!LAND.includes(m)) LAND.push(m); return m; }
