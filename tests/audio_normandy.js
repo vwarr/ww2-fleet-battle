@@ -61,7 +61,7 @@ const PATCHES = [ // name, params, render seconds, max duration
       const con = AudioNode.prototype.connect;
       AudioNode.prototype.connect = function (d) { if (d instanceof AudioDestinationNode && !(this.context instanceof OfflineAudioContext) && !window.__masterOut && !this.__tap) window.__masterOut = this; return con.apply(this, arguments); };
     });
-    await p.goto(BASE + 'index.html?auto' + q + '&v=' + Date.now());
+    await p.goto(BASE + 'index.html?auto' + q + '&v=' + Date.now(), { timeout: 120000 });
     await p.waitForTimeout(2000);
     await p.evaluate(() => {
       window.__wav = (chs, sr) => {
@@ -151,7 +151,7 @@ const PATCHES = [ // name, params, render seconds, max duration
   }
 
   // ---- 3. a Normandy round with sound on ----
-  await p.evaluate(() => { __sim.game.startRound(); __sim.setScale(12); });
+  await p.evaluate(() => { __sim.game.startRound(); __sim.setScale(6); });
   chk('M key enables sound', await soundOn(p));
   await p.evaluate(() => { window.__t0 = performance.now(); });
   await untilRt(p, 47, 120000);                                        // the run-in, the B-24s over the cloud (06:05-06:11)
@@ -163,13 +163,15 @@ const PATCHES = [ // name, params, render seconds, max duration
   await untilRt(p, UNTIL, 500000);                                     // the battle
   const mid = await p.evaluate(() => ({ rt: WW.game.roundTime, state: WW.game.state, n: WW.audioNormandy.stats(), pc: JSON.parse(JSON.stringify(__pc)), real: (performance.now() - __t0) / 1000 }));
   // the camera pinned on the sand by a squad under MG fire (the director rarely goes there): the near field
+  await p.evaluate(() => { window.__tg = new Map(); WW.on('defenceFire', e => { if (e && e.kind === 'mg' && e.target && e.target.isSquad) __tg.set(e.target, (__tg.get(e.target) || 0) + 1); }); });
+  await p.waitForTimeout(4000);   // which squads the MGs are firing on now
   const pin = await p.evaluate(() => {
     const els = WW.coastDefence.elements.filter(e => e.alive && (e.kind === 'mg' || e.kind === 'tob') && e.suppressedUntil < WW.time.now);
     let best = null, bs = -1;
     for (const q of WW.infantry.squads) {
       if (!q.alive || q.kind === 'tank') continue;
       const n = els.filter(e => Math.hypot(e.x - q.x, e.z - q.z) < (e.K.range || 90)).length;
-      const fights = ['shingle', 'shelf', 'climb', 'top', 'assault', 'hold'].includes(q.state), s = Math.min(n, 4) * 3 + (fights ? 20 : ['cross', 'wade'].includes(q.state) ? 5 : 0) + Math.random() * 0.1;
+      const fights = ['shingle', 'shelf', 'climb', 'top', 'assault', 'hold'].includes(q.state), s = (__tg.get(q) || 0) * 10 + Math.min(n, 4) * 3 + (fights ? 20 : ['cross', 'wade'].includes(q.state) ? 5 : 0) + Math.random() * 0.1;
       if (s > bs) { bs = s; best = q; }
     }
     if (!best) return null;
@@ -178,7 +180,7 @@ const PATCHES = [ // name, params, render seconds, max duration
     WW.cam.update = function () { cu.apply(this, arguments); const g = Math.max(0, WW.terrain.heightRaw(at.x, at.z)); WW.camera.position.set(at.x, g + 2.5, at.z); WW.camera.lookAt(look.x, g + 4, look.z); WW.camera.updateMatrixWorld(); };
     window.__pinQ = q; window.__pinBase = JSON.parse(JSON.stringify(__pc));
     __sim.setScale(2);
-    return { x: Math.round(q.x), z: Math.round(q.z), state: q.state, mgs: bs };
+    return { x: Math.round(q.x), z: Math.round(q.z), state: q.state, fired: __tg.get(q) || 0 };
   });
   await p.waitForTimeout(3000);
   await p.evaluate(() => { __rec.on = true; });
@@ -227,7 +229,7 @@ const PATCHES = [ // name, params, render seconds, max duration
   chk(`the rocket barrage (${rk.rockets} rockets by rt ${rk.rt.toFixed(0)}): ${st.n.ev.rippleLoop || 0} ripple loops, ${st.n.ev.rocketImpact || 0} impacts heard -> ${pl('rocket.carpet')} carpets, ${pl('rocket.whoosh')} whooshes`,
     (st.n.ev.rippleLoop || 0) > 0 && pl('rocket.carpet') > 5);
   chk(`the planes: air.b24 loops ${st.lc['air.b24'] || 0}, fighter engines ${st.lc['plane.engine'] || 0} (max ${st.au.maxFight} handles <= 4)`, (st.lc['air.b24'] || 0) > 0 && st.au.maxFight <= 4);
-  chk(`on the beach (${pin ? pin.state : '-'}, ${pin ? pin.mgs : 0} MGs in reach): ${dpin('bullet.snap')} snaps, ${dpin('bullet.rico')} ricochets, ${dpin('bullet.thud')} thuds, ${dpin('ger.mg42')} MG bursts, ${dpin('us.rifle') + dpin('us.bar')} US`, pin && dpin('bullet.snap') > 0 && dpin('ger.mg42') > 0);
+  chk(`on the beach (${pin ? pin.state : '-'}, under fire from ${pin ? pin.fired : 0} MG bursts before the pin): ${dpin('bullet.snap')} snaps, ${dpin('bullet.rico')} ricochets, ${dpin('bullet.thud')} thuds, ${dpin('ger.mg42')} MG bursts, ${dpin('us.rifle') + dpin('us.bar')} US`, pin && dpin('bullet.snap') > 0 && dpin('ger.mg42') > 0);
   chk(`beach mix recorded (${rec.secs.toFixed(1)} s, peak ${rec.peak.toFixed(3)}, >6 kHz ${(rec.hf * 100).toFixed(2)}%)`, rec.secs > 14 && rec.peak > 0.01 && rec.peak < 0.891);
   chk(`ambience ducked under heavy fire (${st.n.ev.duck || 0} ducks)`, (st.n.ev.duck || 0) > 0);
   chk(`the wire's queue and timers stay bounded (queue ${st.n.maxPend} <= 96, timers ${st.n.maxLater} <= 200)`, st.n.maxPend <= 96 && st.n.maxLater <= 200);

@@ -101,7 +101,9 @@ window.WW = window.WW || {};
     }
   });
   function mg(el, tg) {
-    const s = gs(el), t = now(); if (t < s.mg) return;
+    const s = gs(el), t = now();
+    if (tg) { s.tg = tg; s.tgT = t; } else if (s.tg && t - s.tgT < 2 && s.tg.alive) tg = s.tg;   // the cone's own ticks name no target: the last one fired on
+    if (t < s.mg) return;
     const dur = Math.random() < 0.2 ? R(1.1, 1.8) : R(0.3, 0.9);
     s.mg = t + dur + R(0.25, 1.1);
     const y = (el.y || 0) + 0.3;
@@ -247,9 +249,9 @@ window.WW = window.WW || {};
     // gulls: first light, before the first wave touches down
     const C = WW.scenarios.normandy && WW.scenarios.normandy.clock;
     if (C && rt() < C.H && (beds.gullT -= dt) <= 0) {
-      beds.gullT = R(5, 14);
+      beds.gullT = R(4, 10);
       // over the flat by the camera when it is near the beach; offshore, a few following the boats out at the transports
-      if (h < 60 && Math.random() < 0.7) {
+      if (h < 90 && Math.random() < 0.8) {
         const near = dShore < 220, a = Math.random() * 6.283, r = R(10, 35);
         play('beach.gull', near ? { x: x + R(-40, 40), y: R(8, 25), z: wz + R(-40, 25), vol: R(0.5, 0.9) } : { x: L.x + Math.cos(a) * r, y: R(6, 18), z: L.z + Math.sin(a) * r, vol: R(0.4, 0.7) });
       }
@@ -360,7 +362,7 @@ window.WW = window.WW || {};
     pend.length = 0; later.length = 0; ST.heat = 0; brk.next = 0;
     for (const k in act) act[k].length = 0;
   }
-  WW.on('roundStart', () => { stopAll(); holdAmbGull(); beds.gullT = 3; });
+  WW.on('roundStart', () => { stopAll(); holdAmbGull(); beds.gullT = 1.5; });
   WW.on('setupStart', () => { stopAll(); holdAmbGull(); });
 
   let acc = 0, wasN = false, duckT = 0;
