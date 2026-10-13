@@ -339,6 +339,7 @@ window.WW = window.WW || {};
     call('ships', 'update', dt);
     call('islandBase', 'update', dt); // the island air base: repairs, coastal guns, base planes (island_base.js, land_air.js)
     call('coastDefence', 'update', dt); // Normandy: the strongpoints' guns, MG cones and mortar zones (coast_defence*.js)
+    call('landingCraft', 'update', dt); // Normandy: the landing craft (landing_craft.js)
     call('endgame', 'update', dt);  // escapes off the map, survivor pickups, scuttling (endgame.js)
     call('shipFires', 'update', dt); // fires, flooding, damage control (ship_fires.js)
     call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)
@@ -366,6 +367,7 @@ window.WW = window.WW || {};
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
     call('baseFx', 'update', rdt);  // the island base: craters, fires, parked planes (base_fx.js), visual only
     call('normandyProps', 'update', rdt); // Normandy: the beach obstacles still standing (terrain_normandy_props.js), visual only
+    call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('dmgVis', 'draw', rdt);    // scorch / hole decals and deck wrecks on the posed hulls
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera
     call('sky', 'update', rdt);

@@ -11,6 +11,8 @@
 // P5 fire support: the bombardment group is the real one (Texas, Arkansas, HMS Glasgow, the French cruisers, the
 // Gleaves destroyers and HMS Talybont, with their flags), the fire plan knocks out at least 3 elements by 400 s, and
 // the destroyers that close the beach stay in navigable water (>= 3, the type's minDepth).
+// P6 landing craft: the schedule's craft launch, men are ashore by 300 s, every craft that beached did so within 45 u
+// of its sector (the flood current sets them east), and with the DD tanks launched far most of them founder.
 // Usage: node tests/normandy_probe.js [seeds=1,2,3] [secs=400]
 const crypto = require('crypto');
 const H = require('./headless');
@@ -54,10 +56,13 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
       if (WW.fireSupport && WW.fireSupport.closing({ type: 'destroyer' })) for (const s of WW.world.ships) if (s.alive && s.type === 'destroyer' && s.nation === 'USN') ddMin = Math.min(ddMin, WW.terrain.depthAt(s.x, s.z));
       tr.push(WW.world.ships.map(s => [s.id, s.x, s.z, s.hp].join(',')).join(';') + '|' + C0.elements.map(e => e.hp.toFixed(3) + (e.alive ? '' : 'x')).join(','));
     }
-    const shots = C0.stats.shots, dHits = C0.stats.hits;
+    const shots = C0.stats.shots, dHits = C0.stats.hits, LS = WW.landingCraft.stats;
+    const DS = WW.normandyData.SECTORS, secOf = id => id === 'hoc' ? { x0: 726, x1: 752 } : DS.find(s => s.id === id);
+    const stray = WW.landingCraft.craft.filter(u => u.state !== 'run' && u.state !== 'wrecked' && (u.x < secOf(u.sector).x0 - 45 || u.x > secOf(u.sector).x1 + 45)).length;
+    const lc = { launched: LS.launched, men: LS.menLanded, lost: LS.menLost, foundered: LS.foundered, dd: WW.landingCraft.plan.filter(r => r.craft === 'dd').length, stray };
     const C = WW.coastDefence, def = { els: C.elements.length, wns: C.wns.length, shots: 0 };
     return { terr: terr.slice(0, 6), layout, obst: T.obstacles.length, def, sides, nations: [...nations].join(','), ships: WW.world.ships.length, state: G.state, t: +G.roundTime.toFixed(1), winner: G.winner, reason: G.endReason,
-      shots, dHits, nm, ddMin, out: C0.stats.out, sunk: WW.world.ships.filter(s => !s.alive || s.sinking).map(s => s.nation + ' ' + s.type).join(', '), shells: WW.stats.shellsFired, bad: bad.slice(0, 5), tr };
+      shots, dHits, lc, nm, ddMin, out: C0.stats.out, sunk: WW.world.ships.filter(s => !s.alive || s.sinking).map(s => s.nation + ' ' + s.type).join(', '), shells: WW.stats.shellsFired, bad: bad.slice(0, 5), tr };
   }, [seed, SECS]);
   let layout0 = null;
   // the damage model, on a fresh round (after the seeded runs: it draws WW.rand)
@@ -91,12 +96,16 @@ const SEEDS = (H.argv[0] || '1,2,3').split(',').map(Number), SECS = +(H.argv[1] 
     if (!(a.shots > 0)) probs.push('no German gun fired');
     for (const n of ['Texas', 'Arkansas', 'Glasgow/RN', 'Montcalm/FNFL', 'Georges Leygues/FNFL', 'Talybont/RN', 'Satterlee', 'Carmick']) if (!a.nm.split(',').includes(n)) probs.push('missing ' + n);
     if (SECS >= 400 && a.out < 3) probs.push(`only ${a.out} elements knocked out`);
+    if (!(a.lc.launched > 20)) probs.push(`only ${a.lc.launched} craft launched`);
+    if (SECS >= 300 && !(a.lc.men > 0)) probs.push('no men ashore');
+    if (a.lc.stray) probs.push(`${a.lc.stray} craft beached outside their sector`);
+    if (SECS >= 400 && a.lc.foundered < a.lc.dd / 2) probs.push(`only ${a.lc.foundered} of ${a.lc.dd} DD tanks foundered`);
     if (a.ddMin < 3) probs.push(`a closing destroyer in ${a.ddMin.toFixed(1)} u of water`);
     if (layout0 === null) layout0 = a.layout;
     else if (a.layout.some((q, i) => Math.abs(q[0] - layout0[i][0]) > 0.01 || Math.abs(q[1] - layout0[i][1]) > 1.2)) probs.push(`layout ${JSON.stringify(a.layout)} differs from the first seed's`);
     if (ha !== hc) probs.push(`replay differs ${ha} / ${hc}`);
     if (probs.length) fail++;
-    console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} GER shots ${a.shots} hits on defences ${a.dHits} out ${a.out} dd depth >= ${a.ddMin.toFixed(1)} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
+    console.log(`seed ${seed}: ${ha} ${a.state} t=${a.t} ${a.winner || '-'} (${a.reason || '-'}) ships ${a.ships} [${a.nations}] obstacles ${a.obst} GER shots ${a.shots} hits on defences ${a.dHits} out ${a.out} craft ${a.lc.launched} men ashore ${a.lc.men} lost ${a.lc.lost} DD foundered ${a.lc.foundered}/${a.lc.dd} dd depth >= ${a.ddMin.toFixed(1)} sunk: ${a.sunk || 'none'}  ${probs.length ? 'FAIL ' + probs.join('; ') : 'ok'}`);
   }
   const u = await unit();
   console.log('damage model: ' + (u.length ? 'FAIL ' + u.join('; ') : 'ok'));

@@ -9,6 +9,8 @@
 //   wn62       WN 62 above Easy Red / Fox Green: the two 75 mm casemates on the slope, MG nests, mortar pits
 //   texas      USS Texas on her bombardment line, Pointe du Hoc beyond (sim 30 s: the pre-planned fire)
 //   ddrun      a destroyer closed on the beach firing along it (sim 300 s, after the H+60 close)
+//   run_in     the first wave running in to Dog Green (sim 50 s): LCVPs in line abreast, the DD tanks swimming
+//   ramps      Easy Red at H+40 (sim 160 s): craft beached with their ramps down, a wreck burning
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
@@ -27,6 +29,8 @@ const SHOTS = [
   ['wn62', () => { const e = WW.coastDefence.wnOf('WN62').elements[0]; return [e.x - 26, e.y + 9, e.z - 22, e.x + 4, e.y, e.z + 2]; }],
   ['texas', () => { const s = WW.world.ships.find(q => q.name === 'Texas'); return [s.x - 30, 9, s.z - 22, s.x + 10, 2, s.z + 40]; }],
   ['ddrun', () => { __sim.fastForward(300); const s = WW.world.ships.filter(q => q.type === 'destroyer' && q.alive).sort((a, b) => b.z - a.z)[0]; return [s.x - 25, 7, s.z - 25, s.x + 10, 2, s.z + 50]; }],
+  ['run_in', () => { __sim.fastForward(20); const u = WW.landingCraft.live.find(q => q.sector === 'dogGreen' && q.state === 'run') || WW.landingCraft.live[0]; return [u.x - 18, 5, u.z - 16, u.x + 6, 0.5, u.z + 30]; }],
+  ['ramps', () => { __sim.fastForward(110); const z = T.shoreZ(1760); return [1740, 6, z - 40, 1765, 0.5, z + 5]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
 ];

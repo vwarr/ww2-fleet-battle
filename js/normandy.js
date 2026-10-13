@@ -16,7 +16,8 @@ window.WW = window.WW || {};
   //   cloud    true: the B-24s bomb through cloud and drop about 3 mi inland, as on the day (P8)
   //   fw190    true: Priller and Wodarczyk's two Fw 190s strafe the beach (they were over Sword and Juno: flavour, P8)
   const q = k => { const m = typeof location !== 'undefined' && new RegExp('[?&]' + k + '=(\\w+)').exec(location.search); return m ? m[1] : null; };
-  N.settings = { hocGuns: q('hoc') === 'casemates' ? 'casemates' : 'moved', cloud: q('cloud') !== '0', fw190: q('fw190') === '1' };
+  //   dd       'far': the 741st's DD tanks launched ~5 km out and most foundered; 'close': landed on the beach like the 743rd's
+  N.settings = { hocGuns: q('hoc') === 'casemates' ? 'casemates' : 'moved', cloud: q('cloud') !== '0', fw190: q('fw190') === '1', dd: q('dd') === 'close' ? 'close' : 'far' };
 
   // the sides that must field ships before Start (ui.js): the Germans hold the coast, their boats are optional
   N.fleetSides = ['USN'];
