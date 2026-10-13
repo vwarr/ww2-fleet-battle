@@ -3,7 +3,7 @@
 // built from sim events: contact / firstSighting and flying-boat 'report' (batched per side into sighting
 // reports, which also become the pinned notes of the plot table), airOrder strikeAway, shipHit / deckHit /
 // magazine / engineHit, shipSunk / shipScuttled / shipEscaped, escortCharge, rescue, ace, admiralOrder,
-// misidResolved, flyingBoat 'lost' and victory. Events that a branch does not emit are simply never heard.
+// misidResolved, flyingBoat 'lost' / 'sighting' (the patrol boat's radio report) and victory. Events that a branch does not emit are simply never heard.
 // Display: a typed log card (#diary) that slides in at the right in map view; L toggles it (per view). An
 // important entry flashes as a small caption in the director view through WW.airCaptions.say (its 15 s throttle).
 // Clock: WW.dayNight.hourAt(roundTime) when present, else 0600 + roundTime / 120 h (1 sim s = half a minute).
@@ -171,6 +171,19 @@ window.WW = window.WW || {};
   });
   on('ace', e => e.pilot && add(e.pilot.name + ' of ' + (e.plane && e.plane.squadron ? e.plane.squadron.short : 'the air group') + ' makes ace', 2, e.pilot.nation));
   on('flyingBoat', e => e.order === 'lost' && e.plane && add(observer(e.plane) + ' patrol plane lost', 1, e.nation || e.plane.nation));
+  // the patrol boat's radio report (air_patrol.js): "PBY: 2 carriers, 1 battleship bearing 320, 180 miles" from the own
+  // island (else the fleet); a raid: "Many planes heading Midway"
+  const NUM = ['', 'one', 'two', 'three', 'four', 'five', 'six'];
+  on('flyingBoat', e => {
+    if (e.order !== 'sighting' || !e.plane) return;
+    const b = WW.islandBase && WW.islandBase.base, home = b && b.nation === e.nation ? b : null, f = home || fleetCentre(e.nation) || e.plane;
+    const d = WW.dist(f.x, f.z, e.x, e.z), at = ' bearing ' + bearing(f.x, f.z, e.x, e.z) + ', ' + Math.max(5, Math.round(d / 40) * 5) + ' miles';
+    if (e.planes) { add(observer(e.plane) + ': many planes heading ' + (home ? home.name : 'the fleet') + at, 3, e.nation, { kind: 'sighting' }); return; }
+    const types = Object.keys(e.comp || {}).sort((a, c) => (RANK[c] || 0) - (RANK[a] || 0));
+    if (!types.length) return;
+    const what = types.map(t => (NUM[e.comp[t]] || e.comp[t]) + ' ' + word(t, e.comp[t])).join(', ');
+    add(observer(e.plane) + ': ' + what + at, e.carriers ? 3 : 2, e.nation, { kind: 'sighting' });
+  });
   on('admiralOrder', e => {
     if (!e.text) return;
     const pri = { transfer: 3, flagLost: 3, leaderless: 3, strike: 2, retire: 2, press: 2, pursue: 2, command: 1 }[e.order];
