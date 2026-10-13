@@ -103,7 +103,10 @@ window.WW = window.WW || {};
   function build(s) {
     WW.renderer.localClippingEnabled = true;
     var stern = s.group.clone(true), bk = s._bk = { stern: stern, mats: [], pairs: [], planes: [new THREE.Plane(), new THREE.Plane()], fxT: 0 };
-    var hm = s.model.hullMats;
+    var hm = s.model.hullMats, own = s.ownKids, kids = s.group.children, keep = [];
+    // only the model's own parts: flags, parked planes and other pooled objects added later stay on the bow, unclipped
+    for (var q = 0; q < kids.length; q++) if (!own || own.has(kids[q])) keep.push(q);
+    var sk = stern.children.slice(); for (var u = 0; u < sk.length; u++) if (keep.indexOf(u) < 0) stern.remove(sk[u]);
     [s.group, stern].forEach(function (grp, i) {
       var map = new Map(), plane = bk.planes[i], h = i ? -1 : 1;
       var upd = function () { // the cut in world space, from this half's posed matrix
@@ -118,15 +121,18 @@ window.WW = window.WW || {};
         }
         return c;
       };
-      grp.traverse(function (o) {
-        if (!o.material) return;
-        o.material = Array.isArray(o.material) ? o.material.map(cl) : cl(o.material);
-        o.onBeforeRender = upd;
+      var roots = i ? stern.children.slice() : keep.map(function (q) { return kids[q]; });
+      roots.forEach(function (r) {
+        r.traverse(function (o) {
+          if (!o.material) return;
+          o.material = Array.isArray(o.material) ? o.material.map(cl) : cl(o.material);
+          o.onBeforeRender = upd;
+        });
       });
       // a dark slab closes the cut (the torn hull, shadowed inside)
       if (!capGeo) { capGeo = new THREE.BoxGeometry(1, 1, 1); capMat = new THREE.MeshToonMaterial({ color: 0x2b2420, gradientMap: WW.models._grad() }); }
       var cap = new THREE.Mesh(capGeo, capMat), hb = s.hullBot, ht = Math.max(0.6, s.hullTop * 0.35);
-      cap.scale.set(0.08, ht - hb, s.beam * 0.8); cap.position.set(s.breakX + h * 0.06, (ht + hb) / 2, 0);
+      cap.scale.set(0.08, ht - hb, ((s.cls && s.cls.beam) || s.stats.length / 7) * 0.8); cap.position.set(s.breakX + h * 0.06, (ht + hb) / 2, 0);
       cap.userData.breakCap = true; grp.add(cap);
       upd();
     });

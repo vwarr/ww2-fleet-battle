@@ -1,4 +1,4 @@
-// ships.js — owner C. WW.Ship (movement, navigation, damage, sinking) + WW.ships.
+// ships.js — owner C. WW.Ship (movement, navigation, damage) + WW.ships; sinking in ship_sinking.js.
 // AI (targeting, guns, torpedoes, strikes) lives in ships_ai.js as WW.shipAI.
 window.WW = window.WW || {};
 (function () {
@@ -41,6 +41,7 @@ window.WW = window.WW || {};
       this.submerged = type === 'submarine';
       this.model = WW.models.buildShip(type, nation, this.mk);
       this.group = this.model.group;
+      this.ownKids = new Set(this.group.children); // the model's own parts (not flags / parked planes added later): ship_breakup.js
       this.group.rotation.order = 'YXZ'; // yaw, then roll (x = long axis), then pitch (z)
       // Steering inputs (written by AI).
       this.desiredHeading = this.heading; this.throttle = 0.7;
