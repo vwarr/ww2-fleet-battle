@@ -138,6 +138,9 @@ window.WW = window.WW || {};
           if (d > bd) { bd = d; this.escapeH = a; } // most open water for the whole hull (never off the map edge)
         }
         this.escapeT = 3; this.escHold = 0; this.escAstern = false;
+        // the open water is astern (a bow run into a blind inlet): back out along it rather than try to swing on the spot
+        // (a cruiser pressing a target into a shoal pocket swung between two escapes for 100 s, sim_behaviour stuck)
+        if (Math.abs(WW.angleDiff(this.heading, this.escapeH)) > 2.3) { this.asternT = 4; this.escAstern = true; }
       }
       // A jammed swing (an end against the shallows or a wreck, turn rate 0 for 1 s): come about the other
       // way instead, as an escape toward the clearest heading on the free side. An escape that jams again
