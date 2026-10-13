@@ -55,6 +55,15 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(nation)) { const o = c.unit; if (o !== skip && o.stats.aa && WW.dist(c.x, c.z, x, z) < o.stats.aa.range * 1.5) s += o.stats.aa.dps; }
     return s;
   }
+  // opts.big: land-based bombers (B-26, B-17, Betty: land_air.js) go for the big ships, carrier > battleship > cruiser
+  // (at Midway they went for the carriers); a destroyer only when no bigger ship is known within reach (opts.reach,
+  // else opts.near), never a PT boat or a submarine: nothing worth it, no target (they hold, or fly home)
+  const LOW = { pt: 1, submarine: 1 }, BIG = { carrier: 1, battleship: 1, cruiser: 1 };
+  const tyOf = c => (WW.intel.typeOf ? WW.intel.typeOf(c) : c.unit.type);
+  function bigIn(L, from, lim) {
+    for (const c of L) { const o = c.unit; if (o && o.alive && !o.submerged && !o.sinking && !o.isBase && BIG[tyOf(c)] && !(lim && WW.dist(from.x, from.z, c.x, c.z) > lim)) return true; }
+    return false;
+  }
   function pickTarget(from, opts) {
     if (!WW.intel) return WW.shipAI && WW.shipAI.pickStrikeTarget ? WW.shipAI.pickStrikeTarget(from) : null;
     const nation = from.nation, now = WW.time.now, near = opts && opts.near;
@@ -66,12 +75,14 @@ window.WW = window.WW || {};
     }
     const cs = WW.intel.enemyShips(nation, { fresh: near ? WW.intel.T.FRESH + 2 : 45 }), L = [];
     for (const c of cs) L.push(c);   // shared scratch array: copy before aaAround asks intel again
+    const lim = near || (opts && opts.reach), big = opts && opts.big && bigIn(L, from, lim);
     let best = null, bs = -1e9;
     for (const c of L) {
       const o = c.unit;
       if (!o || !o.alive || o.submerged || o.sinking) continue;
       const d = WW.dist(from.x, from.z, c.x, c.z);
-      if (near && d > near) continue;
+      if (lim && d > lim) continue;
+      if (opts && opts.big && (LOW[tyOf(c)] || (big && tyOf(c) === 'destroyer'))) continue;
       if (noSmall && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type]) continue;
       if (near && opts.flight > SMALL_FLIGHT && o.type === 'submarine') continue;
       if (near && opts.noBase && o.isBase) continue;
