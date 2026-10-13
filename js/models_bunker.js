@@ -16,18 +16,30 @@
 //  - knocked out: the burnt material (the same vertex colours darkened), the barrel drooped or blown askew, a scorch
 //    on the ground, rubble (concrete chunks, burst sandbags). The crews, the MG 42s, the tracers and the gun flashes
 //    are defence_fx.js. 'defenceFire' (gun): the barrel trains on the target (local yaw = heading - aim), in its arc.
+// Grey morning pass (after review: "the casemates' turf a bright pastel lime that pops out of the olive bluffs, the
+// concrete near white"): the concrete a weathered grey-brown with rain streaks run down from under the slab and the
+// blast's soot over the embrasure; the earth bank grassed in lumps and tussocks of the bluff's own olive (terrain
+// colour bluff / scrub) instead of a flat lime panel; sandbags and spoil a dull khaki; the embrasures black. Hits on
+// the concrete leave pock marks (up to 10); knocked out: no longer a featureless black box (a lighter burnt tint so
+// the detail shows) but soot fanned up the front and over the door, cracks, a corner of the roof slab broken off and
+// lying tilted at the foot, the rebar standing out of the break.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   let root = null, MAT = null;
   const byEl = new Map();
-  const C = { conc: 0xb3ab98, concD: 0x968f7f, concL: 0xc4bca8, slit: 0x26272a, camoB: 0x8b7556, camoG: 0x7f8a62, earth: 0x8c7a58, grass: 0x93a96a,
-    bagA: 0xbfa97c, bagB: 0xa99470, pit: 0x6a5c45, gun: 0x5a6152, gunD: 0x3e423d, scorch: 0x2a2724 };
+  // a grey June morning (after review: "the turf a pastel lime that pops out of the olive bluffs"): weathered concrete
+  // in a grey-brown, stained under the roof, the turf the bluff's own olive (terrain_normandy.js color(): bluff
+  // 0x75794f, scrub 0x5c6242; merge() pastels both the same way), the sandbags and the spoil a dull khaki, the
+  // embrasures black holes
+  const C = { conc: 0x7a7365, concD: 0x625c51, concL: 0x857e70, slit: 0x121314, stain: 0x6b655a, camoB: 0x6b5c45, camoG: 0x5d6346,
+    earth: 0x695c45, grass: 0x6f734b, grassD: 0x5c6242, tuft: 0x4c5238, bagA: 0x8a7b5d, bagB: 0x776a50, pit: 0x4c4234, gun: 0x4f554a,
+    gunD: 0x34372f, scorch: 0x1c1a18, soot: 0x1e1c1a, crack: 0x2a2724 };
   function mats() {
     if (MAT) return MAT;
     const grad = WW.models && WW.models._grad ? WW.models._grad() : null;
     const toon = c => new THREE.MeshToonMaterial({ color: c, vertexColors: true, gradientMap: grad });
-    MAT = { body: toon(0xffffff), burnt: toon(0x4c4844), scorch: new THREE.MeshBasicMaterial({ color: C.scorch, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }) };
+    MAT = { body: toon(0xffffff), burnt: toon(0x8a847c), scar: new THREE.MeshToonMaterial({ color: 0x3a3631, gradientMap: grad }), scorch: new THREE.MeshBasicMaterial({ color: C.scorch, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }) };
     return MAT;
   }
   const prims = () => WW.soldierModel.prims();
@@ -56,40 +68,54 @@ window.WW = window.WW || {};
   // the casemate / observation bunker. Local frame: +x where it looks; the sea is local -z (east-facing), +z (west), or
   // +x (a bunker looking out to sea)
   function casemate(e, P, gnd) {
-    const { box } = prims(), part = WW.soldierModel.part, r = e.rad, h = e.K.top;
+    const { box, sph } = prims(), part = WW.soldierModel.part, r = e.rad, h = e.K.top;
     const sv = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), e.heading);   // world north in the local frame
     const seaX = Math.abs(sv.x) > 0.5, sz = seaX ? 0 : Math.sign(sv.z), L = r * 1.5, W = r * 1.3, dig = 1.2;
     const y0 = Math.min(gnd(0, 0), gnd(L / 2, 0), gnd(-L / 2, 0), gnd(0, W / 2), gnd(0, -W / 2));
-    const yb = y0 - dig, top = gnd(0, 0) + h;
+    const yb = y0 - dig, top = gnd(0, 0) + h, R = Math.random;
     P.push(part(box, C.conc, [L, top - yb, W], [0, (top + yb) / 2, 0]));                                // the block, dug in
     P.push(part(box, C.concL, [L + 0.24, 0.16, W + 0.24], [0, top + 0.06, 0]));                         // the roof slab's overhang
+    // the weather: rain streaks run down the faces from under the slab (the land face, the front, the rear)
+    const streak = (x, z, ax) => { const w = 0.04 + R() * 0.08, l = h * (0.25 + R() * 0.45); P.push(part(box, C.stain, ax ? [0.02, l, w] : [w, l, 0.02], [x, top - 0.03 - l / 2, z])); };
+    for (let i = 0; i < 4; i++) streak(-L / 2 + L * (i + 0.3 + R() * 0.4) / 4, (seaX ? 1 : -sz) * (W / 2 + 0.012), false);
+    for (let i = 0; i < 2; i++) { streak(L / 2 + 0.012, (R() - 0.5) * W * 0.8, true); streak(-L / 2 - 0.012, (R() - 0.5) * W * 0.8, true); }
+    const dim = { L, W, top, yb, sz, h, seaX };
     if (!seaX) {
       // the flanking wall to the sea: thick, higher, run out past the embrasure to shield it from the sea
       const wz = sz * (W / 2 + 0.22);
       P.push(part(box, C.concD, [L + 1.0, top + 0.12 - yb, 0.45], [0.45, (top + 0.12 + yb) / 2, wz]));
       P.push(part(box, C.concL, [L + 1.06, 0.08, 0.5], [0.45, top + 0.16, wz]));
-      // the earth banked against it and over the roof, grassed
-      const bh = top + 0.1 - yb;   // the bank: a grassed ramp leaning on the sea wall, the bare earth showing at its ends
+      // the earth banked against it and over the roof: the bare ramp, and the turf on it in lumps and tussocks (not
+      // a flat panel), the bluff's own olive; the earth shows at the toe and the ends
+      const bh = top + 0.1 - yb;
       P.push(part(box, C.earth, [L + 0.5, bh, 1.1], [0.2, yb + bh / 2 - 0.15, sz * (W / 2 + 0.95)], [-sz * 0.55, 0, 0]));
-      P.push(part(box, C.grass, [L + 0.3, bh, 1.1], [0.2, yb + bh / 2 - 0.1, sz * (W / 2 + 1.0)], [-sz * 0.55, 0, 0]));
-      P.push(part(box, C.grass, [L * 0.75, 0.1, W * 0.6], [-L * 0.1, top + 0.18, sz * W * 0.18]));
-      // the embrasure: stepped mouth in the front face, beside the wing wall
-      P.push(part(box, C.concD, [0.12, h * 0.55, W * 0.62], [L / 2 + 0.04, top - h * 0.5, -sz * 0.05]));
-      P.push(part(box, C.slit, [0.12, h * 0.34, W * 0.42], [L / 2 + 0.07, top - h * 0.48, -sz * 0.05]));
+      P.push(part(box, C.grassD, [L + 0.2, bh * 0.9, 1.1], [0.2, yb + bh / 2 - 0.05, sz * (W / 2 + 1.02)], [-sz * 0.55, 0, 0]));
+      for (let i = 0; i < 5; i++) {
+        const x = -L / 2 + L * (i + 0.5) / 5 + (R() - 0.5) * 0.3, f = 0.35 + R() * 0.45, yy = yb + bh * (1 - f) + 0.25, zz = sz * (W / 2 + 0.55 + f * 0.95);
+        P.push(part(sph, i & 1 ? C.grass : C.grassD, [L / 4 + R() * 0.4, 0.45 + R() * 0.25, 0.9 + R() * 0.3], [x, Math.min(yy, top + 0.05), zz], [R() * 0.3, R() * 3, 0]));
+      }
+      for (let i = 0; i < 3; i++) P.push(part(sph, C.tuft, [0.25, 0.18, 0.25], [-L / 2 + L * R(), top - h * R() * 0.6, sz * (W / 2 + 0.9 + R() * 0.6)]));
+      P.push(part(sph, C.grass, [L * 0.8, 0.22, W * 0.62], [-L * 0.1, top + 0.13, sz * W * 0.18]));            // the turf on the roof
+      P.push(part(sph, C.grassD, [L * 0.45, 0.2, W * 0.4], [-L * 0.25, top + 0.17, sz * W * 0.28]));
+      // the embrasure: a stepped mouth in the front face beside the wing wall, black inside
+      P.push(part(box, C.concD, [0.14, h * 0.6, W * 0.66], [L / 2 + 0.04, top - h * 0.5, -sz * 0.05]));
+      P.push(part(box, C.slit, [0.16, h * 0.4, W * 0.46], [L / 2 + 0.07, top - h * 0.48, -sz * 0.05]));
+      P.push(part(box, C.stain, [0.02, h * 0.18, W * 0.5], [L / 2 + 0.115, top - h * 0.17, -sz * 0.05]));     // the blast's soot over it
       P.push(part(box, C.slit, [0.3, 0.45, 0.5], [-L / 2 - 0.02, gnd(-L / 2, -sz * W * 0.2) + 0.25, -sz * W * 0.2]));   // the rear door
       // camouflage patches on the faces that show
-      for (const [x, y, z, sx, sy, sz2, c] of [[0.1, 0.55, -sz * (W / 2 + 0.01), L * 0.4, 0.35, 0.02, C.camoB], [-0.3 * L, 0.3, -sz * (W / 2 + 0.01), L * 0.3, 0.3, 0.02, C.camoG],
-        [L / 2 + 0.01, 0.85, sz * 0.25 * W, 0.02, 0.25, W * 0.3, C.camoG], [-L / 2 - 0.01, 0.6, sz * 0.2 * W, 0.02, 0.35, W * 0.35, C.camoB], [0.2 * L, 0.98, -sz * 0.2, L * 0.35, 0.02, W * 0.4, C.camoB]])
+      for (const [x, y, z, sx, sy, sz2, c] of [[0.1, 0.55, -sz * (W / 2 + 0.016), L * 0.4, 0.35, 0.02, C.camoB], [-0.3 * L, 0.3, -sz * (W / 2 + 0.016), L * 0.3, 0.3, 0.02, C.camoG],
+        [L / 2 + 0.016, 0.85, sz * 0.25 * W, 0.02, 0.25, W * 0.3, C.camoG], [-L / 2 - 0.016, 0.6, sz * 0.2 * W, 0.02, 0.35, W * 0.35, C.camoB]])
         P.push(part(box, c, [sx, sy * h, sz2], [x, top - h + y * h, z]));
-      return { mx: L / 2 + 0.02, my: top - h * 0.48, mz: -sz * 0.05 };
+      return { mx: L / 2 + 0.02, my: top - h * 0.48, mz: -sz * 0.05, dim };
     }
     // the observation bunker: the slit to the sea on +x, earth over the sides and the back
     P.push(part(box, C.slit, [0.06, h * 0.16, W * 0.6], [L / 2 + 0.02, top - h * 0.3, 0]));
     P.push(part(box, C.concL, [0.4, 0.06, W * 0.7], [L / 2 + 0.2, top - h * 0.2, 0]));
-    for (const z of [-1, 1]) P.push(part(prims().sph, C.earth, [L * 1.1, top - y0 + 0.5, 1.4], [-0.2, y0 + (top - y0) * 0.3, z * (W / 2 + 0.5)]));
-    P.push(part(prims().sph, C.grass, [1.6, top - y0 + 0.6, W * 1.1], [-L / 2 - 0.5, y0 + (top - y0) * 0.3, 0]));
-    P.push(part(box, C.camoB, [L * 0.5, 0.02, W * 0.4], [-0.2, top + 0.15, 0.2]));
-    return null;
+    for (const z of [-1, 1]) P.push(part(sph, C.earth, [L * 1.1, top - y0 + 0.5, 1.4], [-0.2, y0 + (top - y0) * 0.3, z * (W / 2 + 0.5)]));
+    for (const z of [-1, 1]) P.push(part(sph, C.grassD, [L * 0.9, top - y0 + 0.4, 1.2], [-0.3, y0 + (top - y0) * 0.35, z * (W / 2 + 0.6)]));
+    P.push(part(sph, C.grass, [1.6, top - y0 + 0.6, W * 1.1], [-L / 2 - 0.5, y0 + (top - y0) * 0.3, 0]));
+    P.push(part(sph, C.grassD, [L * 0.6, 0.2, W * 0.5], [-0.2, top + 0.13, 0.2]));
+    return { mx: L / 2, my: top - h * 0.3, mz: 0, dim, op: true };
   }
 
   function build(e) {
@@ -154,25 +180,63 @@ window.WW = window.WW || {};
     root.add(g);
     byEl.set(e, g);
   }
-  // knocked out: burnt, the barrel drooped or blown askew, a scorch and rubble around it
+  // knocked out: burnt, the barrel drooped or blown askew, a scorch and rubble around it. A casemate: the fire's soot
+  // fanned up the face over the embrasure and the door, cracks across the faces, a corner of the roof slab broken off
+  // and lying tilted at the foot with the rebar standing out of the break, the turf burnt
   function knocked(e) {
-    const g = byEl.get(e); if (!g) return;
-    const M = mats(), part = WW.soldierModel.part, { box, sph } = prims();
+    const g = byEl.get(e); if (!g || g.userData.out) return;
+    g.userData.out = true;
+    const M = mats(), part = WW.soldierModel.part, { box, sph, cyl } = prims(), R = Math.random;
     g.traverse(o => { if (o.isMesh && o.material === M.body) o.material = M.burnt; });
     const b = g.userData.barrel;
-    if (b) { b.rotation.z = -0.3 - Math.random() * 0.15; b.rotation.y += (Math.random() - 0.5) * 0.5; }
-    const gnd = groundFn(e, e.y), r = e.rad, P = [];
-    for (let i = 0; i < 9; i++) {      // rubble: concrete chunks off a casemate, burst sandbags off a pit
-      const a = Math.random() * 6.28, d = r * (0.8 + Math.random() * 0.9), x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (b) { b.rotation.z = -0.3 - R() * 0.15; b.rotation.y += (R() - 0.5) * 0.5; }
+    const gnd = groundFn(e, e.y), r = e.rad, P = [], S = [];   // P: burnt rubble; S: soot and cracks (unlit-dark)
+    const mo = g.userData.mouth, d = mo && mo.dim;
+    for (let i = 0; i < (d ? 12 : 9); i++) {      // rubble: concrete chunks off a casemate, burst sandbags off a pit
+      const a = R() * 6.28, dd = r * (0.8 + R() * 0.9), x = Math.cos(a) * dd, z = Math.sin(a) * dd;
       const conc = e.K.wall;
-      P.push(part(conc ? box : sph, conc ? C.concD : (i & 1 ? C.bagB : C.earth), conc ? [0.3 + Math.random() * 0.3, 0.2, 0.25 + Math.random() * 0.2] : [0.35, 0.12, 0.25],
-        [x, gnd(x, z) + 0.06, z], [Math.random() * 0.6, Math.random() * 6, Math.random() * 0.6]));
+      P.push(part(conc ? box : sph, conc ? C.concD : (i & 1 ? C.bagB : C.earth), conc ? [0.3 + R() * 0.3, 0.2, 0.25 + R() * 0.2] : [0.35, 0.12, 0.25],
+        [x, gnd(x, z) + 0.06, z], [R() * 0.6, R() * 6, R() * 0.6]));
+    }
+    if (d) {
+      const { L, W, top, h, sz, seaX } = d, fz = seaX ? 1 : -sz;   // fz: the land face (the side that shows)
+      if (!mo.op) {     // soot up the front over the embrasure, and over the rear door
+        S.push(part(box, C.soot, [0.02, h * 0.55, W * 0.6], [L / 2 + 0.125, top - h * 0.3, mo.mz]));
+        S.push(part(box, C.soot, [0.02, h * 0.3, W * 0.85], [L / 2 + 0.125, top - h * 0.08, mo.mz]));
+      }
+      S.push(part(box, C.soot, [0.02, h * 0.5, 0.75], [-L / 2 - 0.03, top - h * 0.35, -sz * W * 0.2]));
+      for (let i = 0; i < 6; i++) {    // cracks: dark slivers across the land face, the front and the roof
+        const k = i % 3, t = (R() - 0.5) * 1.6, l = 0.35 + R() * 0.6;
+        if (k === 0) S.push(part(box, C.crack, [l, 0.035, 0.02], [(R() - 0.5) * L * 0.8, top - h * (0.2 + R() * 0.6), fz * (W / 2 + 0.03)], [0, 0, t]));
+        else if (k === 1) S.push(part(box, C.crack, [0.02, 0.035, l], [L / 2 + 0.03, top - h * (0.1 + R() * 0.3), (R() - 0.5) * W * 0.8], [t, 0, 0]));
+        else S.push(part(box, C.crack, [l, 0.02, 0.035], [(R() - 0.5) * L * 0.7, top + 0.15, (R() - 0.5) * W * 0.7], [0, t, 0]));
+      }
+      // the roof slab's front corner on the land side broken off: the hole black, the slab lying tilted at the foot
+      const cx = L / 2 - 0.35, cz = fz * (W / 2 - 0.3);
+      S.push(part(box, C.soot, [0.75, 0.04, 0.75], [cx, top + 0.15, cz]));
+      P.push(part(box, C.concL, [0.9, 0.16, 0.8], [L / 2 + 0.5, gnd(L / 2 + 0.5, cz + fz * 0.4) + 0.2, cz + fz * 0.4], [0.5 * fz, 0.4, -0.45]));
+      for (let i = 0; i < 4; i++) S.push(part(cyl, C.crack, [0.018, 0.4 + R() * 0.3, 0.018], [cx + (R() - 0.5) * 0.6, top + 0.2, cz + (R() - 0.5) * 0.6], [(R() - 0.5) * 1.2, 0, (R() - 0.5) * 1.2]));
     }
     g.add(mesh(WW.soldierModel.merge(P), M.burnt));
+    if (S.length) { const m = mesh(WW.soldierModel.merge(S), M.scar); m.castShadow = false; g.add(m); }
     const sc = new THREE.Mesh(new THREE.CircleGeometry(r * 1.7, 14), M.scorch);   // the scorch on the ground
     sc.rotation.x = -Math.PI / 2; sc.position.set(0, gnd(0, 0) + 0.06, 0); sc.renderOrder = 1;
     g.add(sc);
-    if (WW.fx && WW.fx.smoke) for (let k = 0; k < 4; k++) WW.fx.smoke(e.x + (Math.random() - 0.5) * 2, e.y + 1 + k * 0.8, e.z + (Math.random() - 0.5) * 2, true, 1.2 + k * 0.3);
+    if (WW.fx && WW.fx.smoke) for (let k = 0; k < 4; k++) WW.fx.smoke(e.x + (R() - 0.5) * 2, e.y + 1 + k * 0.8, e.z + (R() - 0.5) * 2, true, 1.2 + k * 0.3);
+  }
+  // a shell bursting on a casemate's concrete: a pock mark (a dark gouge) left where it struck the land face or the
+  // front, up to 10 a casemate; the sea wall takes the rest unseen
+  function scar(e, wx, wz) {
+    const g = byEl.get(e), mo = g && g.userData.mouth, d = mo && mo.dim; if (!d || (g.userData.scars | 0) >= 10) return;
+    g.userData.scars = (g.userData.scars | 0) + 1;
+    const c = Math.cos(e.heading), s = Math.sin(e.heading), dx = wx - e.x, dz = wz - e.z, lx = c * dx + s * dz, lz = -s * dx + c * dz;
+    const { L, W, top, h, sz, seaX } = d, fz = seaX ? 1 : -sz, R = Math.random, k = 0.25 + R() * 0.25;
+    const front = Math.abs(lx) / L > Math.abs(lz) / W && lx > 0;
+    const y = top - h * (0.15 + R() * 0.7), m = new THREE.Mesh(prims().sph, mats().scar);
+    if (front) m.position.set(L / 2 + 0.02, y, Math.max(-W / 2 + 0.2, Math.min(W / 2 - 0.2, lz)));
+    else m.position.set(Math.max(-L / 2 + 0.2, Math.min(L / 2 - 0.2, lx)), y, fz * (W / 2 + 0.02));
+    m.scale.set(front ? 0.06 : k, k * 0.8, front ? k : 0.06);
+    g.add(m);
   }
   function clear() { if (root && WW.scene) WW.scene.remove(root); root = null; byEl.clear(); }
   WW.on('defencesBuilt', d => {
@@ -190,6 +254,7 @@ window.WW = window.WW || {};
     const e = ev.el, big = ev.cal === 'big' || ev.kind === 'bomb';
     if (WW.fx.explosion) WW.fx.explosion(ev.x, e.y + 0.8, ev.z, big ? 2.2 : ev.cal === 'med' ? 1.3 : 0.8);
     if (!ev.through && WW.fx.sparks) WW.fx.sparks(ev.x, e.y + 0.8, ev.z);   // the shell bursts on the concrete
+    if (e.K.wall && ev.kind !== 'bomb' && e.alive) scar(e, ev.x, ev.z);
   });
   // a gun firing: the barrel trains on the target (inside its arc); the flash and the blast are defence_fx.js
   WW.on('defenceFire', ev => {

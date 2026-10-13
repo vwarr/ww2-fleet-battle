@@ -18,26 +18,36 @@
 //    front of it, a drift of smoke; a mortar: the launch puff at the pit (each 'mortarBurst', and a round every few
 //    seconds while the pit is in action).
 //  - knocked-out positions smoulder: smoke (and fire in the first half minute) thinning over three minutes.
+// Review pass (the first version was committed unreviewed): the MG rounds strike the water where the flood tide has
+// come in (tide.js depth / level), not the H-hour waterline, and the craft and men are aimed at on the sea's level; the
+// gun flashes no longer pile up while the sim jumps ahead (a fast-forward: nothing is spawned unless the renderer is
+// keeping up, one flash a gun a frame), smaller and a hotter orange; the gun smoke and the blast dust smaller and in
+// the ground's dull colours (they were white cotton balls bigger than the casemate); tracers thinner and redder; far
+// from the camera the tracers, flashes and strikes are drawn bigger (up to 5x / 4x / 1.6x) so the fire still reads from
+// the sea and from the craft; a knocked-out position keeps a thin smoke for the rest of the round.
 // Determinism: no WW.rand, no writes to elements, squads or craft (per-element state is a WeakMap here); every
 // listener returns first in sim mode; the Pacific path never builds (no 'defencesBuilt' outside Normandy).
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   const MAXF = 320, MAXP = 96, NT = 700, NPUFF = 600, NGLOW = 240;
-  const T_SPEED = 95, T_LEN = 1.5, T_W = 0.07, ROUNDS = 15;   // tracer speed (u/s sim), streak length, width; tracers a second
+  const T_SPEED = 95, T_LEN = 1.5, T_W = 0.05, ROUNDS = 15;   // tracer speed (u/s sim), streak length, width; tracers a second
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
   const CD = () => WW.coastDefence;
-  let root = null, figs = null, props = null, trenchMesh = null, built = [], wnRuns = [], lastNow = -1, vt = 0;
+  let root = null, figs = null, props = null, trenchMesh = null, built = [], wnRuns = [], lastNow = -1, vt = 0, fr = 0;
   let tr = null, puff = null, glow = null;
   const st = new WeakMap();   // el -> visual state: last target, bursts, the gun's yaw
-  const S = e => { let s = st.get(e); if (!s) st.set(e, s = { tgt: null, tgtT: -1e9, actT: -1e9, burst: 0, pause: R(), next: 0, yaw: 0, pick: null, pickT: -1e9, mortT: rr(1, 5), smokeT: 0 }); return s; };
+  const S = e => { let s = st.get(e); if (!s) st.set(e, s = { flashFr: -1, tgt: null, tgtT: -1e9, actT: -1e9, burst: 0, pause: R(), next: 0, yaw: 0, pick: null, pickT: -1e9, mortT: rr(1, 5), smokeT: 0 }); return s; };
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1), _v = new THREE.Vector3(), _x = new THREE.Vector3(1, 0, 0), _c = new THREE.Color();
   const H = (x, z) => WW.terrain.heightRaw(x, z);
+  const SEA = () => (WW.tide ? WW.tide.level() : 0), wetAt = (x, z) => (WW.tide ? WW.tide.depth(x, z) > 0 : H(x, z) < 0.02);
+  const cam = new THREE.Vector3();   // this frame's camera: far effects are drawn bigger so they still read from the sea
+  const far = (x, y, z, d0, max) => Math.min(max, Math.max(1, Math.hypot(x - cam.x, y - cam.y, z - cam.z) / d0));
   const toW = (e, lx, lz) => { const c = Math.cos(e.heading), s = Math.sin(e.heading); return [e.x + c * lx - s * lz, e.z + s * lx + c * lz]; };
 
   // ---- the particle pools: lit puffs (sand, spray, dust) and additive glows (muzzle flashes); tracers ----
-  function Pool(n, geo, mat) {
-    this.n = n; this.m = new THREE.InstancedMesh(geo, mat, n); this.m.count = 0; this.m.frustumCulled = false;
+  function Pool(n, geo, mat, d0, max) {
+    this.d0 = d0; this.max = max; this.n = n; this.m = new THREE.InstancedMesh(geo, mat, n); this.m.count = 0; this.m.frustumCulled = false;
     this.m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < n; i++) this.m.setColorAt(i, _c.setRGB(1, 1, 1));
     this.a = []; this.h = 0;
@@ -54,7 +64,7 @@ window.WW = window.WW || {};
       p.age += dt; if (p.age >= p.life) { p.on = false; continue; }
       p.vy -= p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
       if (p.y < p.floor) { p.y = p.floor; p.vy = 0; p.vx *= 0.5; p.vz *= 0.5; }
-      const t = p.age / p.life, sc = p.s0 + (p.s1 - p.s0) * Math.sqrt(t), sh = fade ? 1 : (t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1);
+      const t = p.age / p.life, sc = (p.s0 + (p.s1 - p.s0) * Math.sqrt(t)) * far(p.x, p.y, p.z, this.d0, this.max), sh = fade ? 1 : (t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1);
       _m.makeScale(sc * sh, sc * sh, sc * sh).setPosition(p.x, p.y, p.z);
       this.m.setMatrixAt(k, _m);
       const f = fade ? 1 - t : 1; this.m.setColorAt(k, _c.setRGB(p.r * f, p.gg * f, p.b * f));
@@ -77,8 +87,8 @@ window.WW = window.WW || {};
     tr.m.frustumCulled = false; tr.m.renderOrder = 6; tr.m.count = 0; tr.m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < NT; i++) { tr.m.setColorAt(i, _c.setRGB(1, 1, 1)); tr.a.push({ on: false, x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 0, age: 0, life: 1, kick: 0, len: T_LEN }); }
     root.add(tr.m);
-    puff = new Pool(NPUFF, new THREE.IcosahedronGeometry(1, 0), new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: grad }));
-    glow = new Pool(NGLOW, new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, toneMapped: false }));
+    puff = new Pool(NPUFF, new THREE.IcosahedronGeometry(1, 0), new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: grad }), 30, 1.6);
+    glow = new Pool(NGLOW, new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, toneMapped: false }), 40, 4);
     glow.m.renderOrder = 6;
     root.add(puff.m); root.add(glow.m);
     WW.scene.add(root);
@@ -147,15 +157,15 @@ window.WW = window.WW || {};
   function seg(P, part, box, x0, z0, x1, z1) {
     const d = Math.hypot(x1 - x0, z1 - z0), a = Math.atan2(z1 - z0, x1 - x0), y0 = Math.max(-0.1, H(x0, z0)), y1 = Math.max(-0.1, H(x1, z1));
     const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, my = (y0 + y1) / 2, pitch = Math.atan2(y1 - y0, d), nx = -Math.sin(a), nz = Math.cos(a);
-    P.push(part(box, 0x4f4436, [d + 0.3, 0.06, 0.34], [mx, my + 0.02, mz], [0, -a, pitch]));
-    for (const sd of [-1, 1]) P.push(part(box, sd > 0 ? 0x9a8762 : 0x8a7856, [d + 0.35, 0.12, 0.2], [mx + nx * 0.27 * sd, my + 0.05, mz + nz * 0.27 * sd], [0, -a, pitch]));
+    P.push(part(box, 0x3b342b, [d + 0.3, 0.06, 0.34], [mx, my + 0.02, mz], [0, -a, pitch]));
+    for (const sd of [-1, 1]) P.push(part(box, sd > 0 ? 0x766950 : 0x6a5e48, [d + 0.35, 0.12, 0.2], [mx + nx * 0.27 * sd, my + 0.05, mz + nz * 0.27 * sd], [0, -a, pitch]));
   }
 
   // ---- the targets an MG fires on ----
   function aimPoint(t) {
-    if (t.isSquad) { const x = t.x + rr(-1.4, 1.4), z = t.z + rr(-1.1, 1.1); return [x, Math.max(-0.12, H(x, z)) + 0.12, z, true]; }
+    if (t.isSquad) { const x = t.x + rr(-1.4, 1.4), z = t.z + rr(-1.1, 1.1); return [x, Math.max(SEA() - 0.05, H(x, z)) + 0.12, z, true]; }
     if (t.y > 3) return [t.x + rr(-1, 1), t.y + rr(-0.5, 0.5), t.z + rr(-1, 1), false];   // a plane: no strike
-    return [t.x + rr(-1.4, 1.4), 0.35, t.z + rr(-1.4, 1.4), true];                     // a craft: on and around it
+    return [t.x + rr(-1.4, 1.4), SEA() + 0.35, t.z + rr(-1.4, 1.4), true];               // a craft: on and around it
   }
   function pickCraft(e) {
     const L = WW.landingCraft ? WW.landingCraft.live : null; if (!L) return null;
@@ -180,16 +190,16 @@ window.WW = window.WW || {};
     const sx = mx + c * 0.2, sz = mz + sn * 0.2;
     const p = tr.a[tr.h]; tr.h = (tr.h + 1) % NT;
     Object.assign(p, { on: true, x: sx, y: my, z: sz, dx: ux, dy: uy, dz: uz, age: 0, life: d / T_SPEED, kick: kick ? 1 : 0, len: T_LEN * rr(0.8, 1.15), hx: ax, hz: az, hy: ay });
-    if (R() < 0.6) glow.spawn(sx, my, sz, 0, 0, 0, 0.06, 0.05, 0.09, 0xffb050);
+    if (R() < 0.6) glow.spawn(sx, my, sz, 0, 0, 0, 0.06, 0.05, 0.09, 0xff9a40);
   }
   // the round arrives: sand kicked off the beach, or a little spout in the surf
   function strike(x, y, z) {
-    const wet = H(x, z) < 0.02;
-    if (wet) {
-      for (let i = 0; i < 3; i++) puff.spawn(x + rr(-0.05, 0.05), 0.05, z + rr(-0.05, 0.05), rr(-0.3, 0.3), rr(1.6, 2.6), rr(-0.3, 0.3), rr(0.35, 0.55), rr(0.04, 0.07), rr(0.07, 0.11), 0xeef2ee, 7, -0.05);
+    if (wetAt(x, z)) {   // the sea where the flood has come in (tide.js), not the H-hour waterline
+      const w = SEA();
+      for (let i = 0; i < 3; i++) puff.spawn(x + rr(-0.05, 0.05), w + 0.05, z + rr(-0.05, 0.05), rr(-0.3, 0.3), rr(1.6, 2.6), rr(-0.3, 0.3), rr(0.35, 0.55), rr(0.04, 0.07), rr(0.07, 0.11), 0xd6dcd8, 7, w - 0.05);
     } else {
       const g = Math.max(-0.1, H(x, z));
-      for (let i = 0; i < 3; i++) puff.spawn(x + rr(-0.06, 0.06), g + 0.04, z + rr(-0.06, 0.06), rr(-0.5, 0.5), rr(0.6, 1.5), rr(-0.5, 0.5), rr(0.4, 0.7), rr(0.05, 0.08), rr(0.12, 0.2), R() < 0.5 ? 0xd8c69c : 0xc8b48a, 2.5, g);
+      for (let i = 0; i < 3; i++) puff.spawn(x + rr(-0.06, 0.06), g + 0.04, z + rr(-0.06, 0.06), rr(-0.5, 0.5), rr(0.6, 1.5), rr(-0.5, 0.5), rr(0.4, 0.7), rr(0.05, 0.08), rr(0.12, 0.2), R() < 0.5 ? 0xb5a98a : 0xa39778, 2.5, g);
     }
   }
 
@@ -203,7 +213,8 @@ window.WW = window.WW || {};
   function update() {
     const D = CD();
     if (WW.simOnly || !root || !WW.isScn('normandy') || !D || !D.elements.length) { if (root) root.visible = false; return; }
-    root.visible = true;
+    root.visible = true; fr++;
+    if (WW.camera) cam.setFromMatrixPosition(WW.camera.matrixWorld);
     const now = WW.time.now; let dt = lastNow < 0 ? 0 : now - lastNow; lastNow = now;
     if (!(dt >= 0) || dt > 0.25) dt = dt > 0 ? 0.1 : 0;   // a fast-forward or a new round: no catch-up
     vt += dt;
@@ -253,7 +264,7 @@ window.WW = window.WW || {};
       // knocked out: smoke (fire at first) thinning over three minutes
       if (!e.alive && dt > 0 && WW.fx) {
         const age = now - e.outAt;
-        if (age < 180 && R() < dt * 1.6 * (1 - age / 180)) WW.fx.smoke(e.x + rr(-0.6, 0.6), e.y + e.K.top + 0.3, e.z + rr(-0.6, 0.6), true, e.K.wall ? 1.1 : 0.7);
+        if (R() < dt * (age < 180 ? 0.35 + 1.4 * (1 - age / 180) : 0.35)) WW.fx.smoke(e.x + rr(-0.6, 0.6), e.y + e.K.top + 0.3, e.z + rr(-0.6, 0.6), true, (e.K.wall ? 1.1 : 0.7) * (age < 180 ? 1 : 0.7));
         if (age < 30 && e.K.wall && R() < dt * 6) WW.fx.fire(e.x + rr(-0.4, 0.4), e.y + e.K.top * 0.6, e.z + rr(-0.4, 0.4));
       }
     }
@@ -280,9 +291,10 @@ window.WW = window.WW || {};
       if (p.age >= p.life) { p.on = false; if (p.kick && R() < 0.75) strike(p.hx, p.hy, p.hz); continue; }
       const f = p.age * T_SPEED, len = Math.min(p.len, f + 0.2);
       _v.set(p.dx, p.dy, p.dz); _q.setFromUnitVectors(_x, _v);
-      _m.compose(_p.set(p.x + p.dx * f, p.y + p.dy * f, p.z + p.dz * f), _q, _v.set(len, T_W, T_W));
+      const hx = p.x + p.dx * f, hy = p.y + p.dy * f, hz = p.z + p.dz * f, kf = far(hx, hy, hz, 35, 5);
+      _m.compose(_p.set(hx, hy, hz), _q, _v.set(len * (1 + (kf - 1) * 0.5), T_W * kf, T_W * kf));
       tr.m.setMatrixAt(k, _m);
-      const hot = p.age < 0.05 ? 1.3 : 1; tr.m.setColorAt(k, _c.setRGB(1.0 * hot, 0.55 * hot, 0.22 * hot));
+      const hot = (p.age < 0.05 ? 1.3 : 1) * (0.55 + 0.45 / kf); tr.m.setColorAt(k, _c.setRGB(1.0 * hot, 0.42 * hot, 0.12 * hot));
       k++;
     }
     tr.m.count = k; tr.m.instanceMatrix.needsUpdate = true; if (tr.m.instanceColor) tr.m.instanceColor.needsUpdate = true;
@@ -291,8 +303,8 @@ window.WW = window.WW || {};
   // a mortar round away: the flash and the puff at the tube's mouth
   function launch(o) {
     const m = o.mortar || o.e, y = (m.y || o.e.y) + 0.25;
-    glow.spawn(m.x, y, m.z, 0, 0.5, 0, 0.12, 0.12, 0.25, 0xffc070);
-    for (let i = 0; i < 4; i++) puff.spawn(m.x + rr(-0.1, 0.1), y + 0.05, m.z + rr(-0.1, 0.1), rr(-0.3, 0.3), rr(0.8, 1.6), rr(-0.3, 0.3), rr(1.0, 1.6), rr(0.08, 0.12), rr(0.3, 0.45), 0xe6e2da, -0.2);
+    glow.spawn(m.x, y, m.z, 0, 0.5, 0, 0.12, 0.09, 0.2, 0xff9a40);
+    for (let i = 0; i < 4; i++) puff.spawn(m.x + rr(-0.1, 0.1), y + 0.05, m.z + rr(-0.1, 0.1), rr(-0.3, 0.3), rr(0.8, 1.6), rr(-0.3, 0.3), rr(1.0, 1.6), rr(0.06, 0.1), rr(0.22, 0.34), 0xb4b0a6, -0.2);
   }
   // a casemate / field gun / Tobruk / 155 firing: the flash in the embrasure or at the muzzle, the blast's dust
   function gunFlash(e) {
@@ -302,15 +314,17 @@ window.WW = window.WW || {};
     if (mo) { const p = toW(e, mo.mx, mo.mz); x = p[0] + c * e.rad * 0.6; z = p[1] + s * e.rad * 0.6; y = e.y + (mo.my) ; }
     else { const L = e.type === 'battery' ? 2.6 : e.type === 'gunpit' ? 1.4 : 0.7; x = e.x + c * L; z = e.z + s * L; y = e.y + 0.45; }
     const big = e.K.gun && e.K.gun.cal !== 'small';
-    glow.spawn(x, y, z, c * 2, 0.2, s * 2, 0.12, big ? 0.3 : 0.2, big ? 0.6 : 0.4, 0xffc070);
-    glow.spawn(x + c * 0.4, y, z + s * 0.4, c * 4, 0, s * 4, 0.09, 0.15, 0.35, 0xffe0a0);
-    if (WW.fx && WW.fx.smoke) WW.fx.smoke(x + c * 0.8, y, z + s * 0.8, false, big ? 0.8 : 0.5);
+    glow.spawn(x, y, z, c * 2, 0.2, s * 2, 0.12, big ? 0.2 : 0.14, big ? 0.42 : 0.3, 0xff9a40);
+    glow.spawn(x + c * 0.4, y, z + s * 0.4, c * 4, 0, s * 4, 0.09, 0.1, 0.26, 0xc06a28);
+    if (WW.fx && WW.fx.smoke) WW.fx.smoke(x + c * 0.8, y, z + s * 0.8, false, big ? 0.45 : 0.28);
     for (let i = 0; i < (big ? 6 : 4); i++) {   // the blast throws the dust up off the ground in front of the gun
       const d = rr(0.4, 2.2), j = rr(-0.6, 0.6), px = x + c * d - s * j, pz = z + s * d + c * j, gy = Math.max(-0.1, H(px, pz));
-      puff.spawn(px, gy + 0.1, pz, c * rr(1, 3) + rr(-0.5, 0.5), rr(0.5, 1.4), s * rr(1, 3) + rr(-0.5, 0.5), rr(1.0, 1.8), rr(0.1, 0.16), rr(0.35, 0.6), R() < 0.5 ? 0xd9cba8 : 0xcdbd96, 0.3, gy);
+      puff.spawn(px, gy + 0.1, pz, c * rr(1, 3) + rr(-0.5, 0.5), rr(0.5, 1.4), s * rr(1, 3) + rr(-0.5, 0.5), rr(1.0, 1.8), rr(0.08, 0.12), rr(0.22, 0.38), R() < 0.5 ? 0x948a70 : 0x857b62, 0.3, gy);
     }
   }
 
+  // the renderer is keeping up (not a fast-forward: what fires in a jump would pile up unaged on the next frame)
+  const live = now => lastNow >= 0 && now - lastNow < 2;
   function clear() { if (root && WW.scene) WW.scene.remove(root); root = null; built = []; wnRuns = []; lastNow = -1; }
   WW.on('defencesBuilt', d => {
     if (WW.simOnly || !WW.scene || !WW.germanModel || !WW.soldierModel) return;
@@ -325,13 +339,13 @@ window.WW = window.WW || {};
   WW.on('defenceFire', ev => {
     if (WW.simOnly || !root || !ev.el) return;
     const e = ev.el, s = S(e), now = WW.time.now;
-    if (ev.kind === 'gun') { gunFlash(e); return; }
+    if (ev.kind === 'gun') { if (live(now) && s.flashFr !== fr) { s.flashFr = fr; gunFlash(e); } return; }
     s.actT = now;
     if (ev.target && ev.target.alive !== false) { s.tgt = ev.target; s.tgtT = now; }
   });
   WW.on('mortarBurst', ev => {
     if (WW.simOnly || !root || !ev.el) return;
-    const o = built.find(b => b.e === ev.el); if (o) { launch(o); S(ev.el).mortT = rr(3.5, 8); }
+    const o = built.find(b => b.e === ev.el), s = S(ev.el); if (o) { if (live(WW.time.now) && s.flashFr !== fr) { s.flashFr = fr; launch(o); } s.mortT = rr(3.5, 8); }
   });
   WW.defenceFx = { update, get root() { return root; }, _state: e => st.get(e) };
 })(window.WW);
