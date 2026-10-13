@@ -140,6 +140,11 @@ function report(rounds) {
     const T = {}; for (const d of A) (T[d.type] = T[d.type] || []).push(d);
     console.log(`  ${a}-${b > 1e8 ? '' : b} u: ` + Object.entries(T).map(([k, x]) => `${k} ${x.length} ${pc(x.filter(isHit).length / x.length)}`).join(', ') + `; straight-in ${pc(A.filter(d => d.hasty).length / A.length)}`);
   }
+  { // straight-in vs anvil drops, by the target's way on (a slow or stopped ship is an easy mark at any range)
+    const row = (lab, A) => { const sl = A.filter(d => d.spdK < 0.5), fa = A.filter(d => d.spdK >= 0.5); return `${lab} ${A.length} ${pc(A.filter(isHit).length / (A.length || 1))} (on the aimed ship ${pc(A.filter(d => d.res === 'hit').length / (A.length || 1))}; under way ${fa.length} ${pc(fa.filter(isHit).length / (fa.length || 1))}, slow/stopped ${sl.length} ${pc(sl.filter(isHit).length / (sl.length || 1))})`; };
+    console.log('  ' + row('straight-in', Dd.filter(d => d.hasty)) + '; ' + row('anvil', Dd.filter(d => !d.hasty)));
+    console.log('  ' + row('straight-in at carriers, 100 u+', Dd.filter(d => d.hasty && d.type === 'carrier' && d.range >= 100)));
+  }
   const ty = {}; for (const d of Dd) { const k = d.type; (ty[k] = ty[k] || []).push(d); }
   console.log('by target type: ' + Object.entries(ty).map(([k, a]) => `${k} ${a.length} drops ${pc(a.filter(isHit).length / a.length)}`).join(', '));
   const nat = {}; for (const d of Dd) (nat[d.n] = nat[d.n] || []).push(d);
