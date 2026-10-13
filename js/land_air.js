@@ -11,28 +11,33 @@
 //    warm-up, a fast taxi), and every 55-75 s a strike on the best known enemy ship within STRIKE_R: dive and torpedo
 //    bombers as a WW.strike wave, level bombers on their own. Nothing is launched while the main runway is closed,
 //    the base is neutralized or it is dusk; queued launches wait for the runway to be repaired.
-//  - Home: the circuit (stacked orbits), cleared to land one at a time when the field is recovering and the runway is
-//    free, final down the centreline into the wind, touchdown. Main runway closed: an emergency landing on the cross
-//    runway if it is open (the plane is towed off), else the plane holds over the island for HOLD_MAX s (a neutralized
-//    base: LEAVE_T s) and then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room nearby;
+//  - Home: the circuit (stacked orbits), cleared to land in turn when the field is recovering (the next as the one ahead
+//    passes the outer marker), final down the centreline into the wind, touchdown. The land bombers (B-17, B-26, Betty)
+//    come home high and hold at a fix away from the island and the enemy's ships (land_hold.js), kept off while a raid
+//    is over the field. Main runway closed: an emergency landing on the cross
+//    runway if it is open (the plane is towed off), else the plane holds for HOLD_MAX s (HOLD_BIG for the land bombers,
+//    which had the fuel to wait out the runway repairs; a neutralized base: LEAVE_T s) and then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room nearby;
 //    every other type (B-17, B-26, Betty, ...) ditches beside the nearest friendly ship, where it can be rescued.
 //  - Level bombing (pl.level): B-17 / Betty level variants, and carrier torpedo planes sent against the island (Kates
-//    carried bombs at Midway): straight and level at altitude, a stick released on the throw point; dropBomb's
-//    scatter grows with height, so a B-17 rarely hits a ship (historically they hit nothing at Midway).
+//    carried bombs at Midway): a land bomber first climbs to its bombing height (circling out of the target's reach
+//    if it is close), then straight and level, a stick released on the throw point; dropBomb's scatter grows with
+//    height and, on a ship under way, with the real time of fall (the ship turned under the bombs), so a B-17 at
+//    7,000 m rarely hits a ship (historically they hit nothing at Midway).
 //  - Strikes on the base: each bomber aims at one of its facilities (aimFor), not the island's centre.
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  const HOLD_MAX = 70, LEAVE_T = 12, STRIKE_R = 560, DIVERT_R = 420;
-  // variant: kind, model key, flight stats over the nation's kind, level bombing { alt, bombs }, gear height, parking class, carrier-capable
+  const HOLD_MAX = 70, HOLD_BIG = 150, LEAVE_T = 12, RUN_R = 260, STRIKE_R = 560, DIVERT_R = 420;
+  // variant: kind, model key, flight stats over the nation's kind, level bombing { alt, ship: alt on a ship, bombs } (WW.altOf
+  // of the historical height: B-17 7,000 m as at Midway; Betty 6,500 m over an island, 5,800 m on ships), gear height, parking class, carrier-capable
   const VAR = {
     f4f:  { kind: 'fighter', model: null, sq: 'VMF-221', cls: 'S', carrier: true },
     sbd:  { kind: 'dive', model: null, sq: 'VMSB-241', cls: 'S', carrier: true },
     b26:  { kind: 'torpedo', model: 'b26', sq: '69th BS', st: { hp: 46, speed: 30, turn: 0.85, climb: 4, range: 1300 }, gear: 1.0, cls: 'M' },
-    b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: 62, bombs: 3 }, cls: 'L' },
+    b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: WW.altOf(7000), bombs: 3 }, cls: 'L' },
     a6m:  { kind: 'fighter', model: null, sq: 'Tainan Kokutai', cls: 'S', carrier: true },
     g4m:  { kind: 'torpedo', model: 'g4m', sq: 'Misawa Kokutai', st: { hp: 34, speed: 30, turn: 0.85, climb: 4, range: 1500 }, gear: 1.0, cls: 'L' },
-    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: 48, bombs: 2 }, cls: 'L' }
+    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: WW.altOf(6500), ship: WW.altOf(5800), bombs: 2 }, cls: 'L' }
   };
   for (const k in VAR) if (VAR[k].gear) VAR[k].gear *= WW.cfg.PLANE_K || 1;   // gear heights above were measured at the 1.7 plane scale
   const KATE = { alt: 40, bombs: 1 };
@@ -186,8 +191,9 @@ window.WW = window.WW || {};
 
   // ---------- home: circuit, final, touchdown; else hold, divert or ditch ----------
   function goHome(p, dt) {
-    const b = p.carrier, d = WW.dist(p.x, p.z, b.x, b.z);
+    const b = p.carrier, d = WW.dist(p.x, p.z, b.x, b.z), LH = WW.landHold;
     p.foe = null;
+    if (LH && LH.big(p)) { if (LH.goHome(p, b, dt)) { p.state = 'landing'; p.rwPh = 'circuit'; p.rwT = 0; if (b.ai.lq.indexOf(p) < 0) b.ai.lq.push(p); } return; } // high, to the fix
     p.fly(b.x, b.z, d > 120 ? 25 : 20, dt, p.pt.speed);
     if (d < 150) { p.state = 'landing'; p.rwPh = 'circuit'; p.rwT = 0; if (b.ai.lq.indexOf(p) < 0) b.ai.lq.push(p); }
   }
@@ -211,26 +217,31 @@ window.WW = window.WW || {};
     const i = Math.max(0, a.lq.indexOf(p));
     p.rwT += dt;
     if (p.leaving) return leave(p, b, dt);
-    const R = landRunway(b);
+    const R = landRunway(b), LH = WW.landHold, bg = !!(LH && LH.big(p));
     if (!R) { // nowhere to land: hold over the island, then divert (carrier types) or ditch by a friendly ship
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
       p.rwPh = 'circuit'; p.cleared = false; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
-      if (p.holdT > (b.neutralized ? LEAVE_T : HOLD_MAX)) { p.leaving = true; return; }
-      stack(p, b, i, dt); return;
+      if (p.holdT > (b.neutralized ? LEAVE_T : bg ? HOLD_BIG : HOLD_MAX)) { p.leaving = true; return; }
+      if (bg) LH.orbit(p, b, i, dt); else stack(p, b, i, dt);
+      return;
     }
     p.holdT = 0;
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); } // the circuit clears the hills
-      // cleared to approach: the first in the stack (the second once the first is on final) while the field recovers;
-      // a cleared approach is never cancelled by the field changing mode (only a closed runway sends it round)
+      // cleared to approach while the field recovers: at most two on the approach (cleared, not yet on final), the
+      // second in trail once the one ahead is past the outer marker (a land bomber out at its fix as soon as the one
+      // ahead is cleared: its run in is long); a cleared approach is never cancelled by the field changing mode (only a
+      // closed runway sends it round, and a raid over the field a land bomber short of the outer marker: land_hold.js)
+      const ox = R.x - c * 150, oz = R.z - s * 150, up = i > 0 ? a.lq[i - 1] : null;
       const clear = R.main ? o.mode === 'recover' && !o.hold : !o.crossOcc;
-      const next = i === 0 || (i === 1 && a.lq[0] && a.lq[0].rwPh === 'final');
-      if (!(p.cleared && p.clearedMain === R.main) && (!next || !clear)) { stack(p, b, i, dt); p.apOut = false; return; }
+      let ahead = 0; for (let k = 0; k < i; k++) if (a.lq[k].cleared && a.lq[k].rwPh !== 'final') ahead++;
+      const next = ahead === 0 || (ahead === 1 && up && up.cleared && up.rwPh !== 'final' && (up.apOut || (bg && LH.far(p, ox, oz))));
+      const off = bg && LH.raidHold(p, b, dt);
+      if (off || (!(p.cleared && p.clearedMain === R.main) && (!next || !clear))) { if (bg) LH.orbit(p, b, i, dt); else stack(p, b, i, dt); p.apOut = false; return; }
       p.cleared = true; p.clearedMain = R.main;
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
-      const ox = R.x - c * 150, oz = R.z - s * 150;
       if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
       const d = WW.dist(p.x, p.z, fx, fz);
       p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
@@ -323,20 +334,29 @@ window.WW = window.WW || {};
     if (!pl.lvLand && pl.sk !== 'atk' && WW.strike.escort(pl, dt)) return; // a carrier wave (Kates on the island): formation first
     const t = pl.validTarget(), L = pl.level || KATE;
     if (pl.lvPh === 'away') {
-      pl.phaseT -= dt; pl.turn = 0; pl.climbTo(L.alt + 4, dt); pl.speedTo(pl.pt.speed, dt);
+      pl.phaseT -= dt; pl.turn = 0; pl.climbTo((pl.lvA || L.alt) + 4, dt); pl.speedTo(pl.pt.speed, dt);
       if (pl.phaseT <= 0) { pl.lvPh = null; pl.state = pl.ordnance ? 'transit' : 'return'; }
       return;
     }
     if (!t) { pl.state = 'return'; return; }
-    const isB = t.isBase, A = isB ? aimFor(pl, t) : t, d = WW.dist(pl.x, pl.z, A.x, A.z);
+    const isB = t.isBase, A = isB ? aimFor(pl, t) : t, d = WW.dist(pl.x, pl.z, A.x, A.z), LA = pl.lvA = !isB && L.ship ? L.ship : L.alt;
+    // a land bomber short of its height within RUN_R of the aim point: it circles there, out of the target's reach, in a
+    // cruise climb (state transit: the type's climb rate, no zoom) until near the height, then turns in for the run
+    if (pl.lvLand && pl.y < LA * (pl.lvC ? 0.96 : 0.9) && d < RUN_R) {
+      if (!pl.lvC) { const k = RUN_R / Math.max(1, d); pl.lvC = { x: A.x + (pl.x - A.x) * k, z: A.z + (pl.z - A.z) * k }; }
+      const C = pl.lvC, ca = Math.atan2(pl.z - C.z, pl.x - C.x) + 0.5;
+      pl.state = 'transit'; pl.fly(C.x + Math.cos(ca) * 40, C.z + Math.sin(ca) * 40, LA + 3, dt, pl.pt.speed);
+      return;
+    }
+    pl.lvC = null;
     pl.state = d < 150 ? 'attack' : 'transit';
     const gnd = Math.max(0, -WW.terrain.depthAt(A.x, A.z)), T = Math.sqrt(2 * Math.max(4, pl.y - gnd) / 9.8);
     const lead = isB ? 0 : t.speed * T, px = A.x + Math.cos(t.heading || 0) * lead, pz = A.z + Math.sin(t.heading || 0) * lead;
     const side = ((pl.fi || pl.wing || 0) % 3 === 1 ? -1 : (pl.fi || pl.wing || 0) % 3 === 2 ? 1 : 0) * 9; // a loose vic across the run
     const h = Math.atan2(pz - pl.z, px - pl.x), ox = -Math.sin(h) * side, oz = Math.cos(h) * side;
-    const he = pl.fly(px + ox, pz + oz, L.alt, dt, pl.pt.speed, 0.8);
+    const he = pl.fly(px + ox, pz + oz, LA, dt, pl.pt.speed, 0.8);
     const rel = pl.speed * 0.75 * T;
-    if (d < rel && Math.abs(he) < 0.3 && pl.y > L.alt * 0.75) {
+    if (d < rel && Math.abs(he) < 0.3 && pl.y > LA * (pl.lvLand ? 0.9 : 0.75)) {
       for (let k = 0; k < (L.bombs || 1); k++) { if (isB) swap(pl, t, () => WW.combat.dropBomb(pl, t)); else WW.combat.dropBomb(pl, t); }
       pl.dropped(); pl.lvPh = 'away'; pl.phaseT = 5; ST.levelDrops++;
       if (pl.carrier && pl.carrier.isBase) WW.islandBase.stats.landDrops++;

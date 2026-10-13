@@ -6,6 +6,7 @@ window.WW = window.WW || {};
   if (!WW.combat || !WW.combat._i) return;
   var I = WW.combat._i;
   var GRAV = 9.8;
+  var EVADE = 0.7;   // u/s: a ship's drift off its predicted track while it turns under a high level-bombing attack
 
   // ---------- torpedoes ----------
   function fireTorpedo(owner, x, z, heading, nation, range) {
@@ -110,6 +111,11 @@ window.WW = window.WW || {};
         vx = wx; vz = wz;
       }
       var sc = 4 + y * 0.25, vy0 = 0, dv = plane.dropV;   // scatter grows with drop height
+      // a land-based level bomber (land_air.js plane.level) on a ship under way: from 6,000-7,000 m the bombs fell for 35-40 s
+      // and the ship turned under them (the B-17s at Midway hit nothing): the scatter grows with the real time of fall
+      // (from the real height, WW.altOf inverted) and the ship's speed. Same draws: no effect on other bombs.
+      if (plane.level && target && !target.isBase && target.stats && target.stats.speed > 0)
+        sc += EVADE * Math.min(1, (target.speed || 0) / target.stats.speed) * Math.sqrt(2 * Math.pow(y / 0.4, 1 / 0.59) / GRAV);
       if (dv) { // dive release (air_strikes.js): keep the plane's dive velocity, small bomb-sight trim, the pilot's aim error
         vy0 = Math.min(0, dv.y); T = (vy0 + Math.sqrt(vy0 * vy0 + 2 * GRAV * y)) / GRAV; vx = dv.x; vz = dv.z; sc = 0;
         if (target && target.alive) {
