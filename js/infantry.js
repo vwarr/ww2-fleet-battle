@@ -84,7 +84,8 @@ window.WW = window.WW || {};
     if (st === 'swim' || st === 'wade') {
       // the surf: slower the deeper it is (chest-deep with 60 lb of kit); off a wreck, men swim until they find their
       // feet, and some go under (DROWN a man a second while it is over their heads)
-      const zs = t.shoreZ(q.x), d = WW.terrain.depthAt(q.x, q.z) || 0;
+      // the waterline comes in with the tide (tide.js): later, the surf is up at the shingle and there is no sand to cross
+      const zs = Math.min(WW.tide.waterZ(q.x), t.shingleZ(q.x) - 0.5), d = Math.max(0, WW.tide.depth(q.x, q.z));
       moveTo(q, q.x, zs + 1, V[st] * k * (st === 'wade' ? (d > DEEP ? 0.55 : d > DEEP / 2 ? 0.8 : 1) : 1), dt);
       if (st === 'swim') {
         if (d > DEEP && WW.rand() < q.men * DROWN * dt) { stats.drowned++; lose(q, 1, 'drowned'); if (!q.alive) return; }

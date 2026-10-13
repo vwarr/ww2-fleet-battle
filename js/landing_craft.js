@@ -135,8 +135,8 @@ window.WW = window.WW || {};
       u.x += vx * dt; u.z += vz * dt; u.heading = Math.atan2(vz, vx); u.speed = Math.hypot(vx, vz);
       if (u.type === 'dd') {
         if (s > 25 && (u.flood += FLOOD_K * u.leak * dt) >= 1) { u.flood = 1; stats.foundered++; wreck(u, 'founder'); return; }
-        if (s <= 0 || WW.terrain.depthAt(u.x, u.z) <= DD_GROUND) { ashore(u); return; }   // tracks on the bottom: it drives up out of the water
-      } else if (WW.terrain.depthAt(u.x, u.z + C.len / 2) <= C.draft) { beach(u); return; }
+        if (s <= 0 || WW.tide.depth(u.x, u.z) <= DD_GROUND) { ashore(u); return; }   // tracks on the bottom: it drives up out of the water
+      } else if (WW.tide.depth(u.x, u.z + C.len / 2) <= C.draft) { beach(u); return; }   // on the tide: later waves ground further in
       obstacles(u);
     } else if (u.state === 'beached') {
       if (t - u.stateT > 0.6) { setState(u, 'ramp'); u.rampDown = true; WW.emit('craftEvent', { kind: 'ramp', craft: u }); }

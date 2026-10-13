@@ -12,14 +12,15 @@
 // Each man has his part in the section (models_soldier.js GEAR): a bazooka team, the wire-cutters' Bangalores and
 // satchel charges, a radio, now and then a flamethrower and a medic; engineer squads carry the demolitions.
 // The fallen (infantry.js squadCasualty): about a third are dead where they fell (in the surf they wash about and drift
-// in to the waterline); the rest are wounded, who crawl for the shingle and sit or lie there, a medic with some of them.
+// in to the waterline); the rest are wounded, who crawl for the shingle and sit or lie there, a medic with some of them;
+// the flood tide (tide.js) comes in about as fast as a wounded man crawls, and drowns the ones it catches.
 // The men firing back show small muzzle flashes. Tanks ashore: the Sherman of models_tank.js (a DD with its screen
 // folded down).
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   const MAX = 3200, MAX_G = 500, MAX_BODY = 1600, MAX_FLOAT = 300, MAX_WOUND = 900, MAX_TANK = 64, MAX_FLASH = 96, STRIDE = 7;
-  const KILLED = 0.38, CRAWL_V = 0.05, FLOAT_V = 0.03, HEAD_OUT = 0.36, MEDIC_EVERY = 4;
+  const KILLED = 0.38, CRAWL_V = 0.05, DROWN_D = 0.14, FLOAT_V = 0.03, HEAD_OUT = 0.36, MEDIC_EVERY = 4;
   let root = null, mesh = null, dead = null, tank = null, screen = null, flash = null, bi = 0, obs = null;
   let wounded = [], floating = [], lastRt = 0;
   const vis = new WeakMap();
@@ -139,11 +140,14 @@ window.WW = window.WW || {};
       }
     }
     // the wounded and the dead in the water
-    for (const u of wounded) {
+    for (let i = wounded.length - 1; i >= 0; i--) {
+      const u = wounded[i];
       if (u.state === 'crawl') {
         const zg = WW.normandyTerrain.shingleZ(u.x) + 0.9;
-        if (u.z < zg) { u.z = Math.min(zg, u.z + CRAWL_V * dts); u.h = -Math.PI / 2; } else u.state = u.sit ? 'sit' : 'lie';
+        if (u.z < zg) { u.z = Math.min(zg, u.z + u.v * dts); u.h = -Math.PI / 2; } else u.state = u.sit ? 'sit' : 'lie';
       }
+      // the flood tide over a man who could not get clear of it (tide.js): he drowns where he lies
+      if (WW.tide && WW.tide.depth(u.x, u.z) > DROWN_D) { wounded.splice(i, 1); if (floating.length < MAX_FLOAT) floating.push({ x: u.x, z: u.z, h: u.h }); else body(u.x, u.z, u.h); continue; }
       const g = WW.terrain.heightRaw(u.x, u.z), w = waterAt(u.x, u.z), y = g < w ? Math.max(g, w - 0.05) : g;
       put(u.state === 'sit' ? 'sitting' : u.state === 'lie' ? 'fallen' : 'prone', u.x, y, u.z, u.state === 'sit' ? Math.PI / 2 : u.h);   // sitting: back to the shingle, facing the sea
       if (u.medic && u.state !== 'crawl') put('crouch:medic', u.x + 0.18, y, u.z - 0.14, -Math.PI / 2 + 0.6);
@@ -174,7 +178,7 @@ window.WW = window.WW || {};
       if (e.why === 'drowned' || (wet && Math.random() < KILLED)) { if (floating.length < MAX_FLOAT) floating.push({ x, z, h }); else body(x, z, h); continue; }
       if (Math.random() < KILLED || wounded.length >= MAX_WOUND) { body(x, z, h); continue; }
       // the wounded: on the beach they drag themselves to the shingle; up the bluff they lie where they are
-      wounded.push({ x, z, h, state: inland ? 'lie' : 'crawl', sit: Math.random() < 0.5, medic: ++nWound % MEDIC_EVERY === 0 });
+      wounded.push({ x, z, h, state: inland ? 'lie' : 'crawl', v: CRAWL_V * (0.3 + Math.random() * 0.9), sit: Math.random() < 0.5, medic: ++nWound % MEDIC_EVERY === 0 });
     }
   }
   WW.on('squadCasualty', fallen);

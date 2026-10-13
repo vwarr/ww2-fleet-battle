@@ -8,7 +8,7 @@
 // The same height function in JS (height, slope) for anything that rides the waves: the landing craft pitch, roll and
 // heave on it (models_landing.js), the men wade in it (models_infantry.js), the ships bob (sea state for the sim:
 // landing_craft.js reads WW.scenarios.normandy.settings.sea, not this). Time: real seconds (as water.js), so the
-// sea keeps rolling in slow motion and while paused.
+// sea keeps rolling in slow motion and while paused. The tide (tide.js) lifts it all and brings the surf in.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
@@ -42,8 +42,10 @@ window.WW = window.WW || {};
     if (s === undefined) s = WW.normandyTerrain ? WW.normandyTerrain.shoreZ(x) - z : 99;
     return h * a + BRK.A * brkBell(d) * Math.pow(0.5 + 0.5 * Math.sin(2 * Math.PI / BRK.L * s + BRK.V * 2 * Math.PI / BRK.L * t), BRK.p);
   }
-  const dAt = (x, z) => (WW.terrain ? WW.terrain.depthAt(x, z) || -WW.terrain.heightRaw(x, z) : 10);
-  function height(x, z) { return active ? heightAt(x, z, dAt(x, z), T) : 0; }
+  // the tide (tide.js) raises the whole sea and moves the surf in with it
+  const tideL = () => (WW.tide ? WW.tide.level() : 0);
+  const dAt = (x, z) => (WW.terrain ? WW.terrain.depthAt(x, z) || -WW.terrain.heightRaw(x, z) : 10) + tideL();
+  function height(x, z) { return active ? heightAt(x, z, dAt(x, z), T) + tideL() : 0; }
   // the surface's slope (dh/dx, dh/dz) at (x, z), by a central difference over e u (a hull's length smooths the chop)
   function slope(x, z, e) {
     if (!active) return { x: 0, z: 0 };
@@ -52,7 +54,8 @@ window.WW = window.WW || {};
   }
 
   // ---- the surface mesh: rows that follow the coast (z = shoreZ(x) - s), fine in the surf, coarse far out ----
-  function rows() { const r = []; let s = -8; while (s < 2700) { r.push(s); s += s < 60 ? 1.1 : s < 300 ? 4 : s < 800 ? 12 : 60; } return r; }
+  // rows from the shingle (the tide reaches it) out to sea
+  function rows() { const r = []; let s = -16; while (s < 2700) { r.push(s); s += s < 60 ? 1.1 : s < 300 ? 4 : s < 800 ? 12 : 60; } return r; }
   function build() {
     const T0 = WW.normandyTerrain, X0 = -1400, X1 = 3800, DX = 5, xs = [], R = rows();
     for (let x = X0; x <= X1; x += DX) xs.push(x);
@@ -71,7 +74,7 @@ window.WW = window.WW || {};
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(1200, 0, 600), 5000);
     const U = WW.water.uniforms();
     mat = new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 } }]),
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uTide: { value: 0 } }]),
       vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, fog: true, side: THREE.DoubleSide, extensions: { derivatives: true }
     });
     // the toon water colours, the sun and the time-of-day tint: water.js's own uniform objects (sky_time.js updates them)
@@ -90,18 +93,18 @@ window.WW = window.WW || {};
       return h * ampK(d) + ${BRK.A.toFixed(3)} * brkBell(d) * pow(0.5 + 0.5 * sin(brkPh(s, t)), ${BRK.p.toFixed(1)});
     }`;
   const VERT = `
-    uniform float uTime;
+    uniform float uTime, uTide;
     attribute float aDepth; attribute float aS;
     varying vec3 vWorld; varying vec3 vN; varying float vDepth; varying float vH; varying float vS;
     #include <fog_pars_vertex>
     ${GLSL_H}
     void main() {
-      vec2 p = position.xz; float d = aDepth, t = uTime, e = 0.5;
+      vec2 p = position.xz; float d = aDepth + uTide, t = uTime, e = 0.5;
       float s = aS, h = waveH(p, d, t, s);
       // +z is toward the beach: s falls as z rises
       float hx = waveH(p + vec2(e, 0.0), d, t, s) - waveH(p - vec2(e, 0.0), d, t, s), hz = waveH(p + vec2(0.0, e), d, t, s - e) - waveH(p - vec2(0.0, e), d, t, s + e);
       vN = normalize(vec3(-hx / (2.0 * e), 1.0, -hz / (2.0 * e)));
-      vec4 wp = modelMatrix * vec4(position.x, h, position.z, 1.0);
+      vec4 wp = modelMatrix * vec4(position.x, h + uTide, position.z, 1.0);
       vWorld = wp.xyz; vDepth = d; vH = h / max(0.05, ampK(d)); vS = s;
       vec4 mvPosition = viewMatrix * wp;
       gl_Position = projectionMatrix * mvPosition;
@@ -166,7 +169,7 @@ window.WW = window.WW || {};
     if (wm) wm.position.y = want ? -1.4 : 0;
     active = want;
     T += Math.min(0.1, rdt || 0);
-    if (mat) mat.uniforms.uTime.value = T;
+    if (mat) { mat.uniforms.uTime.value = T; mat.uniforms.uTide.value = tideL(); }
   }
   WW.waves = { update, height, slope, get time() { return T; }, get active() { return active; }, WAVES };
 })(window.WW);
