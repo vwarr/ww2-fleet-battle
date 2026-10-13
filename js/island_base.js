@@ -328,6 +328,12 @@ window.WW = window.WW || {};
     if (base.decor) for (const d of base.decor) if (d.roof && Math.abs(d.x - x) < d.r + 2 && Math.abs(d.z - z) < d.r + 2) top = Math.max(top, base.site.padH + d.roof);
     return top;
   }
+  // the land-sites hooks (land_sites.js): shells and bombs, the chart and the base's lookouts, the AA pits, the roofs,
+  // the bombardment range of a ship shelling the base (base_ai.js)
+  if (WW.landSites) WW.landSites.register({ id: 'islandBase', impact, roofAt,
+    scan: (nation, sight) => { if (base) scan(nation, sight); },
+    shooters: out => { if (base) for (const f of base.facilities) if (f.unit && f.kind === 'aa' && !f.out) out.push(f.unit); },
+    owns: t => !!(t && t.isBase), bombardRange: (ship, pref) => (WW.baseAI && WW.baseAI.bombardRange ? WW.baseAI.bombardRange(ship, pref) : pref) });
   WW.islandBase = { base: null, build, update, impact, scan, shooters, tons, refresh, roofAt, runwayOpen: () => runwayOpen(),
     opsOpen: () => !!base && WW.landGround.opsOpen(base),   // main runway open, not fouled by a wreck, base not neutralized
     get stats() { return stats; }, TUNE, ID, BASE_TONS, BATTERY, PIT_AA, CLOSE, NAMES, weight };

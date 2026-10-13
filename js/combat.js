@@ -43,7 +43,7 @@ window.WW = window.WW || {};
   }
   // First enemy ship (of shooterNation) whose hull covers (x,z). opts.subs: include submerged subs.
   function findHit(shooterNation, x, z, pad, includeSubmerged, prefer) {
-    if (prefer && !prefer.isBase && shipUsable(prefer) && prefer.nation !== shooterNation &&
+    if (prefer && !prefer.isBase && !prefer.isLand && shipUsable(prefer) && prefer.nation !== shooterNation &&
         (includeSubmerged || !prefer.submerged) && onHull(prefer, x, z, pad)) return prefer;
     var list = (WW.world && WW.world.ships) || [];
     for (var i = 0; i < list.length; i++) {
@@ -52,6 +52,7 @@ window.WW = window.WW || {};
       if (s.submerged && !includeSubmerged) continue;
       if (onHull(s, x, z, pad)) return s;
     }
+    if (WW.landSites && WW.landSites.hasHit()) return WW.landSites.hitTest(shooterNation, x, z, pad, prefer); // land units (strongpoints, landing craft)
     return null;
   }
   // kind/cal (optional) let WW.damage place the right impact fx and fire site on the hull.
@@ -151,7 +152,8 @@ window.WW = window.WW || {};
       p.cal = cal; p.nation = ship.nation; p.target = target; p.owner = ship;
       p.x0 = m.x; p.y0 = m.y; p.z0 = m.z; p.T = T; p.g = B.g;
       p.vx = (ax - m.x) / T; p.vz = (az - m.z) / T;
-      p.vy0 = (0.5 * B.g * T * T - m.y) / T;  // lands at y=0 exactly at T
+      p.ty = target.y || 0;                    // the target's height (a casemate on the bluff top; ships: 0)
+      p.vy0 = (0.5 * B.g * T * T + p.ty - m.y) / T;  // lands at y = ty exactly at T
       p.dmg = S.dmg * rr(0.8, 1.2);
       if (p.mesh) {
         var k = cal === 'big' ? 0.95 : cal === 'med' ? 0.7 : cal === 'small' ? 0.6 : 0.45;
@@ -189,7 +191,7 @@ window.WW = window.WW || {};
       else { fx('explosion', x, 1.2, z, S.splash * 0.6); if (big) fx('sparks', x, 1.5, z); else fx('sparks', x, 1, z); }
       return;
     }
-    if (WW.islandBase) WW.islandBase.impact(p.nation, x, z, p.dmg, 'shell', p.cal); // the island base (craters, facilities)
+    if (WW.landSites) WW.landSites.impact(p.nation, x, z, p.dmg, 'shell', p.cal); // the land targets: the island base (craters, facilities), Normandy's strongpoints (land_sites.js)
     if (depthAt(x, z) <= 0) {
       fx('explosion', x, 0.6, z, Math.max(0.4, S.splash * 0.35));
       fx('smoke', x, 0.8, z, false, S.splash * 0.5);

@@ -191,7 +191,7 @@ window.WW = window.WW || {};
       }
     }
     // the island base: on the enemy's chart, and its owner's radar / lookout station (island_base.js)
-    if (WW.islandBase && WW.islandBase.base) WW.islandBase.scan(nation, function (u, by, q) { sight(nation, S, u, by, q, now); });
+    if (WW.landSites) WW.landSites.scan(nation, function (u, by, q) { sight(nation, S, u, by, q, now); }); // the land sites (island base, strongpoints)
     // expire and sort into ships / planes (in place, no allocation)
     var L = S.list, w = 0;
     S.ships.length = 0; S.planes.length = 0;

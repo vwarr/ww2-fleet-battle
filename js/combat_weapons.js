@@ -144,8 +144,8 @@ window.WW = window.WW || {};
       var vs = WW.BOMB && WW.BOMB.vs && WW.BOMB.vs[hit.type];   // deck armour (core.js WW.BOMB.vs)
       I.damage(hit, p.dmg * (vs === undefined ? 1 : vs), p.x, p.z, 'bomb');
       if (!WW.damage) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
-    } else if (WW.islandBase && WW.islandBase.impact(p.nation, p.x, p.z, p.dmg, 'bomb')) {
-      I.fx('explosion', p.x, 1, p.z, 2); I.fx('smoke', p.x, 1.4, p.z, true, 2.2);   // on the island base
+    } else if (WW.landSites && WW.landSites.impact(p.nation, p.x, p.z, p.dmg, 'bomb')) {
+      I.fx('explosion', p.x, 1, p.z, 2); I.fx('smoke', p.x, 1.4, p.z, true, 2.2);   // on a land target (land_sites.js: the island base, ...)
     } else if (I.depthAt(p.x, p.z) <= 0) {
       I.fx('explosion', p.x, 0.6, p.z, 1.2); I.fx('smoke', p.x, 1, p.z, true, 1.5);
     } else {

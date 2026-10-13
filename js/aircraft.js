@@ -193,7 +193,7 @@ window.WW = window.WW || {};
       this.x += Math.cos(this.heading) * this.speed * dt;
       this.z += Math.sin(this.heading) * this.speed * dt;
       this.y += this.vy * dt;
-      const fl = this.y < 16 ? 1.5 + Math.max(0, -WW.terrain.depthAt(this.x, this.z), WW.islandBase ? WW.islandBase.roofAt(this.x, this.z) : 0) : 0; // wave tops, or 1.5 over the hills / roofs
+      const fl = this.y < 16 ? 1.5 + Math.max(0, -WW.terrain.depthAt(this.x, this.z), WW.landSites ? WW.landSites.roofAt(this.x, this.z) : 0) : 0; // wave tops, or 1.5 over the hills / roofs
       if (!free && this.state !== 'takeoff' && this.state !== 'landing' && this.y < fl) { this.y = fl; this.vy = Math.max(0, this.vy); }
       this.sync(dt);
     }

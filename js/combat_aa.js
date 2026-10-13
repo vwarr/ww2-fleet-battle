@@ -258,7 +258,7 @@ window.WW = window.WW || {};
   function detected(s, pl) { return !WW.intel || WW.intel.visible(s.nation, pl, 1.5); }
   function update(dt) {
     var ships = (WW.world && WW.world.ships) || [], planes = (WW.world && WW.world.planes) || [];
-    if (WW.islandBase) ships = WW.islandBase.shooters(ships);   // + the island base's AA pits
+    if (WW.landSites) ships = WW.landSites.shooters(ships);   // + the land sites' AA (the island base's pits; land_sites.js)
     if (V) { V.puff.update(dt, false); V.core.update(dt, true); }
     else addVisuals();
     // fused bursts in flight

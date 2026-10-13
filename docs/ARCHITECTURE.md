@@ -55,6 +55,7 @@ js/effects.js           WW.fx: pooled particle effects
 js/damage.js            WW.damage: fires and smoke at hit points, WW.wind
 js/damage_visuals.js    WW.dmgVis: scorch / hole decals, knocked-out turrets, toppled masts, bent funnels, settling, deck wrecks
 js/weather.js           WW.weather: rain squalls drifting with WW.wind, cover(x, z), along(a, b), shelter()
+js/land_sites.js        WW.landSites: the land targets that are not ships (island base, strongpoints, landing craft): impact, hitTest, scan, shooters, roofAt, groundAt, bombardRange
 js/combat.js            WW.combat: projectile pool, shells, anti-aircraft fire
 js/combat_weapons.js    torpedoes, bombs, depth charges
 js/combat_aa.js         WW.combatAA: heavy/light anti-aircraft fire, flak bursts, plane jinking
