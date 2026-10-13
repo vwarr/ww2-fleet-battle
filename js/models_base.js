@@ -116,8 +116,8 @@ window.WW = window.WW || {};
     TPL.scorch = M._mat(0x5d5249);
     return TPL;
   }
-  // the ground pieces (strips, revetment berms, the slipway): one white toon material of their own, made once, toned down
-  // under a high sun (sky_time.js addLand); the shared M._mat(0xffffff) also paints the buildings, guns and ships
+  // the ground pieces (strips, revetment berms, gun pits, the slipway): one white toon material of their own, made
+  // once, toned down under a high sun (sky_time.js addLand); the shared M._mat(0xffffff) paints the buildings and ships
   var GROUND = null;
   function groundMat() {
     if (!GROUND) { GROUND = M._mat(0xffffff).clone(); if (WW.skyTime) WW.skyTime.addLand(GROUND); }
@@ -165,7 +165,7 @@ window.WW = window.WW || {};
     var st = strips(S, base.layout); st.receiveShadow = true; root.add(st);
     var gy = function (x, z) { return Math.max(S.padH, -WW.terrain.depthAt(x, z)) - 0.05; };
     base.facilities.forEach(function (f) {
-      var m = new THREE.Mesh(T[KIND[f.kind]], mat), y = gy(f.x, f.z);
+      var m = new THREE.Mesh(T[KIND[f.kind]], f.kind === 'aa' || f.kind === 'battery' ? groundMat() : mat), y = gy(f.x, f.z);   // gun pits: sandbag berms
       m.position.set(f.x, y, f.z);
       // buildings face the field (f.a: toward the site centre; a hangar's doors are its +x end), batteries and pits stand alone
       m.rotation.y = f.a !== undefined ? -f.a + (f.kind === 'hangar' ? 0 : f.kind === 'ramp' ? PI : PI / 2) : -S.h;   // the ramp's apron: +x to the water
