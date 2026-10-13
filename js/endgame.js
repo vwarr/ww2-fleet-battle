@@ -280,7 +280,7 @@ window.WW = window.WW || {};
   }
   function subOnly(n) { var S = WW.world.ships; for (var i = 0; i < S.length; i++) if (S[i].alive && S[i].nation === n && S[i].type !== 'submarine') return false; return true; }
   function nightDead() {
-    var D = WW.dayNight; if (!D || D.canFly() || D.level(D.roundT() + NIGHT_AHEAD) >= D.FLY_MIN) return false;
+    var D = WW.dayNight; if (!D || D.predawn || D.canFly() || D.level(D.roundT() + NIGHT_AHEAD) >= D.FLY_MIN) return false; // a pre-dawn round waits for its dawn (daylight.js)
     var S = WW.world.ships, fights = {}, fleet = {};
     for (var i = 0; i < S.length; i++) {
       var s = S[i]; if (!s.alive || s.sinking || s.escaped || s.isBase) continue;

@@ -135,6 +135,7 @@ window.WW = window.WW || {};
     if (B.posture !== prev) B.postureAt = now;
     if (B.posture === 'withdraw' && !B.brokenAt && WW.game && WW.game.metT !== null && now - B.postureAt >= WD_BREAK) B.brokenAt = now; // F15: a real retirement
     var aw = airWar(B, cs, rt); if (B.airWar && !aw) B.holdEnd = rt; B.airWar = aw; // holdEnd: when the surface force was let go (tests)
+    if (WW.nightPlan) WW.nightPlan.tick(B, cs, now); // night orders: B.nightMode, the carriers' night station, flares (night_plan.js)
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
     var tgt = B.enemyCentre || B.searchPoint;
