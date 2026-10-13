@@ -134,6 +134,7 @@ window.WW = window.WW || {};
     P.update = function (dt) {
       up0.apply(this, arguments);
       if (!(dt > 0) || !this.alive || this.removed || (this.kind !== 'dive' && this.kind !== 'torpedo')) return;
+      if (this.strafe && this.state === 'return') { this.strafe = null; this.sf = null; }   // sent home mid-pass (bingo, crippled)
       const g = guns(this), s = st(this);
       if (g.rear > 0) rear(this, g, s, dt);
       if (g.fwd > 0 && this.kind === 'torpedo') fwdRun(this, g, s, dt);

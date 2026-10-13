@@ -79,7 +79,8 @@ window.WW = window.WW || {};
       pl.fly(sx, sz, SET_ALT, dt, pl.pt.speed);
       if (WW.dist(pl.x, pl.z, sx, sz) < 18 || S.t > 14) { S.ph = 'run'; S.t = 0; ST.passes++; }
     } else if (S.ph === 'run') {
-      const err = pl.fly(px, pz, RUN_ALT + Math.min(15, d * 0.2), dt, pl.pt.speed, 1.4);
+      const top = big ? ((WW.strike && WW.strike.TOP && WW.strike.TOP[u.type]) || 6) + 3.5 : 0;   // a big ship: over her masts
+      const err = pl.fly(px, pz, Math.max(top, RUN_ALT + Math.min(15, d * 0.2)), dt, pl.pt.speed, 1.4);
       if (d < FIRE_R && Math.abs(err) < 0.25 && S.fT <= 0) {
         S.fT = BURST_T; ST.bursts++;
         // a big ship (a dive bomber's pass on the ship it bombed, air_gunners.js): the guns only keep the light AA's
