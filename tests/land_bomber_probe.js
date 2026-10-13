@@ -30,7 +30,7 @@ const spec = (sc, seed) => ({ seed, A: SC[sc].A, B: SC[sc].B, aNation: SC[sc].aN
 function install() {
   const R = window.__lb = {}, BIG = { b17: 1, b26: 1, g4m: 1, g4mL: 1 }, DT = 0.5;
   let S = null, next = 0, seen = null;
-  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0, lwo: 0, lwoRun: 0, lwoMax: 0, tdL: 0, aDmg: {} }; next = 0; seen = new Map(); };
+  const fresh = () => { S = { sorties: {}, home: [], dmg: {}, lost: {}, drops: [], bombs: new Map(), holdN: 0, homeLoss: [], td: [], tdSeen: new WeakSet(), allSeen: new Map(), aLost: {}, lw: 0, lwRun: 0, lwMax: 0, lwo: 0, lwoRun: 0, lwoMax: 0, tdL: 0, aDmg: {}, shutC: 0, shutF: 0 }; next = 0; seen = new Map(); };
   fresh(); WW.on('roundStart', fresh);
   const inc = (o, k, v) => { o[k] = (o[k] || 0) + (v === undefined ? 1 : v); };
   const big = p => p && p.carrier && p.carrier.isBase && BIG[p.variant];
@@ -104,6 +104,7 @@ function install() {
       }
     }
     if (B && B.ops && waiting && B.ops.mode === 'launch') { S.lw += DT; S.lwRun += DT; S.lwMax = Math.max(S.lwMax, S.lwRun); } else S.lwRun = 0;
+    if (B && B.ops && waiting) { if (B.runways[0].closed) S.shutC += DT; else if (WW.landGround.fouled(B)) S.shutF += DT; }
     if (B && B.ops && waiting && B.ops.mode === 'launch' && WW.landGround.opsOpen(B)) { S.lwo += DT; S.lwoRun += DT; S.lwoMax = Math.max(S.lwoMax, S.lwoRun); } else S.lwoRun = 0;
     for (const p of PL) {
       if (!big(p) || !p.alive || p.removed) continue;
@@ -133,7 +134,7 @@ function install() {
       hold: rs.filter(r => r.hold > 0).map(r => ({ v: r.v, t: r.hold, y: r.holdY / r.hold, aa: r.holdAA, f: r.holdF, isle: r.holdIsle })) };
     const LG = WW.landGround && WW.landGround.stats;
     o.all = [...S.allSeen.values()].filter(r => r.land0 !== null).map(r => ({ v: r.v, t: r.td !== null ? r.td - r.land0 : null, dmg: r.dmg, shut: r.shut, lm: r.lm, hold: r.hold, holdY: r.holdY, isle: r.isle }));
-    o.aLost = S.aLost; o.aDmg = S.aDmg; o.tdL = S.tdL; o.flow = WW.landFlow ? Object.assign({}, WW.landFlow.stats) : {}; o.lw = S.lw; o.lwMax = S.lwMax; o.lwo = S.lwo; o.lwoMax = S.lwoMax; o.tows = LG ? LG.tows : 0; o.towLog = WW.landGround.towLog.splice(0); o.aborts = LG ? LG.aborts : 0;
+    o.aLost = S.aLost; o.aDmg = S.aDmg; o.shutC = S.shutC; o.shutF = S.shutF; o.crashes = LG ? LG.crashes : 0; o.tdL = S.tdL; o.flow = WW.landFlow ? Object.assign({}, WW.landFlow.stats) : {}; o.lw = S.lw; o.lwMax = S.lwMax; o.lwo = S.lwo; o.lwoMax = S.lwoMax; o.tows = LG ? LG.tows : 0; o.towLog = WW.landGround.towLog.splice(0); o.aborts = LG ? LG.aborts : 0;
     fresh(); return o;
   };
 }
@@ -183,6 +184,7 @@ function install() {
     const LM = AL.filter(r => r.t !== null);
     console.log(`  of the wait to land (median per plane): runway shut ${f1(med(LM.map(r => r.shut)))} s (max ${f1(Math.max(0, ...LM.map(r => r.shut)))}), runway open but the field launching ${f1(med(LM.map(r => r.lm)))} s (max ${f1(Math.max(0, ...LM.map(r => r.lm)))}); planes waiting > 60 s on a launch: ${AL.filter(r => r.lm > 60).length}`);
     if (argv.includes('--seedlog')) console.log('  slow (> 150 s): ' + LM.filter(r => r.t > 150).map(r => `${r.v}${r.dmg ? '/d' : ''} ${r.t} shut ${r.shut} launch ${r.lm}`).join('; '));
+    console.log(`  planes waiting with the main runway shut: cratered ${f1(L.reduce((s, r) => s + r.shutC, 0) / N)} s/rd, fouled by a wreck ${f1(L.reduce((s, r) => s + r.shutF, 0) / N)} s/rd; crash landings ${f1(L.reduce((s, r) => s + r.crashes, 0) / N)}/rd`);
     const ad = add('aDmg');
     console.log('  small planes damage /rd by phase (ship AA / base AA / own AA / fighter): ' + ['out', 'home', 'hold', 'app'].map(ph => ph + ' ' + ['shipAA', 'baseAA', 'ownAA', 'fighter'].map(k => f1((ad[ph + '|' + k] || 0) / N)).join('/')).join(', '));
     const SM = AL.filter(r => !BIG_V[r.v] && r.hold > 0), st = SM.reduce((s, r) => s + r.hold, 0);

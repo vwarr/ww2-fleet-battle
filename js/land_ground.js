@@ -150,7 +150,7 @@ window.WW = window.WW || {};
     if (ph === 'taxi') {
       var r = move(p, b, p.path, p.fast ? TAXI_FAST : TAXI, dt);
       if (p.pi > p.path.holdShort) { p.rwPh = 'hold'; o.holdQ.push(p); p.pi = p.path.holdShort + 1; }
-      wait(p, b, r === 'blocked' && opsOpen(b), dt); pin(p, b); return;
+      wait(p, b, r === 'blocked' && opsOpen(b) && !(p.blk && p.blk.p && p.blk.p.rwPh === 'hold'), dt); pin(p, b); return;   // (the queue for the runway: no tow)
     }
     if (ph === 'hold') {
       p.gs = 0; pin(p, b);
