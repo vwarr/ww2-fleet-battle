@@ -5,6 +5,11 @@
 //  - shoaling: toward the beach the waves grow and their crests sharpen (SHOAL), then they break on the tidal flat
 //    and run up the sand as surf (the breaker line, foam bands and a swash), where the depth gives out
 //  - whitecaps on the steep crests, streaks of foam in the troughs, the toon water colours of water.js (shared uniforms)
+//  - the look (a second pass): the Channel's grey-green, not the Pacific's turquoise (SEA: swapped into water.js's
+//    colour uniforms while in Normandy, the Pacific's own values put back exactly on leaving it, so its sea is
+//    untouched); the surf as lines of breaking surf rather than broad milky sheets: a narrow broken lip on each
+//    breaker, lacy foam (ridged noise) in the bore behind it, darker green water between the breakers and in the
+//    troughs, whitecaps as broken patches on the steepest crests, wind streaks, a thin lacy swash edge
 // The same height function in JS (height, slope) for anything that rides the waves: the landing craft pitch, roll and
 // heave on it (models_landing.js), the men wade in it (models_infantry.js), the ships bob (sea state for the sim:
 // landing_craft.js reads WW.scenarios.normandy.settings.sea, not this). Time: real seconds (as water.js), so the
@@ -23,6 +28,15 @@ window.WW = window.WW || {};
   const W = WAVES.map(([L, A, dx, dz, sk]) => { const n = Math.hypot(dx, dz), k = 2 * Math.PI / L; return { k, A, dx: dx / n, dz: dz / n, w: Math.sqrt(G * k) * sk }; });
   const SHOAL = { grow: 1.1, sharp: 2.2, deep: 9, brk: 1.3 };
   let T = 0, mesh = null, mat = null, depthOf = null, active = false;
+  // the Channel on the morning of 6 June: grey-green, turbid over the sand, slate far out; foam a little off-white
+  const SEA = { cShallow: 0x7f8b7a, cMid: 0x617268, cDeep: 0x4b5c58, cAbyss: 0x3f4e50, cFoam: 0xdfe2dc };
+  let pacSea = null;   // the Pacific's colour values while Normandy's are in
+  function seaColours(on) {
+    const U = WW.water && WW.water.uniforms && WW.water.uniforms();
+    if (!U) return;
+    if (on && !pacSea) { pacSea = {}; for (const k in SEA) { pacSea[k] = U[k].value.clone(); U[k].value.set(SEA[k]); } }
+    else if (!on && pacSea) { for (const k in pacSea) U[k].value.copy(pacSea[k]); pacSea = null; }
+  }
 
   // amplitude factor by depth: grows over the shelf, breaks and dies out on the flat and the sand
   function ampK(d) {
@@ -121,30 +135,47 @@ window.WW = window.WW || {};
       return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
     void main() {
       float d = vDepth;
-      if (d < -0.6) discard;                                                   // up the beach: no water
+      if (d < -0.15) discard;                                                  // up the beach (above the tide's line): dry sand
       vec3 col = mix(cShallow, cMid, smoothstep(0.0, 4.0, d));
       col = mix(col, cDeep, smoothstep(3.0, 11.0, d));
       col = mix(col, cAbyss, smoothstep(10.0, 22.0, d));
-      col *= vec3(0.86, 0.9, 0.94);                                            // a grey Channel, not the Coral Sea
       vec3 v = normalize(cameraPosition - vWorld), n = normalize(vN);
-      float lit = 0.72 + 0.35 * max(dot(n, normalize(sunDir)), 0.0);
+      float lit = 0.8 + 0.22 * max(dot(n, normalize(sunDir)), 0.0);         // flat light under the overcast
       col *= lit;
-      // whitecaps on the steep crests out at sea, streaks of old foam in the troughs
-      float cap = smoothstep(0.42, 0.62, vH) * smoothstep(0.35, 0.8, 1.0 - n.y + 0.55) * (0.5 + 0.5 * vnoise(vWorld.xz * 0.7 + uTime * 0.2));
-      float streak = smoothstep(0.62, 0.9, vnoise(vec2(vWorld.x * 0.08, vWorld.z * 0.6) + uTime * 0.05)) * 0.18;
-      // the surf: the breaker line where the crests sharpen and spill, foam bands rolling in, the swash on the sand
-      float surfZone = 1.0 - smoothstep(0.2, 2.2, d);
-      // the breaker's face spills white just shoreward of its crest; the foam it leaves fades behind it
-      float bp = fract((${(1 / BRK.L).toFixed(5)}) * vS + ${(BRK.V / BRK.L).toFixed(5)} * uTime);   // 0..1 along one breaker, 0.25: its crest
-      float brNoise = 0.6 + 0.4 * vnoise(vWorld.xz * vec2(0.5, 0.15) + uTime * 0.3);
-      float breaking = (smoothstep(0.08, 0.2, bp) * (1.0 - smoothstep(0.2, 0.42, bp)) + 0.45 * (1.0 - smoothstep(0.0, 0.08, bp))) * brkBell(d) * brNoise * 1.3;
-      float bands = smoothstep(0.55, 0.85, vnoise(vWorld.xz * vec2(0.35, 1.6) + vec2(0.0, -uTime * 0.9))) * surfZone * 0.6;
-      float swash = 1.0 - smoothstep(-0.5, 0.35, d);
-      float foam = clamp(max(max(cap, streak), max(breaking * 1.2, max(bands * 0.85, swash * 0.9))), 0.0, 1.0);
+      // troughs darker, crests lighter and greener (the light through a wave's thin top)
+      float crest = smoothstep(0.35, 0.75, vH);
+      col *= mix(0.84, 1.04, smoothstep(-0.7, 0.6, vH));
+      col = mix(col, cMid * vec3(1.05, 1.22, 1.1), crest * 0.22);
+      // whitecaps: broken patches on the steepest crests out at sea, not whole crests
+      float fn = vnoise(vWorld.xz * vec2(1.1, 1.9) + uTime * vec2(0.3, 0.5)) * 0.65 + vnoise(vWorld.xz * 3.7 - uTime * 0.4) * 0.35;
+      float cap = smoothstep(0.5, 0.8, vH) * smoothstep(0.55, 0.72, fn) * smoothstep(0.08, 0.3, 1.0 - n.y + 0.1) * 0.85;
+      // streaks of old foam drawn out along the wind (WNW: running east-south-east)
+      vec2 wq = vec2(dot(vWorld.xz, vec2(0.92, 0.39)), dot(vWorld.xz, vec2(-0.39, 0.92)));
+      float streak = smoothstep(0.72, 0.9, vnoise(vec2(wq.x * 0.05, wq.y * 0.7) + uTime * 0.04)) * smoothstep(0.4, 0.7, vnoise(wq * vec2(0.3, 1.6))) * 0.35;
+      // the surf (bp: 0..1 along one breaker, 0.25 its crest; the bore and its foam behind it, bp < 0.25)
+      float surfZone = 1.0 - smoothstep(0.2, 2.2, d), bb = brkBell(d);
+      float bp = fract((${(1 / BRK.L).toFixed(5)}) * vS + ${(BRK.V / BRK.L).toFixed(5)} * uTime);
+      // lace: a network of thin foam lines (ridged noise, two scales), drifting shoreward
+      float l1 = 1.0 - abs(2.0 * vnoise(vWorld.xz * vec2(0.9, 1.3) + vec2(uTime * 0.12, -uTime * 0.5)) - 1.0);
+      float l2 = 1.0 - abs(2.0 * vnoise(vWorld.xz * vec2(2.1, 2.8) - vec2(uTime * 0.2, uTime * 0.7) + 5.0) - 1.0);
+      float patchy = smoothstep(0.35, 0.7, vnoise(vWorld.xz * vec2(0.06, 0.15) + vec2(0.0, -uTime * 0.1)));   // foam in patches, not a net
+      float lace = max(smoothstep(0.9, 0.98, l1), smoothstep(0.93, 0.99, l2) * 0.6) * patchy;
+      lace = mix(lace, 0.15 * patchy, smoothstep(70.0, 240.0, length(cameraPosition - vWorld)));   // far off: soft, not a speckle
+      // the lip: a narrow, broken line of white spilling along the crest
+      float lipN = vnoise(vec2(vWorld.x * 0.35 + vWorld.z * 0.1, uTime * 0.35)) * 0.7 + vnoise(vWorld.xz * 1.6 + uTime) * 0.3;
+      float lip = smoothstep(0.14, 0.2, bp) * (1.0 - smoothstep(0.23, 0.3, bp)) * smoothstep(0.32, 0.6, lipN);
+      float trail = 1.0 - smoothstep(0.0, 0.16, bp) + 0.5 * smoothstep(0.82, 1.0, bp);   // the bore: just behind the lip
+      float breaking = (lip * 0.95 + lace * trail * 0.75 + trail * 0.1 * lipN) * bb;
+      float bands = lace * surfZone * 0.3;
+      // the swash: a thin lacy edge where the water runs up the sand, not a sheet
+      float edge = smoothstep(-0.15, -0.09, d) * (1.0 - smoothstep(-0.02, 0.1, d)) * (0.55 + 0.45 * lipN);
+      float swash = max(edge * 0.75, lace * (1.0 - smoothstep(-0.1, 0.5, d)) * 0.5);
+      float foam = clamp(max(max(cap, streak), max(breaking, max(bands, swash))), 0.0, 1.0) * 0.92;
+      col *= mix(1.0, 0.86, (bb * 0.6 + surfZone * 0.3) * (1.0 - foam));     // darker green between the breakers
       col = mix(col, cFoam, foam);
-      float alpha = mix(0.66, 0.95, smoothstep(0.0, 8.0, d));
-      alpha = max(alpha, foam * 0.97);
-      alpha *= smoothstep(-0.6, -0.2, d) * 0.6 + 0.4 * step(-0.2, d);
+      float alpha = mix(0.7, 0.95, smoothstep(0.0, 8.0, d));
+      alpha = max(alpha, foam * 0.94);
+      alpha *= 0.45 + 0.55 * smoothstep(-0.15, 0.05, d);
       col *= tint;
       float fr = pow(1.0 - clamp(v.y, 0.0, 1.0), 4.0);
       vec2 az = normalize(-v.xz + 1e-5);
@@ -165,6 +196,7 @@ window.WW = window.WW || {};
     const want = !WW.simOnly && WW.isScn('normandy') && !!WW.normandyTerrain && !!WW.scene && !!(WW.water && WW.water.uniforms());
     const wm = WW.water && WW.water.mesh && WW.water.mesh();
     if (want && !mesh) build();
+    seaColours(want);
     if (mesh) mesh.visible = want;
     if (wm) wm.position.y = want ? -1.4 : 0;
     active = want;
