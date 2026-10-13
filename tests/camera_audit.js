@@ -32,6 +32,8 @@ const SCEN = {
   midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
   battle_line: { A: ['battleship', 'battleship', 'cruiser', 'cruiser'], B: ['battleship', 'battleship', 'cruiser', 'cruiser'] },
   night: { random: true, tod: 'night' },
+  night_cv: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'], tod: 'night' },   // night_plan.js: a carrier-only night
+  night_bl: { A: ['battleship', 'battleship', 'cruiser', 'cruiser'], B: ['battleship', 'battleship', 'cruiser', 'cruiser'], tod: 'night' },
   dusk: { random: true, tod: 120 },
   odd: { odd: true }
 };
