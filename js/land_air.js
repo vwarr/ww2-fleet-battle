@@ -11,10 +11,10 @@
 //    warm-up, a fast taxi), and every 55-75 s a strike on the best known enemy ship within STRIKE_R: dive and torpedo
 //    bombers as a WW.strike wave, level bombers on their own. Nothing is launched while the main runway is closed,
 //    the base is neutralized or it is dusk; queued launches wait for the runway to be repaired.
-//  - Home: the circuit (stacked orbits), cleared to land in turn when the field is recovering (the next as the one ahead
-//    passes the outer marker), final down the centreline into the wind, touchdown. The land bombers (B-17, B-26, Betty)
-//    come home high and hold at a fix away from the island and the enemy's ships (land_hold.js), kept off while a raid
-//    is over the field. Main runway closed: an emergency landing on the cross
+//  - Home: every plane holds at a fix away from the island and the enemy's ships (land_hold.js: the land bombers, B-17,
+//    B-26, Betty, high and far out, kept off while a raid is over the field; the small planes closer in and lower),
+//    cleared to land in turn when the field is recovering (the next as the one ahead passes the outer marker); final
+//    down the centreline into the wind, touchdown. Main runway closed: an emergency landing on the cross
 //    runway if it is open (the plane is towed off), else the plane holds for HOLD_MAX s (HOLD_BIG for the land bombers,
 //    which had the fuel to wait out the runway repairs; a neutralized base: LEAVE_T s) and then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room nearby;
 //    every other type (B-17, B-26, Betty, ...) ditches beside the nearest friendly ship, where it can be rescued.
@@ -191,12 +191,10 @@ window.WW = window.WW || {};
   }
 
   // ---------- home: circuit, final, touchdown; else hold, divert or ditch ----------
-  function goHome(p, dt) {
-    const b = p.carrier, d = WW.dist(p.x, p.z, b.x, b.z), LH = WW.landHold;
+  function goHome(p, dt) { // at its class's holding height to the field or its fix (land_hold.js)
+    const b = p.carrier;
     p.foe = null;
-    if (LH && LH.big(p)) { if (LH.goHome(p, b, dt)) { p.state = 'landing'; p.rwPh = 'circuit'; p.rwT = 0; if (b.ai.lq.indexOf(p) < 0) b.ai.lq.push(p); } return; } // high, to the fix
-    p.fly(b.x, b.z, d > 120 ? 25 : 20, dt, p.pt.speed);
-    if (d < 150) { p.state = 'landing'; p.rwPh = 'circuit'; p.rwT = 0; if (b.ai.lq.indexOf(p) < 0) b.ai.lq.push(p); }
+    if (WW.landHold.goHome(p, b, dt)) { p.state = 'landing'; p.rwPh = 'circuit'; p.rwT = 0; if (b.ai.lq.indexOf(p) < 0) b.ai.lq.push(p); }
   }
   // the runway to land on, into the wind: the main one, else (emergency) the cross runway; null: none open
   function landRunway(b) {
@@ -207,10 +205,6 @@ window.WW = window.WW || {};
     const h = Math.cos(WW.angleDiff(r.h, wh)) >= 0 ? r.h : r.h + Math.PI;
     return { h, x: r.x - Math.cos(h) * r.len * 0.36, z: r.z - Math.sin(h) * r.len * 0.36, main: false };
   }
-  function stack(p, b, i, dt) {
-    const ang = Math.atan2(p.z - b.z, p.x - b.x) + 0.45, r = 62 + 7 * Math.min(i, 6);
-    p.fly(b.x + Math.cos(ang) * r, b.z + Math.sin(ang) * r, 20 + 3 * Math.min(i, 6), dt, p.pt.speed * 0.72);
-  }
   function landing(p, dt) {
     const b = p.carrier, a = b.ai, o = b.ops;
     a.lq = a.lq.filter(q => q.alive && !q.removed && q.state === 'landing' && q.carrier === b);
@@ -218,29 +212,29 @@ window.WW = window.WW || {};
     const i = Math.max(0, a.lq.indexOf(p));
     p.rwT += dt;
     if (p.leaving) return leave(p, b, dt);
-    const R = landRunway(b), LH = WW.landHold, bg = !!(LH && LH.big(p));
-    if (!R) { // nowhere to land: hold over the island, then divert (carrier types) or ditch by a friendly ship
+    const R = landRunway(b), LH = WW.landHold, bg = LH.big(p);
+    if (!R) { // nowhere to land: hold at the fix, then divert (carrier types) or ditch by a friendly ship
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
       p.rwPh = 'circuit'; p.cleared = false; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
       if (p.holdT > (b.neutralized ? LEAVE_T : bg ? HOLD_BIG : HOLD_MAX)) { p.leaving = true; return; }
-      if (bg) LH.orbit(p, b, i, dt); else stack(p, b, i, dt);
+      LH.orbit(p, b, i, dt);
       return;
     }
     p.holdT = 0;
     const c = Math.cos(R.h), s = Math.sin(R.h), fx = R.x - c * 75, fz = R.z - s * 75;
     if (p.rwPh === 'circuit') {
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); } // the circuit clears the hills
-      // cleared to approach while the field recovers: at most two on the approach (cleared, not yet on final), the
-      // second in trail once the one ahead is past the outer marker (a land bomber out at its fix as soon as the one
-      // ahead is cleared: its run in is long); a cleared approach is never cancelled by the field changing mode (only a
+      // cleared to approach while the field recovers: at most two on the approach (cleared, not
+      // yet on final), the second in trail once the one ahead is past the outer marker (a plane far out at its fix as
+      // soon as the one ahead is cleared: its run in is long); a cleared approach is never cancelled by the field changing mode (only a
       // closed runway sends it round, and a raid over the field a land bomber short of the outer marker: land_hold.js)
       const ox = R.x - c * 150, oz = R.z - s * 150, up = i > 0 ? a.lq[i - 1] : null;
       const clear = R.main ? o.mode === 'recover' && !o.hold : !o.crossOcc;
       let ahead = 0; for (let k = 0; k < i; k++) if (a.lq[k].cleared && a.lq[k].rwPh !== 'final') ahead++;
-      const next = ahead === 0 || (ahead === 1 && up && up.cleared && up.rwPh !== 'final' && (up.apOut || (bg && LH.far(p, ox, oz))));
+      const next = ahead === 0 || (ahead === 1 && up && up.cleared && up.rwPh !== 'final' && (up.apOut || LH.far(p, ox, oz)));
       const off = bg && LH.raidHold(p, b, dt);
-      if (off || (!(p.cleared && p.clearedMain === R.main) && (!next || !clear))) { if (bg) LH.orbit(p, b, i, dt); else stack(p, b, i, dt); p.apOut = false; return; }
+      if (off || (!(p.cleared && p.clearedMain === R.main) && (!next || !clear))) { LH.orbit(p, b, i, dt); p.apOut = false; return; }
       p.cleared = true; p.clearedMain = R.main;
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
       if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
