@@ -75,7 +75,7 @@ const SHOTS = [
   ['beachhead', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(8 * 60)) __sim.fastForward(1); const z = T.shingleZ(1650); return [1630, 6, z - 22, 1660, 1.5, z + 18]; }],
   ['bluff_view', () => { const z = T.bluffTopZ(1640); return [1610, 8, z + 6, 1650, 0, z - 30]; }],
   ['bluff_close', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(8 * 60 + 45)) __sim.fastForward(1); const x = 1690, z = T.shingleZ(x); return [x - 14, 5, z - 6, x + 2, 1.5, z + 14]; }],
-  ['rockets', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 4) __sim.fastForward(0.5); const z = T.shoreZ(1720) - 290; return [1700, 7, z - 16, 1726, 9, z + 70]; }],
+  ['rockets', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 4) __sim.fastForward(0.5); const s = WW.rocketBarrage.ships[4]; return s ? [s.x - 8, 2.4, s.z - 6, s.x + 2, 1.4, s.z + 8] : [1712, 2.4, T.shoreZ(1720) - 296, 1722, 1.4, T.shoreZ(1720) - 282]; }],
   ['swell_dd', () => { const s = WW.world.ships.find(q => q.name === 'Thompson') || WW.world.ships.find(q => q.type === 'destroyer'); return [s.x - 14, 2.2, s.z - 9, s.x, 1, s.z]; }],
   ['rockets_beach', () => { const C = WW.scenarios.normandy.clock; while (WW.game.roundTime < C.at(6 * 60 + 25) + 5) __sim.fastForward(0.5); const z = T.shoreZ(1740); return [1740, 2.5, z + 4, 1730, 9, z - 160]; }],
   // the LCT(R) barrage from the sea and from the director's wide shots (rocket_barrage.js); the barrage steps with the sim
