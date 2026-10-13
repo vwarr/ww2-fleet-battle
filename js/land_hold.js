@@ -8,12 +8,13 @@
 //    of the enemy planes seen near the field (PLANE_R) by the most, tie-broken toward the approach end (downwind of the
 //    runway, so the run in to the outer marker is short).
 //  - Home: a plane comes home at its class's holding height (HOLD_Y: the bombers 2,400-4,400 m), not low over the
-//    island. With the field free (recovering or idle, nobody in the circuit, no raid) it goes straight in; else it makes for the fix and joins the queue there.
+//    island. With the field free (recovering or idle, nobody in the circuit, no raid) or in an emergency
+//    (land_flow.js) it goes straight in; else it makes for the fix and joins the queue there.
 //  - Holding: a slow orbit round the fix, stacked HOLD_DY apart by its place in the queue, until cleared (land_air.js
 //    landing); with no runway open it holds there (land_air.js HOLD_MAX / HOLD_BIG), then diverts or ditches.
 //  - A raid over the field (enemy planes within RAID_R of it): the bombers are kept off until it has passed (at Midway
 //    the returning planes were held clear while the Japanese raid was on); an approach not yet past the outer marker is
-//    sent back to the fix. After RAID_MAX s of holding under a raid they come in anyway.
+//    sent back to the fix. After RAID_MAX s of holding under a raid they come in anyway (an emergency at once).
 window.WW = window.WW || {};
 (function () {
   'use strict';
@@ -59,12 +60,13 @@ window.WW = window.WW || {};
   }
   // free to come straight in: the field recovering or idle, the runway open, nobody waiting, no raid
   function free(b) { update(b, C.L); const o = b.ops; return !b.ai.raid && !b.ai.lq.length && o.mode !== 'launch' && WW.landGround.opsOpen(b); }
-  // home: at holding height to the field (free) or the fix; true once
+  // home: at holding height to the field (free, or an emergency: on its route, land_flow.js) or the fix; true once
   // there (land_air.js goHome enters 'landing') (to the fix round the island, not over it: along the FIX_R circle, ARC
   // rad ahead, while the fix is round the side)
   function goHome(p, b, dt) {
-    const Q = cls(p), F = free(b) ? b : update(b, Q), d = WW.dist(p.x, p.z, F.x, F.z), FIX_R = Q.FIX_R;
+    const Q = cls(p), LF = WW.landFlow, em = LF && LF.mayday(p), F = em || free(b) ? b : update(b, Q), d = WW.dist(p.x, p.z, F.x, F.z), FIX_R = Q.FIX_R;
     let tx = F.x, tz = F.z;
+    if (em) { const r = LF.route(p, b); tx = r.x; tz = r.z; }
     if (F !== b) {
       const pa = Math.atan2(p.z - b.z, p.x - b.x), da = WW.angleDiff(pa, Math.atan2(F.z - b.z, F.x - b.x));
       if (Math.abs(da) > ARC) { const a = pa + Math.sign(da) * ARC; tx = b.x + Math.cos(a) * FIX_R; tz = b.z + Math.sin(a) * FIX_R; }
@@ -82,7 +84,7 @@ window.WW = window.WW || {};
   // outer marker is sent back to hold
   function raidHold(p, b, dt) {
     update(b, C.L);
-    if (!b.ai.raid || (p.raidT || 0) > RAID_MAX) return false;
+    if (!b.ai.raid || (WW.landFlow && WW.landFlow.mayday(p)) || (p.raidT || 0) > RAID_MAX) return false;
     if (!p.raidT) ST.raidHolds++;
     p.raidT = (p.raidT || 0) + dt;
     if (p.cleared && !p.apOut && p.rwPh === 'circuit') { p.cleared = false; ST.sentBack++; }
