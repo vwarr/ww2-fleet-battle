@@ -81,16 +81,21 @@ window.WW = window.WW || {};
   function orphan(p) {
     if (p.ditchTo) return true;
     if (p.state === 'takeoff' || p.state === 'rollout' || p.deckPh === 'final' || p.deckPh === 'trap' || p.carrier.isBase) return false;
-    let best = null, bd = 1e9;
-    for (const s of WW.world.ships) if (deckOK(s, p.nation)) { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
-    if (best && bd / cruise(p) * CRUISE_BURN < Math.max(p.fuel, 0) + reserve(p)) {
-      p.carrier = best; p.diverted = (p.diverted || 0) + 1; ST.diverts++;
-      if (p.state === 'landing') { p.state = 'return'; p.deckPh = null; }
-      if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
-      return true;
-    }
+    const best = nearestDeck(p);
+    if (best) { divertTo(p, best); return true; }
     ditchBy(p, 'noDeck');
     return true;
+  }
+  // the nearest open deck of the side within the plane's fuel and reserve (null: none)
+  function nearestDeck(p) {
+    let best = null, bd = 1e9;
+    for (const s of WW.world.ships) if (deckOK(s, p.nation)) { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
+    return best && bd / cruise(p) * CRUISE_BURN < Math.max(p.fuel, 0) + reserve(p) ? best : null;
+  }
+  function divertTo(p, best) {
+    p.carrier = best; p.diverted = (p.diverted || 0) + 1; ST.diverts++;
+    if (p.state === 'landing') { p.state = 'return'; p.deckPh = null; }
+    if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
   }
   // air_recovery.js goHome: fly toward (wx, wz) at the right speed and height for the way home
   function home(p, wx, wz, alt, dt) {
@@ -175,5 +180,5 @@ window.WW = window.WW || {};
   }
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airFlight = { climbV, orphan, home, ditchShip, cruise, bingo, climbing, opp, stats: ST };
+  WW.airFlight = { climbV, orphan, nearestDeck, divertTo, home, ditchShip, cruise, bingo, climbing, opp, stats: ST };
 })();

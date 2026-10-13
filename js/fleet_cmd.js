@@ -9,6 +9,11 @@ window.WW = window.WW || {};
   'use strict';
   var TICK = 2;
   var POWER = { carrier: 4, battleship: 5, cruiser: 2.5, destroyer: 1.2, submarine: 0.8, pt: 0.4 }; // known strength per type (x hp share)
+  // A carrier whose flight deck is out for good (ship_deck.js wrecked; the enemy has it from the strike that did it):
+  // no air cover, no air-war hold, no strike orders of her own; her strength an AA hull's (WRECK_P x POWER), and to the
+  // enemy's strikes a heavy ship's worth to finish (WRECK_V), no longer the carrier that strikes back.
+  var WRECK_P = 0.4, WRECK_V = 9, wrecked = function (s) { return !!(WW.shipDeck && WW.shipDeck.wrecked(s)); };
+  var pw = function (s) { return POWER[s.type] * (wrecked(s) ? WRECK_P : 1); };
   var GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 };                                        // a fighting fleet needs one of these fit
   var BREAK = 0.15;    // broken: fit (hp >= CRIP) BB / CA / DD tonnage below this share of the side's starting BB / CA / DD tonnage
   var OUT_SHARE = 0.35, OUT_K = 0.4, BARE_K = 2; // or outfought: below OUT_SHARE of it and under OUT_K of the enemy's fit share (beaten)
@@ -81,11 +86,11 @@ window.WW = window.WW || {};
     WW.fleetGroups.assign(B, ships);
     // ---- strength and the enemy picture ----
     var own = 0, known = 0, cs = I ? I.enemyShips(B.nation) : [], ex = 0, ez = 0, ew = 0, dmin = 1e9;
-    for (i = 0; i < ships.length; i++) { s = ships[i]; if (s.alive && s.nation === B.nation) own += POWER[s.type] * (0.3 + 0.7 * s.hp / s.maxHp); }
+    for (i = 0; i < ships.length; i++) { s = ships[i]; if (s.alive && s.nation === B.nation) own += pw(s) * (0.3 + 0.7 * s.hp / s.maxHp); }
     for (i = 0; i < cs.length; i++) {
       c = cs[i]; var u = c.unit; if (!u || !u.alive) continue;
       var age = now - c.seenAt, w = Math.max(0.3, 1 - age / 90);
-      known += (u.isBase ? u.power : POWER[u.type]) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power
+      known += (u.isBase ? u.power : pw(u)) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power
       ex += c.x * w; ez += c.z * w; ew += w;
       if (age <= ENGAGE_AGE) for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine' && s.type !== 'pt') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); } // 'engage' on a current picture, not a stale report
     }
@@ -171,7 +176,7 @@ window.WW = window.WW || {};
     B.closeAt = firstDrop ? Math.min(T * CLOSE_AT * k, Math.max(T * CLOSE_MIN * k, firstDrop + CLOSE_AFTER * k)) : T * CLOSE_AT * k;
     for (i = 0; i < cs.length; i++) { u = cs[i].unit; if (u && u.type === 'carrier' && !B.foeCV.has(u.id)) B.foeCV.set(u.id, u); }
     var M = B.groups.carrier.members;
-    for (i = 0; i < M.length; i++) if (M[i].type === 'carrier' && M[i].hp >= WW.fleetGroups.CRIP * M[i].maxHp) cv++;
+    for (i = 0; i < M.length; i++) if (M[i].type === 'carrier' && M[i].hp >= WW.fleetGroups.CRIP * M[i].maxHp && !wrecked(M[i])) cv++;
     if (!cv || rt >= B.closeAt || B.posture === 'pursue' || B.posture === 'withdraw' || B.posture === 'press') return false;
     var won = B.foeCV.size > 0, now = WW.time.now; B.foeCV.forEach(function (q) { if (!knownGone(B, q, now)) won = false; }); // as seen (F5)
     if (won) return false;
@@ -229,7 +234,7 @@ window.WW = window.WW || {};
     var D = WW.dayNight; if (D && !D.canFly()) return false;
     var S = WW.world.ships;
     for (var i = 0; i < S.length; i++) {
-      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp || airGroup(q) < COVER_N) continue;
+      var q = S[i]; if (!q.alive || q.sinking || q.nation !== n || q.type !== 'carrier' || q.hp < WW.fleetGroups.CRIP * q.maxHp || wrecked(q) || airGroup(q) < COVER_N) continue;
       if (!seenBy || seenBy.foeCV.has(q.id)) return true;
     }
     return false;
@@ -302,7 +307,7 @@ window.WW = window.WW || {};
     var big = bigFoe(B);
     var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R * (B.doctrine.strikeRange || 1); // strikeRange: the admiral (admirals.js)
     for (var k = 0; k < cvs.length; k++) {
-      var cv = cvs[k]; if (cv.type !== 'carrier') continue;
+      var cv = cvs[k]; if (cv.type !== 'carrier' || wrecked(cv)) continue;
       var best = null, bc = null, bs = 0;
       // within STRIKE_R first; with nothing there, anything known on the map (the planes have the fuel for it)
       for (var pass = 0; pass < 2 && !best; pass++) for (var i = 0; i < cs.length; i++) {
@@ -312,6 +317,7 @@ window.WW = window.WW || {};
         var aa = WW.threat ? WW.threat.danger(B.nation, c.x, c.z, { air: true }) : 0;
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sv = u.isBase ? (WW.baseAI ? WW.baseAI.strikeValue(B, cv) : 0) : STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0; // the island base (base_ai.js)
+        if (sv > WRECK_V && wrecked(u)) sv = WRECK_V;
         if (!sv || (big && dfd === 1 && !pur && !u.isBase && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type])) continue; // as reported (intel misId)
         var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? DIST_K * 3 : DIST_K)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
         if (pur) sc *= runaway(B, u, c);

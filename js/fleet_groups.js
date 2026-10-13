@@ -131,7 +131,7 @@ window.WW = window.WW || {};
     var put = function (s, g, role) {
       G[g].members.push(s);
       var o = B.orders.get(s.id) || { ship: s, sx: s.x, sz: s.z };
-      o.group = g; o.role = (s.hp < CRIP * s.maxHp && s.type !== 'submarine') || (WW.supply && WW.supply.spent(s)) ? 'withdraw' : role; // spent: ship_supply.js o.slot = G[g].members.length - 1; o.t = B.t;
+      o.group = g; o.role = (s.hp < CRIP * s.maxHp && s.type !== 'submarine') || (WW.supply && WW.supply.spent(s)) || wrecked(s) ? 'withdraw' : role; // spent: ship_supply.js o.slot = G[g].members.length - 1; o.t = B.t;
       B.orders.set(s.id, o);
     };
     // carrier escorts (fleet_formation.js ringCounts: doctrine ringBB / ringDD): big ships first, so the first ring
@@ -149,7 +149,23 @@ window.WW = window.WW || {};
     pts.forEach(function (s) { put(s, 'pt', 'ambush'); });
     subs.forEach(function (s) { put(s, 'sub', 'patrol'); });
     B.orders.forEach(function (o, id) { if (!o.ship.alive) B.orders.delete(id); });
-    if (WW.formation) WW.formation.tagRing(B, cvs);
+    // the rings go to the carriers that can still fly; one whose deck is out for good (ship_deck.js) is sent home
+    // (ai_carrier.js) with one escort of her own: the nearest destroyer of the rings holds station on her (Shokaku went
+    // home from Coral Sea with two destroyers)
+    var fly = cvs.filter(function (c) { return !wrecked(c); });
+    if (WW.formation) WW.formation.tagRing(B, fly.length ? fly : cvs);
+    if (fly.length && WW.formation) cvs.forEach(function (c) { if (wrecked(c)) homeEscort(B, c); });
+  }
+  function wrecked(s) { return !!(WW.shipDeck && WW.shipDeck.wrecked(s)); }
+  function homeEscort(B, cv) {
+    var best = null, bd = 1e18;
+    B.groups.carrier.members.forEach(function (q) {
+      var o = B.orders.get(q.id); if (!o || q.type !== 'destroyer' || o.role !== 'escort') return;
+      var k = (o.homeOf === cv ? -1e12 : 0) + WW.dist2(q.x, q.z, cv.x, cv.z); if (k < bd) { bd = k; best = o; }   // her escort keeps her
+    });
+    if (!best) return;
+    best.ringCv = cv; best.ringSlot = 0; best.guard = true; best.homeOf = cv;
+    if (B.doctrine.ringR > 0) best.ship.ringCv = cv;
   }
 
   function centroid(list, out) {
