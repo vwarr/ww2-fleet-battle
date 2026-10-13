@@ -61,17 +61,68 @@ window.WW = window.WW || {};
     if (WW.freecam && WW.freecam.release) WW.freecam.release();
     WW.cam.cut();
   }
-  // the best current action when nothing is imminent: a ship in a gunfight, else the front line
-  function bestNow() {
-    const a = WW.camStory.anyArc();
-    if (a) return { subj: a.lead, label: WW.camStory.titleOf(a.lead, a.mission).join(' · '), etaReal: 0 };
-    let best = null, bd = 1e9;
-    for (const s of WW.world.ships) {
-      if (!s.alive || !s.target || s.type === 'submarine') continue;
-      const d = WW.dist(s.x, s.z, s.target.x, s.target.z) - (s.type === 'battleship' ? 60 : s.type === 'cruiser' ? 30 : 0);
-      if (d < bd) { bd = d; best = s; }
+  // the best current action when nothing is imminent (planes in the air, a gunfight, the base under fire), else the
+  // front line: never nothing while a ship is afloat, by day, dusk or night
+  function bestNow() { return actions()[0] || frontLine(); }
+  // ---------- the current action at dusk / night (the gunline, star shells, the base) ----------
+  // Who fired / was hit lately (sim s), from the events; a coastal battery or AA pit counts as its island base.
+  const fired = new Map(), hit = new Map();
+  const unitOf = u => (u && (u.isBattery || u.isBasePit) && WW.islandBase && WW.islandBase.base) || u;
+  WW.on('shellFired', e => { if (e && e.ship) fired.set(unitOf(e.ship), WW.time.now); });
+  WW.on('shellLanded', e => { if (e && e.ship) hit.set(unitOf(e.ship), WW.time.now); });
+  WW.on('baseImpact', e => { if (e && e.base) hit.set(e.base, WW.time.now); });
+  const ago = (m, o) => (m.has(o) ? WW.time.now - m.get(o) : 1e9);
+  const VAL = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4, base: 1.2 };
+  const live = o => !!(o && !o.removed && o.alive && !o.submerged);
+  const theName = o => (o.isBase ? (o.name && o.name !== 'the island' ? o.name : 'the airfield') : o.name || 'the ' + (KIND[o.type] || 'ship'));
+  const dark = () => (WW.daylight !== undefined && WW.daylight < 0.35) || !!(WW.dayNight && WW.dayNight.canFly && !WW.dayNight.canFly());
+  // the ships, plus the island base when there is one
+  function units() { const B = WW.islandBase && WW.islandBase.base; return WW.world.ships.filter(live).concat(live(B) ? [B] : []); }
+  // the ship actions (no planes), best first: a ship or the base under fire, a star shell or searchlight on a ship,
+  // a ship firing, then any ship with a target (the nearest to it first: the big guns reach further)
+  function shipActions() {
+    const out = [], pre = dark() ? 'Night action: ' : '', U = units();
+    const add = (subj, label, score) => { if (live(subj) && !out.some(i => i.subj === subj)) out.push({ subj, label, score, etaReal: 0 }); };
+    for (const s of U) {
+      const h = ago(hit, s), by = s.isBase ? U.find(o => o.target === s) : null;
+      if (h < 15) add(s, (s.isBase ? 'Bombardment: ' : pre) + theName(s) + ' under fire' + (by ? ' from ' + theName(by) : ''), 3 + (VAL[s.type] || 1) - h / 15);
+      else if (by) add(s, 'Bombardment: ' + theName(by) + (ago(fired, by) < 15 ? ' shelling ' : ' closing on ') + theName(s), ago(fired, by) < 15 ? 2.8 : 1.5);
     }
-    return best ? { subj: best, label: nameOf(best) + ' in action', etaReal: 0 } : null;
+    const NO = WW.nightOps;
+    if (NO && NO.shells) for (const sh of NO.shells) {
+      if (!sh.lit) continue;
+      let best = null, bd = sh.r * sh.r;
+      for (const s of WW.world.ships) if (live(s) && s.nation !== sh.nation) { const d = WW.dist2(s.x, s.z, sh.x, sh.z); if (d < bd) { bd = d; best = s; } }
+      if (best) add(best, 'Star shell over ' + theName(best), 3.4);
+    }
+    if (NO && NO.lights) for (const L of NO.lights) if (live(L.ship)) add(L.ship, theName(L.ship) + '’s searchlight' + (live(L.target) ? ' on ' + theName(L.target) : ''), 3.1);
+    for (const s of U) {
+      const f = ago(fired, s);
+      if (!s.isBase && live(s.target) && f < 12) add(s, pre + theName(s) + ' firing on ' + theName(s.target), 2 + (VAL[s.type] || 1) * 0.5 - f / 24);
+    }
+    for (const s of U) {
+      if (s.isBase || s.type === 'submarine' || !live(s.target)) continue;
+      const d = WW.dist(s.x, s.z, s.target.x, s.target.z) - (s.type === 'battleship' ? 60 : s.type === 'cruiser' ? 30 : 0);
+      add(s, pre + nameOf(s) + ' in action', 1 - Math.min(0.9, Math.max(0, d) / 2000));
+    }
+    return out.sort((a, b) => b.score - a.score);
+  }
+  // every current action: planes in the air first (a story arc, else any flight still up at dusk), then the ships
+  function actions() {
+    const a = WW.camStory.anyArc(), out = shipActions();
+    // a strong arc (a strike forming or going in, a scramble, a rescue) leads; a snooper or an ace below a ship
+    // under fire or shelling; any plane merely up, above a ship that only has a target
+    if (a && live(a.lead)) out.push({ subj: a.lead, label: WW.camStory.titleOf(a.lead, a.mission).join(' · ') + (dark() ? ' · last light' : ''), score: a.score >= 7 ? 9 : a.score > 0 ? 2.6 : 1.5, etaReal: 0 });
+    return out.sort((x, y) => y.score - x.score);
+  }
+  // the front line: the ship nearest an enemy ship or base, else any ship afloat
+  function frontLine() {
+    const U = units().filter(s => s.type !== 'submarine');
+    let best = null, bd = 1e18;
+    for (const a of U) if (!a.isBase) for (const b of U) if (a.nation !== b.nation) { const d = WW.dist2(a.x, a.z, b.x, b.z); if (d < bd) { bd = d; best = a; } }
+    if (best) return { subj: best, label: 'Front line: ' + theName(best) + ', nearest the enemy', etaReal: 0 };
+    const s = U.find(o => !o.isBase);
+    return s ? { subj: s, label: theName(s), etaReal: 0 } : null;
   }
 
   function f() {
@@ -83,7 +134,7 @@ window.WW = window.WW || {};
     const b = bestNow();
     if (b) { jump(b); return 'Follow: ' + b.label; }
     director(); WW.cam.cut();
-    return 'Follow: no attacks yet · the fleets close';
+    return 'Follow: nothing afloat · director camera';
   }
   // Tab / Shift+Tab (dir +1 / -1) through the upcoming attacks; kinds narrows the list ('dogfight', 'danger')
   function cycle(dir, which) {
@@ -98,13 +149,20 @@ window.WW = window.WW || {};
     // one entry per strike wave (its earliest moment: the wave's strike / push / anvil items are one attack), per fighter element and per ship
     const seen = new Set();
     L = L.filter(i => { if (!i.subj || i.subj.removed) return false; const k = i.subj.wave || i.subj.element || i.subj; if (seen.has(k)) return false; seen.add(k); return true; });
-    if (!L.length) return which === 'dogfight' ? 'No dogfight right now' : which === 'danger' ? 'No ship in danger right now' : 'No attacks on the way yet';
+    // nothing of the kind (a night gun action, no planes up): cycle the current actions instead, saying so
+    let pre = '';
+    if (!L.length) {
+      pre = (which === 'dogfight' ? 'No dogfight right now' : which === 'danger' ? 'No ship in danger right now' : 'No air attacks on the way') + ' · ';
+      L = which === 'danger' ? shipActions() : actions();
+      if (!L.length) { const fl = frontLine(); if (fl) L = [fl]; }
+      if (!L.length) return pre + 'nothing afloat';
+    }
     const f0 = following() || (cur && cur.subj);
     let i = L.findIndex(it => it.subj === f0);
     if (i < 0) i = L.findIndex(it => f0 && ((f0.wave && it.subj.wave === f0.wave) || (f0.element && it.subj.element === f0.element)));
     i = i < 0 ? (dir > 0 ? 0 : L.length - 1) : (i + dir + L.length) % L.length;
     jump(L[i]);
-    return (i + 1) + '/' + L.length + ' · ' + say(L[i]);
+    return pre + (i + 1) + '/' + L.length + ' · ' + say(L[i]);
   }
 
   // ---------- the label ----------
@@ -157,7 +215,7 @@ window.WW = window.WW || {};
       else if (it.kind === 'danger') add(prOf(it), 'orbit', it.subj, { r: it.subj.stats.length * 1.4 + 18, dur: dur(12, 16), w: 0.045, item: 'danger' });
     }
   });
-  WW.on('roundStart', () => { cur = null; });
+  WW.on('roundStart', () => { cur = null; fired.clear(); hit.clear(); });
   WW.on('setupStart', () => { cur = null; });
   WW.camFollow = { f, cycle, jump, following, handBack, labelText, stats: ST };
 })(window.WW);
