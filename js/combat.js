@@ -21,7 +21,10 @@ window.WW = window.WW || {};
   function rnd() { return WW.rand ? WW.rand() : Math.random(); }
   function rr(a, b) { return a + (b - a) * rnd(); }
   function fx(name, a, b, c, d, e) {
-    try { if (WW.fx && typeof WW.fx[name] === 'function') WW.fx[name](a, b, c, d, e); } catch (err) { /* never throw */ }
+    try {
+      if (WW.landFxHook && WW.landFxHook(name, a, b, c, d, e)) return;   // a scenario's own ground bursts (Normandy: beachhead_fx.js); none in the Pacific
+      if (WW.fx && typeof WW.fx[name] === 'function') WW.fx[name](a, b, c, d, e);
+    } catch (err) { /* never throw */ }
   }
   function stat(k, n) { if (WW.stats) WW.stats[k] = (WW.stats[k] || 0) + (n || 1); }
   function depthAt(x, z) {

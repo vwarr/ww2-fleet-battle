@@ -252,6 +252,31 @@ window.WW = window.WW || {};
       P.smoke.spawn(x + rr(-0.3, 0.3), y + rr(-0.3, 0.3), z + rr(-0.3, 0.3), rr(-0.6, 0.6), rr(-0.2, 0.5), rr(-0.6, 0.6),
         rr(1.2, 1.8), rr(0.3, 0.45), rr(0.9, 1.3), col(0x5c5c62), col(0x9a9aa0), 0, 2, rr(-1, 1));
   }
+  // a shell, bomb or mortar bomb bursting in earth or sand (Normandy, beachhead_fx.js): a short flash, a dark column of
+  // earth and stones thrown up and falling back, clods flung out, and a brown dust cloud drifting off on the wind;
+  // sand: paler and higher (the beach)
+  function dirt(x, y, z, size, sand) {
+    if (!P) return; size = size || 1;
+    var sq = Math.sqrt(size), c0 = sand ? 0x9c8d6c : 0x5d5040, c1 = sand ? 0xc8b896 : 0x8a7c64, n = Math.min(16, 5 + Math.round(size * 4));
+    P.glow.spawn(x, y + 0.2 * sq, z, 0, 0.6, 0, 0.12, 0.5 * sq, 0.9 * sq, col(0xf0c070), col(0xc06030), 0, 0, 0);
+    for (var i = 0; i < n; i++) {                         // the column
+      var a = R() * 6.28, r = R() * 0.18 * size, f = i / n;
+      P.solid.spawn(x + Math.cos(a) * r, y + 0.05, z + Math.sin(a) * r, Math.cos(a) * rr(0.2, 0.9) * sq, (2.4 * sq + 1.4) * (0.5 + 0.7 * f) * rr(0.8, 1.15), Math.sin(a) * rr(0.2, 0.9) * sq,
+        rr(1.0, 1.6), (0.22 + 0.2 * (1 - f)) * size + 0.12, (0.4 + 0.3 * (1 - f)) * size + 0.2, col(c0), col(c1), 6, 0.7, rr(-0.6, 0.6), true);
+    }
+    for (var d = 0; d < 4 + (size * 2 | 0); d++) {        // clods
+      var b = R() * 6.28, o = rr(1.2, 2.6) * sq;
+      P.solid.spawn(x, y + 0.1, z, Math.cos(b) * o, rr(1.5, 3) * sq, Math.sin(b) * o, rr(0.6, 1.0), 0.09 * sq, 0.07 * sq, col(c0), col(c0), 11, 0.1, 0, true);
+    }
+    P.smoke.spawn(x, y + 0.4 * sq, z, rr(-0.2, 0.2) + windX(), rr(0.4, 0.8), rr(-0.2, 0.2) + windZ(), rr(3.5, 5), 0.6 * size, 1.8 * size,
+      col(sand ? 0xb4a88a : 0x7c7062), col(sand ? 0xc8beaa : 0xa49a8a), -0.1, 0.3, rr(-0.4, 0.4));
+  }
+  // battle haze (Normandy): a big, slow puff of smoke and dust that hangs low and drifts on the wind for a long time
+  function haze(x, y, z, size, dark) {
+    if (!P) return; size = size || 3;
+    P.smoke.spawn(x, y, z, windX() * 1.6 + rr(-0.15, 0.15), rr(0.05, 0.25), windZ() * 1.6 + rr(-0.15, 0.15), rr(14, 22), size * 1.0, size * 1.8,
+      col(dark ? 0x6c665e : 0x9a9488), col(dark ? 0x8c867c : 0xb0aa9e), -0.02, 0.15, rr(-0.2, 0.2));
+  }
   // a boat's bow slamming into a sea (Normandy landing craft, models_landing.js): a low fan of white spray thrown
   // ahead and to both sides, from the bow at height y; heading: the boat's, size ~0.3-1
   function spray(x, y, z, heading, size) {
@@ -333,7 +358,7 @@ window.WW = window.WW || {};
 
   WW.fx = {
     init: init, update: update, clearAll: clearAll,
-    splash: splash, spray: spray, explosion: explosion, torpedoHit: torpedoHit, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
+    splash: splash, spray: spray, dirt: dirt, haze: haze, explosion: explosion, torpedoHit: torpedoHit, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
     fire: fire, wake: wake, torpBubbles: torpBubbles, oilSlick: oilSlick, sparks: sparks, trail: trail,
     _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; }
   };
