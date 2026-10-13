@@ -25,8 +25,9 @@
 //    ships), at most FL.PER per plane, FL.MAX burning per side. The flare is a night_ops.js shell (sh.flare): it lights
 //    the sea round it as a star shell does, higher and longer. The plane itself
 //    is not drawn or flown (no launches in the dark, daylight.js).
-//  - Camera (WW.camHooks): in the dark, the leading ship of a surface force closing on a known enemy is a better quiet
-//    shot than a carrier waiting for the dawn.
+//  - Camera (WW.camHooks): in the dark, the leading ship of a surface force closing on the enemy (its known centre, else
+//    the search point) is a better quiet shot than a carrier waiting for the dawn (a forced-night survey filmed the
+//    carriers ~50% of the first 300 s, before any contact).
 // Events: 'nightPlan' { nation, what }, 'flare' (the shell), 'admiralOrder' order 'night'.
 window.WW = window.WW || {};
 (function () {
@@ -119,9 +120,9 @@ window.WW = window.WW || {};
   (WW.camHooks = WW.camHooks || []).push(function (add, dur) {
     if (WW.simOnly || !WW.fleetCmd || !night()) return;
     WW.sides().forEach(function (n) {
-      var B = WW.fleetCmd.side(n), ec = B && B.enemyCentre;
-      if (!B || !ec || !(B.nightMode === 'seek' || B.nightMode === 'accept') || !(B.posture === 'approach' || B.posture === 'engage' || B.posture === 'press')) return;
-      var best = null, bd = 700;
+      var B = WW.fleetCmd.side(n), ec = B && (B.enemyCentre || B.searchPoint);   // before any contact: steaming out into the dark
+      if (!B || !ec || !(B.nightMode === 'seek' || B.nightMode === 'accept') || B.posture === 'withdraw') return;
+      var best = null, bd = 1e9;
       ['main', 'screen', 'flotilla'].forEach(function (g) { B.groups[g].members.forEach(function (q) { if (!GUN[q.type] || !fit(q)) return; var d = WW.dist(q.x, q.z, ec.x, ec.z); if (d < bd) { bd = d; best = q; } }); });
       if (best) add(5.4 + (bd < 300 ? 0.8 : 0), Math.random() < 0.5 ? 'chase' : 'low', best, { dur: dur(12, 16) });
     });
