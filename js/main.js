@@ -373,6 +373,7 @@ window.WW = window.WW || {};
     call('normandySky', 'update', rdt);   // Normandy: the low cloud deck, smoke from the bluffs (normandy_sky.js), visual only
     call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
+    call('beachheadFx', 'update', rdt);   // Normandy: craters, scorch, wire, hulks, debris (beachhead_fx.js), visual only
     call('offmapAirFx', 'update', rdt);   // Normandy: the planes from England (air_offmap_fx.js), visual only
     call('dmgVis', 'draw', rdt);    // scorch / hole decals and deck wrecks on the posed hulls
     call('audio', 'update', rdt);  // after the camera: the listener follows this frame's camera

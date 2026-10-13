@@ -4,6 +4,7 @@
 //  - hedgerows (the bocage behind the coast): bush rows along the field edges of the plateau
 //  - the beach obstacles (terrain_normandy.js obstacles, sim data): hedgehogs, Belgian gates, stakes and log ramps with
 //    Teller mines; instanced, each hidden once the sim marks it destroyed (update)
+//  - the scrub on the bluffs (gorse, bramble, bracken) and marram on the shelf
 //  - the sea wall from Vierville to Les Moulins
 window.WW = window.WW || {};
 (function (WW) {
@@ -23,7 +24,7 @@ window.WW = window.WW || {};
       // obstacles at about 2x true size, as the sailors (models_crew.js): a hedgehog's 2 m beams 0.45 u, a 3 m stake 0.6 u
       beam: new THREE.BoxGeometry(0.45, 0.05, 0.05), pole: new THREE.CylinderGeometry(0.03, 0.04, 0.5, 5), mine: new THREE.CylinderGeometry(0.08, 0.08, 0.035, 8),
       gate: new THREE.BoxGeometry(0.1, 0.1, 0.1),
-      stone: lam(0xd8ccb4), stoneD: lam(0xbfb39a), slate: lam(0x6f7b86), tile: lam(0xb9775f), hedge: lam(0x6f9b58), concrete: lam(0xc8c4b8),
+      stone: lam(0xd8ccb4), stoneD: lam(0xbfb39a), slate: lam(0x6f7b86), tile: lam(0xb9775f), hedge: lam(0x52633c), concrete: lam(0xc8c4b8),
       steel: lam(0x6b625a), wood: lam(0x8a6e52), mineM: lam(0x5d6150)
     };
     shared.bush.scale(1, 0.62, 1);
@@ -82,6 +83,30 @@ window.WW = window.WW || {};
     im.castShadow = true; im.receiveShadow = true;
     g.add(im);
   }
+
+  // ---- the bluffs' cover: gorse, bramble and last year's bracken in clumps up the slopes (the folds and the scrub the
+  // men climbed through), thinner on the steepest faces; marram tufts on the shelf behind the shingle ----
+  function scrub(g) {
+    const T = NT(), r = prng(6061944), m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+    const kinds = [[0x46553a, []], [0x535739, []], [0x76683f, []], [0x83835c, []]];   // gorse, bramble, bracken, marram
+    for (let x = 380; x < 2500; x += 0.7) {                      // Pointe du Hoc to Colleville
+      const st = T.station(x); if (st.drawK > 0.6) continue;
+      const z0 = T.bluffFootZ(x), z1 = T.bluffTopZ(x) + 4;
+      for (let k = 0; k < 3; k++) {
+        if (r() < 0.25) continue;
+        const z = z0 + r() * (z1 - z0), c = r(), kind = c < 0.45 ? 0 : c < 0.75 ? 1 : 2;
+        kinds[kind][1].push(x + (r() - 0.5) * 0.7, z, kind === 2 ? 0.14 + r() * 0.12 : 0.1 + r() * 0.2);   // clumps 1-4 m across, ~1.5x
+      }
+      if (r() < 0.5) { const zs = T.shingleZ(x) + 2.5, z = zs + r() * Math.max(0.5, z0 - zs - 0.5); kinds[3][1].push(x, z, 0.07 + r() * 0.06); }
+    }
+    for (const [col, pts] of kinds) {
+      const n = pts.length / 3, im = new THREE.InstancedMesh(shared.bush, new THREE.MeshLambertMaterial({ color: soft(col) }), n);
+      for (let i = 0; i < n; i++) { const x = pts[i * 3], z = pts[i * 3 + 1], k = pts[i * 3 + 2]; q.setFromAxisAngle(_Y, r() * 6.28); im.setMatrixAt(i, m.compose(p.set(x, gy(x, z) + 0.15 * k, z), q, s.set(k * (1.1 + r() * 0.6), k * 0.95, k))); }
+      im.castShadow = true; im.receiveShadow = true;
+      g.add(im);
+    }
+  }
+  const _Y = new THREE.Vector3(0, 1, 0);
 
   // ---- the sea wall (Vierville to Les Moulins) ----
   function seaWall(g) {
@@ -144,6 +169,7 @@ window.WW = window.WW || {};
     const r = prng(1944);
     D().VILLAGES.forEach(v => village(g, v, r));
     hedgerows(g, r);
+    scrub(g);
     seaWall(g);
     obstacles(g);
   }

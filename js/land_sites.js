@@ -25,6 +25,7 @@ window.WW = window.WW || {};
     return p;
   }
   function impact(nation, x, z, dmg, kind, cal) {
+    if (WW.emit) WW.emit('landImpact', { nation, x, z, dmg, kind, cal });   // visual hook (Normandy: beachhead_fx.js craters); no sim effect
     for (let i = 0; i < P.length; i++) if (P[i].impact && P[i].impact(nation, x, z, dmg, kind, cal)) return true;
     return false;
   }

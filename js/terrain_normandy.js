@@ -114,18 +114,20 @@ window.WW = window.WW || {};
   function cc(k, hex) { return C[k] || (C[k] = WW.pastel(hex, 0.08)); }
   function color(x, z, h, slope) {
     const i = ci(x), s = col.zs[i] - z;
-    if (s >= 0) return null;                                        // the sea bed: the default ramp (the flat is wet sand)
+    // a June morning under cloud on the Channel coast, not a coral island: dull grey sand, wet and darker where the tide
+    // left it, grey stones, olive and khaki grass, the sea bed a murky grey-green under the water
+    if (s >= 0) { const d = -h; return tmp.copy(cc('wet', 0x8f8870)).lerp(cc('bedM', 0x6d705e), WW.clamp(d / 1.5, 0, 1)).lerp(cc('bedD', 0x4f5a52), WW.clamp((d - 1.5) / 6, 0, 1)); }
     const u = -s, sand = col.sand[i], b0 = sand + 3 + col.shelf[i], b1 = b0 + col.bw[i], rk = col.rock[i];
-    if (u < sand) return tmp.copy(cc('sand', 0xf0dcae));
-    if (u < sand + 3) return tmp.copy(cc('shingle', 0xc9c3b3));
-    if (u < b0) return tmp.copy(cc('shelf', 0xa7b87a));
-    if (slope > 0.9 && rk > 0.3) return tmp.copy(cc('rock', 0xd6cbb0)).lerp(cc('rockD', 0xb9ad94), WW.clamp((slope - 0.9) / 2, 0, 1));
-    if (u < b1 + 2) return tmp.copy(cc('bluff', 0x8cb86c)).lerp(cc('scrub', 0x6f9a55), WW.clamp(slope / 1.5, 0, 1));
-    if (Math.abs(x - D.HOC.x) < 40 && Math.abs(z - D.HOC.z - 6) < 36) return tmp.copy(cc('hoc', 0xb3a77f));   // the cratered point
+    if (u < sand) return tmp.copy(cc('sandW', 0x9d9478)).lerp(cc('sand', 0xbdb08e), WW.clamp(u / Math.max(1, sand * 0.6), 0, 1));
+    if (u < sand + 3) return tmp.copy(cc('shingle', 0x8f8b82));
+    if (u < b0) return tmp.copy(cc('shelf', 0x7a7c58));
+    if (slope > 0.9 && rk > 0.3) return tmp.copy(cc('rock', 0xa39a84)).lerp(cc('rockD', 0x857d6c), WW.clamp((slope - 0.9) / 2, 0, 1));
+    if (u < b1 + 2) return tmp.copy(cc('bluff', 0x75794f)).lerp(cc('scrub', 0x5c6242), WW.clamp(slope / 1.5, 0, 1));
+    if (Math.abs(x - D.HOC.x) < 40 && Math.abs(z - D.HOC.z - 6) < 36) return tmp.copy(cc('hoc', 0x847a60));   // the cratered point
     // the plateau: a patchwork of fields (a fixed hash of a slightly rotated field grid)
     const fx = Math.floor((x * 0.98 + z * 0.2) / 46), fz = Math.floor((z * 0.98 - x * 0.2) / 34);
     const hsh = ((fx * 73856093) ^ (fz * 19349663)) >>> 0, k = hsh % 5;
-    return tmp.copy(cc('f' + k, [0x76a85a, 0x88b062, 0xb0b36a, 0x6c9f52, 0x93ad5e][k]));
+    return tmp.copy(cc('f' + k, [0x667545, 0x737d4c, 0x898459, 0x5f6c43, 0x7c8150][k]));
   }
 
   function build(k) {
