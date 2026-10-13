@@ -107,6 +107,9 @@ js/coast_defence.js     WW.coastDefence: strongpoint elements and WN units (Norm
 js/coast_defence_fire.js WW.coastFire: the strongpoints' direct fire (fireShell, landSites.gunTick) and the abstract MG cones / mortar zones
 js/landing_waves.js     WW.landingWaves: the Omaha / Pointe du Hoc landing schedule (sectors, times, craft, units)
 js/landing_craft.js     WW.landingCraft: LCVP / LCA / LCM / LCT / LCI / DD tanks: run-in, drift, obstacles and mines, beaching, ramps, unloading, hits
+js/infantry_routes.js   WW.infRoutes: beach zones and cover, wire gaps, climb points between the draws, assault points, the Pointe du Hoc ropes
+js/infantry.js          WW.infantry: squads ashore (wade, cross, shingle, shelf, climb, top, assault, hold; Rangers' ropes and the 155s; tanks)
+js/infantry_fire.js     WW.infFire: MG cone and mortar casualties, suppression, fire back, assaults capturing positions, tank fire, shells on men
 js/land_air.js          WW.landAir: the base air group (roster, CAP, strikes), the runway (takeoff, circuit, landing), level bombing
 js/air_flyingboats.js   WW.flyingBoats, WW.FlyingBoat: flying boats from off the map; the Catalina "Dumbo" rescue (endgame.js tasks)
 js/air_patrol.js        WW.patrol: long-range patrol flying boats (search, shadow from standoff, evade fighters, Mavis bombing); bad-report strike metrics
@@ -122,6 +125,7 @@ js/camera_follow.js     WW.camFollow: keys F / Tab / 8 / 9, the follow label, fi
 js/camera_score.js      WW.camScore: one director score (the drama ladder), re-evaluation of the running shot with hysteresis
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
 js/models_landing.js    WW.landingFx: the landing craft on screen (instanced hulls, ramps, tanks, DD screens, wrecks)
+js/models_infantry.js   WW.infantryFx: instanced soldiers (posture by state), the fallen, tanks ashore
 js/models_bunker.js     WW.bunkerModels: casemates, gun pits, Tobruks, MG nests, mortar pits, flak, the 155s (visual)
 js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, parked planes, captions, diary, camera hooks)
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)

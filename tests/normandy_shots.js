@@ -11,6 +11,8 @@
 //   ddrun      a destroyer closed on the beach firing along it (sim 300 s, after the H+60 close)
 //   run_in     the first wave running in to Dog Green (sim 50 s): LCVPs in line abreast, the DD tanks swimming
 //   ramps      Easy Red at H+40 (sim 160 s): craft beached with their ramps down, a wreck burning
+//   shingle    Easy Red at H+35 (sim 150 s): men at the shingle, the wounded and the dead on the sand, craft behind
+//   bluff      the men climbing the bluff between the draws (sim 300 s)
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
@@ -31,6 +33,8 @@ const SHOTS = [
   ['ddrun', () => { __sim.fastForward(300); const s = WW.world.ships.filter(q => q.type === 'destroyer' && q.alive).sort((a, b) => b.z - a.z)[0]; return [s.x - 25, 7, s.z - 25, s.x + 10, 2, s.z + 50]; }],
   ['run_in', () => { __sim.fastForward(20); const u = WW.landingCraft.live.find(q => q.sector === 'dogGreen' && q.state === 'run') || WW.landingCraft.live[0]; return [u.x - 18, 5, u.z - 16, u.x + 6, 0.5, u.z + 30]; }],
   ['ramps', () => { __sim.fastForward(110); const z = T.shoreZ(1760); return [1740, 6, z - 40, 1765, 0.5, z + 5]; }],
+  ['shingle', () => { __sim.fastForward(120); const q = WW.infantry.squads.find(q => q.alive && q.sector === 'easyRed' && q.kind !== 'tank') || WW.infantry.squads.find(q => q.alive); return [q.x - 14, 5, q.z - 18, q.x + 2, 0.5, q.z + 4]; }],
+  ['bluff', () => { __sim.fastForward(270); const q = WW.infantry.squads.find(q => q.alive && q.state === 'climb') || WW.infantry.squads.find(q => q.alive); return [q.x - 16, q.y + 6, q.z - 16, q.x, q.y, q.z + 3]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
 ];
