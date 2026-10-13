@@ -142,15 +142,16 @@ window.WW = window.WW || {};
   }
   function buoy(K) {
     const { box, cyl, sph } = K.prims(), p = K.part, P = [];
-    P.push(p(sph, C.float, [0.16, 0.12, 0.16], [0, 0.02, 0]));
-    P.push(p(box, C.metal, [0.012, 0.3, 0.012], [0, 0.2, 0]));
-    P.push(p(box, C.white, [0.09, 0.05, 0.004], [0.045, 0.32, 0]));
+    // at about 2x true size, like the obstacles (terrain_normandy_props.js): they must read from a craft's bow
+    P.push(p(sph, C.float, [0.34, 0.26, 0.34], [0, 0.04, 0]));
+    P.push(p(box, C.metal, [0.025, 0.7, 0.025], [0, 0.45, 0]));
+    P.push(p(box, C.white, [0.22, 0.13, 0.008], [0.11, 0.72, 0]));
     return K.merge(P);
   }
   function flag(K, col) {
     const { box } = K.prims(), p = K.part, P = [];
-    P.push(p(box, C.ropeD, [0.012, 0.42, 0.012], [0, 0.21, 0]));
-    P.push(p(box, col, [0.12, 0.07, 0.004], [0.06, 0.38, 0]));
+    P.push(p(box, C.ropeD, [0.025, 0.9, 0.025], [0, 0.45, 0]));
+    P.push(p(box, col, [0.26, 0.15, 0.008], [0.13, 0.8, 0]));
     return K.merge(P);
   }
   function ditch(K, filled) {   // 1 u along x (the draw's width, scaled), 1 u across z; the trench and its spoil seaward
