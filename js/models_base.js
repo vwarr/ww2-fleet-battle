@@ -12,7 +12,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var PI = Math.PI, M = null, TPL = null;
-  var C = { strip: 0xdcd5c4, strip2: 0xcfc7b3, paint: 0xf6f2e8, apron: 0xd2c9b0, hangar: 0xb8bec4, hangarDk: 0x8a9298, door: 0x7c8590,
+  var C = { strip: 0xc6c0b2, strip2: 0xbab4a5, paint: 0xf6f2e8, apron: 0xd2c9b0, hangar: 0xb8bec4, hangarDk: 0x8a9298, door: 0x7c8590,
     tower: 0xece6d8, cab: 0x86aac4, roof: 0xd0705a, tank: 0xe8e4da, band: 0xc85a48, berm: 0xb9b083, sand: 0xc9b688, gun: 0x5a5f62,
     conc: 0xbdb7a8, barr: 0xeadfc6, pole: 0xd8d8d0, usn: 0x3d5a8a, ijn: 0xf4efe4, red: 0xd2564c,
     taxi: 0xaaa595, stand: 0xb6b09f, revet: 0x8f9a5e, revetTop: 0x9fac6a, hold: 0xe8c55a, crate: 0x7c7a4e, bomb: 0x4a4e48, olive: 0x6b7350, ijnV: 0x7c7f60, tyre: 0x2e2e2c,
@@ -116,6 +116,13 @@ window.WW = window.WW || {};
     TPL.scorch = M._mat(0x5d5249);
     return TPL;
   }
+  // the ground pieces (strips, revetment berms, the slipway): one white toon material of their own, made once, toned down
+  // under a high sun (sky_time.js addLand); the shared M._mat(0xffffff) also paints the buildings, guns and ships
+  var GROUND = null;
+  function groundMat() {
+    if (!GROUND) { GROUND = M._mat(0xffffff).clone(); if (WW.skyTime) WW.skyTime.addLand(GROUND); }
+    return GROUND;
+  }
   // per map: the runways and the taxi network (site-local u / v -> a group rotated by the main runway heading), one
   // baked mesh. Layers: runway 0.08 thick > hold bars 0.075 > taxiways 0.06 > hardstands 0.05 (no z-fighting).
   function strips(S, L) {
@@ -129,7 +136,7 @@ window.WW = window.WW || {};
         M._bar(q, C.paint, 0.4, 0.1, r.w, e * (r.len / 2 - 5), 0, 0);
       });
     });
-    if (!L) return new THREE.Mesh(bake(g), M._mat(0xffffff));
+    if (!L) return new THREE.Mesh(bake(g), groundMat());
     var o = L.toW(0, 0), F = new THREE.Group(); F.position.set(o.x, 0, o.z); F.rotation.y = -S.h; g.add(F);
     var gy = function (u, v) { var w = L.toW(u, v); return Math.max(S.padH, -WW.terrain.depthAt(w.x, w.z)) - 0.04; };
     var seg = function (u0, v0, u1, v1, w, col, th) { // a straight strip from (u0, v0) to (u1, v1)
@@ -149,7 +156,7 @@ window.WW = window.WW || {};
       var M2 = M._bar(F, C.stand, sp.span + 1.2, 0.05, sp.len + 1.2, sp.u, gy(sp.u, sp.v), sp.v); M2.rotation.y = 0;
       seg(sp.u, sp.v, sp.u, sp.laneV, 3, C.taxi, 0.055);
     });
-    return new THREE.Mesh(bake(g), M._mat(0xffffff));
+    return new THREE.Mesh(bake(g), groundMat());
   }
   var KIND = { hangar: 'hangar', tower: 'tower', fuel: 'fuel', ammo: 'ammo', barracks: 'barracks', aa: 'pit', battery: 'emp', ramp: 'ramp' };
   function build(base) {
@@ -179,8 +186,10 @@ window.WW = window.WW || {};
     if (SP) {
       var ex = SP.ax - Math.cos(SP.h) * 4, ez = SP.az - Math.sin(SP.h) * 4, y0 = gy(ex, ez) + 0.05, y1 = -0.5, len = Math.hypot(SP.wx - ex, SP.wz - ez);
       var sg = new THREE.BoxGeometry(len + 1, 0.16, 4.2);
-      sg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(sg.attributes.position.count * 3).fill(1), 3));   // the toon material takes vertex colours (none: black)
-      var sl = new THREE.Mesh(sg, M._mat(C.apron));
+      var ac = M._mat(C.apron).color, ca = new Float32Array(sg.attributes.position.count * 3);
+      for (var i = 0; i < ca.length; i += 3) { ca[i] = ac.r; ca[i + 1] = ac.g; ca[i + 2] = ac.b; }
+      sg.setAttribute('color', new THREE.Float32BufferAttribute(ca, 3));   // the apron colour as vertex colours (the ground material is white)
+      var sl = new THREE.Mesh(sg, groundMat());
       sl.position.set((ex + SP.wx) / 2, (y0 + y1) / 2, (ez + SP.wz) / 2); sl.rotation.order = 'YZX';
       sl.rotation.set(0, -Math.atan2(SP.wz - ez, SP.wx - ex), Math.atan2(y1 - y0, len)); sl.receiveShadow = true; root.add(sl);
     }
@@ -188,7 +197,7 @@ window.WW = window.WW || {};
     var spots = base.layout ? base.layout.spots : [], rv = [];
     ['S', 'M', 'L'].forEach(function (k) {
       var list = spots.filter(function (sp) { return sp.cls === k; }); if (!list.length) return;
-      var im = new THREE.InstancedMesh(revetGeo(k, list[0]), mat, list.length); im.castShadow = true; im.receiveShadow = true;
+      var im = new THREE.InstancedMesh(revetGeo(k, list[0]), groundMat(), list.length); im.castShadow = true; im.receiveShadow = true;
       var m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), e4 = new THREE.Euler(), p4 = new THREE.Vector3(), s4 = new THREE.Vector3(1, 1, 1);
       list.forEach(function (sp, i) {
         p4.set(sp.x, gy(sp.x, sp.z), sp.z); q4.setFromEuler(e4.set(0, -sp.h, 0));      // local +x = the nose
@@ -196,7 +205,7 @@ window.WW = window.WW || {};
       });
       im.instanceMatrix.needsUpdate = true; root.add(im); rv.push(im);
     });
-    return { group: root, parts: parts, strips: st, revets: rv };
+    return { group: root, parts: parts, strips: st, revets: rv, mat: mat };   // mat: the buildings' (the camp shares it)
   }
   // a revetment for a plane class: low grassed earth walls behind the tail and beside the wingtips (clear of them by
   // 0.9), open at the nose; local +x = the nose, centred on the spot

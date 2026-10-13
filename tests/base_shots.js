@@ -19,8 +19,9 @@
 //   attack / after   bombs on the camp (fires, the fire truck and crews, stretchers) / the all-clear: work resumes
 //   night          an alarm after dark: the blackout and the searchlights
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/base_shots.js [seed=3] [owner=USN] [shot]
+// HOUR=12: a clear day pinned at that hour (the light at a given sun height); OUT=<dir>: write the shots there
 const { chromium } = require('playwright');
-const path = require('path'), OUT = path.join(__dirname, 'shots', 'base');
+const path = require('path'), OUT = process.env.OUT || path.join(__dirname, 'shots', 'base'), HOUR = process.env.HOUR ? +process.env.HOUR : null;
 require('fs').mkdirSync(OUT, { recursive: true });
 const SEED = +(process.argv[2] || 3), OWNER = process.argv[3] || 'USN', ONLY = process.argv[4] || null; // ONLY: one shot by name
 
@@ -133,11 +134,12 @@ const SHOTS = [
   await p.goto((process.env.BASE_URL || 'http://localhost:8776/') + 'index.html?v=' + Date.now());
   await p.waitForTimeout(2500);
   await p.addStyleTag({ content: '#hud, .panel, #film .caption { display: none !important; }' });
-  await p.evaluate(([seed, owner, camp]) => {
+  await p.evaluate(([seed, owner, camp, hour]) => {
     WW.terrain.generate(seed); WW.seedRandom(seed);
     window.__fresh = () => { // every shot from a fresh round on the same map (the same fleets, the same base)
       WW.seedRandom(seed * 7919 + 1); WW.time.scale = 1;
-      if (WW.dayNight) WW.dayNight.force = window.__night ? 'night' : null;
+      if (WW.dayNight) WW.dayNight.force = window.__night ? 'night' : hour !== null ? 'day' : null;
+      if (hour !== null && !window.__night) { WW.dayNight.pinHour = hour; WW.weather.force = 'clear'; } else if (WW.dayNight) WW.dayNight.pinHour = null;
       WW.game.baseChoice = owner; WW.game.composition = window.__comp || null; WW.game.mode = 'auto'; WW.game.startRound({ keepMap: true });
       window.B = WW.islandBase.base; window.__ev = {};
       __sim.fastForward(3); WW.time.scale = 0.0001; // the render loop barely moves the sim: each shot is a still
@@ -152,7 +154,7 @@ const SHOTS = [
     // sim time with the base's visual life stepped along (as frames would): the camera parked over the base
     window.__ff = secs => { for (let t = 0; t < secs - 1e-6; t += 0.1) { __sim.fastForward(0.1); if (window.B) { WW.camera.position.set(B.x, 40, B.z); WW.baseFx.update(0.1); } } };
     window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __ff(0.1); } return !!f(); };
-  }, [SEED, OWNER, CAMP]);
+  }, [SEED, OWNER, CAMP, HOUR]);
   const done = [];
   for (const [name, fn] of SHOTS) {
     if (ONLY && !ONLY.split(',').includes(name)) continue;

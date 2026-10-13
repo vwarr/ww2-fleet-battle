@@ -51,7 +51,7 @@ window.WW = window.WW || {};
     if (!e || !e.base) return; // no base (the Base button's 'none'): the old airfield goes
     built = WW.baseModels.build(e.base); built.base = e.base;
     if (WW.baseLifeModels) { // the camp (base.decor): huts, tents, the mess, pits, trenches, masts, ... and the lit windows
-      const life = WW.baseLifeModels.build(e.base, built.strips.material);
+      const life = WW.baseLifeModels.build(e.base, built.mat);
       for (const part of life.parts) { for (const o of [part.mesh, part.gun, part.head, part.flag]) if (o) built.group.add(o); built.parts.push(part); }
       if (life.glow) built.group.add(built.glow = life.glow);
     }
