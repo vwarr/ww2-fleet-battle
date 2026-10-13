@@ -88,25 +88,43 @@ window.WW = window.WW || {};
   // men climbed through), thinner on the steepest faces; marram tufts on the shelf behind the shingle ----
   function scrub(g) {
     const T = NT(), r = prng(6061944), m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
-    const kinds = [[0x46553a, []], [0x535739, []], [0x76683f, []], [0x83835c, []]];   // gorse, bramble, bracken, marram
+    const kinds = [[0x46553a, []], [0x8c8460, []], [0x76683f, []], [0x9a9168, []]];   // gorse, dry dune grass, bracken, marram   // gorse, bramble, bracken, marram
     for (let x = 380; x < 2500; x += 0.7) {                      // Pointe du Hoc to Colleville
       const st = T.station(x); if (st.drawK > 0.6) continue;
       const z0 = T.bluffFootZ(x), z1 = T.bluffTopZ(x) + 4;
-      for (let k = 0; k < 3; k++) {
-        if (r() < 0.25) continue;
-        const z = z0 + r() * (z1 - z0), c = r(), kind = c < 0.45 ? 0 : c < 0.75 ? 1 : 2;
+      for (let k = 0; k < 6; k++) {
+        const z = z0 + r() * (z1 - z0), dens = patch(x, z);                       // thickets and open grass, not an even scatter
+        if (r() > dens) continue;
+        const c = r(), kind = c < 0.18 ? 0 : c < 0.8 ? 1 : 2;
         kinds[kind][1].push(x + (r() - 0.5) * 0.7, z, kind === 2 ? 0.14 + r() * 0.12 : 0.1 + r() * 0.2);   // clumps 1-4 m across, ~1.5x
       }
       if (r() < 0.5) { const zs = T.shingleZ(x) + 2.5, z = zs + r() * Math.max(0.5, z0 - zs - 0.5); kinds[3][1].push(x, z, 0.07 + r() * 0.06); }
     }
-    for (const [col, pts] of kinds) {
-      const n = pts.length / 3, im = new THREE.InstancedMesh(shared.bush, new THREE.MeshLambertMaterial({ color: soft(col) }), n);
-      for (let i = 0; i < n; i++) { const x = pts[i * 3], z = pts[i * 3 + 1], k = pts[i * 3 + 2]; q.setFromAxisAngle(_Y, r() * 6.28); im.setMatrixAt(i, m.compose(p.set(x, gy(x, z) + 0.15 * k, z), q, s.set(k * (1.1 + r() * 0.6), k * 0.95, k))); }
+    // a tuft of dune grass: a few thin blades fanned out (the gorse and bracken stay clumps)
+    if (!shared.tuft) {
+      const parts = [];
+      for (let i = 0; i < 7; i++) { const a = i / 7 * 6.28, g = new THREE.ConeGeometry(0.09, 1.6, 3); g.translate(0, 0.8, 0); g.rotateZ(0.35 + (i % 3) * 0.12); g.rotateY(a); parts.push(g.toNonIndexed()); }
+      const n = parts.reduce((k, g) => k + g.attributes.position.count, 0), pos = new Float32Array(n * 3); let o = 0;
+      for (const g of parts) { pos.set(g.attributes.position.array, o); o += g.attributes.position.array.length; }
+      shared.tuft = new THREE.BufferGeometry(); shared.tuft.setAttribute('position', new THREE.BufferAttribute(pos, 3)); shared.tuft.computeVertexNormals();
+    }
+    kinds.forEach(([col, pts], ki) => {
+      const tuft = ki === 1 || ki === 3;
+      const n = pts.length / 3, im = new THREE.InstancedMesh(tuft ? shared.tuft : shared.bush, new THREE.MeshLambertMaterial({ color: soft(col), side: tuft ? THREE.DoubleSide : THREE.FrontSide }), n);
+      for (let i = 0; i < n; i++) { const x = pts[i * 3], z = pts[i * 3 + 1], k = pts[i * 3 + 2]; q.setFromAxisAngle(_Y, r() * 6.28); im.setMatrixAt(i, m.compose(p.set(x, gy(x, z) + (tuft ? 0 : 0.15 * k), z), q, tuft ? s.set(k * 1.3, k * 0.9, k * 1.3) : s.set(k * (1.1 + r() * 0.6), k * 0.95, k))); }
       im.castShadow = true; im.receiveShadow = true;
       g.add(im);
-    }
+    });
   }
   const _Y = new THREE.Vector3(0, 1, 0);
+  // smooth value noise (two octaves) 0-1, squared: most of the slope open, the scrub in patches ~10-30 u across
+  function patch(x, z) {
+    const h = (i, j) => { const n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return n - Math.floor(n); };
+    const v = (x, z) => { const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+      return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - w) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * w; };
+    const n = v(x / 18, z / 9) * 0.7 + v(x / 6, z / 4) * 0.3;
+    return Math.min(1, Math.max(0, (n - 0.35) * 1.9)) ** 1.5;
+  }
 
   // ---- the sea wall (Vierville to Les Moulins) ----
   function seaWall(g) {

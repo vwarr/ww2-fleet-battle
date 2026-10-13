@@ -32,6 +32,12 @@ window.WW = window.WW || {};
       drawK[i] = g > 0.02 ? g : 0; drawI[i] = g > 0.02 ? gi : -1;
     }
   }
+  // smooth value noise 0-1 (fixed hash: the same ground every seed)
+  function vnoise(x, z) {
+    const h = (i, j) => { const n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return n - Math.floor(n); };
+    const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+    return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - w) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * w;
+  }
   const ci = x => { const i = Math.round(x) - X0; return i < 0 ? 0 : i >= NC ? NC - 1 : i; };
 
   // fixed local PRNG (mulberry32): the obstacle belts and the Pointe du Hoc craters are the same every seed
@@ -115,14 +121,16 @@ window.WW = window.WW || {};
   function color(x, z, h, slope) {
     const i = ci(x), s = col.zs[i] - z;
     // a June morning under cloud on the Channel coast, not a coral island: dull grey sand, wet and darker where the tide
-    // left it, grey stones, olive and khaki grass, the sea bed a murky grey-green under the water
+    // left it, grey stones; the shelf and the bluffs sandy earth with thin dry dune grass in patches (bare on the steep and
+    // churned by the shelling), the sea bed a murky grey-green under the water
     if (s >= 0) { const d = -h; return tmp.copy(cc('wet', 0x8f8870)).lerp(cc('bedM', 0x6d705e), WW.clamp(d / 1.5, 0, 1)).lerp(cc('bedD', 0x4f5a52), WW.clamp((d - 1.5) / 6, 0, 1)); }
     const u = -s, sand = col.sand[i], b0 = sand + 3 + col.shelf[i], b1 = b0 + col.bw[i], rk = col.rock[i];
     if (u < sand) return tmp.copy(cc('sandW', 0x9d9478)).lerp(cc('sand', 0xbdb08e), WW.clamp(u / Math.max(1, sand * 0.6), 0, 1));
     if (u < sand + 3) return tmp.copy(cc('shingle', 0x8f8b82));
-    if (u < b0) return tmp.copy(cc('shelf', 0x7a7c58));
+    const pn = vnoise(x / 7, z / 5) * 0.65 + vnoise(x / 2.3, z / 1.7) * 0.35;      // patches: bare sand and dirt, thin dry grass
+    if (u < b0) return tmp.copy(cc('shelfS', 0x998e70)).lerp(cc('shelf', 0x77744f), WW.clamp((pn - 0.45) * 2.2, 0, 1));
     if (slope > 0.9 && rk > 0.3) return tmp.copy(cc('rock', 0xa39a84)).lerp(cc('rockD', 0x857d6c), WW.clamp((slope - 0.9) / 2, 0, 1));
-    if (u < b1 + 2) return tmp.copy(cc('bluff', 0x75794f)).lerp(cc('scrub', 0x5c6242), WW.clamp(slope / 1.5, 0, 1));
+    if (u < b1 + 2) return tmp.copy(cc('dirt', 0x8a7b5f)).lerp(cc('bluffG', 0x77744e), WW.clamp((pn - 0.4) * 2 - slope * 0.35, 0, 1)).lerp(cc('dirtD', 0x6e6250), WW.clamp((slope - 1) * 0.5, 0, 0.6));
     if (Math.abs(x - D.HOC.x) < 40 && Math.abs(z - D.HOC.z - 6) < 36) return tmp.copy(cc('hoc', 0x847a60));   // the cratered point
     // the plateau: a patchwork of fields (a fixed hash of a slightly rotated field grid)
     const fx = Math.floor((x * 0.98 + z * 0.2) / 46), fz = Math.floor((z * 0.98 - x * 0.2) / 34);
