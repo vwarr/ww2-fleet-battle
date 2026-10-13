@@ -90,6 +90,7 @@ js/air_squadrons.js     WW.squadrons: carrier names, VF/VB/VT squadrons per carr
 js/air_ops.js           WW.airOps: air boss (CAP relief, scrambles, strike hold, deck-aware launches, reserve strike), fighter director, jettison
 js/air_search.js        WW.search: search sector claims, carrier search flights, shadowing, break-away and routed return (scouts too)
 js/air_strafe.js        WW.strafe: fighters strafe PT boats, surfaced subs and damaged destroyers
+js/air_gunners.js       WW.gunners: bombers' guns (WW.PLANE_GUNS): rear gunners vs fighters, post-dive strafe, torpedo-run AA suppression
 js/air_cap.js           WW.cap: doctrine CAP (USN radar pickets in two height bands, IJN overhead loops), vectors, tally range
 js/air_cag.js           WW.cag: strike leader (handover, redirect, AA detour), VT/VB timing, close and top cover escorts
 js/island_base.js       WW.islandBase: the island air base (owner, facilities, craters, coastal guns, AA pits, neutralized, events)

@@ -55,7 +55,7 @@ const MODE = process.argv[2] || 'strafe', SEED = +(process.argv[3] || 3), COUNT 
           const d = Math.hypot(u.x - q.x, u.z - q.z); if (d > 36 || d < 14 || q.y > 22) continue;   // low, on the run proper
           return { q, f: u, desc: q.nation + ' ' + q.kind + ' strafing a ' + u.nation + ' ' + u.type + ' ' + d.toFixed(0) + ' ahead' };
         }
-        const gs = q.gun;
+        const gs = q.gnr;
         if (mode === 'gunner' && gs && gs.at && gs.at.alive && gs.fireT > 0.15 && d3(q, gs.at) > 8) return { q, f: gs.at, rear: true, desc: q.nation + ' ' + q.kind + ' rear gunner on a ' + gs.at.nation + ' fighter ' + d3(q, gs.at).toFixed(0) + ' behind' };
         if (mode === 'fwd' && gs && gs.fwdAt && gs.fwdT > 0.15) return { q, f: gs.fwdAt, desc: q.nation + ' ' + q.kind + ' forward guns on a ' + gs.fwdAt.type + ' ' + Math.hypot(gs.fwdAt.x - q.x, gs.fwdAt.z - q.z).toFixed(0) + ' ahead' };
       }
@@ -84,7 +84,7 @@ const MODE = process.argv[2] || 'strafe', SEED = +(process.argv[3] || 3), COUNT 
         const s = window.__s;
         window.__lookFn = () => {
           const q = s.q, f = s.f.alive ? s.f : q, h = q.heading, f0 = { x: f.x, y: f.y || 0.5, z: f.z };
-          if (view === 'behind' && s.rear) return { x: q.x + Math.cos(h) * 9 + Math.cos(h + 1.57) * 3, y: q.y + 3, z: q.z + Math.sin(h) * 9 + Math.sin(h + 1.57) * 3, tx: f0.x, ty: f0.y, tz: f0.z }; // over the bomber's nose, back at the fighter
+          if (view === 'behind' && s.rear) return { x: q.x + Math.cos(h) * 5 + Math.cos(h + 1.57) * 8, y: q.y + 4, z: q.z + Math.sin(h) * 5 + Math.sin(h + 1.57) * 8, tx: f0.x, ty: f0.y, tz: f0.z }; // over the bomber's nose, back at the fighter
           if (view === 'behind') return { x: q.x - Math.cos(h) * 24 + Math.cos(h + 1.57) * 5, y: q.y + 7, z: q.z - Math.sin(h) * 24 + Math.sin(h + 1.57) * 5, tx: f0.x, ty: f0.y, tz: f0.z };
           const m = { x: (q.x + f0.x) / 2, y: (q.y + f0.y) / 2, z: (q.z + f0.z) / 2 }, a = Math.atan2(f0.z - q.z, f0.x - q.x) + 1.57;
           return { x: m.x + Math.cos(a) * 34, y: m.y + 6, z: m.z + Math.sin(a) * 34, tx: m.x, ty: m.y, tz: m.z };

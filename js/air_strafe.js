@@ -64,7 +64,7 @@ window.WW = window.WW || {};
     if (home) pl.state = 'return';            // on its way home: carry on home
   }
   function pass(pl, dt) {
-    const u = pl.strafe, n = pl.nation, c = small(u) ? fresh(n, u, 5) : null;
+    const u = pl.strafe, n = pl.nation, big = pl.sf && pl.sf.big, c = (big ? u && u.alive && !u.sinking : small(u)) ? fresh(n, u, 5) : null;
     if (!c) { stop(pl); return false; }
     const S = pl.sf || (pl.sf = { ph: 'setup', t: 0, b: Math.atan2(pl.z - c.z, pl.x - c.x), fT: 0 });
     S.t += dt; S.fT -= dt;
@@ -80,15 +80,18 @@ window.WW = window.WW || {};
       const err = pl.fly(px, pz, RUN_ALT + Math.min(15, d * 0.2), dt, pl.pt.speed, 1.4);
       if (d < FIRE_R && Math.abs(err) < 0.25 && S.fT <= 0) {
         S.fT = BURST_T; ST.bursts++;
-        const hit = WW.rand() < P_HIT;
+        // a big ship (a dive bomber's pass on the ship it bombed, air_gunners.js): the guns only keep the light AA's
+        // heads down (combat_aa.js reads ship.aaSup), no hit roll
+        if (big) { if (WW.gunners) WW.gunners.suppress(u, S.gk || 1); if (!WW.simOnly) burstFx(pl, u, true); }
+        const hit = !big && WW.rand() < P_HIT;
         if (hit) {
-          const dmg = BURST * (pl.pt.gun || 1);
+          const dmg = BURST * (S.gk || pl.pt.gun || 1);
           ST.hits++; ST.dmg += dmg;
           u.takeDamage(dmg, u.x + (WW.rand() - 0.5) * 2, u.z + (WW.rand() - 0.5) * 2, 'strafe', 'mg');
         }
-        if (!WW.simOnly) burstFx(pl, u, hit);
+        if (!big && !WW.simOnly) burstFx(pl, u, hit);
       }
-      if (d < 10 || S.t > 12 || (d > 25 && Math.abs(err) > 1.6)) { S.ph = 'out'; S.t = 0; }
+      if (d < 10 || S.t > 12 || (d > 25 && Math.abs(err) > 1.6)) { S.ph = 'out'; S.t = 0; if (S.one) { stop(pl); return false; } }   // one pass only (a bomber's): then home
     } else { // break off past the boat, climb and extend, then set up from a fresh bearing
       pl.fly(pl.x + Math.cos(pl.heading) * 50, pl.z + Math.sin(pl.heading) * 50, SET_ALT + 6, dt, pl.pt.speed);
       if (S.t > EXT_T) { S.ph = 'setup'; S.t = 0; S.b = Math.atan2(pl.z - c.z, pl.x - c.x) + (pl.id & 1 ? 0.6 : -0.6); }
@@ -167,5 +170,5 @@ window.WW = window.WW || {};
       add(6.8 + (p.ace ? 1 : 0), 'chase', p, { dur: dur(8, 11), target: p.strafe });
   });
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; FXQ.length = 0; });
-  WW.strafe = { stats: ST, small };
+  WW.strafe = { stats: ST, small, pass, stop, fresh };
 })();
