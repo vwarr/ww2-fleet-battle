@@ -241,6 +241,22 @@ window.WW = window.WW || {};
     return (DISC[nat] = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
   }
 
+  // a torpedo (blunt nose, long parallel body, box tail) or a bomb (ogive nose, tapered tail), nose +x, centred on the
+  // origin: len overall, r the body radius; cruciform tail fins
+  function ordnance(p, torp, len, r, hex) {
+    var h = len / 2, prof = torp ? [[-1, 0.22], [-0.8, 0.89], [0.63, 1], [0.92, 0.67], [1, 0.11]] : [[-1, 0.3], [-0.52, 0.8], [0.45, 1], [0.88, 0.6], [1, 0.1]];
+    meshOf(p, tube(bodyRings(smooth(prof.map(function (q) { return [q[0] * h, q[1] * r, q[1] * r, 0]; }), 3), 10, 2, function () { return hex; }), true, true));
+    var fl = (torp ? 0.19 : 0.36) * h, fx = -h + fl / 2 + 0.01, fs = r * (torp ? 2.4 : 2);
+    M._bar(p, 0x4a4e54, fl, 0.01, fs, fx, -0.005, 0); M._bar(p, 0x4a4e54, fl, fs, 0.01, fx, -fs / 2, 0);
+  }
+  // sway braces at stations xs: from the payload's upper flanks (radius r) splayed up into the belly, up above its centre
+  function swayBraces(p, xs, r, up) {
+    xs.forEach(function (x) {
+      [-1, 1].forEach(function (k) { M._bar(p, 0x4a4e54, 0.03, up - r * 0.45, 0.012, x, r * 0.5, k * r * 0.8).rotation.x = k * 0.45; });
+      M._bar(p, 0x4a4e54, 0.05, up - r + 0.01, r * 0.5, x, r - 0.01, 0);   // the shackle on the top
+    });
+  }
+
   function template(kind, nat) {
     var key = kind + '|' + nat;
     if (TPL[key]) return TPL[key];
@@ -328,17 +344,24 @@ window.WW = window.WW || {};
         tpl.flaps.push({ wing: k, geo: bake(f2), pos: [wo.qc - 0.05, s0 * wo.semi * (wo.dih || 0) - c0.t * 0.3, k * s0 * wo.semi], tilt: -k * Math.atan(wo.dih || 0), a0: 0, a1: 1.45 });
       }
     });
-    // payload
-    var pl = new THREE.Group(), by = T.wing.y - 0.24;
+    // payload, tight under the belly at the airframe's scale (~0.245 units/m). No gear is drawn: parked, the fuselage
+    // centre sits 0.75 / 1.7 = 0.44 above the deck (aircraft.js DECK_Y), so the TBD's Mk 13 clears it by a hair, as it did.
+    var pl = new THREE.Group(), o = new THREE.Group(), belly = function (x) { var s = hwAt(x); return s[3] - s[2]; };
+    pl.add(o);
     if (T.torpedo) {
-      meshOf(pl, tube(bodyRings(smooth([[-0.62, 0.02, 0.02, 0], [-0.5, 0.08, 0.08, 0], [0.4, 0.09, 0.09, 0], [0.58, 0.06, 0.06, 0], [0.64, 0.01, 0.01, 0]], 3), 10, 2, function () { return J ? 0x7a7e80 : 0x8a9098; }), true, true));
-      M._bar(pl, 0x4a4e54, 0.12, 0.012, 0.22, -0.56, -0.006, 0); M._bar(pl, 0x4a4e54, 0.12, 0.22, 0.012, -0.56, -0.11, 0);
-      tpl.payload = { geo: bake(pl), pos: [0.05, by - 0.06, 0] };
+      // Mk 13 (4.1 m x 0.57 m) semi-recessed, slightly nose down on the TBD; Type 91 (5.3 m x 0.45 m) on the Kate's rack
+      var tl = J ? 1.3 : 1.0, tr = J ? 0.056 : 0.07, tx = 0.05;
+      ordnance(o, true, tl, tr, J ? 0x7a7e80 : 0x8a9098);
+      swayBraces(o, [-0.28 * tl, 0.22 * tl], tr, tr + 0.03);
+      if (!J) o.rotation.z = -0.03;
+      tpl.payload = { geo: bake(pl), pos: [tx, belly(tx) - tr * (J ? 1 : 0.7) + 0.006, 0] };
     } else if (T.bomb) {
-      meshOf(pl, tube(bodyRings(smooth([[-0.36, 0.03, 0.03, 0], [-0.2, 0.08, 0.08, 0], [0.12, 0.1, 0.1, 0], [0.26, 0.06, 0.06, 0], [0.3, 0.01, 0.01, 0]], 3), 10, 2, function () { return 0x585e66; }), true, true));
-      M._bar(pl, 0x4a4e54, 0.12, 0.012, 0.2, -0.32, -0.006, 0); M._bar(pl, 0x4a4e54, 0.12, 0.2, 0.012, -0.32, -0.1, 0);
-      M._bar(pl, 0x4a4e54, 0.04, 0.12, 0.03, 0.0, 0.06, 0);    // crutch / rack
-      tpl.payload = { geo: bake(pl), pos: [T.wing.qc - 0.15, by, 0] };
+      // on the displacement trapeze (yoke) under the belly: SBD 1,000 lb AN-M65 (1.75 m x 0.47 m), Val 250 kg (1.9 m x 0.3 m)
+      var bl = J ? 0.46 : 0.43, br = J ? 0.04 : 0.058, bx = T.wing.qc - 0.15, gap = 0.02;
+      ordnance(o, false, bl, br, 0x585e66);
+      [-1, 1].forEach(function (k) { M._bar(o, 0x4a4e54, 0.025, br + gap + 0.03, 0.012, 0.03, 0, k * (br + 0.007)).rotation.z = 0.35; }); // yoke arms, raked
+      M._bar(o, 0x4a4e54, 0.05, gap + 0.03, 0.03, 0.0, br - 0.005, 0);    // crutch
+      tpl.payload = { geo: bake(pl), pos: [bx, belly(bx) - br - gap, 0] };
     }
     // propeller: 3 blades with painted tips + translucent disc for the blurred state
     var pr = new THREE.Group(), R = T.prop || 0.5;
@@ -396,7 +419,7 @@ window.WW = window.WW || {};
       blades: blades, disc: disc, fx: t.fx, name: t.name };
   }
   if (WW.models) { WW.models.buildPlane = buildPlane; WW.models.PLANE_TYPES = TYPES;   // _planeKit: the lofting kit (models_flyingboats.js)
-    WW.models._planeKit = { tube: tube, bodyRings: bodyRings, smooth: smooth, surface: surface, chordAt: chordAt, bake: bake, mark: mark, meshOf: meshOf, twoTone: twoTone, discMat: discMat, init: function () { M = WW.models; soft = M._soft; } };
+    WW.models._planeKit = { ordnance: ordnance, swayBraces: swayBraces, tube: tube, bodyRings: bodyRings, smooth: smooth, surface: surface, chordAt: chordAt, bake: bake, mark: mark, meshOf: meshOf, twoTone: twoTone, discMat: discMat, init: function () { M = WW.models; soft = M._soft; } };
     WW.models._planeKit.use = WW.models._planeKit.init; }  // use: models_landplanes.js
   else console.error('models_planes.js must load after models.js');
 })();
