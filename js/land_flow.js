@@ -15,12 +15,15 @@
 //    if the main is shut (land_air.js landRunway). Coming home it flies the bearing toward the field that keeps
 //    clearest of the enemy fighters and heavy-AA reach it knows of (route, re-chosen every ROUTE_T s; as land_hold.js
 //    picks the fix), straight in once within DIRECT of the field.
+//  - Guests (field): a carrier plane whose deck is out or gone may divert to its side's base (air_flight.js orphan,
+//    through addField) while a runway is open and the base is not neutralized; it lands as a small plane with no
+//    parking slot, is towed clear off the runway and stays parked, out of the fight.
 window.WW = window.WW || {};
 (function () {
   'use strict';
   const MAYDAY_HP = 0.6, LOW_FUEL = 0.1, SLOT_WAIT = 12, SLOT_GAP = 5, NEAR_OM = 60, CROSS_R = 12;
   const ROUTE_T = 1, DIRECT = 90, LEG = 110, FTR_R = 75, THREAT_R = 400;
-  const ST = { slots: 0, maydaySlots: 0, maydays: 0, reroutes: 0, crossWaits: 0 };
+  const ST = { slots: 0, maydaySlots: 0, maydays: 0, reroutes: 0, crossWaits: 0, guests: 0 };
 
   const mayday = p => !!p.crippled || p.hp < p.maxHp * MAYDAY_HP;
   const lowFuel = p => p.fuel < p.pt.range / p.pt.speed * 6 * LOW_FUEL;
@@ -114,6 +117,18 @@ window.WW = window.WW || {};
     if (best && best.k && !(p.rtP && p.rtP.k)) ST.reroutes++;
     return (p.rtP = best || b);
   }
+  // a carrier plane looking for somewhere to land (air_flight.js orphan): its side's base, if it can take it
+  function field(p) {
+    const b = WW.islandBase && WW.islandBase.base;
+    if (!b || !b.ai || !b.alive || b.neutralized || b.nation !== p.nation || p.carrier === b || p.kind === 'scout' || p.kind === 'flyingboat') return null;
+    if (!WW.landGround.opsOpen(b) && !(b.runways[1] && !b.runways[1].closed)) return null;
+    return { base: b, d: WW.dist(p.x, p.z, b.x, b.z), accept: q => {
+      q.carrier = b; q.slot = null; q.variant = null; q.state = 'return'; q.deckPh = null; q.rwPh = null; q.cleared = false; q.apOut = false;
+      q.diverted = (q.diverted || 0) + 1; ST.guests++;
+      WW.emit('baseEvent', { kind: 'guest', base: b, nation: b.nation, x: q.x, z: q.z, plane: q });
+    } };
+  }
+  if (WW.airFlight && WW.airFlight.addField) WW.airFlight.addField(field);
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; });
 
   WW.landFlow = { mayday, lowFuel, need, update, clear, inbound, cross, colBusy, route, stats: ST };

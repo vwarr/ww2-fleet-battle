@@ -241,7 +241,7 @@ window.WW = window.WW || {};
       p.x += Math.cos(p.heading) * p.rollV * dt; p.z += Math.sin(p.heading) * p.rollV * dt;
       if (o.occ === p && o.mode !== 'launch' && Math.hypot(p.x - p.tdX, p.z - p.tdZ) > LAND_SEP) o.occ = null;   // (launching: once off the runway)
       if (p.rollV <= TAXI) {
-        if (p.emergency) { p.rwPh = 'towed'; p.rwT = 0; }
+        if (p.emergency || !p.slot) { p.rwPh = 'towed'; p.rwT = 0; }   // (no spot: a carrier plane taken in, land_flow.js guest)
         else { p.rwPh = 'taxiIn'; p.pi = 0; var q = b.layout.toL(p.x, p.z); p.path = WW.airfieldLayout.inPath(b.layout, p.slot.spot, q.u); p.gs = TAXI; }
       }
     } else if (p.rwPh === 'taxiIn') { // (launching: it crosses the taxiway when no departure is coming, land_flow.js)

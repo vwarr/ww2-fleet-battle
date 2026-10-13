@@ -8,7 +8,9 @@
 //   fuel); below it the tanks still hold the reserve RES_K x the full load (the 1942 return reserve). With fuel to
 //   spare and more than SKIRT_R to go, the course skirts the known AA and fighters (air_search.js homeHeading); short
 //   of fuel it flies straight at cruise (the longest range).
-// - Ditching: a plane whose deck is gone diverts to another carrier of the side; with none, or with the fuel for the
+// - Ditching: a plane whose deck is gone diverts to another carrier of the side, or to a friendly airfield that will take
+//   it (fields: hooks registered with addField, land_flow.js: the island base; a field when no deck is in reach, or it
+//   is much nearer: Hornet's fighters landed at Midway); with none, or with the fuel for the
 //   way home gone, or shot up below DITCH_HP and nearer a friendly destroyer than its deck, it flies to the nearest
 //   friendly ship (a destroyer first) and puts down on the water beside it (endgame.js makes it a rescue task).
 //   Before, a plane whose carrier sank ditched at once wherever it was.
@@ -81,9 +83,16 @@ window.WW = window.WW || {};
   function orphan(p) {
     if (p.ditchTo) return true;
     if (p.state === 'takeoff' || p.state === 'rollout' || p.deckPh === 'final' || p.deckPh === 'trap' || p.carrier.isBase) return false;
-    let best = null, bd = 1e9;
+    let best = null, bd = 1e9, fld = null;
     for (const s of WW.world.ships) if (deckOK(s, p.nation)) { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
-    if (best && bd / cruise(p) * CRUISE_BURN < Math.max(p.fuel, 0) + reserve(p)) {
+    const reach = d => d / cruise(p) * CRUISE_BURN < Math.max(p.fuel, 0) + reserve(p);
+    for (const f of fields) { const r = f(p); if (r && reach(r.d) && (!fld || r.d < fld.d)) fld = r; }
+    if (fld && (!best || !reach(bd) || fld.d < bd * FIELD_K)) {   // a friendly field takes it (its accept() hands it over)
+      fld.accept(p);
+      if (WW.emit) WW.emit('airOrder', { carrier: p.carrier, order: 'divert', plane: p, squadron: p.squadron || null });
+      return true;
+    }
+    if (best && reach(bd)) {
       p.carrier = best; p.diverted = (p.diverted || 0) + 1; ST.diverts++;
       if (p.state === 'landing') { p.state = 'return'; p.deckPh = null; }
       if (WW.emit) WW.emit('airOrder', { carrier: best, order: 'divert', plane: p, squadron: p.squadron || null });
@@ -173,7 +182,9 @@ window.WW = window.WW || {};
       return g0.apply(this, arguments);
     };
   }
+  const fields = [], FIELD_K = 0.7;   // a field over a deck only when it is this much nearer
+  function addField(fn) { fields.push(fn); }
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airFlight = { climbV, orphan, home, ditchShip, cruise, bingo, climbing, opp, stats: ST };
+  WW.airFlight = { climbV, orphan, addField, home, ditchShip, cruise, bingo, climbing, opp, stats: ST };
 })();
