@@ -79,7 +79,7 @@ window.WW = window.WW || {};
     if (w.dT < ARRIVE && !seen && (w.dT < SEARCH_R || now - w.unseen0 > UNSEEN_T) && now - (w.rtT || -99) > 3) {
       w.rtT = now;
       const from = { x: w.x, z: w.z, nation: w.nation }, R = reach(w);
-      const n = WW.airOps ? carrierNear(from, R) || WW.airOps.pickTarget(from, { near: R, flight: flight(w), noBase: !!(w.target && !w.target.isBase), big: !!w.carrier.isBase }) : null;
+      const n = WW.airOps ? carrierNear(from, R) || WW.airOps.pickTarget(from, { near: R, flight: flight(w), noBase: !!(w.target && !w.target.isBase), big: !!(w.carrier && w.carrier.isBase) }) : null;
       if (n && n !== t) {
         w.target = t = n; ST.redirects++;
         for (const p of w.members) if (p.alive && p.target) p.target = n;
@@ -142,7 +142,7 @@ window.WW = window.WW || {};
     if (w && w.target && w.target.alive && !w.target.submerged) return w.target;
     if (!WW.airOps) return WW.shipAI ? WW.shipAI.pickStrikeTarget(pl) : null;
     const home = WW.dist(pl.x, pl.z, pl.carrier.x, pl.carrier.z) / pl.pt.speed, R = WW.clamp((pl.fuel - home - 25) * pl.pt.speed * 0.5, RT_R, RT_MAX);
-    const big = !!(pl.carrier.isBase && pl.kind !== 'fighter');   // land bombers: the big ships only (air_ops.js opts.big)
+    const big = !!(pl.carrier && pl.carrier.isBase && pl.kind !== 'fighter');   // land bombers: the big ships only (air_ops.js opts.big)
     return WW.airOps.pickTarget(pl, { near: pl.ordnance ? R : 170, flight: w ? flight(w) : 1, noBase: !!(w && w.target && !w.target.isBase), big }) || WW.airOps.pickTarget(pl, big ? { big, reach: R } : undefined);
   }
 
