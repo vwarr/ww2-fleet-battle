@@ -15,8 +15,14 @@
 //    CAPSIZE or more and breaches still open she may roll over (CAPSIZE_P / damageControl a second: Yorktown
 //    listed 26 deg after two hits at Midway; Hiei, Kirishima and Musashi went over). A torpedo in a carrier may
 //    also rupture the avgas tanks and lines (FIRE_P.torpCv, an avgas fire: Lexington at Coral Sea).
-//  - Magazine: a heavy hit (torpedo, bomb, big shell) on a battleship or cruiser detonates a magazine with chance
-//    MAG_P (x MAG_TURRET within MAG_R of a main turret): the ship blows up and sinks ('magazine' event).
+//  - Magazine: a heavy hit (torpedo, bomb, big shell) may detonate a magazine (magP): the ship blows up and sinks
+//    ('magazine' event, { ship, x, z, kind, cause }: fx_critical.js draws it, the break-up hooks it). MAG by type: a
+//    destroyer's unarmoured magazines fore and aft go most easily (Laffey, Barton, Monssen at Guadalcanal; Akatsuki;
+//    Yudachi), a treaty cruiser's less (Mikuma's torpedoes, Kinugasa), an armoured battleship's rarely (Arizona's one
+//    bomb; Hood, the thin-decked battlecruiser: the MAG_CLS class factors), a carrier's bomb room and avgas tanks
+//    now and then (Liscome Bay, Taiho). x MAG_KIND (a torpedo bursts below the belt, by the magazines: Juneau,
+//    Barham) and x MAG_TURRET within MAG_R of a main turret (the shell rooms under the barbettes).
+//    Calibrated (tests/crit_probe.js) to about one magazine every 3-4 rounds of a real surface or air fight.
 // Ship.takeDamage calls hit(); main.js step calls update(). Public: ship.fireN, ship.avgas, ship.repaired.
 window.WW = window.WW || {};
 (function () {
@@ -26,7 +32,10 @@ window.WW = window.WW || {};
   var DECK_MIN = 2, DECK_P0 = 0.25, DECK_P1 = 0.08, DECK_BOOM = 25, DECK_BOOM_MAX = 400;
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
   var BREACH_DPS = 0.003, SHORE_P = 0.03, COUNTER = 0.75, CAPSIZE = 0.19, CAPSIZE_P = 0.05, CAPSIZE_ROLL = 1.7;
-  var MAG_P = 0.0004, MAG_TURRET = 3, MAG_R = 3;   // magazine: chance per heavy hit on a BB / CA, x3 within MAG_R of a turret
+  // magazine: chance per heavy hit by type, x MAG_KIND, x MAG_CLS (class key), x MAG_TURRET within MAG_R of a main turret
+  var MAG = { destroyer: 0.012, cruiser: 0.006, battleship: 0.0015, carrier: 0.003 }, MAG_TURRET = 2.5, MAG_R = 3;
+  var MAG_KIND = { torpedo: 1.5, bomb: 1, shell: 1 };
+  var MAG_CLS = { kongo: 2, atlanta: 1.6 };   // Kongo: a rebuilt battlecruiser's thin deck (Hood); Atlanta: a light AA cruiser (Juneau)
   var NATIONS = ['USN', 'IJN'], tick = 0, stats = null;
   function per() { return { USN: 0, IJN: 0 }; }
   function reset() {
@@ -71,25 +80,32 @@ window.WW = window.WW || {};
     if (!WW.simOnly && WW.fx) for (var k = 0; k < 3; k++) { var w = cv.toWorld((Math.random() - 0.5) * cv.stats.length * 0.7, (Math.random() - 0.5) * 2); WW.fx.explosion(w[0], 2.5, w[1], 1.6); }
   }
 
-  // ---- magazine (Hood, Arizona): a heavy hit on a battleship or cruiser, rarely, more often beside a turret ----
-  function magazine(ship, kind, cal, x, z) {
-    if ((ship.type !== 'battleship' && ship.type !== 'cruiser') || !(kind === 'torpedo' || kind === 'bomb' || cal === 'big')) return false;
-    var p = MAG_P, ts = ship.ai && ship.ai.turrets;
-    if (ts && x !== undefined && isFinite(x)) {
+  // ---- magazine: the chance a heavy hit sets one off (pure: the probe sums it), then the roll ----
+  function magP(ship, kind, cal, x, z) {
+    var p = MAG[ship.type];
+    if (!p || !(kind === 'torpedo' || kind === 'bomb' || cal === 'big')) return 0;
+    p *= MAG_KIND[kind] || 1;
+    if (ship.cls && MAG_CLS[ship.cls.key]) p *= MAG_CLS[ship.cls.key];
+    var ts = ship.ai && ship.ai.turrets, g = ship.stats.guns && ship.stats.guns[0];
+    if (ts && g && x !== undefined && isFinite(x)) {
       var c = Math.cos(ship.heading), sn = Math.sin(ship.heading), ex = x - ship.x, ez = z - ship.z, lx = ex * c + ez * sn, lz = -ex * sn + ez * c;
       for (var i = 0; i < ts.length; i++) {
-        var o = ts[i].t && ts[i].t.obj; if (!o || ts[i].cal !== ship.stats.guns[0].cal) continue;
+        var o = ts[i].t && ts[i].t.obj; if (!o || ts[i].cal !== g.cal) continue;
         var dx = o.position.x - lx, dz = o.position.z - lz; if (dx * dx + dz * dz < MAG_R * MAG_R) { p *= MAG_TURRET; break; }
       }
     }
-    if (WW.rand() >= p) return false;
+    return p;
+  }
+  function magazine(ship, kind, cal, x, z) {
+    var p = magP(ship, kind, cal, x, z);
+    if (!p || WW.rand() >= p) return false;
     stats.magazine[ship.nation]++;
-    WW.emit('magazine', { ship: ship, x: ship.x, z: ship.z });
+    var hx = x !== undefined && isFinite(x) ? x : ship.x, hz = z !== undefined && isFinite(z) ? z : ship.z;
+    WW.emit('magazine', { ship: ship, x: ship.x, z: ship.z, hx: hx, hz: hz, kind: kind, cal: cal });   // fx_critical.js: the fireball, the column
     if (!WW.simOnly && WW.fx) {
       var L = ship.stats.length;
       for (var k = 0; k < 5; k++) { var w = ship.toWorld((Math.random() - 0.5) * L * 0.6, 0); WW.fx.explosion(w[0], 2 + Math.random() * 3, w[1], 3 + Math.random() * 1.5); }
       for (var j = 0; j < 8; j++) WW.fx.smoke(ship.x + (Math.random() - 0.5) * 6, 4 + j * 2.5, ship.z + (Math.random() - 0.5) * 6, true, 3 + j * 0.4);
-      WW.fx.sparks(ship.x, 4, ship.z); WW.fx.splash(ship.x, ship.z, 4);
     }
     ship.takeDamage(ship.hp + 1, x, z, 'magazine');
     return true;
@@ -165,7 +181,7 @@ window.WW = window.WW || {};
 
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
-  WW.shipFires = { hit: hit, update: update, deckLoad: deckLoad, stats: null };
+  WW.shipFires = { hit: hit, update: update, deckLoad: deckLoad, magP: magP, MAG: MAG, stats: null };
   // the air boss can ask whether a carrier's deck is loaded (planes spotted, waiting to launch, or rearming)
   if (WW.airDeck) WW.airDeck.loaded = function (cv) { return deckLoad(cv) >= DECK_MIN; };
   reset();
