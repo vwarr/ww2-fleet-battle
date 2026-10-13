@@ -197,7 +197,7 @@ window.WW = window.WW || {};
       }
     }
     a.launchT -= dt;
-    if (a.queue.length && a.launchT <= 0) {
+    if (a.queue.length && a.launchT <= 0 && !ship.deckOut) {
       const q = a.queue.shift();
       let tgt = q.target;
       if (tgt && (!tgt.alive || tgt.submerged)) tgt = pickStrikeTarget(ship);
