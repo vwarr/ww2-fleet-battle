@@ -103,7 +103,8 @@ js/air_cap.js           WW.cap: doctrine CAP (USN radar pickets in two height ba
 js/air_cag.js           WW.cag: strike leader (handover, redirect, AA detour), VT/VB timing, close and top cover escorts
 js/island_base.js       WW.islandBase: the island air base (owner, facilities, craters, coastal guns, AA pits, neutralized, events)
 js/base_ai.js           WW.baseAI: the fight for the island in the AI (objective, bombardment aim, strike value, defence)
-js/land_hold.js         WW.landHold: where the base's land bombers hold to land (a fix clear of enemy ships / planes, stacked high, raid hold)
+js/land_hold.js         WW.landHold: where the base's planes hold to land (a fix per class clear of enemy ships / planes: bombers high and far, small planes nearer and lower; raid hold)
+js/land_flow.js         WW.landFlow: the field's landing traffic (queue by need: emergencies, low fuel; a landing slot between take-offs; a crippled plane's route home)
 js/land_air.js          WW.landAir: the base air group (roster, CAP, strikes), the runway (takeoff, circuit, landing), level bombing
 js/base_alert.js        WW.baseAlert: the island's alarm, scramble and strike on its own flying boat's sighting report
 js/air_flyingboats.js   WW.flyingBoats, WW.FlyingBoat: flying boats from off the map; the Catalina "Dumbo" rescue (endgame.js tasks)

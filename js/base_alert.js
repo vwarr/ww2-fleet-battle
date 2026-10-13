@@ -8,7 +8,8 @@
 //    field (camera.js 'baseAlarm');
 //  - base.alertT: until then the field treats the sky as a raid (land_air.js update): its fighters scramble to the
 //    raid CAP (a fast launch, baseEvent 'scramble'); ALERT_T s on a fleet report, RAID_T on a raid report;
-//  - the strike: a reported carrier, battleship or cruiser within STRIKE_R of the field cuts the base's strike timer
+//  - the strike: a reported cruiser within STRIKE_R of the field, a carrier or battleship within the bombers' combat
+//    radius (land_air.js longR), cuts the base's strike timer
 //    to GO s (land_air.js picks the target, carriers first, and launches what is ready); a later report with carriers
 //    in it does so again.
 // Stats: WW.baseAlert.stats (per round).
@@ -26,7 +27,8 @@ window.WW = window.WW || {};
   function inReach(b) {
     for (const c of WW.intel.enemyShips(b.nation, { fresh: FRESH })) {
       const t = WW.intel.typeOf(c);
-      if (c.unit && c.unit.alive && !c.unit.isBase && RANK[t] >= 2 && WW.dist(b.x, b.z, c.x, c.z) < STRIKE_R) return true;
+      const R = RANK[t] >= 3 && WW.landAir.longR ? WW.landAir.longR(b) : STRIKE_R;   // carriers / battleships: the bombers' combat radius (land_air.js)
+      if (c.unit && c.unit.alive && !c.unit.isBase && RANK[t] >= 2 && WW.dist(b.x, b.z, c.x, c.z) < R) return true;
     }
     return false;
   }
