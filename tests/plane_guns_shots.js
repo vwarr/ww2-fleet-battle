@@ -68,7 +68,7 @@ const MODE = process.argv[2] || 'strafe', SEED = +(process.argv[3] || 3), COUNT 
       const sp = document.querySelector('.panel.setup'); if (sp) sp.style.display = 'none'; const cp = document.querySelector('.caption'); if (cp) cp.style.visibility = 'hidden'; });
     const file = `${MODE}_${SEED}_${tag}.png`;
     await p.screenshot({ path: path.join(OUT, file), timeout: 180000 });
-    const live = await p.evaluate(() => { const q = window.__s.q, c = WW.camera.position; return WW.planeTracers.T.seg.filter(s => s.life > 0).length + ' scale ' + WW.time.scale + ' plane ' + [q.x, q.y, q.z].map(v => v.toFixed(0)) + ' alive ' + q.alive + ' cam ' + [c.x, c.y, c.z].map(v => v.toFixed(0)); });
+    const live = await p.evaluate(() => { return WW.planeTracers.T.seg.filter(s => s.life > 0).length; });
     console.log('  shot ' + path.join(OUT, file) + '  (tracer rounds in the air: ' + live + ')');
   };
   for (let k = 0; k < COUNT; k++) {
