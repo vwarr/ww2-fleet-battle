@@ -1,9 +1,11 @@
 // air_alert.js — WW.airAlert: the ready deck alert. A carrier keeps a few armed bombers back from its strikes,
 // spotted and ready (doctrine air.alert: USN 4, IJN 2; the USN carriers kept a deck-alert section of SBDs, the IJN
-// sent every bomber it had with the deck load). When enemy ships harass one of ours near the fleet (PT boats or a
+// sent every bomber it had with the deck load). When enemy ships harass one of ours near the fleet (a PT boat closing on any of them, a
 // destroyer chasing a destroyer or a cripple, a cruiser closing on a cripple) or a submarine is seen on the surface
-// near the fleet, a small flight (2 to 6, by the target: PT / sub 2, destroyer 4, cruiser 6) launches against it at
-// once: dive bombers (torpedo planes only against a destroyer or a cruiser when no dive bomber is aboard). It is self
+// near the fleet, a small flight (2 to 6, by the target: sub 2, destroyer 4, cruiser 6) launches against it at
+// once: dive bombers (torpedo planes only against a destroyer or a cruiser when no dive bomber is aboard). A PT boat
+// gets no bombs (a 1 m draught under a fast, twisting boat: dive-bombing one was rare and wasteful, a torpedo runs under
+// it): the CAP is sent down to strafe it (air_strafe.js send), the way the Wildcats and Zeros dealt with the boats. It is self
 // defence, so the strike doctrine's "no deck load on small craft" rule does not apply; it flies only by day (no
 // exception: the 1942 carriers did not launch in the dark), not while the carrier itself is under air attack, at most
 // one flight per carrier every COOL s, and only on what the side has detected (WW.intel, fresh). The flight has no
@@ -13,7 +15,7 @@
 window.WW = window.WW || {};
 (function () {
   const ALERT = { USN: 4, IJN: 2 };       // armed bombers kept back from the strikes (doctrine air.alert overrides)
-  const SIZE = { pt: 2, submarine: 2, destroyer: 4, cruiser: 6 };
+  const SIZE = { pt: 2, submarine: 2, destroyer: 4, cruiser: 6 };   // pt: CAP fighters to strafe it, not bombers
   const REACH = 650;                      // the harasser within this of the carrier (a short sortie: ~25 s out at cruise, a fifth of a bomber's fuel)
   const HAR_R = 130, SUB_R = 220, COOL = 40, FRESH = 8, CHECK = 1;
   const ST = { USN: {}, IJN: {} };
@@ -42,11 +44,11 @@ window.WW = window.WW || {};
         if (u.type === 'submarine') { if (d < SUB_R && d < vd) { vd = d; vic = s; why = 'sub'; } continue; }
         if (d > HAR_R || d >= vd) continue;
         const toward = Math.abs(WW.angleDiff(c.heading || 0, Math.atan2(s.z - c.z, s.x - c.x))) < 1.0;
-        const weak = crip(s) || (u.type !== 'cruiser' && (s.type === 'pt' || s.type === 'destroyer'));
+        const weak = crip(s) || u.type === 'pt' || (u.type !== 'cruiser' && (s.type === 'pt' || s.type === 'destroyer'));   // a PT boat closing on any ship: a torpedo threat, the CAP goes down on it
         if (toward && weak) { vd = d; vic = s; why = crip(s) ? 'cripple' : 'chase'; }
       }
       if (!vic) continue;
-      let on = 0; for (const p of WW.world.planes) if (p.alive && p.nation === cv.nation && p.ordnance && p.target === u) on++;
+      let on = 0; for (const p of WW.world.planes) if (p.alive && p.nation === cv.nation && (u.type === 'pt' ? p.strafe === u : p.ordnance && p.target === u)) on++;
       if (on >= SIZE[u.type]) continue;   // already being dealt with (a strike, or another carrier's alert)
       const s = (crip(vic) ? 60 : 0) + (u.type === 'cruiser' ? 40 : u.type === 'destroyer' ? 30 : 10) - vd * 0.3 - dcv * 0.1;
       if (s > bs) { bs = s; best = { u, why, victim: vic }; }
@@ -61,6 +63,11 @@ window.WW = window.WW || {};
     if (a.queue.some(q => q.alert)) return;
     const h = harasser(cv); if (!h) return;
     const S = ST[cv.nation]; S.triggers++;
+    if (h.u.type === 'pt') { // the CAP strafes it
+      const k = WW.strafe && WW.strafe.send ? WW.strafe.send(cv, h.u) : 0;
+      if (k) { a.alertT = WW.time.now; S.strafes = (S.strafes || 0) + 1; S.why[h.why] = (S.why[h.why] || 0) + 1; }
+      return;
+    }
     const want = SIZE[h.u.type], hg = cv.hangar;
     let nd = Math.min(want, hg.dive || 0), nt = 0;
     if (nd < 2 && (h.u.type === 'destroyer' || h.u.type === 'cruiser')) nt = Math.min(want - nd, hg.torpedo || 0);

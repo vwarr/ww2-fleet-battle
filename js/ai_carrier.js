@@ -16,7 +16,7 @@ window.WW = window.WW || {};
     const now = WW.time.now;
     for (const c of WW.intel.enemyShips(ship.nation, { fresh: STRIKE_AGE })) {
       const o = c.unit;
-      if (!o || !o.alive || o.submerged) continue;
+      if (!o || !o.alive || o.submerged || WW.intel.typeOf(c) === 'pt') continue;   // no bombs or torpedoes for a PT boat (air_ops.js pickTarget)
       const s = WW.dist(ship.x, ship.z, c.x, c.z) - (WW.shipDeck && WW.shipDeck.knownWrecked(ship.nation, o) ? STRIKE_PRIO.battleship : STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;   // a wrecked deck: a heavy hull to finish, no air threat
       if (s < bs) { bs = s; best = o; }
     }

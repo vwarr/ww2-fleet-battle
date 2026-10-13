@@ -6,6 +6,13 @@
 //   Push-over -> release takes ~2.2-3 s, long enough to film.
 // - Torpedo bombers (P8): descend on the approach, split for an anvil (both bows) at SET_R, turn in together, run in
 //   low and slow (runK x cruise) and drop 80-100 u out, then pop up over the ship.
+// - Under fire (P8b): the anvil was doctrine and veteran IJN units flew it (Lexington at Coral Sea, Hornet at Santa
+//   Cruz), but under heavy CAP and flak real attacks came apart: crews cut the set-up and went straight in from their
+//   present bearing, often releasing early, wide or at a poor angle (VT-8 and VT-6 at Midway; the Japanese attacks on
+//   radar-directed CAP later). The pilot's reading of the target area (air_intercept.js pressure: fighters he can see,
+//   the screen's flak, a fighter on him) shortens the set-up: light opposition, the full anvil; moderate, one bow and
+//   a set-up cut short; heavy, straight in from where he is, the squadron with him, released further out and wider.
+//   A plane that lost its target, or has been setting up too long, goes straight in at whatever it has.
 // - Doctrine (fleetGroups air.press0 / pressT x the admiral's aggression): how hard the attack presses: a pressing
 //   pilot releases lower, drops closer and follows the plane ahead sooner. IJN veterans press from the start; the USN
 //   is cautious early and presses later in the battle.
@@ -24,8 +31,18 @@ window.WW = window.WW || {};
   const AV = [0, 1, -1, 2, -2], AV_DA = 0.2;
   const WHEEL_W = 6;                           // the wheel sits this far outside the horizontal reach of the dive
   const SET_R = 140, DROP_FAR = 100, DROP_NEAR = 82, TORP_RANGE = 140;   // anvil radius, drop range by press, torpedo run
+  // Pressure (0..1, air_intercept.js) bands: below PR_LIGHT the full anvil; above PR_ONE one bow only (no split) and a
+  // set-up cut to SETUP_MAX..SETUP_MIN s (SETUP_CAP s unopposed: no orbiting); at PR_HEAVY (+ PR_VET x press: veterans hold their set-up under more fire)
+  // straight in. A hasty drop is PR_LONG x pressure further out (up to ~1,250 m), much wider (PR_ERR x pressure as the
+  // harried error, air_intercept.js HARRY.torp: about +-0.2 rad typical) and taken off a worse bearing (OFF_HASTY):
+  // calibrated so straight-in drops hit ~10-15% (the Midway TBDs none; the IJN's rushed drops at Santa Cruz did poorly
+  // against a turning Enterprise) while a good anvil drop keeps ~30-40%. A long drop is also combed (ships_ai.js COMB_R).
+  const PR_LIGHT = 0.2, PR_ONE = 0.35, PR_HEAVY = 0.5, PR_VET = 0.15, PR_LONG = 30, PR_ERR = 3, SETUP_MAX = 40, SETUP_MIN = 10, SETUP_CAP = 60, LOST_T = 30;
+  const OFF = [0.35, 2.8], OFF_HASTY = [0, 3.2], EXT_R = 50, Y_HASTY = 4.5;
+  // OFF: the bearing off the target's bow a drop is taken from (a hasty one from anywhere); EXT_R: the run-in a hasty
+  // attack needs past its drop range; Y_HASTY: a hurried drop from ~60 m (3: ~30 m, air_strikes.js altitude rule)
   let grps = new Map();
-  const ST = { dives: 0, runs: 0, flips: 0, rebal: 0, pushT: [] };
+  const ST = { dives: 0, runs: 0, flips: 0, rebal: 0, pushT: [], straight: 0, cut: 0, single: 0, lost: 0 };
 
   // ---------- doctrine: how hard this plane presses its attack (0 cautious .. 1 veterans) ----------
   function press(pl) {
@@ -183,6 +200,24 @@ window.WW = window.WW || {};
     }
     return null;
   }
+  // the bow of t the plane is on now (-1 / 1)
+  function bowOf(pl, t) { return WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)) < 0 ? -1 : 1; }
+  const prOf = (pl, t) => (WW.intercept && WW.intercept.pressure ? WW.intercept.pressure(pl, t) : 0);
+  function heavyAt(pl) { return PR_HEAVY + PR_VET * press(pl); }
+  // Straight in from the present bearing: on to the run now, the drop further out (pl.hasty: the pressure it went in under)
+  // Straight in, the run starts from HOT_R out, low and steady the whole way (VT-8 began its run some miles out): the
+  // strike's torpedo planes leave the formation that far out when it is hot (air_strikes.js formation, vtBreak)
+  const HOT_R = SET_R + 130;
+  S.vtBreak = (pl, w) => (w.target && w.dT < HOT_R + 60 && prOf(pl, w.target) >= heavyAt(pl) ? HOT_R + 10 - SET_R : 40);
+  const hastyR = (pl, P) => WW.lerp(DROP_FAR, DROP_NEAR, press(pl)) + PR_LONG * P;
+  // room to get down and lined up before the drop point (too close, just past the ship after a pass: open out first)
+  const room = (pl, dh, P) => dh > hastyR(pl, P) + EXT_R;
+  const facing = (pl, t, k) => Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < k;
+  function goIn(pl, t, P, g, now) {
+    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp;
+    pl.dropR = hastyR(pl, P); ST.runs++;
+    g.goT = now; g.hastyT = now;   // the squadron turns in with it
+  }
   function torp(pl, dt) {
     const t = pl.validTarget();
     pl.phaseT -= dt;
@@ -190,18 +225,37 @@ window.WW = window.WW || {};
     if (!t) { pl.state = 'return'; pl.phase = null; pl.sk = null; return; }
     if (S.formation(pl, dt)) return;
     const dh = pl.hd(t), now = WW.time.now, g = grp(t);
+    // the target changed under it (sunk, lost, redirected) in the attack: no new set-up, straight in at the new one
+    if (pl.atkT && pl.atkT !== t && (pl.phase === 'run' || pl.sk === 'anvil')) { pl.phase = null; pl.sk = null; pl.lostT = now; ST.lost++; }
+    pl.atkT = t;
     if (pl.phase === 'run') { run(pl, t, dh, dt); return; }
     if (pl.sk !== 'anvil') { // approach: let down from the cruise height, then split for the anvil
       pl.state = 'transit';
-      pl.fly(t.x, t.z, dh > SET_R + 80 ? (pl.pt.alt || 30) : 14, dt, pl.pt.speed);
-      if (dh < SET_R + 30) { // alternate the bows, and even them out if one side lost planes
-        // the bow with fewer of this strike's planes on it (then fewer of anyone's), else alternate
+      const P = dh < SET_R + 120 ? prOf(pl, t) : 0, hot = P >= heavyAt(pl) || now - (g.hastyT || -99) < 10 || now - (pl.lostT || -99) < LOST_T;
+      if (hot && dh < HOT_R && !room(pl, dh, P)) pl.ext = true;   // too close (just past the ship): open out low, then in
+      if (pl.ext && dh < hastyR(pl, P) + EXT_R + 30) { pl.fly(2 * pl.x - t.x, 2 * pl.z - t.z, 8, dt, pl.pt.speed); return; }
+      pl.ext = false;
+      pl.fly(t.x, t.z, dh > SET_R + 80 && P < PR_LIGHT ? (pl.pt.alt || 30) : hot ? 6 : 14, dt, pl.pt.speed);   // under fire: down low early
+      if (hot && dh < HOT_R && facing(pl, t, 0.8)) { pl.prs = P; pl.prsMax = P; goIn(pl, t, P, g, now); ST.straight++; return; }
+      if (dh < SET_R + 30) {
+        pl.prs = P; pl.prsMax = P;
+        if (hot) return;   // turning in
+        // the bow with fewer of this strike's planes on it (then fewer of anyone's), else alternate; under fire, the
+        // bow it is on (no split)
         const wa = bowLoad(t, -1, pl.wave), wb = bowLoad(t, 1, pl.wave), a = sideCount(t, -1), b = sideCount(t, 1);
-        pl.side = wa !== wb ? (wa < wb ? -1 : 1) : a !== b ? (a < b ? -1 : 1) : g.side++ % 2 ? 1 : -1;
-        pl.av = freeAV(pl, t); pl.anT = now; pl.avOff = 0;
+        if (P >= PR_ONE) { pl.side = bowOf(pl, t); ST.single++; }
+        else pl.side = wa !== wb ? (wa < wb ? -1 : 1) : a !== b ? (a < b ? -1 : 1) : g.side++ % 2 ? 1 : -1;
+        pl.av = freeAV(pl, t); pl.anT = now; pl.avOff = 0; pl.prsT = now;
         pl.sk = 'anvil';
       }
       return;
+    }
+    // Under fire in the set-up: read the area again every second; it gets hot, or the set-up has run long for what
+    // it is facing, or a squadron mate went straight in: turn in now from here.
+    if (now - (pl.prsT || 0) >= 1) {
+      pl.prsT = now; pl.prs = prOf(pl, t); pl.prsMax = Math.max(pl.prsMax || 0, pl.prs);
+      const lim = pl.prsMax < PR_LIGHT ? SETUP_CAP : WW.lerp(SETUP_MAX, SETUP_MIN, WW.clamp((pl.prsMax - PR_LIGHT) / (heavyAt(pl) - PR_LIGHT), 0, 1));
+      if ((pl.prs >= heavyAt(pl) || now - (g.hastyT || -99) < 10 || now - pl.anT > lim) && room(pl, pl.hd(t), pl.prs) && facing(pl, t, 1.2)) { goIn(pl, t, pl.prs, g, now); ST.cut++; return; }
     }
     // Anvil setup: work round the target at SET_R to a point ~54 deg off its bow on our side, then hold low.
     pl.state = 'attack';
@@ -217,7 +271,7 @@ window.WW = window.WW || {};
       const o = openSide(t, px, pz, pl.side, (pl.av || 0) * AV_DA);
       if (o !== null) pl.avOff = o; else { pl.side = -pl.side; pl.av = freeAV(pl, t); pl.avOff = 0; pl.flipT = now + 6; pl.flips = (pl.flips || 0) + 1; ST.flips++; }
     }
-    if (!pl.ready && now > (pl.balT || 0)) { // a bow lost planes (shot down, redirected): the strike evens the anvil out
+    if (!pl.ready && now > (pl.balT || 0) && (pl.prsMax || 0) < PR_ONE) { // a bow lost planes (shot down, redirected): the strike evens the anvil out (not under fire: one bow)
       pl.balT = now + 1;
       if (bowLoad(t, pl.side, pl.wave) - bowLoad(t, -pl.side, pl.wave) >= 2) { pl.side = -pl.side; pl.av = freeAV(pl, t); pl.avOff = 0; ST.rebal++; }
     }
@@ -227,7 +281,7 @@ window.WW = window.WW || {};
     else pl.fly(sx + (sep ? sep.x : 0), sz + (sep ? sep.z : 0), overLand(pl, 5, (Math.abs(da) < 0.5 ? 6 : 14) + hy), dt, pl.pt.speed);
     // Both groups turn in together: all ready, someone has waited too long, or a run just started.
     let go = now - g.goT < 7;
-    if (!go && pl.ready && !(WW.cag && WW.cag.vtWait(pl, t, g))) {
+    if (!go && pl.ready && !((pl.prsMax || 0) < PR_LIGHT && WW.cag && WW.cag.vtWait(pl, t, g))) {   // under fire: no holding for the dive bombers
       go = true;
       for (const p of WW.world.planes) {
         if (!p.alive || p.kind !== 'torpedo' || p.target !== t || p.sk !== 'anvil' || p.phase) continue;
@@ -238,16 +292,36 @@ window.WW = window.WW || {};
     }
     // Turn in once pointing at the target (or after 3 s), so nobody starts the run with a 180-degree turn.
     if (go && ((ds < 30 && Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < 1) || now - g.goT > 6)) {
-      pl.phase = 'run'; pl.sk = null; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
+      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
     }
+  }
+  // Hit on the run (P8c): aircraft.js damage() lets a bomber jettison and turn for home only before its attack, but a
+  // torpedo plane hit on its low, steady run was often done for: VT-8 lost all 15 at Midway, VT-3 and VT-6 most of
+  // theirs, and many that released were holed. Each hit taken on the run may end it: the chance grows with the damage
+  // (how far below RUN_HP the plane is, and how big this hit was, x RUN_K / RUN_HIT, to RUN_MAX); RUN_DOWN of those go into the sea
+  // (engine, controls, the pilot), the rest jettison the torpedo and break away. One WW.rand draw per hit.
+  const RUN_HP = 1, RUN_K = 5, RUN_HIT = 10, RUN_MAX = 0.9, RUN_DOWN = 0.5;   // calibrated: ~35-55% of a heavily opposed attack releases (VT-3 / VT-6 / VT-8)
+  function hitOnRun(pl) {
+    const h0 = pl.runHp === undefined ? pl.hp : pl.runHp;
+    pl.runHp = pl.hp;
+    if (pl.hp >= h0 || pl.hp >= pl.maxHp * RUN_HP) return false;
+    const f = pl.hp / pl.maxHp, pb = Math.min(RUN_MAX, (RUN_HP - f) * RUN_K + (h0 - pl.hp) / pl.maxHp * RUN_HIT), r = WW.rand();
+    if (r >= pb) return false;   // presses on
+    if (r < pb * RUN_DOWN) { ST.runDown = (ST.runDown || 0) + 1; pl.shotDown(); return true; }
+    ST.runAbort = (ST.runAbort || 0) + 1;
+    pl.crippled = true; pl.dropped(); if (WW.fx) WW.fx.splash(pl.x, pl.z, 0.8);
+    pl.phase = null; pl.sk = null; pl.state = 'return'; pl.foe = null;
+    return true;
   }
   function run(pl, t, dh, dt) {
     pl.state = 'attack';
+    if (hitOnRun(pl)) return;
     const tv = WW.torpSpec ? WW.torpSpec(pl.nation, 'air').speed : WW.TORPEDO.speed;
     const tt = dh / tv;
     let px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
-    // the ship turned and put us on its other bow: swing out to keep our own bow (the anvil holds whichever way it turns)
-    if (pl.side && dh > (pl.dropR || DROP_FAR) + 8 && Math.sign(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x))) !== pl.side) {
+    // the ship turned and put us on its other bow: swing out to keep our own bow (the anvil holds whichever way it turns;
+    // a straight-in run takes the bow it gets)
+    if (pl.side && !pl.hasty && dh > (pl.dropR || DROP_FAR) + 8 && Math.sign(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x))) !== pl.side) {
       const a = t.heading + pl.side * 1.2; px += Math.cos(a) * 45; pz += Math.sin(a) * 45;
     }
     // the aim point stays on the map (a target near the edge); a plane that has run off the map breaks off and sets up again
@@ -255,16 +329,18 @@ window.WW = window.WW || {};
     if (pl.x < -30 || pl.z < -30 || pl.x > WW.cfg.MAP_W + 30 || pl.z > WW.cfg.MAP_H + 30) { pl.phase = null; pl.sk = null; ST.offMap = (ST.offMap || 0) + 1; return; }
     const d = pl.turnTo(Math.atan2(pz - pl.z, px - pl.x), dt, 1.0), alt = overLand(pl, 5, 1.8); // wave height, hop any land
     pl.speedTo(pl.pt.speed * (pl.pt.runK || 0.8), dt);    // slowed for the drop (Mk 13 / Type 91 limits)
-    pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, -7, 9) - pl.vy, -14 * dt, 14 * dt);
+    pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, pl.hasty ? -12 : -7, 9) - pl.vy, -14 * dt, 14 * dt);   // straight in from height: a steeper let-down
     const c = Math.cos(pl.heading), s = Math.sin(pl.heading), dropR = pl.dropR || DROP_FAR;
     if (pl.y < 2.8) { // prop wash spray on the water under the plane (visual)
       pl.sprayT = (pl.sprayT || 0) - dt;
       if (pl.sprayT <= 0 && WW.fx) { pl.sprayT = 0.1; WW.fx.wake(pl.x - c * 1.2, pl.z - s * 1.2, pl.heading, 0.55); }
     }
     const off = Math.abs(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)));   // where we are off the ship's bow
-    const drop = dh < dropR && pl.y < 3 && Math.abs(d) < 0.3 && off > 0.35 && off < 2.8 && wet(pl.x + c, pl.z + s, WW.lerp(pl.x, px, 0.8), WW.lerp(pl.z, pz, 0.8));
+    const hy = pl.hasty || 0, OK = hy ? OFF_HASTY : OFF;   // a hasty run takes a rougher line, any bearing and a higher drop
+    const drop = dh < dropR && pl.y < (hy ? Y_HASTY : 3) && Math.abs(d) < (hy ? 0.5 : 0.3) && off > OK[0] && off < OK[1] && wet(pl.x + c, pl.z + s, WW.lerp(pl.x, px, 0.8), WW.lerp(pl.z, pz, 0.8));
     if (drop) {
-      const hz = WW.intercept && WW.intercept.harried ? WW.intercept.harried(pl) : 0;   // harried: thrown off its line (air_intercept.js)
+      // harried: thrown off its line (air_intercept.js); a hasty drop under fire is wider
+      const hz = Math.max(WW.intercept && WW.intercept.harried ? WW.intercept.harried(pl) : 0, PR_ERR * hy);
       WW.combat.fireTorpedo(pl, pl.x + c, pl.z + s, pl.heading + (hz > 0 ? (WW.rand() + WW.rand() - 1) * 1.7 * WW.intercept.HARRY.torp * hz : 0), pl.nation, TORP_RANGE);
       const w = pl.wave; if (w) { if (w.bowT !== t) { w.bowT = t; w.bow = {}; } const sd = WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)) < 0 ? -1 : 1; w.bow[sd] = (w.bow[sd] || 0) + 1; }
       if (WW.fx) WW.fx.splash(pl.x + c * 3, pl.z + s * 3, 0.9);
@@ -272,7 +348,7 @@ window.WW = window.WW || {};
     }
     // Released, or not lined up by 30 inside the drop range (or the ship combed the run, bow- or stern-on): pop up over
     // the ship; the latter keeps its torpedo and comes round again.
-    if (drop || dh < dropR - 30) { pl.outTgt = t; pl.phase = 'out'; pl.phaseT = drop ? 4 : 3; pl.passed = false; pl.lastD = dh; pl.floor = Math.max(topNear(t, 30), 2, groundAhead(pl, 8)) + CLEAR; }
+    if (drop || dh < dropR - (hy ? 45 : 30)) { pl.outTgt = t; pl.phase = 'out'; pl.phaseT = drop ? 4 : 3; pl.passed = false; pl.lastD = dh; pl.floor = Math.max(topNear(t, 30), 2, groundAhead(pl, 8)) + CLEAR; }
   }
   // After release: pop up and fly over the target ship, then climb away and head home.
   function popUp(pl, t, dt) {
@@ -288,10 +364,11 @@ window.WW = window.WW || {};
     pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, -3, 17) - pl.vy, -34 * dt, 34 * dt);
     if (pl.phaseT > 0 || (t && !pl.passed)) return;
     pl.phase = null;
-    if (pl.ordnance && t) { pl.sk = 'anvil'; pl.av = freeAV(pl, t); pl.anT = WW.time.now; } else { pl.state = 'return'; pl.sk = null; }
+    if (pl.ordnance && t && pl.hasty) { pl.sk = null; pl.lostT = WW.time.now; }   // under fire: round and straight in again
+    else if (pl.ordnance && t) { pl.sk = 'anvil'; pl.av = freeAV(pl, t); pl.anT = WW.time.now; pl.prsT = WW.time.now; } else { pl.state = 'return'; pl.sk = null; }
   }
 
-  function reset() { grps = new Map(); ST.dives = ST.runs = ST.flips = ST.rebal = ST.offMap = 0; ST.pushT = []; }
+  function reset() { grps = new Map(); ST.dives = ST.runs = ST.flips = ST.rebal = ST.offMap = ST.straight = ST.cut = ST.single = ST.lost = ST.runDown = ST.runAbort = 0; ST.pushT = []; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
   Object.assign(S, { dive, torp, TOP, press, wheelR, attackStats: ST, SET_R });

@@ -14,11 +14,11 @@ window.WW = window.WW || {};
     for (let y = 0; y < 32; y++) for (let x = 0; x < 128; x++) {
       const v = Math.abs(y - 15.5) / 16, u = x / 127;                  // u: 0 tail .. 1 head
       const along = Math.min(1, u * 1.3) * (u > 0.92 ? 1 - (u - 0.92) / 0.08 * 0.7 : 1);
-      const core = Math.max(0, 1 - v / 0.22), glow = Math.exp(-v * v * 9);
+      const core = Math.max(0, 1 - v / 0.2), glow = Math.exp(-v * v * 14);   // a thin hot line, a tight faint halo
       const i = (y * 128 + x) * 4, k = along;
-      img.data[i] = 255 * Math.min(1, (core + glow * 0.9) * k);
-      img.data[i + 1] = 255 * Math.min(1, (core * 0.95 + glow * 0.5) * k);
-      img.data[i + 2] = 255 * Math.min(1, (core * 0.6 + glow * 0.12) * k);
+      img.data[i] = 255 * Math.min(1, (core + glow * 0.6) * k);
+      img.data[i + 1] = 255 * Math.min(1, (core * 0.95 + glow * 0.32) * k);
+      img.data[i + 2] = 255 * Math.min(1, (core * 0.6 + glow * 0.08) * k);
       img.data[i + 3] = 255;
     }
     g.putImageData(img, 0, 0);
@@ -64,14 +64,17 @@ window.WW = window.WW || {};
       const sp = Math.hypot(s.vx, s.vy, s.vz) || 1;
       v3a.set(s.vx / sp, s.vy / sp, s.vz / sp);                          // along the path
       v3c.set(cam.x - s.x, cam.y - s.y, cam.z - s.z);                    // toward the camera
-      const k = Math.max(1, v3c.length() / 30);                          // keep a readable size on screen when far away
-      const L = (s.flash ? 1.1 + Math.random() * 0.5 : Math.min(5, sp * s.age * 0.9 + 0.8)) * Math.sqrt(k), W = s.flash ? 0.8 * Math.sqrt(k) : 0.9 * k;
+      const d = v3c.length(), k = Math.max(1, d / 30);                   // keep a readable size on screen when far away
+      // thin bright lines. Near the lens: width capped at ~0.016 rad on screen and length at 0.4 x the distance (a long
+      // quad reaching past the camera flares into a wedge), so a round passing close never balloons into a blob
+      const L = Math.min((s.flash ? 0.9 + Math.random() * 0.4 : Math.min(4, sp * s.age * 0.8 + 0.6)) * Math.sqrt(k), d * 0.4),
+            W = Math.min(s.flash ? 0.55 * Math.sqrt(k) : 0.45 * k, d * 0.016);
       v3b.crossVectors(v3c, v3a); if (v3b.lengthSq() < 1e-6) v3b.set(0, 1, 0); v3b.normalize(); // across, in view
       v3c.crossVectors(v3a, v3b);
       m4.makeBasis(v3d.copy(v3a).multiplyScalar(L), v3b.multiplyScalar(W), v3c);
       m4.setPosition(s.x - v3a.x * L * 0.5, s.y - v3a.y * L * 0.5, s.z - v3a.z * L * 0.5); // the head leads
       T.mesh.setMatrixAt(i, m4);
-      const f = Math.min(1, s.life / s.life0 * 2) * s.heat;
+      const f = Math.min(1, s.life / s.life0 * 2) * s.heat * Math.min(1, Math.max(0, (d - 2) / 8)); // fade right at the lens
       T.mesh.setColorAt(i, colTmp.setRGB(1.0 * f, 0.72 * f, 0.32 * f));
     }
     T.mesh.instanceMatrix.needsUpdate = true;

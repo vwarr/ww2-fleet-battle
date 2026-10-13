@@ -26,6 +26,7 @@ window.WW = window.WW || {};
   // inside the fan out to the torpedoes' range: the friendly-fire check along the spread.
   const AIM_ERR = 0.06; // rad of torpedo aim error (+-) per 100 units of range
   function fireSpread(ship, t, range) {
+    if (t && t.type === 'pt') { ship.ai.torpReload = Math.max(ship.ai.torpReload || 0, 1.5); return false; }   // set for a hull, a torpedo runs under a PT boat (combat_weapons.js): no spread at one
     const tp = ship.stats.torpedoes, n = tp.count;
     // fire-control error grows with the range: a long shot is fired on an estimate of the target's course and speed
     // that the target's own movements spoil (both navies: the Long Lance's reach is not a free hit)
@@ -238,7 +239,7 @@ window.WW = window.WW || {};
   // ai_carrier.js, ai_pt.js; subs never withdrew. Removed as dead code: Fable F30.)
   // Torpedo combing: a ship that has seen (WW.intel.torpedoes) a torpedo track heading for it turns parallel to
   // it (bow or stern on, whichever needs less rudder) after a reaction delay by type. Returns true while combing.
-  const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 };
+  const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 }, COMB_R = 130;   // COMB_R: was 70 (long drops went uncombed)
   // Combing needs the turn made before the track arrives. T90: s for a 90-degree turn at full rudder, from the real
   // tactical diameters at the game's ship speeds (a quarter of the circle: (pi / 2) x (diameter / 2) / speed; carrier
   // ~800 m, battleship ~650 m, cruiser ~650 m, destroyer ~550 m, PT ~200 m, submarine ~500 m at 10 m a unit). The
@@ -268,7 +269,10 @@ window.WW = window.WW || {};
       const dt = now - e.seenAt, c = Math.cos(e.h), s = Math.sin(e.h);
       const px = e.x + c * e.speed * dt, pz = e.z + s * e.speed * dt, rx = ship.x - px, rz = ship.z - pz;
       const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
-      if (along < -2 || along > 70 || perp > L + along * 0.12) continue; // passed, too far, or missing wide
+      // passed, too far, or missing wide; out to COMB_R: an aerial drop is seen from the bridge at the drop (sawIt R.DROP), so a long
+      // drop (Mk 13 ~33 kn, Type 91 ~40 kn from 1,000 m+) gives a big ship the time to come round and comb it (a track seen
+      // only by its wake, R.TORP, is inside this anyway)
+      if (along < -2 || along > COMB_R || perp > L + along * 0.12) continue;
       if (!sawIt(ship, e) || !canComb(ship, e, along)) continue;            // not seen from here, or too late to turn
       if (WW.dstat && e.proj) { WW.dstat('combN', e.proj.nation); WW.dstat('combD', e.proj.nation, along); } // metric: by the torpedo's nation
       a.combH = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;

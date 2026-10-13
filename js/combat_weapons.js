@@ -23,7 +23,7 @@ window.WW = window.WW || {};
       p.dud = q.dud > 0 && WW.rand() < q.dud;      // rolled at launch (seeded): a dud hits with a clang and no damage
       p.src = owner && owner.stats ? 'Ship' : 'Air';
       if (WW.dstat) WW.dstat('torpFired' + p.src, nation);
-      p.range = range || 100; p.run = 0; p.wakeT = 0;
+      p.range = range || 100; p.run = 0; p.wakeT = 0; p.under = null;
       p.dmg = ((WW.TORPEDO && WW.TORPEDO.dmg) || 220) * (q.dmgK || 1) * I.rr(0.9, 1.1);   // the nation's warhead (core.js TORPEDO_NATION dmgK)
       I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
       I.fx('splash', x, z, 0.8);
@@ -46,6 +46,13 @@ window.WW = window.WW || {};
         p.dead = true; return;
       }
       var hit = I.findHit(p.nation, p.x, p.z, 0.4, true, null);
+      // A PT boat drew ~1-1.6 m (Elco 80 ft, the Vosper and S-boats alike); torpedoes ran at 3-6 m for a hull (an aerial
+      // Mk 13 or Type 91 at 3-5 m, a destroyer's Mk 15 / Type 93 deeper against anything bigger than a destroyer): one
+      // that reaches a PT runs on under her, once (a surfaced submarine, ~4.5-5 m down to the keel, is hit as before).
+      if (hit && hit.type === 'pt') {
+        if (p.under !== hit) { p.under = hit; if (WW.emit) WW.emit('torpedoUnder', { proj: p, ship: hit, x: p.x, z: p.z }); }
+        hit = null;
+      }
       if (hit && p.dud) { // a dud: it hits the hull and does not go off (fx only; no damage)
         I.fx('splash', p.x, p.z, 1.8); I.fx('sparks', p.x, 0.8, p.z); I.fx('sparks', p.x, 1.2, p.z); // a thin column, a clang: no fireball
         if (WW.dstat) WW.dstat('torpDud' + p.src, p.nation);
@@ -208,4 +215,5 @@ window.WW = window.WW || {};
   WW.combat.fireTorpedo = fireTorpedo;
   WW.combat.dropBomb = dropBomb;
   WW.combat.dropDepthCharge = dropDepthCharge;
+  WW.combat.flakAt = flakAt;                   // the AA a plane flies into round a point (air_intercept.js pressure)
 })();

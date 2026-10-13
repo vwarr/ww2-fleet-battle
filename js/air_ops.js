@@ -64,9 +64,15 @@ window.WW = window.WW || {};
     for (const c of L) { const o = c.unit; if (o && o.alive && !o.submerged && !o.sinking && !o.isBase && BIG[tyOf(c)] && !(lim && WW.dist(from.x, from.z, c.x, c.z) > lim)) return true; }
     return false;
   }
+  // No bomber is ever sent at a PT boat (as the side believes the contact's type; the pilot who finds a PT there instead
+  // looks again, aircraft.js validTarget): her ~1 m draught let an aerial torpedo run under, level bombers never went
+  // for one and dive-bombing a 40 kn boat that turns inside her length was rare and wasteful. Only fighters (and a dive
+  // bomber's strafing pass after its dive) went for the boats, with their guns (air_strafe.js, air_gunners.js).
+  const NO_BOMB = { pt: 1 };
+  const bombsFor = u => !!u && !NO_BOMB[u.type];   // may a bomber attack ship u (as seen)
   function pickTarget(from, opts) {
     if (!WW.intel) return WW.shipAI && WW.shipAI.pickStrikeTarget ? WW.shipAI.pickStrikeTarget(from) : null;
-    const nation = from.nation, now = WW.time.now, near = opts && opts.near;
+    const nation = from.nation, now = WW.time.now, near = opts && opts.near, gun = from.kind === 'fighter';
     const noSmall = near && opts.flight > SMALL_FLIGHT && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(nation);
     if (!near && from.stats && WW.fleetCmd && WW.fleetCmd.strikeOrder) {
       const o = WW.fleetCmd.strikeOrder(from);
@@ -83,6 +89,7 @@ window.WW = window.WW || {};
       const d = WW.dist(from.x, from.z, c.x, c.z);
       if (lim && d > lim) continue;
       if (opts && opts.big && (LOW[tyOf(c)] || (big && tyOf(c) === 'destroyer'))) continue;
+      if (!gun && (NO_BOMB[tyOf(c)] || (from.kind && NO_BOMB[o.type] && WW.intel.visible(nation, o, 3)))) continue;   // a plane on the scene: what it sees
       if (noSmall && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type]) continue;
       if (near && opts.flight > SMALL_FLIGHT && o.type === 'submarine') continue;
       if (near && opts.noBase && o.isBase) continue;
@@ -260,5 +267,5 @@ window.WW = window.WW || {};
 
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, RELIEF, stats: ST, fighter, bomber, pickTarget, capWanted, capState, picture, underAttack, armed }; // + plan, reserve, pursuit, beaten (air_boss.js)
+  WW.airOps = { CAP_R, LEASH, LEASH2, RAID_R, RELIEF, stats: ST, fighter, bomber, pickTarget, bombsFor, capWanted, capState, picture, underAttack, armed }; // + plan, reserve, pursuit, beaten (air_boss.js)
 })();
