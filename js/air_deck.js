@@ -160,6 +160,7 @@ window.WW = window.WW || {};
     if (D.mode === 'launch' && launchPend && !(recPend && lqWait > (D.lq.length >= DEEP && urgent !== 'scramble' ? LQ_DEEP : LQ_MAX) && !launchAct && now - D.modeT > LW_MIN)) { /* keep the launch window */ }
     else if (D.mode === 'recover' && (landAct || (recPend && !yieldRec(D, urgent)))) { /* keep */ }
     else D.mode = launchPend ? 'launch' : recPend ? 'recover' : 'idle';
+    if (c.deckOut) D.mode = 'idle';   // holed (ship_deck.js): nothing launches or lands; the queued wait below, the stack holds
     if (D.mode !== prev) { D.recN = 0; D.modeT = now; }
     D.closing = D.mode === 'recover' && yieldRec(D, urgent); // no new approaches: the window is closing
     // reconcile what is shown with what the carrier holds (launched from below / rearm counts)
@@ -174,7 +175,7 @@ window.WW = window.WW || {};
     D.riseT -= dt;
     // bring one up from the hangar deck: while idle, and while launching (the next load is spotted as the first goes;
     // not while a plane taxis up the deck or rides the forward elevator)
-    const spotting = D.mode === 'idle' || (D.mode === 'launch' && !D.launchers.some(q => q.deckPh === 'taxi' || q.deckPh === 'rise'));
+    const spotting = !c.deckOut && (D.mode === 'idle' || (D.mode === 'launch' && !D.launchers.some(q => q.deckPh === 'taxi' || q.deckPh === 'rise')));
     if (spotting && D.riseT <= 0) {
       D.riseT = 1.6;
       for (const k of ['fighter', 'dive', 'torpedo']) {
@@ -316,7 +317,7 @@ window.WW = window.WW || {};
         case 'hold': { // spread the wings; go when the ship is into the wind (or has tried long enough) and the deck ahead is clear
           p.fold = Math.max(0, p.fold - 2.5 * dt);
           const h = intoWind();
-          if (D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < D.k.launchX + 4)) break;
+          if (c.deckOut || D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < D.k.launchX + 4)) break;
           if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 5)) { p.deckPh = 'run'; p.rel = 0; }
           break;
         }

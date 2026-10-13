@@ -324,6 +324,8 @@ window.WW = window.WW || {};
     init: init, update: update, clearAll: clearAll,
     splash: splash, explosion: explosion, torpedoHit: torpedoHit, muzzleFlash: muzzleFlash, flak: flak, smoke: smoke,
     fire: fire, wake: wake, torpBubbles: torpBubbles, oilSlick: oilSlick, sparks: sparks, trail: trail,
-    _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; }
+    _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; },
+    // raw pool access for bespoke recipes (fx_critical.js): pool(name).spawn(...), the golden-hour colour, the wind
+    raw: { pool: function (k) { return P && P[k]; }, col: col, windX: windX, windZ: windZ }
   };
 })();

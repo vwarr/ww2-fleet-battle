@@ -1,7 +1,7 @@
 // war_diary.js - WW.diary: the admiral's war diary (visual / UI only). A running log of the battle's key
 // moments with in-battle clock times ("0714 — Enemy carriers sighted bearing 040 (Kingfisher from Northampton)"),
 // built from sim events: contact / firstSighting and flying-boat 'report' (batched per side into sighting
-// reports, which also become the pinned notes of the plot table), airOrder strikeAway, shipHit / deckHit /
+// reports, which also become the pinned notes of the plot table), airOrder strikeAway, shipHit / deckHit / deckOut / deckBack /
 // magazine / engineHit, shipSunk / shipScuttled / shipEscaped, escortCharge, rescue, ace, admiralOrder,
 // misidResolved, flyingBoat 'lost' and victory. Events that a branch does not emit are simply never heard.
 // Display: a typed log card (#diary) that slides in at the right in map view; L toggles it (per view). An
@@ -158,7 +158,9 @@ window.WW = window.WW || {};
       add(nameOf(s) + ' hit, burning', RANK[s.type] >= 5 ? 2 : 1, s.nation, { kind: 'damage' });
     }
   });
-  on('deckHit', e => e.ship && add(nameOf(e.ship) + ': flight deck ablaze' + (e.planes ? ', ' + e.planes + ' planes lost on deck' : ''), 3, e.ship.nation, { kind: 'damage' }));
+  on('deckHit', e => e.ship && add(nameOf(e.ship) + (e.hangar ? ': bomb in the hangar among armed and fuelled planes, she is ablaze' : ': flight deck ablaze') + (e.planes ? ', ' + e.planes + ' planes lost' + (e.hangar ? '' : ' on deck') : ''), 3, e.ship.nation, { kind: 'damage' }));
+  on('deckOut', e => e.ship && !e.boom && (e.hits === 1 || e.perm) && add(nameOf(e.ship) + (e.perm ? ': flight deck wrecked, out of the fight' : ': bomb through the flight deck, cannot launch or recover'), 2, e.ship.nation, { kind: 'damage' }));
+  on('deckBack', e => e.ship && e.ship.alive && add(nameOf(e.ship) + ': flight deck patched, flying again', 1, e.ship.nation));
   on('magazine', e => e.ship && add(nameOf(e.ship) + ' blows up: magazine explosion', 3, e.ship.nation, { kind: 'damage' }));
   on('engineHit', e => e.ship && RANK[e.ship.type] >= 5 && !hitSaid.has('eng' + e.ship.id) && hitSaid.add('eng' + e.ship.id) && add(nameOf(e.ship) + ' hit in the engine room, losing way', 1, e.ship.nation));
   on('shipSunk', s => s && s.stats && add(nameOf(s) + (s.type === 'carrier' || s.type === 'battleship' ? ' sinks' : ' sunk'), RANK[s.type] >= 5 ? 3 : RANK[s.type] >= 3 ? 2 : 1, s.nation, { kind: 'sunk', ship: s }));

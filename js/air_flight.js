@@ -57,7 +57,7 @@ window.WW = window.WW || {};
     if (p.kind === 'fighter' || p.phase || p.state === 'attack' || p.y < 10) return Math.max(7, c);
     return c * CLIMB_K;
   }
-  function deckOK(s, n) { return s && s.alive && !s.sinking && !s.isBase && s.type === 'carrier' && s.hangar && s.nation === n; }
+  function deckOK(s, n) { return s && s.alive && !s.sinking && !s.isBase && s.type === 'carrier' && s.hangar && s.nation === n && !s.deckOut; }   // (deckOut: holed, ship_deck.js)
   // the friendly ship to ditch beside: a destroyer first (within 1.5 x the nearest ship), else any surface ship
   function ditchShip(p) {
     let best = null, bd = 1e9, dd = null, ddd = 1e9;
@@ -109,7 +109,7 @@ window.WW = window.WW || {};
   }
   // the way home is out of fuel, or the plane is too shot up to trust a deck landing with a destroyer nearer
   function ditchCheck(p) {
-    if (p.ditchTo || p.carrier.isBase || !deckOK(p.carrier, p.nation)) return;
+    const c = p.carrier; if (p.ditchTo || c.isBase || !c.alive || c.sinking) return;
     const dc = WW.dist(p.x, p.z, p.carrier.x, p.carrier.z);
     if (p.fuel <= -reserve(p) && dc > 60) { ditchBy(p, 'fuelDitch'); return; }   // the reserve is gone too
     if (p.hp < p.maxHp * DITCH_HP && dc > 150) {
