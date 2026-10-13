@@ -25,7 +25,7 @@
 //  - Sun and cloud (seeK, intel.js): a plane high in a low sun's glare, or in cloud, is seen visually at a shorter range.
 //  - The enemy air group spent (airSpent): no enemy bomber and no more than a section of fighters (< SPENT_F) seen for SPENT_T s, and every enemy carrier the side
 //    knows of is crippled or proven bare (a strike of ours went in over it and met no fighters: its PRIOR goes too; or
-//    our bombs wrecked its flight deck for good, ship_deck.js: the strike's crews saw it, Shokaku at Coral Sea).
+//    its flight deck seen wrecked for good by our planes, ship_deck.js knownWrecked: Shokaku at Coral Sea).
 //    Then the strikes go in packets (a division of PACKET_DIV on a small ship, a squadron of PACKET_SQN on a heavy one),
 //    the CAP shrinks to one standing section (ai_carrier.js capWanted) and the pursuit reserve goes (air_boss.js).
 // Events: 'airOrder' { carrier, order: 'breakOff' | 'mauled', wave?, n? }; 'admiralOrder' order 'airDefensive'.
@@ -49,6 +49,7 @@ window.WW = window.WW || {};
   let mem = {}, side = {}, acc = 0, raidMem = {}, seenAir = {}, bare = {};   // seenAir[n]: when n last saw an enemy combat plane; bare[n]: enemy carriers proven bare
 
   const wrecked = s => !!(WW.shipDeck && WW.shipDeck.wrecked(s));   // the flight deck out for good (ship_deck.js)
+  const seenWrecked = (n, s) => !!(WW.shipDeck && WW.shipDeck.knownWrecked(n, s));   // as side n's planes last saw her
   const doc = n => { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null, a = d && d.air; return Object.assign({}, DOC[n] || DOC.USN, a || {}); };
   const sideOf = n => side[n] || (side[n] = { escK: 1, defensive: false });
   const ebase = n => { const b = WW.islandBase && WW.islandBase.base; return b && b.nation !== n && !b.neutralized ? b : null; };
@@ -99,7 +100,7 @@ window.WW = window.WW || {};
     let s = 0;
     if (M) M.forEach(e => { if (WW.dist2(e.x, e.z, x, z) < R2) s += wAge(now - e.t); });
     if (s < 1 && WW.intel) {   // nothing seen there yet: the staff's guess for a known carrier, or an open airfield
-      for (const c of WW.intel.enemyShips(n)) { const u = c.unit; if (u && u.alive && !u.isBase && now - c.seenAt <= 120 && WW.intel.typeOf(c) === 'carrier' && !(bare[n] && bare[n].has(u)) && WW.dist2(c.x, c.z, x, z) < R2) s += PRIOR.carrier; }   // (unfiltered: no intel scratch array under a caller's loop)
+      for (const c of WW.intel.enemyShips(n)) { const u = c.unit; if (u && u.alive && !u.isBase && now - c.seenAt <= 120 && WW.intel.typeOf(c) === 'carrier' && !(bare[n] && bare[n].has(u)) && !seenWrecked(n, u) && WW.dist2(c.x, c.z, x, z) < R2) s += PRIOR.carrier; }   // (unfiltered: no intel scratch array under a caller's loop)
       const b = ebase(n); if (b && WW.islandBase.runwayOpen() && WW.dist2(b.x, b.z, x, z) < R2) s += PRIOR.base;
     }
     return s;
@@ -259,12 +260,10 @@ window.WW = window.WW || {};
     if (WW.intel) for (const c of WW.intel.enemyShips(n)) {
       const u = c.unit; if (!u || !u.alive || u.sinking || u.isBase || u.type !== 'carrier') continue;
       if (u.hp < WW.fleetGroups.CRIP * u.maxHp) continue;   // crippled: its deck is out
-      if (!(bare[n] && bare[n].has(u))) return false;
+      if (!(bare[n] && bare[n].has(u)) && !seenWrecked(n, u)) return false;
     }
     return true;
   }
-  // our bombs wrecked an enemy flight deck for good (ship_deck.js deckOut perm): the strike reports her out of the air war
-  WW.on('deckOut', e => { const u = e && e.ship; if (u && e.perm && !u.isBase) { const n = WW.enemyOf(u.nation); (bare[n] || (bare[n] = new Set())).add(u); } });
   WW.on('weaponDropped', e => { try { const p = e && e.plane; if (p && p.kind !== 'fighter' && p.nation) dropSeen(p); } catch (er) { console.error('staff', er); } });
 
   // ---------- strike sizing (air_boss.js orderStrike) ----------
@@ -377,6 +376,6 @@ window.WW = window.WW || {};
   WW.on('setupStart', reset);
   WW.on('waveGo', e => { try { waveGo(e); } catch (er) { console.error('staff', er); } });
   if (WW.air) { const u0 = WW.air.update; WW.air.update = function (dt) { const r = u0.apply(this, arguments); try { remember(dt); } catch (e) { console.error('staff', e); } return r; }; }
-  const provenBare = (n, u) => !!(bare[n] && bare[n].has(u));   // a strike of n's went in over enemy carrier u and met no fighters
+  const provenBare = (n, u) => !!(bare[n] && bare[n].has(u)) || seenWrecked(n, u);   // a strike of n's went in over enemy carrier u and met no fighters
   WW.staff = { TUNE, capEst, airSpent, provenBare, outbound, raidsAt, steer, plan, size, tempoK, baseK, breakOff, seeK, judge, stats: ST, DOC, _mem: () => mem };
 })();
