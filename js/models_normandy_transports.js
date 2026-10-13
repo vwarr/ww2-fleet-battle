@@ -97,6 +97,7 @@ window.WW = window.WW || {};
     D.aaTub(g, P, X(0.44), o.dk(X(0.44)), 0, true, 0);                                               // the 3-inch / 40 mm bow and stern tubs
     D.aaTub(g, P, X(-0.45), o.dk(X(-0.45)), 0, true, PI);
     D.common(g, P, s.hull, 0.9);
+    streaks(K, o, [0.46, 0.4, 0.3, 0.18, 0.06, -0.12, -0.24, -0.37]);
     DAVITS[c.key] = slots;
     return s;
   }
@@ -145,6 +146,46 @@ window.WW = window.WW || {};
     D.common(g, P, s.hull, 0.5);
     return s;
   };
+  // the Channel's greys: WW.models.weather(group, flag), after buildShip (normandy_fleet.js; Augusta's Northampton too).
+  // The class kit paints in the Pacific pastels (models.js PAL); a 1944 ship off Normandy wore Measure 22 (USN: navy
+  // blue hull to the deck line, haze grey above, deck blue decks) or the Admiralty's greys (RN), salt-streaked after
+  // a Channel crossing. The materials are cached and shared with the bombardment group, so each is cloned once per
+  // flag and swapped in (the outline's MeshBasicMaterial is left alone): the palette's hull / super / deck / band
+  // colours to the 1944 ones, anything pale (rails, boats, the ensign's white) dulled, the rest a little darkened and
+  // greyed.
+  var GREYS = { USN: { hull: 0x46515e, super: 0x7a8288, deck: 0x4c545d, band: 0x303336, accent: 0x3a3f45, gun: 0x4a4f55 },
+    RN: { hull: 0x5b6267, super: 0x868d91, deck: 0x66645e, band: 0x303336, accent: 0x464c52, gun: 0x4a4f55 } }, wx = {};
+  WW.models.weather = function (g, flag) {
+    var M = WW.models, P = M._nation(flag), G = GREYS[flag] || GREYS.USN, cache = wx[flag] || (wx[flag] = new Map()), by = {};
+    for (var k in G) if (P[k] !== undefined) by[M._soft(P[k]).getHex()] = G[k];
+    var grey = new THREE.Color();
+    function swap(m) {
+      if (!m || !m.color || m.isMeshBasicMaterial) return m;
+      var c = cache.get(m);
+      if (c) return c;
+      c = m.clone(); var h = m.color.getHex();
+      if (by[h] !== undefined) c.color.copy(M._soft(by[h]));
+      else {
+        var l = c.color.r * 0.299 + c.color.g * 0.587 + c.color.b * 0.114;
+        grey.setRGB(l, l, l);
+        if (l > 0.55) c.color.lerp(grey, 0.55).multiplyScalar(0.55 / l + 0.1);   // the pale things dulled
+        else c.color.lerp(grey, 0.3).multiplyScalar(0.9);
+      }
+      cache.set(m, c); cache.set(c, c);
+      return c;
+    }
+    g.traverse(function (o) {
+      if (!o.isMesh) return;
+      o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+    });
+  };
+  // salt and rust streaks down the hull side below the deck edge at the hull shares fs (both sides)
+  function streaks(K, o, fs) {
+    fs.forEach(function (f, i) {
+      var x = o.X(f), yd = o.dk(x), w = o.w(x), h = 0.25 + (i % 3) * 0.12;
+      for (var sd = -1; sd <= 1; sd += 2) K.bar(o.g, i % 2 ? 0x5a4c40 : 0x6e6a62, 0.05, h, 0.012, x, yd - h - 0.02, sd * w);
+    });
+  }
   CL.lcc = function (P, c, isJ, K) {
     var D = WW.models.D, C = K.C, o = setup(P, c, K), s = o.s, g = o.g, X = o.X, Dk = o.D, B = o.B;
     K.box(g, P.super, 0.7, 0.26, B * 0.66, X(0.02), Dk, 0);

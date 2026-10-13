@@ -26,7 +26,10 @@ window.WW = window.WW || {};
   'use strict';
   const PI = Math.PI, N = 24;
   const HEAD = 0.39 + PI;                          // anchored head to the WNW wind and the flood stream (scenario.js wind a)
-  const LOWER_T = 10, LOAD_T = 24, CIRC_T = 80, STAG_T = 9, CIRC_K = 0.5, OUT_K = 0.8, RESERVE_T = 25;
+  const LOWER_T = 10, LOAD_T = 24, CIRC_T = 80, STAG_T = 9, CIRC_K = 0.5, OUT_K = 0.8, RESERVE_P = 0.6;
+  // the holding circles: loaded follow-up boats circling off the transports all morning (from 08:30 the beachmasters
+  // held back the follow-up waves; craft milled about offshore for hours): [x, u off the waterline, boats, craft]
+  const HOLD = [[690, 985, 5, 'lca'], [1315, 975, 6, 'lca'], [1505, 960, 7, 'lcvp'], [1720, 935, 8, 'lcvp'], [1925, 975, 7, 'lcvp'], [2045, 950, 5, 'lcvp']];
   // [name, class, flag, x, u off the waterline, pennants (control vessels: the sector colours either side)]
   const SHIPS = [
     ['Amsterdam', 'ferry', 'RN', 560, 1040], ['Ben Machree', 'ferry', 'RN', 650, 1085],
@@ -49,7 +52,8 @@ window.WW = window.WW || {};
     [/16th RCT/, ['Samuel Chase', 'Henrico']], [/18th|26th|115th/, ['Dorothea L. Dix', 'Anne Arundel']]
   ];
   const DAV_CRAFT = { apa: 'lcvp', lsil: 'lca', ferry: 'lca' };
-  let root = null, ships = [], recs = [], out = [], shipsOut = [], lastPlan = null, men = null, falls = null, dbg = null, nMen = 0, nFalls = 0, clk = 0;
+  let root = null, ships = [], recs = [], out = [], shipsOut = [], lastPlan = null, men = null, falls = null, dbg = null, nFalls = 0, clk = 0;
+  const nMen = [0, 0], MAX_MEN = 160, MAN_S = 0.78;
   const _o = { x: 0, z: 0, h: 0 }, _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v, sm = f => { f = clamp(f, 0, 1); return f * f * (3 - 2 * f); };
   const wh = (x, z) => (WW.waves && WW.waves.active ? WW.waves.height(x, z) : 0);
@@ -86,6 +90,7 @@ window.WW = window.WW || {};
       let m = null;
       try { m = WW.models.buildShip(type || 'cruiser', flag, cls); } catch (e) { console.error('normandyFleet', name, e); continue; }
       const g = m.group; g.rotation.order = 'YXZ';
+      if (WW.models.weather) WW.models.weather(g, flag);                                      // the Channel's greys, not the Pacific's
       if (pen && m.pennant) pen.forEach((col, i) => {                                         // the control vessel's sector pennants
         const f = new THREE.Mesh(WW.models._geo().box, WW.models._mat(col)); const a = m.pennant;
         f.scale.set(0.3 * a.k, 0.2 * a.k, 0.015); f.position.set(a.x - 0.16 * a.k, a.y - 0.24 * a.k, (i ? -1 : 1) * a.yard * 0.45); g.add(f);
@@ -94,11 +99,27 @@ window.WW = window.WW || {};
       ships.push({ name, cls, flag, x0: x, off, x, z: 0, heading: HEAD, len: c ? c.len : 15, beam: c ? c.beam : 2, group: g, slots: (WW.models.DAVITS || {})[cls] || [],
         ph: Math.random() * 6.28, y: 0, pitch: 0, roll: 0, ch: 1, sh: 0, control: !!pen, kind: DAV_CRAFT[cls] || null });
     }
+    // barrage balloons: about half the transports flew one from the mainmast, low under the cloud
+    const bm = new THREE.MeshToonMaterial({ color: WW.models._soft ? WW.models._soft(0x8a8f93) : 0x8a8f93, gradientMap: WW.models._grad ? WW.models._grad() : null });
+    const cm = new THREE.MeshBasicMaterial({ color: 0x2f3337 }), bg = new THREE.SphereGeometry(0.5, 12, 8), cg = new THREE.CylinderGeometry(0.012, 0.012, 1, 3);
+    for (const s of ships) {
+      if (s.control || s.cls === 'northampton' || Math.random() > 0.55) continue;
+      const b = new THREE.Group(), body = new THREE.Mesh(bg, bm); body.scale.set(2.1, 0.78, 0.78); b.add(body);
+      for (let k = 0; k < 3; k++) {                                                              // the three tail fins, inflated lobes
+        const f = new THREE.Mesh(bg, bm), a = k * 2 * PI / 3;                                  // up, and two below at 120 deg
+        f.scale.set(0.7, 0.5, 0.12); f.rotation.x = a; f.position.set(-0.85, Math.cos(a) * 0.38, Math.sin(a) * 0.38); b.add(f);
+      }
+      const cab = new THREE.Mesh(cg, cm);
+      b.castShadow = true; root.add(b); root.add(cab);
+      s.bal = { b, cab, ph: Math.random() * 6.28, h: 13 + Math.random() * 5, d: 5 + Math.random() * 3 };
+    }
     const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
     const im = (geo, col, n) => { const q = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: WW.pastel ? WW.pastel(col, 0.1) : col }), n); q.count = 0; q.frustumCulled = false; q.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(q); return q; };
-    men = [im(box, 0x6b6c4c, 96), im(new THREE.SphereGeometry(0.5, 6, 4), 0x5a6048, 96)];   // the men on the nets: body, helmet
-    falls = im(box, 0x464b53, 64);
-    falls.castShadow = men[0].castShadow = true;
+    // the men on the nets and waiting at the rail: the landing-craft renderer's soldier figures (models_soldier.js)
+    const G = WW.soldierModel.build(), tm = new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true, gradientMap: WW.models._grad ? WW.models._grad() : null });
+    men = [G.stand, G.crouch].map(geo => { const q = new THREE.InstancedMesh(geo, tm, MAX_MEN); q.count = 0; q.frustumCulled = false; q.castShadow = true; q.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(q); return q; });
+    falls = im(box, 0x3c4046, 64);
+    falls.castShadow = true;
     dbg = { hull: im(box, 0x7b8794, 200), ramp: im(box, 0x5f6a74, 200), house: im(box, 0x8c969e, 200) };
   }
   function place() {
@@ -122,6 +143,15 @@ window.WW = window.WW || {};
     s.pitch = Math.atan((hb - hs) / (2 * L)) * 0.35 * k + Math.sin(clk * 0.5 + s.ph) * 0.004;
     s.roll = -Math.atan((hp - hn) / (2 * B)) * 0.12 * k + Math.sin(clk * 0.37 + s.ph * 2) * 0.01 * k;
     s.group.position.y = s.y; s.group.rotation.set(s.roll, -s.heading, s.pitch);
+    if (s.bal) {                                                                               // the balloon streams downwind of the mainmast, nose to the wind
+      const B = s.bal, W = WW.wind || { x: 0.9, z: 0.4 }, wl = Math.hypot(W.x, W.z) || 1, ux = W.x / wl, uz = W.z / wl;
+      const ax = wx(s, -0.3 * s.len, 0), az = wz(s, -0.3 * s.len, 0), ay = s.y + 3.2;
+      const bob = Math.sin(clk * 0.23 + B.ph), bx = ax + ux * (B.d + bob * 0.4), bz = az + uz * (B.d + bob * 0.4) + Math.cos(clk * 0.17 + B.ph) * 0.3, by = ay + B.h + bob * 0.35;
+      B.b.position.set(bx, by, bz); B.b.rotation.set(Math.sin(clk * 0.31 + B.ph) * 0.05, Math.atan2(uz, -ux), bob * 0.03, 'YXZ');
+      const dx = bx - ax, dy = by - 0.4 - ay, dz = bz - az, l = Math.hypot(dx, dy, dz);
+      B.cab.position.set((ax + bx) / 2, (ay + by - 0.4) / 2, (az + bz) / 2); B.cab.scale.set(1, l, 1);
+      B.cab.quaternion.setFromUnitVectors(_p.set(0, 1, 0), _s.set(dx / l, dy / l, dz / l));
+    }
   }
 
   // ---- the boats' timelines (built once per round plan) ----
@@ -160,7 +190,7 @@ window.WW = window.WW || {};
     }
     for (const [wv, list] of waves) {                                                        // each wave's rendezvous circle
       const n = list.length, mx = list.reduce((a, q) => a + q.ship.x, 0) / n, mz = list.reduce((a, q) => a + q.ship.z, 0) / n;
-      const sp = list[0].C.speed, R = clamp(4 + 1.8 * n, 7, 16);
+      const sp = list[0].C.speed, R = Math.max(3.5, n * 3 * list[0].C.len / (2 * PI));      // ~3 boat lengths apart round the ring
       const w = { cx: mx + (Math.random() - 0.5) * 24, cz: mz + 34 + R + Math.random() * 12, R, a0: Math.random() * 6.28, da: 2 * PI / n, om: sp * CIRC_K / R };
       list.forEach((q, i) => {
         q.w = w; q.i = i;
@@ -195,14 +225,30 @@ window.WW = window.WW || {};
           s.slotUse[k].push(q);
         });
       }
-      // the slots' empty boats (the follow-up waves' craft), back in the davits a while after the slot's last plan boat left
+      // the slots no plan boat uses: most still carry a boat (the follow-up waves' craft, empty in the davits), the rest
+      // are away (the holding circles); a slot whose plan boat has gone stays empty (the first trips came back for hours)
       s.slots.forEach((sl, k) => {
-        if (sl.boom) return;                                                                 // the LCMs wait nested on the hatches (the model)
-        const u = s.slotUse[k], last = u.length ? u[u.length - 1].tLeave + RESERVE_T : -1e9;
-        const rec = boat(sl.boom ? 'lcm' : s.kind || 'lcvp', { kind: 'reserve', ship: s, slot: sl, from: last, men: 0, tanks: 0 });
-        recs.push(rec);
+        if (sl.boom || s.slotUse[k].length || Math.random() > RESERVE_P) return;              // the LCMs wait nested on the hatches (the model)
+        recs.push(boat(s.kind || 'lcvp', { kind: 'reserve', ship: s, slot: sl, from: -1e9, men: 0, tanks: 0 }));
       });
       for (const u of s.slotUse) u.forEach((q, j) => { q.shown = q.slot.boom ? q.tLower - 8 : j ? u[j - 1].tLeave + 8 : -1e9; });   // an LCM is swung out by the boom just before it goes down
+    }
+    for (const [x, off, n, type] of HOLD) {
+      const C = LC.CRAFT[type], R = Math.max(3.5, n * 3 * C.len / (2 * PI)), cx = x + (Math.random() - 0.5) * 30;
+      const w = { cx, cz: T.shoreZ(cx) - off + (Math.random() - 0.5) * 20, R, a0: Math.random() * 6.28, da: 2 * PI / n, om: C.speed * CIRC_K / R };
+      for (let i = 0; i < n; i++) recs.push(boat(type, { kind: 'hold', w, i, men: C.men, tanks: 0 }));
+    }
+    // the LCTs and LCI(L)s in from the north edge: each wave down one track, a loose echelon (the plan has them a second
+    // or two apart at the LOD)
+    const north = new Map();
+    for (const q of recs) if (q.kind === 'north') { if (!north.has(q.r.wave)) north.set(q.r.wave, []); north.get(q.r.wave).push(q); }
+    for (const list of north.values()) {
+      const x0 = list.reduce((a, q) => a + q.r.x, 0) / list.length + (Math.random() - 0.5) * 60;
+      list.forEach((q, i) => {
+        const P = q.path.p, xs = x0 + (i - (list.length - 1) / 2) * 7;
+        q.path = curve([xs, -60, xs, 160, P[6], P[7] - 220, P[6], P[7]]);
+        q.t0 = q.r.spawnT - q.path.len / q.C.speed;
+      });
     }
     // the LCTs that launched the DD tanks: one to each pair of tanks, at the launch point at round start
     const dd = plan.filter(r => r.craft === 'dd');
@@ -222,10 +268,11 @@ window.WW = window.WW || {};
     o.x = wx(s, sl.x, sl.z); o.z = wz(s, sl.x, sl.z); o.heading = s.heading;
     P.y = y; P.pitch = s.pitch; P.roll = s.roll; o.pose = P;
   }
-  function addMan(x, y, z) {
-    if (nMen >= 96) return;
-    _m.compose(_p.set(x, y, z), _q.identity(), _s.set(0.11, 0.24, 0.11)); men[0].setMatrixAt(nMen, _m);
-    _m.compose(_p.set(x, y + 0.27, z), _q, _s.set(0.12, 0.08, 0.12)); men[1].setMatrixAt(nMen++, _m);
+  // a figure (k: 0 standing, 1 crouched) at (x, y, z) facing yaw (the figure faces +x)
+  function addMan(k, x, y, z, yaw) {
+    if (nMen[k] >= MAX_MEN) return;
+    _e.set(0, yaw, 0, 'YXZ'); _q.setFromEuler(_e);
+    men[k].setMatrixAt(nMen[k]++, _m.compose(_p.set(x, y, z), _q, _s.set(MAN_S, MAN_S, MAN_S)));
   }
   function addFall(x, y0, y1, z) {
     if (nFalls >= 64 || y1 <= y0) return;
@@ -249,6 +296,7 @@ window.WW = window.WW || {};
       if (a >= PI) { const d = (T - 12 - PI * R / 1.2) * 1.4; o.x = cx - R; o.z = cz - d; o.heading = -PI / 2; }
       return o.z > -40;
     }
+    if (q.kind === 'hold') { ringAt(q.w, t, q.i, _o); o.x = _o.x; o.z = _o.z; o.heading = _o.h; return true; }
     const s = q.ship, sl = q.slot;
     if (q.kind === 'reserve') {
       if (t < q.from) return false;
@@ -270,9 +318,15 @@ window.WW = window.WW || {};
     } else {                                                                                 // alongside: the men come down the net
       o.x = q.ax; o.z = q.az; o.heading = s.heading;
       const f = (t - q.tAlong) / LOAD_T; o.men = Math.round(q.men * clamp(f * 1.1, 0, 1));
-      if (f < 0.92) for (let k = 0; k < 4; k++) {
-        const u = (f * 5 + k * 0.27) % 1, lz = sl.side * (sl.w + 0.07), lx = ax + (k - 1.5) * 0.24;
-        addMan(wx(s, lx, lz), s.y + 0.1 + (sl.y - 0.1) * (1 - u), wz(s, lx, lz));
+      const face = -s.heading + sl.side * PI / 2, out = -s.heading - sl.side * PI / 2;      // facing the hull / outboard
+      if (f < 0.92) for (let k = 0; k < 4; k++) {                                            // on the net, four abreast, one file each
+        const u = (f * 5 + k * 0.37) % 1, lz = sl.side * (sl.w + 0.06), lx = ax + (k - 1.5) * 0.24;
+        addMan(0, wx(s, lx, lz), s.y + 0.05 + (sl.y - 0.3) * (1 - u), wz(s, lx, lz), face);
+      }
+      const left = Math.round(8 * (1 - clamp(f * 1.15, 0, 1)));                              // the rest waiting at the rail
+      for (let k = 0; k < left; k++) {
+        const lx = ax + ((k % 4) - 1.5) * 0.2 + (k > 3 ? 0.1 : 0), lz = sl.side * (sl.w - 0.18 - (k > 3 ? 0.17 : 0));
+        addMan(k % 3 === 2 ? 1 : 0, wx(s, lx, lz), s.y + sl.y, wz(s, lx, lz), out);
       }
     }
     if (!sl.boom && t < q.tAlong + 3) {                                                    // the falls from the davit heads to the boat
@@ -311,9 +365,9 @@ window.WW = window.WW || {};
     if (WW.landingCraft.plan !== lastPlan) { place(); build(); }
     for (const s of ships) ride(s);
     const t = WW.game ? WW.game.roundTime : 0, live = WW.game && WW.game.state === 'battle';
-    out.length = 0; nMen = 0; nFalls = 0;
+    out.length = 0; nMen[0] = nMen[1] = 0; nFalls = 0;
     if (live) for (const q of recs) if (step(q, t)) out.push(q.o);
-    for (const m of men) { m.count = nMen; m.instanceMatrix.needsUpdate = true; }
+    men.forEach((m, k) => { m.count = nMen[k]; m.instanceMatrix.needsUpdate = true; });
     falls.count = nFalls; falls.instanceMatrix.needsUpdate = true;
     drawDebug();
   }
