@@ -53,8 +53,8 @@ window.WW = window.WW || {};
   // planes rearming / refuelling after landing. Read by the air boss (WW.airDeck.loaded) and the deck hazard.
   function deckLoad(cv) {
     var n = 0, D = cv._deck, q = cv.ai && cv.ai.queue;
-    if (q) for (var i = 0; i < q.length; i++) if (q[i].target) n++;
-    if (D) for (var j = 0; j < D.launchers.length; j++) { var p = D.launchers[j]; if (p.alive && !p.removed && p.state === 'takeoff') n++; }
+    if (q && !cv.deckOut) for (var i = 0; i < q.length; i++) if (q[i].target) n++;   // a holed deck: the strike is struck below, defuelled
+    if (D) for (var j = 0; j < D.launchers.length; j++) { var p = D.launchers[j]; if (p.alive && !p.removed && p.state === 'takeoff' && !(cv.deckOut && p.deckPh === 'queued')) n++; }
     if (cv.rearm) n += cv.rearm.length;
     return n;
   }

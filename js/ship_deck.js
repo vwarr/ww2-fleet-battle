@@ -10,7 +10,7 @@
 // A bomb on a carrier (ship_fires.js hit) puts the deck out with chance OUT_P0 x size^2 + OUT_P1 per earlier deck
 // hit (size: the bomb's damage / WW.BOMB.dmg; a crashing plane is small). Out for OUT_T s / doctrine.damageControl
 // (USN 1.5: 40-67 s, IJN 1: 60-100 s; 1 sim s is about half a minute), each hit while out adds OUT_ADD; from the third hit on she may be out for
-// good (PERM_P per hit past the second / damageControl). The repair clock stands while 3 or more fires burn.
+// good (PERM_P per hit past the second / damageControl). The repair clock runs at half speed while 3 or more fires burn.
 // While out (cv.deckOut = { until, perm, hits, t0 }): no launches (air_boss.js, ai_carrier.js), no recoveries
 // (air_deck.js holds the deck; air_recovery.js waves off a plane in the groove). Planes coming home hold in the
 // stack when they have the fuel to wait (HOLD_S when another deck is open); otherwise they divert to another deck of
@@ -23,7 +23,6 @@ window.WW = window.WW || {};
   var OUT_P0 = 0.4, OUT_P1 = 0.25, OUT_MAX = 0.95, OUT_T = [60, 100], OUT_ADD = 0.5, PERM_P = 0.25;
   var HOLD_S = 45, HOLD_FUEL = 25, HOME_R = 150;   // a plane home (HOME_R) holds with HOLD_FUEL s of fuel to spare for a
   // deck back within HOLD_S s (longer when no other deck of the side is open); else it diverts or ditches
-  var ARM_LEAD = 60;                   // the next strike's bombers are armed below ARM_LEAD s before it goes
   var BOOM_PERM = 6, BOOM_T = 2;       // a deck-load explosion: this big a load wrecks the deck for the round, a smaller one BOOM_T x as long
   var stats = null, tick = 0;
   function per() { return WW.perSide(0); }
@@ -31,12 +30,16 @@ window.WW = window.WW || {};
   function dcOf(s) { var d = WW.fleetCmd && WW.fleetCmd.doctrine(s.nation); return d && d.damageControl > 0 ? d.damageControl : 1; }
   function out(cv) { return !!(cv && cv.deckOut); }
 
-  // Bombers being readied below for the next strike: the strike is due within ARM_LEAD s, or the reserve is being
-  // re-armed (air_boss.js). Weighted (ship_fires.js HANGAR_K) in the deck-load hazard (deckHit).
+  // Bombers being armed and fuelled below: while a strike is ordered (the next deck load readied as the first is
+  // spotted: the bombers in the hangar not already in the launch queue, which the deck load counts), or while the
+  // reserve is re-armed for the targets at hand (air_boss.js: Nagumo's torpedo / bomb swap). Weighted
+  // (ship_fires.js HANGAR_K) in the deck-load hazard (deckHit).
   function hangarLoad(cv) {
     var a = cv.ai, h = cv.hangar; if (!a || !h || cv.isBase) return 0;
-    var now = WW.time.now, arming = (a.strikeT !== undefined && a.strikeT < ARM_LEAD) || (cv.deckRearmUntil || 0) > now || (a.rsv && a.rsv.rearmT > now);
-    return arming ? (h.dive || 0) + (h.torpedo || 0) : 0;
+    var now = WW.time.now, q = a.queue || [], queued = 0, strike = false;
+    for (var i = 0; i < q.length; i++) if (q[i].target) { strike = true; if (q[i].kind !== 'fighter') queued++; }
+    var arming = (strike && !cv.deckOut) || (cv.deckRearmUntil || 0) > now || (a.rsv && a.rsv.rearmT > now);
+    return arming ? Math.max(0, (h.dive || 0) + (h.torpedo || 0) - queued) : 0;
   }
   // the hangar's armed bombers go up with it: returns how many were lost
   function hangarBoom(cv) {
@@ -78,7 +81,7 @@ window.WW = window.WW || {};
       if (!s.alive) continue;
       stats.outS[s.nation]++;
       if (D.perm) continue;
-      if ((s.fireN || 0) >= 3) { D.until += 1; continue; }   // the repair parties are fighting the fires
+      if ((s.fireN || 0) >= 3) D.until += 0.5;   // half the parties are fighting the fires
       if (now >= D.until) { s.deckOut = null; stats.back[s.nation]++; WW.emit('deckBack', { ship: s, out: now - D.t0 }); }
     }
     var planes = WW.world.planes, F = WW.airFlight;
