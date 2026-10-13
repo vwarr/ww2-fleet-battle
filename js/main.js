@@ -369,6 +369,8 @@ window.WW = window.WW || {};
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
     call('baseFx', 'update', rdt);  // the island base: craters, fires, parked planes (base_fx.js), visual only
     call('normandyProps', 'update', rdt); // Normandy: the beach obstacles still standing (terrain_normandy_props.js), visual only
+    call('waves', 'update', rdt);         // Normandy: the rough sea and the surf (waves.js), visual only; before what rides it
+    call('normandySky', 'update', rdt);   // Normandy: the low cloud deck, smoke from the bluffs (normandy_sky.js), visual only
     call('landingFx', 'update', rdt);     // Normandy: the landing craft (models_landing.js), visual only
     call('infantryFx', 'update', rdt);    // Normandy: the men and tanks ashore (models_infantry.js), visual only
     call('offmapAirFx', 'update', rdt);   // Normandy: the planes from England (air_offmap_fx.js), visual only

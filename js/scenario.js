@@ -38,7 +38,10 @@ window.WW = window.WW || {};
         USN: { x0: W * 0.35, x1: W * 0.95, cx: W * 0.65, cz: 60, heading: PI / 2, home: { x: 0, z: -1 }, edge: 0 },
         GER: { x0: W * 0.3, x1: W * 0.95, cx: W * 0.6, cz: H - 60, heading: -PI / 2, home: { x: 0, z: 1 }, edge: H }
       },
-      escapes: false, base: 'none', timeout: 1000, daylight: 'dawn', weather: 'clear'
+      escapes: false, base: 'none', timeout: 1000, daylight: 'dawn', weather: 'clear',
+      // the weather of 6 June 1944 off Omaha: a grey overcast (broken cloud at 1,000-3,000 ft under a higher deck),
+      // the wind west-north-west force 4-5 (blowing toward the east-south-east), a moderate sea and a heavy surf
+      overcast: 0.7, wind: { a: 0.39, s: 0.85 }
     }
   };
   let cur = WW.scenarios.pacific;

@@ -90,7 +90,11 @@ window.WW = window.WW || {};
       const tg = WW.cam && WW.cam.target ? WW.cam.target() : null;
       cov = Math.max(WW.weather.cover(WW.camera.position.x, WW.camera.position.z) * 0.8, tg ? WW.weather.cover(tg.x, tg.z) : 0);
     }
-    wx += (cov - wx) * Math.min(1, (rdt || 0.016) * 1.5);
+    // a scenario's overcast (Normandy: the grey morning of 6 June 1944) greys and dims it as a light rain would, with
+    // its haze thinner than a squall's (wr: the fog distance)
+    const oc = (WW.scn && WW.scn().overcast) || 0;
+    wx += (Math.max(cov, oc) - wx) * Math.min(1, (rdt || 0.016) * 1.5);
+    const wr = Math.max(0, wx - oc) + oc * 0.45;
     const dim = 1 - 0.35 * wx;
     // dome: palette, the sun's place, disc and halo, stars and moon
     const u = P.dome.material.uniforms;
@@ -114,7 +118,7 @@ window.WW = window.WW || {};
     const fog = WW.scene.fog;
     if (fog) {
       col('fog', fog.color);
-      if (wx > 0.01) { tmp.copy(RAIN_FOG).multiplyScalar(0.45 + 0.55 * k); fog.color.lerp(tmp, wx * 0.7); fog.near *= 1 - 0.9 * wx; fog.far *= 1 - 0.78 * wx; }
+      if (wx > 0.01) { tmp.copy(RAIN_FOG).multiplyScalar(0.45 + 0.55 * k); fog.color.lerp(tmp, wx * 0.7); fog.near *= 1 - 0.9 * wr; fog.far *= 1 - 0.78 * wr; }
       if (WW.scene.background && WW.scene.background.isColor) WW.scene.background.copy(fog.color);
     }
     // clouds (lit warm from below at sunset: the emissive carries it)

@@ -23,6 +23,8 @@ window.WW = window.WW || {};
     rnd = rnd || R;
     var a = rnd() * Math.PI * 2, s = 0.5 + 0.4 * rnd();
     WW.wind = { x: Math.cos(a) * s, z: Math.sin(a) * s, a: a };
+    var W0 = rnd === WW.rand && WW.scn && WW.scn().wind;   // a scenario's own wind (Normandy: WNW force 4-5); the draws above still made
+    if (W0) WW.wind = { x: Math.cos(W0.a) * W0.s, z: Math.sin(W0.a) * W0.s, a: W0.a };
   }
   pickWind();
 
