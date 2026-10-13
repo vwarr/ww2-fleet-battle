@@ -25,7 +25,7 @@ window.WW = window.WW || {};
   function per() { return WW.perSide(0); }
   function reset() {
     stats = { dispatched: 0, landed: 0, rescues: 0, survivors: 0, pilots: 0, catLost: 0, aborted: 0, waited: 0,
-      patrols: per(), sightings: per(), lost: per(), home: per(), bombs: per(), bombHits: per(), shadowT: per(), evades: per() };
+      patrols: per(), sightings: per(), lost: per(), home: per(), bombs: per(), bombHits: per(), shadowT: per(), evades: per(), radio: per() };
     if (WW.flyingBoats) WW.flyingBoats.stats = stats;
   }
   function battle() { return WW.game && WW.game.state === 'battle'; }
@@ -119,6 +119,7 @@ window.WW = window.WW || {};
           else this.setState('return');
       }
       if (this.removed) return;
+      if (WW.gunners && WW.gunners.boat) WW.gunners.boat(this, dt);   // the waist / tail guns at a fighter on its tail (air_gunners.js)
       this.trail(dt, false);
       this.integrate(dt, true);
       if (!free && this.y < 5) { this.y = 5; this.vy = Math.max(0, this.vy); }
