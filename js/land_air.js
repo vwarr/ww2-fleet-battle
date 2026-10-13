@@ -343,7 +343,7 @@ window.WW = window.WW || {};
     // a land bomber short of its height within RUN_R of the aim point: it circles there, out of the target's reach, in a
     // cruise climb (state transit: the type's climb rate, no zoom) until near the height, then turns in for the run
     if (pl.lvLand && pl.y < LA * (pl.lvC ? 0.96 : 0.9) && d < RUN_R) {
-      if (!pl.lvC) { const k = RUN_R / Math.max(1, d); pl.lvC = { x: A.x + (pl.x - A.x) * k, z: A.z + (pl.z - A.z) * k }; }
+      if (!pl.lvC) { const k = RUN_R / Math.max(1, d); pl.lvC = { x: WW.clamp(A.x + (pl.x - A.x) * k, 50, WW.cfg.MAP_W - 50), z: WW.clamp(A.z + (pl.z - A.z) * k, 50, WW.cfg.MAP_H - 50) }; }
       const C = pl.lvC, ca = Math.atan2(pl.z - C.z, pl.x - C.x) + 0.5;
       pl.state = 'transit'; pl.fly(C.x + Math.cos(ca) * 40, C.z + Math.sin(ca) * 40, LA + 3, dt, pl.pt.speed);
       return;
