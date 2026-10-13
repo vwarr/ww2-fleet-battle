@@ -8,7 +8,8 @@
 //    Wildcat-type fighters, SBDs, B-26 torpedo bombers, B-17 level bombers; IJN: Zeros, Bettys (torpedo / level).
 //    The group's size and mix: land_ground.js plan (one carrier air group's worth by default, WW.islandBase.TUNE).
 //  - Air boss (update): a standing CAP (WW.airOps.capWanted; a SCRAMBLE when raiders are near: fighters first, a short
-//    warm-up, a fast taxi), and every 55-75 s a strike on the best known enemy ship within STRIKE_R: dive and torpedo
+//    warm-up, a fast taxi), and every 55-75 s a strike on the best known enemy ship within STRIKE_R (on the island
+//    patrol's fresh report of carriers or battleships: the bombers' combat radius, longPick): dive and torpedo
 //    bombers as a WW.strike wave, level bombers on their own. Nothing is launched while the main runway is closed,
 //    the base is neutralized or it is dusk; queued launches wait for the runway to be repaired.
 //  - Home: every plane holds at a fix away from the island and the enemy's ships (land_hold.js: the land bombers, B-17,
@@ -94,8 +95,19 @@ window.WW = window.WW || {};
   // The base's bombers go for the big ships (air_ops.js pickTarget opts.big): the best carrier, battleship or cruiser
   // in reach; the self-defence target first unless it is a destroyer and a bigger ship is in reach
   const bigPick = b => (WW.airOps ? WW.airOps.pickTarget({ x: b.x, z: b.z, nation: b.nation }, { big: true, reach: STRIKE_R }) : null);
+  // On the island patrol's fresh report (base.alertT, base_alert.js) of carriers (first) or battleships: out to the bombers'
+  // fuel radius (out and back, ATTACK_T s over the target, RES_K in reserve: air_cag.js reach), as Midway's on the PBY report
+  const ATTACK_T = 25, RES_K = 0.15, LONG = { carrier: 2, battleship: 1 };
+  function radius(v) { const P = Object.assign({}, WW.PLANE_TYPES[VAR[v].kind], VAR[v].st); return (P.range / P.speed * 6 * (1 - RES_K) - ATTACK_T) * P.speed / 2; }
+  function longR(b) { let R = STRIKE_R; for (const s of b.slots) if (VAR[s.v].kind !== 'fighter') R = Math.max(R, radius(s.v)); return R; }
+  const alerted = b => (b.alertT || 0) > WW.time.now;
+  function longPick(b) {
+    let best = null, bs = -1e9; const R = WW.intel && alerted(b) ? longR(b) : 0;
+    if (R) for (const c of WW.intel.enemyShips(b.nation, { fresh: 45 })) { const u = c.unit, k = LONG[WW.intel.typeOf(c)], d = WW.dist(b.x, b.z, c.x, c.z); if (u && u.alive && !u.sinking && !u.isBase && k && d < R && k * 1e4 - d > bs) { bs = k * 1e4 - d; best = u; } }
+    return best;
+  }
   function strikeTarget(b, def) {
-    const t = bigPick(b);
+    const t = longPick(b) || bigPick(b);
     return def && (def.type !== 'destroyer' || !t || t.type === 'destroyer') ? def : t;
   }
   function variants(b, kind) { const L = []; for (const s of b.slots) if (VAR[s.v].kind === kind && !VAR[s.v].level && L.indexOf(s.v) < 0) L.push(s.v); return L; }
@@ -127,19 +139,21 @@ window.WW = window.WW || {};
     a.strikeT -= dt;
     const def = defTarget(b);   // self-defence first: warships off the island (the Cactus Air Force after the bombardment)
     if (def && def !== a.defFor) { a.defFor = def; a.strikeT = Math.min(a.strikeT, 4); ST.defence++; }
+    const lp = longPick(b); if (lp && lp !== a.longFor) { a.longFor = lp; a.strikeT = Math.min(a.strikeT, 3); }   // carriers on the patrol's plot: go
     if (a.strikeT <= 0 && !a.queue.some(q => q.target)) {
       a.strikeT = WW.randRange(55, 75);
       const t = strikeTarget(b, def);
       if (t && !canLaunch(b) && def) a.strikeT = 5;   // runway cratered / dark: the strike goes the moment it can (at dawn)
-      if (t && WW.dist(b.x, b.z, t.x, t.z) < STRIKE_R && canLaunch(b)) {
+      const td = t ? WW.dist(b.x, b.z, t.x, t.z) : 0;
+      if (t && td < (LONG[t.type] && alerted(b) ? longR(b) : STRIKE_R) && canLaunch(b)) {
         if (t === def) ST.defStrikes++;
         const wave = [], avail = {};
         for (const s of b.slots) if (s.state === 'parked' && s.readyAt <= now && !s.moved) avail[s.v] = (avail[s.v] || 0) + 1;
         for (const k in avail) {
-          if (VAR[k].kind === 'fighter') continue;
+          if (VAR[k].kind === 'fighter' || radius(k) < td) continue;   // (beyond its reach: stays home)
           for (let i = 0; i < avail[k]; i++) { const q = { v: k, kind: VAR[k].kind, target: t, level: !!VAR[k].level }; a.queue.push(q); if (!q.level) wave.push(q); }
         }
-        const f = pick(b, 'fighter'), esc = b.nation === 'IJN' && f ? Math.min(2, G().ready(b, f) - 3) : 0; // Zeros escort the Bettys
+        const f = pick(b, 'fighter'), esc = b.nation === 'IJN' && f && radius(f) >= td ? Math.min(2, G().ready(b, f) - 3) : 0; // Zeros escort the Bettys
         for (let i = 0; i < esc; i++) { const q = { v: f, kind: 'fighter', target: t }; a.queue.push(q); wave.push(q); }
         if (wave.length || a.queue.some(q => q.level)) {
           ST.strikes++; WW.islandBase.stats.landStrikes++;
@@ -382,5 +396,5 @@ window.WW = window.WW || {};
   });
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; });
 
-  WW.landAir = { setup, update, launched, takeoff, goHome, landing, rollout, hangarLost, aimFor, VAR, stats: ST };
+  WW.landAir = { longR, setup, update, launched, takeoff, goHome, landing, rollout, hangarLost, aimFor, VAR, stats: ST };
 })();
