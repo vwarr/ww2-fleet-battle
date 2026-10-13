@@ -1,9 +1,11 @@
 // air_strafe.js — WW.strafe: fighters strafe small craft with their guns. Targets: PT boats, surfaced submarines,
 // destroyers below half hp (SMALL). Who:
 //   - the escorts of a strike on small craft, once over the target (instead of circling it);
-//   - up to CAP_N CAP fighters of a carrier, while its side has a fresh small-craft contact within CAP_R of it and
+//   - up to CAP_N CAP fighters of a carrier or of an island base (land_air.js calls capCheck), while its side has a fresh small-craft contact within CAP_R of it and
 //     no enemy plane is detected near (the fighter director's picture): plane.target is set to the boat for the
-//     pass, so the CAP accounting relieves it, and cleared afterwards.
+//     pass, so the CAP accounting relieves it, and cleared afterwards;
+//   - a fighter on its way home (a carrier's or the field's) passing one (homeCheck);
+//   - a dive bomber after its pull-out, one pass (air_gunners.js: sf.one, sf.big for the ship it bombed).
 // A pass (air_intercept.js style): set up SET_R out on a run-in bearing at SET_ALT, run in low (RUN_ALT) on the
 // boat's predicted position, bursts inside FIRE_R while the nose is on (each burst hits with P_HIT, BURST x the
 // plane's gun factor damage through ship.takeDamage, kind 'strafe', cal 'mg'), break off past the boat, climb out
@@ -12,7 +14,7 @@ window.WW = window.WW || {};
 (function () {
   const SMALL = { pt: 1, submarine: 1, destroyer: 1 };
   const CAP_N = 2, CAP_R = 170, SET_R = 70, SET_ALT = 20, RUN_ALT = 5, FIRE_R = 42, P_HIT = 0.55, BURST = 6, BURST_T = 0.35, EXT_T = 2.5;
-  const ST = { passes: 0, bursts: 0, hits: 0, dmg: 0, cap: 0, escort: 0, home: 0 };
+  const ST = { passes: 0, bursts: 0, hits: 0, dmg: 0, cap: 0, escort: 0, home: 0, baseCap: 0, baseHome: 0 };
 
   const small = u => u && u.alive && !u.sinking && SMALL[u.type] && !u.submerged && (u.type !== 'destroyer' || u.hp < u.maxHp * 0.5);
   const fresh = (n, u, age) => { const c = WW.intel && WW.intel.known(n, u); return c && WW.time.now - c.seenAt <= age ? c : null; };
@@ -99,7 +101,8 @@ window.WW = window.WW || {};
     return true;
   }
 
-  // CAP: hand up to CAP_N fighters of the carrier a small-craft contact near it (none while enemy planes are about)
+  // CAP (a carrier's, from the air boss below; an island base's, from land_air.js update's CAP check once a second):
+  // hand up to CAP_N fighters of the carrier / field a small-craft contact near it (none while enemy planes are about)
   function capCheck(cv) {
     if (!WW.intel || !WW.airOps) return;
     if (WW.airOps.picture(cv).near) return;
@@ -112,7 +115,7 @@ window.WW = window.WW || {};
       if (n >= CAP_N) break;
       if (!p.alive || p.carrier !== cv || p.kind !== 'fighter' || p.target || p.search || p.strafe || p.recall || p.state !== 'transit' || p.fuel < 60 || p.foe) continue;
       p.strafe = best; p.target = best; p.sf = { ph: 'setup', t: 0, b: Math.atan2(p.z - best.z, p.x - best.x), fT: 0, cap: true };
-      n++; ST.cap++;
+      n++; ST.cap++; if (cv.isBase) ST.baseCap++;
       if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'strafe', plane: p, squadron: p.squadron || null, target: best });
     }
   }
@@ -121,13 +124,13 @@ window.WW = window.WW || {};
   // destroyer it passes (in sight within HOME_R) for up to HOME_T s, once a sortie (the guns still had rounds).
   const HOME_R = 110, HOME_FUEL = 45, HOME_T = 20;
   function homeCheck(pl) {
-    if (!WW.intel || pl.search || pl.strafed || pl.hp < pl.maxHp * 0.6 || pl.fuel < HOME_FUEL || (pl.carrier && pl.carrier.isBase)) return false;
+    if (!WW.intel || pl.search || pl.strafed || pl.hp < pl.maxHp * 0.6 || pl.fuel < HOME_FUEL) return false;
     let best = null, bd = HOME_R;
     for (const c of WW.intel.enemyShips(pl.nation, { fresh: 3 })) { const d = WW.dist(pl.x, pl.z, c.x, c.z); if (d < bd && small(c.unit)) { bd = d; best = c.unit; } }
     if (!best) return false;
     pl.strafed = true; pl.strafe = best; pl.target = best; pl.state = 'transit'; pl.foe = null;
     pl.sf = { ph: 'setup', t: 0, b: Math.atan2(pl.z - best.z, pl.x - best.x), fT: 0, cap: true, home: true, until: WW.time.now + HOME_T };
-    ST.home++;
+    ST.home++; if (pl.carrier && pl.carrier.isBase) ST.baseHome++;
     if (WW.emit) WW.emit('airOrder', { carrier: pl.carrier, order: 'strafe', plane: pl, squadron: pl.squadron || null, target: best });
     return true;
   }
@@ -170,5 +173,5 @@ window.WW = window.WW || {};
       add(6.8 + (p.ace ? 1 : 0), 'chase', p, { dur: dur(8, 11), target: p.strafe });
   });
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; FXQ.length = 0; });
-  WW.strafe = { stats: ST, small, pass, stop, fresh };
+  WW.strafe = { stats: ST, small, pass, stop, fresh, capCheck: cv => { try { capCheck(cv); } catch (e) { console.error('strafe', e); } } };
 })();
