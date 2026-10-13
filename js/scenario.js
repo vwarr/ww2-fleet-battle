@@ -38,7 +38,7 @@ window.WW = window.WW || {};
         USN: { x0: W * 0.35, x1: W * 0.95, cx: W * 0.65, cz: 60, heading: PI / 2, home: { x: 0, z: -1 }, edge: 0 },
         GER: { x0: W * 0.3, x1: W * 0.95, cx: W * 0.6, cz: H - 60, heading: -PI / 2, home: { x: 0, z: 1 }, edge: H }
       },
-      escapes: false, base: 'none', timeout: 1000
+      escapes: false, base: 'none', timeout: 1000, daylight: 'dawn', weather: 'clear'
     }
   };
   let cur = WW.scenarios.pacific;

@@ -82,11 +82,5 @@ window.WW = window.WW || {};
     return out;
   };
 
-  // the round's ending (P1: the time limit only; P9: the draws opened and the beachhead held)
-  N.updateGame = function (dt, game) {
-    if (game.state !== 'battle') return false;   // the victory banner: main.js
-    game.roundTime += dt;
-    if (game.roundTime >= WW.cfg.ROUND_TIMEOUT) game.endRound('GER', 'time', 'USN');
-    return true;
-  };
+  // the round's ending: normandy_game.js (N.updateGame)
 })(window.WW);
