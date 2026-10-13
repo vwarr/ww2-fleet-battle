@@ -208,4 +208,5 @@ window.WW = window.WW || {};
   WW.combat.fireTorpedo = fireTorpedo;
   WW.combat.dropBomb = dropBomb;
   WW.combat.dropDepthCharge = dropDepthCharge;
+  WW.combat.flakAt = flakAt;                   // the AA a plane flies into round a point (air_intercept.js pressure)
 })();
