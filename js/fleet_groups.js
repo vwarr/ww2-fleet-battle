@@ -170,13 +170,13 @@ window.WW = window.WW || {};
   // Carrier station safety: no closer than 1.9 x gun range + 20 to any known enemy gun ship (contacts up to 60 s
   // old): the station slides straight away from it (then back into the band x0..x1 and 80 off the north / south
   // edges). Keeps a pressing or advancing side from leading its carrier toward the enemy's guns.
-  function cvSafe(B, p, x0, x1) {
+  function cvSafe(B, p, x0, x1, k) {
     if (!WW.intel) return;
     var cs = WW.intel.enemyShips(B.nation), now = WW.time.now, H = WW.cfg.MAP_H;
     for (var pass = 0; pass < 2; pass++) for (var i = 0; i < cs.length; i++) {
       var c = cs[i], u = c.unit;
       if (!u || !u.alive || u.submerged || u.type === 'carrier' || u.type === 'pt' || !u.stats.guns.length || now - c.seenAt > 60) continue; // (a PT boat is no gun ship)
-      var R = u.stats.guns[0].range * 1.9 + 20, d = WW.dist(p.x, p.z, c.x, c.z);
+      var R = u.stats.guns[0].range * (k || 1.9) + 20, d = WW.dist(p.x, p.z, c.x, c.z);
       if (d >= R || d < 1) continue;
       p.x = WW.clamp(c.x + (p.x - c.x) / d * R, x0, x1); p.z = WW.clamp(c.z + (p.z - c.z) / d * R, 80, H - 80);
     }
@@ -235,9 +235,11 @@ window.WW = window.WW || {};
         // CV_LO..CV_HI of the width in from its own edge, withdrawing or not: a broken side's carrier then has a long
         // run home (ai_endgame.js), and a pursuer a real window to catch it (user, Oct 2026); the IJN vanguard (fleet_formation.js) keeps to this band too
         var wd = B.posture === "withdraw", lo = CV_LO, hi = hold ? CV_LO : CV_HI; // withdrawing too: the run home starts at the break (ai_endgame.js)
+        var NP = WW.nightPlan && WW.nightPlan.cvOpen(B) ? WW.nightPlan : null; // after dark: the carriers open the range (night_plan.js)
+        if (NP) { lo = NP.CV_BAND[0]; hi = NP.CV_BAND[1]; }
         if (wd) p.z = q.z; // straight home, not across the front
         p.x = ownX === 0 ? WW.clamp(p.x, W * lo, W * hi) : WW.clamp(p.x, W * (1 - hi), W * (1 - lo)); p.z = WW.clamp(p.z, wd ? 100 : 150, H - (wd ? 100 : 150));
-        cvSafe(B, p, ownX === 0 ? W * CV_SAFE : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * (1 - CV_SAFE)); // safety may slide it home, not onto the edge
+        cvSafe(B, p, ownX === 0 ? W * CV_SAFE : W * (1 - CV_HI - 0.02), ownX === 0 ? W * (CV_HI + 0.02) : W * (1 - CV_SAFE), NP ? NP.CV_OPEN_K : 0); // safety may slide it home, not onto the edge
         set(q, p); return;
       }
       if (!WW.formation) { var r = RING[(G.carrier.members.indexOf(q) - cv.length) % RING.length], g = cvg || q, rk = WW.admirals && cvg ? WW.admirals.ringK(cvg) : 1; set(q, at(g.x, g.z, r[0] * rk, r[1] * rk)); } // rk: the flagship's escorts close in
@@ -257,8 +259,9 @@ window.WW = window.WW || {};
     G.sub.members.forEach(function (q, i) { set(q, B.doctrine.subLine ? at(mg.x, mg.z, sf, (i - (nsub - 1) / 2) * 90) : at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
     // closing with no battle line, screen or flotilla (a carrier task force on its own): the carriers' escorts sortie
     // toward the enemy as a surface group, so the fleets still meet; one per carrier stays while there is another to go
+    // (not after dark: a carrier's screen stays with her through the night, night_plan.js)
     if (!B.airWar && cv.length && !fitN(B, G.main) && !fitN(B, G.screen) && !fitN(B, G.flotilla) &&
-      B.posture !== 'withdraw') sortie(B, G, cv.length);
+      B.posture !== 'withdraw' && !(WW.nightPlan && WW.nightPlan.cvOpen(B))) sortie(B, G, cv.length);
     // withdrawing ships: behind their own carrier (or the main body)
     B.orders.forEach(function (o) {
       if (o.role !== 'withdraw' || o.ship.type === 'carrier') return; // a carrier keeps its own (safe) station

@@ -64,6 +64,7 @@ window.WW = window.WW || {};
     return fits(D, pref, extra) ? pref : fits(D, pref === a ? b : a, extra) ? (pref === a ? b : a) : null;
   }
   function counts(c) { // planes the carrier holds: hangar, rearming, and launched but still waiting below
+    if (WW.nightPlan && WW.nightPlan.stowed(c)) return { fighter: 0, dive: 0, torpedo: 0 }; // dark: struck below, the deck bare (night_plan.js)
     const t = { fighter: c.hangar.fighter, dive: c.hangar.dive, torpedo: c.hangar.torpedo };
     if (c.rearm) for (const r of c.rearm) t[r.kind]++;
     if (c._deck) for (const q of c._deck.launchers) if (q.deckPh === 'queued') t[q.kind]++;
