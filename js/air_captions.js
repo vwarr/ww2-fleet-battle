@@ -95,6 +95,8 @@ window.WW = window.WW || {};
       return once('shadow', [FBN(s) + ' shadowing the ' + (s.nation === 'IJN' ? 'fleet' : 'enemy'), 'reporting' + (ty ? ': ' + (KIND[ty] || ty) + (c.misid ? '?' : '') : '')]);
     }
     if (s.state === 'evade') return once('evade', [FBN(s) + ' hunted by fighters', 'running for home, low over the sea']);
+    if (s.state === 'depart') return once('depart', [FBN(s) + ' off the lagoon', s.dawn ? 'the dawn search goes out' : 'a patrol goes out']);
+    if (s.state === 'taxiIn' || s.state === 'alightHome') return once('homeL', [FBN(s) + ' home to the lagoon', 'from the search']);
     if (s.state === 'bomb' && s.bombAt) return once('bomb', ['Mavis bombing run', 'on a lone ' + (KIND[s.bombAt.type] || 'ship')]);
     return null;
   }
@@ -156,12 +158,15 @@ window.WW = window.WW || {};
       if (p.wave && p.wave.cag === p && p.wave.go && p.sk === 'form' && p.state === 'transit') add(5.5, 'chase', p, { dur: dur(12, 15) });
       else if (p.kind === 'fighter' && !p.target && p.wing === 0 && p.element && p.element.members.length >= 2 && p.state === 'transit') add(3.5, 'chase', p, { dur: dur(11, 14) });
     }
-    // flying boats: a Catalina landing among the survivors, a Mavis shadowing the fleet or hunted by the CAP
+    // flying boats: a Catalina landing among the survivors, a Mavis shadowing the fleet or hunted by the CAP, the dawn
+    // search taking off from the island's lagoon, a boat landing home there
     for (const p of WW.world.planes) {
       if (!p.alive || p.kind !== 'flyingboat') continue;
       if (p.state === 'alight') add(7.5, 'chase', p, { dur: dur(12, 15) });
       else if (p.state === 'afloat' || p.state === 'liftoff') add(6.5, 'orbit', p, { r: 30, dur: dur(13, 16), w: 0.05, hgt: 0.22 });
       else if (p.state === 'shadow' || p.state === 'bomb') add(p.state === 'bomb' ? 6.5 : 4.5, 'chase', p, { dur: dur(11, 14) });
+      else if (p.state === 'depart' && p.speed > 1) add(p.dawn ? 7 : 5.5, 'chase', p, { dur: dur(12, 15) });   // the take-off off the island's lagoon (seaplane_base.js)
+      else if (p.state === 'alightHome' && p.y < 14) add(5, 'chase', p, { dur: dur(12, 15) });
       for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.foe === p) { add(7.5, 'ots', q, { dur: dur(10, 13) }); break; }
     }
   });
