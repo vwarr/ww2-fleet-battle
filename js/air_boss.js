@@ -255,7 +255,7 @@ window.WW = window.WW || {};
     a.lholdT = attacked ? (a.lholdT || 0) + dt : 0;
     const busy = strikeBusy(cv);
     if (a.strikeT > 1e8 && !busy) a.strikeT = tempo(cv);     // the strike was lost before it left (deck hit, stale wave)
-    if (a.strikeT <= 0 && !busy) {
+    if (a.strikeT <= 0 && !busy && !cv.deckOut) {   // (deckOut: holed, ship_deck.js: the strike waits for the patch)
       if (attacked && (a.holdT || 0) < HOLD_MAX) { if (!a.holdT) O().stats.holds++; a.holdT = (a.holdT || 0) + dt; }
       else if ((WW.endgame && WW.endgame.broken(cv.nation) && !selfDefence(cv)) || (WW.dayNight && !WW.dayNight.canFly())) a.strikeT = RETRY;   // broken: no new strikes, it is running (but an enemy ship closing on this carrier still draws one); no launches in the dark
       else { a.holdT = 0; orderStrike(cv); }
@@ -267,7 +267,7 @@ window.WW = window.WW || {};
   function launch(cv, dt) {
     const a = cv.ai, D = cv._deck;
     a.launchT -= dt;
-    if (!a.queue.length || a.launchT > 0) return;
+    if (!a.queue.length || a.launchT > 0 || cv.deckOut) return;   // holed (ship_deck.js): the queue waits
     if (WW.dayNight && !WW.dayNight.canFly()) return;   // dark: the queue waits for the light (daylight.js), nothing is lost
     let i = 0;
     if (a.queue[0].target) {
