@@ -9,7 +9,11 @@
 // where the water is as shallow as its draft -> 'ramp' (RAMP_T s) -> 'unload' (UNLOAD_RATE men a second; the tanks one by
 // one) -> 'off' (backs off, turns and heads out) -> gone at the LOD. Hits: a shell does its damage to the hull; at 0 the
 // craft is 'wrecked' and a share of the men aboard are lost (KILL_K by what hit it). DD tanks swim from far out
-// (settings.dd 'far', as the 741st) and founder in the chop (FOUNDER /s while in deep water: ~27 of 32 on the day).
+// (settings.dd 'far', as the 741st) and flood in the chop: each tank's leak (one draw at launch: how badly its screen
+// struts buckle and the seas break over it, LEAK_A..LEAK_A+LEAK_B) fills it at FLOOD_K x leak a second while it is in
+// deep water (s > 25 u: in the surf it soon has its tracks on the bottom); flood 1: it founders. Tuned so ~7% of the
+// tanks swimming from 'far' reach the beach (27 of the 29 the 741st launched sank, on the day; most crews got out in
+// their rafts). A DD that grounds drives straight out of the water: it is handed to infantry.js where it touches.
 // Mortars: a craft beached inside an active mortar's zone may take a bomb (MORTAR_P a tick).
 // Events: 'craftEvent' { kind: launched | beached | ramp | unloaded | wrecked | mined | foundered | holed | gone, craft },
 // 'craftUnload' { craft, men, tanks, x, z, sector } once a second while unloading (P7 picks the men up as squads).
@@ -29,7 +33,7 @@ window.WW = window.WW || {};
   const CURRENT = 0.3, STEER = 0.36, RAMP_T = 2.5, UNLOAD_RATE = 6, TANK_T = 3, WAIT_T = 3, BACK_D = 25;
   const MINE_P = 0.55, HOLE_P = 0.25, AVOID_SEEN = 0.75, AVOID_COVERED = 0.2, TIDE_MIN = 60;   // TIDE_MIN: minutes after H the obstacles go under
   const KILL_K = { mine: 0.35, big: 0.6, med: 0.4, small: 0.25, mg: 0.05, bomb: 0.5, mortar: 0.2 };
-  const FOUNDER = 0.007, MORTAR_TICK = 0.5, MORTAR_P = 0.05, MORTAR_DMG = 22;
+  const DD_GROUND = 0.35, FLOOD_K = 0.0108, LEAK_A = 0.2, LEAK_B = 1.8, MORTAR_TICK = 0.5, MORTAR_P = 0.05, MORTAR_DMG = 22;
   const ID0 = 20000;
   const on = () => WW.isScn('normandy');
   const T = () => WW.normandyTerrain, N = () => WW.scenarios.normandy;
@@ -65,6 +69,7 @@ window.WW = window.WW || {};
       state: 'run', stateT: rt(), men: C.men, tanks: C.tanks, men0: C.men, tanks0: C.tanks, value: C.value, rampDown: false, hitT: -1e9, seen: new Set(), wave: r.wave,
       stats: { length: C.len, beam: C.beam, guns: [], aa: null, tons: 300 },
       takeDamage(amount, hx, hz, kind, cal) { hit(this, amount, kind === 'bomb' ? 'bomb' : cal || 'small'); } };
+    if (u.type === 'dd') { u.flood = 0; u.leak = LEAK_A + LEAK_B * WW.rand(); }
     craft.push(u); stats.launched++; secStat(u.sector).craft++;
     WW.emit('craftEvent', { kind: 'launched', craft: u });
     return u;
@@ -108,6 +113,12 @@ window.WW = window.WW || {};
       }
     }
   }
+  function ashore(u) {   // a DD tank out of the water: the infantry's tank from here, where it stands (no ramp)
+    u.speed = 0; u.tanks = 0; u.alive = false; u.removed = true; setState(u, 'unload');
+    stats.beached++; stats.tanksLanded++; secStat(u.sector).tanks++;
+    WW.emit('craftEvent', { kind: 'beached', craft: u });
+    WW.emit('craftUnload', { craft: u, men: 0, tanks: 1, x: u.x, z: u.z, sector: u.sector, dd: true });
+  }
   function beach(u) {
     u.speed = 0; setState(u, 'beached'); stats.beached++;
     WW.emit('craftEvent', { kind: 'beached', craft: u });
@@ -123,8 +134,8 @@ window.WW = window.WW || {};
       const vz = C.speed;
       u.x += vx * dt; u.z += vz * dt; u.heading = Math.atan2(vz, vx); u.speed = Math.hypot(vx, vz);
       if (u.type === 'dd') {
-        if (s > 25 && WW.rand() < FOUNDER * dt) { stats.foundered++; wreck(u, 'founder'); return; }
-        if (s <= 0) { beach(u); return; }                                  // a DD tank drives up out of the water
+        if (s > 25 && (u.flood += FLOOD_K * u.leak * dt) >= 1) { u.flood = 1; stats.foundered++; wreck(u, 'founder'); return; }
+        if (s <= 0 || WW.terrain.depthAt(u.x, u.z) <= DD_GROUND) { ashore(u); return; }   // tracks on the bottom: it drives up out of the water
       } else if (WW.terrain.depthAt(u.x, u.z + C.len / 2) <= C.draft) { beach(u); return; }
       obstacles(u);
     } else if (u.state === 'beached') {

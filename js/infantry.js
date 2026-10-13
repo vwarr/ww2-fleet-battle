@@ -50,7 +50,7 @@ window.WW = window.WW || {};
     const c = e.craft, a = acc.get(c) || { men: 0, n: 0 };
     a.men += e.men; acc.set(c, a);
     const jit = k => (((c.id * 31 + k * 17) % 11) / 11 - 0.5) * 3;   // a fixed spread along the ramp, no draw
-    for (let k = 0; k < (e.tanks || 0); k++) make(c, 0, e.x + jit(a.n++), e.z + 0.5, 'tank');
+    for (let k = 0; k < (e.tanks || 0); k++) { const t = e.dd ? make(c, 0, e.x, e.z, 'tank') : make(c, 0, e.x + jit(a.n++), e.z + 0.5, 'tank'); if (e.dd) { t.dd = true; t.heading = c.heading; t.y = WW.terrain.heightRaw(e.x, e.z); } }   // a DD drives on from where it grounded
     const done = e.swim || c.men <= 0;
     while (a.men >= SQUAD || (done && a.men >= MIN_SQUAD)) {
       const m = Math.min(SQUAD, a.men); a.men -= m;

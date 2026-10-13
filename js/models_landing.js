@@ -11,7 +11,9 @@
 //   LCT     the open tank deck with its Shermans (or dozers), the aft deckhouse, wheelhouse and mast, two 20 mm tubs
 //   LCI(L)  a small ship: the round conning tower, the deckhouse, 20 mm tubs, the two gangway ramps run out at the bow;
 //           the troops crowded on the forward deck, and going down the ramps when they are out
-//   DD      a Sherman swimming in its raised canvas screen, the commander's head over the top (models_tank.js)
+//   DD      a Sherman swimming in its raised canvas screen, the commander's head over the top, lower in the water as it
+//           floods (landing_craft.js); it grounds, climbs out and drops the screen (models_tank.js); foundered: it goes
+//           down bow first and its crew bob in their raft
 // Every boat rides the sea (waves.js height and slope: heave, pitch and roll, small boats thrown about more, with
 // inertia), slams into the seas and throws spray over the bow; the ramp drops over ~1 s. Wrecks: a craft wrecked in the
 // shallows stays there, listing and burning, for the round (Omaha's beach was strewn with them); one sunk in deep water
@@ -22,8 +24,8 @@ window.WW = window.WW || {};
   const COL = { hull: 0x5f6b74, hullL: 0x727e86, boot: 0x2a2f33, deck: 0x464d52, ply: 0x66727a, steel: 0x535c63, wood: 0x8a7556, metal: 0x34373a,
     armour: 0x58626a, rn: 0x84919a, rnD: 0x69757d, glass: 0x34465a, crate: 0x7a6a48 };
   const MAN_S = 0.78, MAXB = { lcvp: 260, lca: 60, lcm: 60, lct: 80, lci: 40 }, MAX_MEN = 5000, MAX_TANK = 260, MAX_DD = 64, MAX_WRECK = 90;
-  const DEEP_SINK_T = 25, DD_SINK_T = 6, SPRAY_DP = 0.3;
-  let root = null, T = null, DEF = null, men = null, tank = null, dd = null, built = false;
+  const DEEP_SINK_T = 25, DD_SINK_T = 8, RAFT_T = 120, SPRAY_DP = 0.3;
+  let root = null, T = null, DEF = null, men = null, tank = null, dd = null, raft = null, built = false;
   const vis = new WeakMap();
   let wrecks = [];
   // ---- geometry ----
@@ -164,7 +166,7 @@ window.WW = window.WW || {};
     }
     const G = WW.soldierModel.build(), TK = WW.tankModel.build();
     men = {}; for (const p of ['stand', 'crouch', 'runA', 'runB']) men[p] = mk(G[p], MAX_MEN);
-    tank = mk(TK.sherman, MAX_TANK); dd = mk(TK.dd, MAX_DD, true); dd.setColorAt(0, new THREE.Color(1, 1, 1));
+    tank = mk(TK.sherman, MAX_TANK); dd = mk(TK.screen, MAX_DD, true); raft = mk(TK.raft, MAX_DD); dd.setColorAt(0, new THREE.Color(1, 1, 1));
     WW.scene.add(root);
     built = true;
   }
@@ -229,17 +231,28 @@ window.WW = window.WW || {};
       _W.multiplyMatrices(M, local(D.tanks[k], 0.03, 0, 0, 0)); tank.setMatrixAt(tank.count++, _W);
     }
   }
+  // a DD tank: the same Sherman from the LCT's ramp to the beach. Afloat it rides with ~0.27 u of screen over the sea,
+  // lower as it floods (sim u.flood); where the bottom comes up under it the tracks take its weight, it climbs out on
+  // the sand and the screen folds down (infantry.js has it from there, models_infantry.js draws it with the screen down)
+  const _sS = new THREE.Matrix4();
   function drawDD(u, st, sink) {
-    if (u.state === 'run' || sink !== undefined) {
-      if (dd.count >= MAX_DD) return;
-      const y = st.y - (WW.tankModel.SCREEN_TOP - 0.27) - (sink || 0);   // ~0.27 u of screen over the sea, the turret top just awash
-      const M = craftMatrix(u.x, y, u.z, u.heading, st.p * 0.6, st.r * 0.6);
-      dd.setColorAt(dd.count, sink !== undefined ? wreckCol : white); dd.setMatrixAt(dd.count++, M);
-      if (sink === undefined) man('stand', M, -0.3, 0.3, 0, 0);          // the commander, steering from the rear deck
-    } else if (tank.count < MAX_TANK) {                                 // out of the water, the screen down
-      const g = Math.max(WW.terrain.heightRaw(u.x, u.z), st.y - 0.25);
-      tank.setMatrixAt(tank.count++, craftMatrix(u.x, g, u.z, u.heading, 0, 0));
-    }
+    if (dd.count >= MAX_DD || tank.count >= MAX_TANK) return;
+    const TM = WW.tankModel, yF = st.y - (TM.SCREEN_TOP - 0.27) - (u.flood || 0) * 0.22 - (sink || 0);
+    const g = WW.terrain.heightRaw(u.x, u.z), yT = sink ? yF : Math.max(g, yF), c = sink ? 0 : WW.clamp((g - yF) / 0.3, 0, 1);
+    const M = craftMatrix(u.x, yT, u.z, u.heading, st.p * 0.6 * (1 - c) + (sink ? Math.min(0.5, sink * 0.6) : 0), st.r * 0.6 * (1 - c));
+    tank.setMatrixAt(tank.count++, M);
+    _W.multiplyMatrices(M, _L.makeTranslation(0, TM.SCREEN_Y, 0)).multiply(_sS.makeScale(1, 1 - (1 - TM.FOLDED) * c, 1));
+    dd.setColorAt(dd.count, sink ? wreckCol : white); dd.setMatrixAt(dd.count++, _W);
+    if (!sink) man('stand', M, -0.3, 0.3, 0, 0);                     // the commander, steering from the rear deck
+  }
+  // the crew of a foundered DD in their raft, drifting on the wind
+  function drawRaft(w, age) {
+    if (raft.count >= MAX_DD) return;
+    const x = w.x + w.rx + (WW.wind ? WW.wind.x : 0.5) * age * 0.04, z = w.z + w.rz + (WW.wind ? WW.wind.z : 0.2) * age * 0.04;
+    const y = WW.waves ? WW.waves.height(x, z) : 0, sl = WW.waves ? WW.waves.slope(x, z, 0.3) : { x: 0, z: 0 };
+    const M = craftMatrix(x, y, z, w.heading + age * 0.05, Math.atan(sl.x) * 0.8, -Math.atan(sl.z) * 0.8);
+    raft.setMatrixAt(raft.count++, M);
+    for (let k = 0; k < 4; k++) man('crouch', M, (k & 1 ? 0.07 : -0.08), 0.03, (k & 2 ? 0.07 : -0.07), k * 1.6);
   }
   function update(rdt) {
     if (WW.simOnly || !WW.landingCraft || !WW.isScn('normandy') || !WW.scene) { if (root) root.visible = false; return; }
@@ -248,7 +261,7 @@ window.WW = window.WW || {};
     const dt = Math.min(0.1, rdt || 0.016), now = performance.now() / 1000, rt = WW.game ? WW.game.roundTime : 0;
     for (const k in T) { T[k].body.count = 0; T[k].ramp.count = 0; }
     for (const p in men) men[p].count = 0;
-    tank.count = 0; dd.count = 0;
+    tank.count = 0; dd.count = 0; raft.count = 0;
     const L = WW.landingCraft.craft;
     for (const u of L) {
       if (u.removed || !u.alive) continue;
@@ -268,9 +281,9 @@ window.WW = window.WW || {};
     // the wrecks
     for (let i = wrecks.length - 1; i >= 0; i--) {
       const w = wrecks[i], age = rt - w.t0;
-      if (age < 0 || (!w.stranded && age > (w.type === 'dd' ? DD_SINK_T : DEEP_SINK_T))) { wrecks.splice(i, 1); continue; }
+      if (age < 0 || (!w.stranded && age > (w.type === 'dd' ? RAFT_T : DEEP_SINK_T))) { wrecks.splice(i, 1); continue; }
       const st = vis.get(w) || ride(w, dt, now);
-      if (w.type === 'dd') { drawDD(w, st, age * 0.12); continue; }
+      if (w.type === 'dd') { if (age < DD_SINK_T) drawDD(w, st, age * age * 0.03); if (age < RAFT_T) drawRaft(w, age); continue; }
       if (w.stranded) { const g = WW.terrain.heightRaw(w.x, w.z); st.y = Math.max(g + 0.02, Math.min(st.y, (WW.waves ? WW.waves.height(w.x, w.z) : 0) - 0.12)); st.p = 0.06; st.r = w.list; }
       else { ride(w, dt, now); }
       const sk = w.stranded ? st : { y: st.y - Math.min(0.9, age * 0.04), p: Math.min(0.3, age * 0.02), r: Math.min(0.6, age * 0.05) * Math.sign(w.list), ra: st.ra };
@@ -279,7 +292,7 @@ window.WW = window.WW || {};
     }
     for (const k in T) { for (const im of [T[k].body, T[k].ramp]) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; } }
     for (const p in men) men[p].instanceMatrix.needsUpdate = true;
-    tank.instanceMatrix.needsUpdate = true; dd.instanceMatrix.needsUpdate = true; if (dd.instanceColor) dd.instanceColor.needsUpdate = true;
+    tank.instanceMatrix.needsUpdate = true; dd.instanceMatrix.needsUpdate = true; raft.instanceMatrix.needsUpdate = true; if (dd.instanceColor) dd.instanceColor.needsUpdate = true;
   }
   WW.on('craftEvent', e => {
     if (WW.simOnly || !WW.isScn('normandy')) return;
@@ -287,7 +300,7 @@ window.WW = window.WW || {};
     if (e.kind === 'wrecked' || e.kind === 'mined' || e.kind === 'foundered') {
       const d = WW.terrain.depthAt ? WW.terrain.depthAt(u.x, u.z) : 9;
       const w = { type: u.type, C: u.C, x: u.x, z: u.z, heading: u.heading, men: 0, tanks: 0, state: 'wrecked', rampDown: u.type !== 'dd' && Math.random() < 0.4, t0: WW.game ? WW.game.roundTime : 0,
-        stranded: u.type !== 'dd' && d < u.C.draft + 0.7, list: (Math.random() < 0.5 ? -1 : 1) * (0.12 + Math.random() * 0.25) };
+        stranded: u.type !== 'dd' && d < u.C.draft + 0.7, flood: 1, rx: (Math.random() - 0.5) * 1.2, rz: -0.5 - Math.random() * 0.4, list: (Math.random() < 0.5 ? -1 : 1) * (0.12 + Math.random() * 0.25) };
       const old = vis.get(u); if (old) vis.set(w, Object.assign({}, old));
       wrecks.push(w); if (wrecks.length > MAX_WRECK) wrecks.splice(wrecks.findIndex(x => !x.stranded) >= 0 ? wrecks.findIndex(x => !x.stranded) : 0, 1);
     }
