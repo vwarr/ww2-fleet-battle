@@ -8,6 +8,9 @@
 // toggleRel()). Its heading and position are smoothed (a calm chase cam).
 // Hand-back: after IDLE s without input (FOLLOW_IDLE when the subject came from the director, CLICK_IDLE after a
 // click), or Esc / F (ui.js), the director takes over again with its usual cross-fade. Only in battle / victory.
+// Normandy (camera_normandy.js on): a click also picks a landing craft, a squad or a tank ashore; the camera may come
+// down to the men's scale (MIN_D_ND, a squad followed from 2.5 u), and a followed squad wiped out hands the camera to
+// the nearest of its unit (WW.camNormandy.heir). Gated: the Pacific free camera is unchanged.
 window.WW = window.WW || {};
 (function (WW) {
   const IDLE = 20, FOLLOW_IDLE = 10, CLICK_IDLE = 25, MIN_D = 22, MAX_D = 900, MIN_P = 0.12, MAX_P = 1.25, MARGIN = 120;
@@ -23,7 +26,9 @@ window.WW = window.WW || {};
   // the yaw that puts the camera astern of heading h (freecam's offset is (sin yaw, cos yaw) on x / z)
   const base = h => Math.atan2(-Math.cos(h), -Math.sin(h));
   const worldYaw = y => (follow && rel ? y + base(hS) : y);
-  const minD = () => (!follow ? MIN_D : isPlane(follow) ? 12 : follow.stats.length * 0.7 + 10);
+  const nd = () => !!(WW.camNormandy && WW.camNormandy.on()), MIN_D_ND = 3;
+  const minD = () => (!follow ? (nd() ? MIN_D_ND : MIN_D) : isPlane(follow) ? 12 : follow.isLand ? 2.5 : follow.stats.length * 0.7 + 10);
+  const subjY = o => (isPlane(o) ? o.y : o.isLand ? (o.y || 0) + 0.35 : 1.5);   // the point the camera follows
   const minP = () => (follow && isPlane(follow) && follow.y > 15 ? -0.3 : MIN_P);
 
   // start from wherever the director's camera is, so the hand-over has no jump; keep the director's subject
@@ -33,7 +38,7 @@ window.WW = window.WW || {};
     on = true; takeT = now(); idle = IDLE; follow = null;
     const c = WW.cam.current(), d = c.P.clone().sub(c.L);
     T.copy(c.L); T.y = 0; goalT.copy(T);
-    dist = gDist = WW.clamp(d.length(), MIN_D, MAX_D);
+    dist = gDist = WW.clamp(d.length(), minD(), MAX_D);
     yaw = gYaw = Math.atan2(d.x, d.z);
     pitch = gPitch = WW.clamp(Math.asin(WW.clamp(d.y / Math.max(1e-3, d.length()), -1, 1)), MIN_P, MAX_P);
     const shot = WW.cam._shot && WW.cam._shot();
@@ -47,11 +52,11 @@ window.WW = window.WW || {};
     lastInput = now();
     follow = o; fT = 0; hS = o.heading || 0;
     idle = how === 'click' ? CLICK_IDLE : how === 'inherit' ? FOLLOW_IDLE : IDLE;
-    const P = WW.cam.current().P, oy = isPlane(o) ? o.y : 1.5;
+    const P = WW.cam.current().P, oy = subjY(o);
     const d = new THREE.Vector3(P.x - o.x, P.y - oy, P.z - o.z), len = Math.max(1e-3, d.length());
     T.set(o.x, oy, o.z); goalT.copy(T);
     dist = WW.clamp(len, minD(), MAX_D);
-    gDist = WW.clamp(len, minD(), isPlane(o) ? 48 : o.stats.length * 2.5 + 40); // glide in to a chase-cam distance
+    gDist = WW.clamp(len, minD(), isPlane(o) ? 48 : o.isLand ? 14 : o.stats.length * 2.5 + 40); // glide in to a chase-cam distance
     const wy = Math.atan2(d.x, d.z);
     yaw = gYaw = rel ? wy - base(hS) : wy;
     pitch = gPitch = WW.clamp(Math.asin(WW.clamp(d.y / len, -1, 1)), minP(), MAX_P);
@@ -84,6 +89,10 @@ window.WW = window.WW || {};
     };
     for (const s of WW.world.ships) if (s.alive && !s.submerged) consider(s, 2, 34 + s.stats.length);
     for (const p of WW.world.planes) if (p.alive) consider(p, p.y, 30);
+    if (nd()) { // Normandy: the craft afloat, the squads and tanks ashore
+      if (WW.landingCraft) for (const u of WW.landingCraft.live) consider(u, 0.4, 26);
+      if (WW.infantry) for (const q of WW.infantry.squads) if (q.alive) consider(q, (q.y || 0) + 0.3, 22);
+    }
     return best;
   }
 
@@ -175,12 +184,13 @@ window.WW = window.WW || {};
       if (keys.v || keys.pagedown) gPitch = WW.clamp(gPitch - 0.7 * dt, minP(), MAX_P); // camera down (toward the sea)
       // (held keys do not refresh the idle timer here: real key presses send keydown events, so a key
       // whose keyup was lost cannot keep the free camera alive forever)
+      if (follow && follow.isLand && !follow.alive && WW.camNormandy) { const h = WW.camNormandy.heir(follow); if (h) { follow = h; fT = 0; } } // Normandy: the next man of the unit
       if (follow && (follow.removed || (follow.stats && !follow.alive && !follow.sinking))) unfollow(); // a falling plane is followed down
       const k = 1 - Math.exp(-dt * 6); // damped, eased motion toward the goals
       if (follow) {
         fT += dt;
         hS += WW.angleDiff(hS, follow.heading || 0) * (1 - Math.exp(-dt * 1.5)); // calm: the camera swings round slowly
-        goalT.set(follow.x, isPlane(follow) ? follow.y : 1.5, follow.z);
+        goalT.set(follow.x, subjY(follow), follow.z);
         T.lerp(goalT, 1 - Math.exp(-dt * (3 + 9 * Math.min(1, fT / 1.5)))); // tight once settled: no lag behind a fast plane
       } else T.lerp(goalT, k);
       yaw += (gYaw - yaw) * k; pitch += (gPitch - pitch) * k; dist += (gDist - dist) * k;
