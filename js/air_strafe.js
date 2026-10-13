@@ -109,16 +109,20 @@ window.WW = window.WW || {};
     if (WW.airOps.picture(cv).near) return;
     let best = null, bd = CAP_R;
     for (const c of WW.intel.enemyShips(cv.nation, { fresh: 3 })) { const d = WW.dist(cv.x, cv.z, c.x, c.z); if (d < bd && small(c.unit)) { bd = d; best = c.unit; } }
-    if (!best) return;
-    let n = 0;
+    if (best) send(cv, best);
+  }
+  // hand up to CAP_N airborne CAP fighters of cv the boat best (capCheck; air_alert.js for a PT boat harassing the fleet)
+  function send(cv, best) {
+    let n = 0, k = 0;
     for (const p of WW.world.planes) if (p.alive && p.carrier === cv && p.strafe && p.sf && p.sf.cap) n++;
     for (const p of WW.world.planes) {
       if (n >= CAP_N) break;
       if (!p.alive || p.carrier !== cv || p.kind !== 'fighter' || p.target || p.search || p.strafe || p.recall || p.state !== 'transit' || p.fuel < 60 || p.foe) continue;
       p.strafe = best; p.target = best; p.sf = { ph: 'setup', t: 0, b: Math.atan2(p.z - best.z, p.x - best.x), fT: 0, cap: true };
-      n++; ST.cap++; if (cv.isBase) ST.baseCap++;
+      n++; k++; ST.cap++; if (cv.isBase) ST.baseCap++;
       if (WW.emit) WW.emit('airOrder', { carrier: cv, order: 'strafe', plane: p, squadron: p.squadron || null, target: best });
     }
+    return k;
   }
 
   // On the way home: a fighter with fuel to spare and not badly hit strafes a PT boat, surfaced sub or crippled
@@ -174,5 +178,5 @@ window.WW = window.WW || {};
       add(6.8 + (p.ace ? 1 : 0), 'chase', p, { dur: dur(8, 11), target: p.strafe });
   });
   WW.on('roundStart', () => { for (const k in ST) ST[k] = 0; FXQ.length = 0; });
-  WW.strafe = { stats: ST, small, pass, stop, fresh, capCheck: cv => { try { capCheck(cv); } catch (e) { console.error('strafe', e); } } };
+  WW.strafe = { stats: ST, small, pass, stop, fresh, send, capCheck: cv => { try { capCheck(cv); } catch (e) { console.error('strafe', e); } } };
 })();

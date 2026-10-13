@@ -138,9 +138,10 @@ window.WW = window.WW || {};
     dropped() { this.ordnance = false; if (this.payload) this.payload.visible = false; }
     hd(o) { return WW.dist(this.x, this.z, o.x, o.z); }
     validTarget() {
-      const t = this.target;
-      if (t && t.alive && !t.submerged && (!WW.intel || WW.intel.known(this.nation, t))) return t; // still a known contact (intel.js)
-      this.target = WW.cag ? WW.cag.retarget(this) : WW.airOps ? WW.airOps.pickTarget(this) : WW.shipAI ? WW.shipAI.pickStrikeTarget(this) : null;
+      const t = this.target, bomb = this.ordnance && this.kind !== 'fighter' && WW.airOps && WW.airOps.bombsFor;
+      if (t && t.alive && !t.submerged && (!WW.intel || WW.intel.known(this.nation, t)) && !(bomb && !WW.airOps.bombsFor(t))) return t; // still a known contact (intel.js); never a PT boat for bombs or a torpedo (air_ops.js)
+      const n = WW.cag ? WW.cag.retarget(this) : WW.airOps ? WW.airOps.pickTarget(this) : WW.shipAI ? WW.shipAI.pickStrikeTarget(this) : null;
+      this.target = n && bomb && !WW.airOps.bombsFor(n) ? null : n;
       return this.target;
     }
 

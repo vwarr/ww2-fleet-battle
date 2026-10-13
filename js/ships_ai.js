@@ -26,6 +26,7 @@ window.WW = window.WW || {};
   // inside the fan out to the torpedoes' range: the friendly-fire check along the spread.
   const AIM_ERR = 0.06; // rad of torpedo aim error (+-) per 100 units of range
   function fireSpread(ship, t, range) {
+    if (t && t.type === 'pt') { ship.ai.torpReload = Math.max(ship.ai.torpReload || 0, 1.5); return false; }   // set for a hull, a torpedo runs under a PT boat (combat_weapons.js): no spread at one
     const tp = ship.stats.torpedoes, n = tp.count;
     // fire-control error grows with the range: a long shot is fired on an estimate of the target's course and speed
     // that the target's own movements spoil (both navies: the Long Lance's reach is not a free hit)
