@@ -24,6 +24,10 @@
 // reads wrecked(): no air cover, no air-war hold, no strike orders, a withdraw role (fleet_cmd.js, fleet_groups.js);
 // she makes for her home edge with an escort (ai_carrier.js, fleet_groups.js); to the enemy a high-value hull to
 // finish, but no air threat (fleet_cmd.js strike value, air_staff.js bare, ai_endgame.js fair game).
+// Fog of war: the enemy reads only knownWrecked(nation, cv): a wrecked deck is seen by the attacker's planes over her,
+// the strike that wrecked it (the bomb's side), or a later plane of that side within SEE_R (intel R.AIR, a plane's
+// sight of ships) that sees her flight deck still holed; the report holds KNOW_T s (intel SHIP_TTL) from the last
+// sighting. Her own side reads wrecked().
 window.WW = window.WW || {};
 (function () {
   'use strict';
@@ -31,12 +35,21 @@ window.WW = window.WW || {};
   var HOLD_S = 45, HOLD_FUEL = 25, HOME_R = 150;   // a plane home (HOME_R) holds with HOLD_FUEL s of fuel to spare for a
   // deck back within HOLD_S s (longer when no other deck of the side is open); else it diverts or ditches
   var BOOM_PERM = 6, BOOM_T = 2;       // a deck-load explosion: this big a load wrecks the deck for the round, a smaller one BOOM_T x as long
-  var stats = null, tick = 0;
+  var SEE_R = (WW.intel && WW.intel.R.AIR) || 100, KNOW_T = (WW.intel && WW.intel.T.SHIP_TTL) || 180;
+  var stats = null, tick = 0, seen = {};   // seen[nation]: Map(enemy carrier -> when its planes last saw her deck wrecked)
   function per() { return WW.perSide(0); }
-  function reset() { tick = 0; stats = { out: per(), perm: per(), back: per(), outS: per(), held: 0, diverted: 0, ditched: 0, hangarBooms: per(), struck: 0, rehomed: 0 }; S.stats = stats; }
+  function reset() { tick = 0; seen = {}; stats = { out: per(), perm: per(), back: per(), outS: per(), held: 0, diverted: 0, ditched: 0, hangarBooms: per(), struck: 0, rehomed: 0 }; S.stats = stats; }
   function dcOf(s) { var d = WW.fleetCmd && WW.fleetCmd.doctrine(s.nation); return d && d.damageControl > 0 ? d.damageControl : 1; }
   function out(cv) { return !!(cv && cv.deckOut); }
   function wrecked(cv) { return !!(cv && cv.deckOut && cv.deckOut.perm); }   // out for good
+  function saw(n, cv) { (seen[n] || (seen[n] = new Map())).set(cv, WW.time.now); }
+  // what side n knows: its own carriers as they are, an enemy's as its planes last saw her (within KNOW_T s)
+  function knownWrecked(n, cv) {
+    if (!cv) return false;
+    if (cv.nation === n) return wrecked(cv);
+    var m = seen[n], t = m && m.get(cv);
+    return t !== undefined && WW.time.now - t <= KNOW_T;
+  }
 
   // Bombers being armed and fuelled below: while a strike is ordered (the next deck load readied as the first is
   // spotted: the bombers in the hangar not already in the launch queue, which the deck load counts), or while the
@@ -71,7 +84,7 @@ window.WW = window.WW || {};
     if (perm) stats.perm[cv.nation]++;
     WW.emit('deckOut', { ship: cv, until: D.until, perm: D.perm, hits: D.hits, x: x, z: z, boom: !!boom });
     hold(cv);
-    if (perm) strikeBelow(cv);
+    if (perm) { strikeBelow(cv); saw(WW.enemyOf(cv.nation), cv); }   // the strike that did it saw it
   }
   // the deck shut: planes queued below stay there (air_deck.js holds them), the boss stops ordering
   function hold(cv) { if (cv.ai) cv.ai.launchT = Math.max(cv.ai.launchT || 0, 1); }
@@ -94,6 +107,11 @@ window.WW = window.WW || {};
     for (var i = 0; i < ships.length; i++) { var s = ships[i]; if (s !== p.carrier && s.alive && !s.sinking && !s.isBase && s.type === 'carrier' && s.hangar && s.nation === p.nation && !s.deckOut) return true; }
     return false;
   }
+  // an enemy plane within SEE_R sees her deck still wrecked (scouts, searchers, strikes, fighters alike)
+  function sight(s) {
+    var P = WW.world.planes, n = WW.enemyOf(s.nation);
+    for (var i = 0; i < P.length; i++) { var p = P[i]; if (p.alive && !p.removed && p.nation === n && p.state !== 'takeoff' && WW.dist2(p.x, p.z, s.x, s.z) < SEE_R * SEE_R) { saw(n, s); return; } }
+  }
   // once a second: the repair clock, and the planes coming home to a shut deck
   function second() {
     var now = WW.time.now, ships = WW.world.ships;
@@ -101,7 +119,7 @@ window.WW = window.WW || {};
       var s = ships[i], D = s.deckOut; if (!D) continue;
       if (!s.alive) continue;
       stats.outS[s.nation]++;
-      if (D.perm) { if (s.ai && s.ai.queue && s.ai.queue.length) strikeBelow(s); continue; }
+      if (D.perm) { if (s.ai && s.ai.queue && s.ai.queue.length) strikeBelow(s); sight(s); continue; }
       if ((s.fireN || 0) >= 3) D.until += 0.5;   // half the parties are fighting the fires
       if (now >= D.until) { s.deckOut = null; stats.back[s.nation]++; WW.emit('deckBack', { ship: s, out: now - D.t0 }); }
     }
@@ -132,7 +150,7 @@ window.WW = window.WW || {};
     try { second(); } catch (e) { console.error('shipDeck', e); }
   }
 
-  var S = WW.shipDeck = { bombHit: bombHit, hangarLoad: hangarLoad, hangarBoom: hangarBoom, out: out, wrecked: wrecked, update: update, stats: null };
+  var S = WW.shipDeck = { bombHit: bombHit, hangarLoad: hangarLoad, hangarBoom: hangarBoom, out: out, wrecked: wrecked, knownWrecked: knownWrecked, update: update, stats: null };
   // run with the fires' second (main.js calls WW.shipFires.update)
   if (WW.shipFires) { var u0 = WW.shipFires.update; WW.shipFires.update = function (dt) { u0(dt); update(dt); }; }
   WW.on('roundStart', reset);

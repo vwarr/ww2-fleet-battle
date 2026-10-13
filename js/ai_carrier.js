@@ -17,7 +17,7 @@ window.WW = window.WW || {};
     for (const c of WW.intel.enemyShips(ship.nation, { fresh: STRIKE_AGE })) {
       const o = c.unit;
       if (!o || !o.alive || o.submerged) continue;
-      const s = WW.dist(ship.x, ship.z, c.x, c.z) - (wrecked(o) ? STRIKE_PRIO.battleship : STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;   // a wrecked deck: a heavy hull to finish, no air threat
+      const s = WW.dist(ship.x, ship.z, c.x, c.z) - (WW.shipDeck && WW.shipDeck.knownWrecked(ship.nation, o) ? STRIKE_PRIO.battleship : STRIKE_PRIO[o.type] || 0) + (now - c.seenAt) * 2;   // a wrecked deck: a heavy hull to finish, no air threat
       if (s < bs) { bs = s; best = o; }
     }
     return best;
