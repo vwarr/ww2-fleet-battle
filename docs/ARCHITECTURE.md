@@ -124,6 +124,7 @@ js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, p
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)
 js/night_fx.js          WW.nightFx: night lights (pooled), star shell flares, searchlight cones, night camera candidates (visual)
 js/post.js              WW.post: HDR render target, bloom, tone curve
+js/shader_warm.js       WW.shaderWarm: builds every shader program before first sight (parallel compile; proxies for later variants)
 js/ui.js                WW.ui: panels, setup clicks, captions, fullscreen
 js/war_diary.js         WW.diary: the war diary (clock times, sightings, key events; key L), ship names
 js/plot_table.js        WW.plot: plot table in map view (2D canvas chart; whose plot: key G; danger layer: key X)
@@ -584,6 +585,7 @@ Fewer, larger islands (`terrain_islands.js`, `WW.terrainIslands.make`, from terr
 - `WW.sky`: a sky dome with a golden-hour gradient (peach near the sun, blue away from the sun), smooth toon clouds, a warm low sun (approximately 21°) with soft shadows, a strong cool sky fill light, and fog. It gives `HORIZON`, `SUN_DIR` and `sunColor()`.
 - `WW.water`: one large water plane to the horizon. A small depth texture controls the depth colours, the foam lines around islands and shoals, the clear shallows, the sun glitter and the fog. It also has a pool of soft dark contact-shadow blobs under ship hulls.
 - `WW.post`: renders the scene into a half-float target with MSAA, adds a soft bloom (bright pass and blur at quarter resolution), then applies a soft tone curve and 10% desaturation. `WW.post.toggle()` turns it off. Three.js ACES tone mapping is not used, because it made the pastel colours grey.
+- `WW.shaderWarm` (shader_warm.js, wraps `WW.post.render`): WebGL compiles a program the first time a material variant is drawn, synchronously in three r149 (100-450 ms per cold toon variant on an M1 Pro): a freeze on first sight, often at a director cut. At load, each round start and on a 2 s sweep, it creates the programs of everything in the scene not yet warmed (hidden pools and models too) plus proxies for variants made later (each ship material clipped as ship_breakup.js clips it, the cut slab, every plane type instanced as air_render.js draws it, flying boats, float planes, combat.js / combat_aa.js projectile materials, the shadow map's depth variants) in one batch with `renderer.compile()`, with three's per-program uniform read stubbed out so the driver links them side by side; once linked, one tiny offscreen render of just those objects (layer 30) settles the rest. The proxies keep the programs alive (a program dies with its last material). Measure with `tests/cut_freeze.js` (a real GPU: ANGLE Metal, headless).
 
 ### Time of day and weather: daylight.js, weather.js, night_ops.js, sky_time.js, night_fx.js, weather_fx.js
 

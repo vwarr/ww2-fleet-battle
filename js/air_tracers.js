@@ -106,5 +106,7 @@ window.WW = window.WW || {};
     spawnTracer(x + ux * 0.9, y + uy * 0.9, z + uz * 0.9, (vx || 0) + ux * 6, (vy || 0) + uy * 6, (vz || 0) + uz * 6, 0.05, true); // muzzle flash
   }
 
+  // after the camera moves (main.js frame): re-face and re-size the live rounds to this frame's camera (dt 0: no advance)
+  (WW.afterCamera = WW.afterCamera || []).push(() => { if (!WW.simOnly) updateTracers(0); });
   WW.planeTracers = { spawn: spawnTracer, update: updateTracers, clear: clearTracers, burst, T };
 })();

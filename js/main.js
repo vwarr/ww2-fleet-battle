@@ -358,6 +358,7 @@ window.WW = window.WW || {};
     call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
+    if (WW.afterCamera) for (const f of WW.afterCamera) f(rdt); // camera-facing visuals re-faced to this frame's camera (a cut: no frame sized for the old view)
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
     call('baseFx', 'update', rdt);  // the island base: craters, fires, parked planes (base_fx.js), visual only
     call('normandyProps', 'update', rdt); // Normandy: the beach obstacles still standing (terrain_normandy_props.js), visual only

@@ -13,7 +13,8 @@ const MINUTES = +(process.env.MINUTES || 3), SCALE = +(process.env.SCALE || 2), 
 const STALL = +(process.env.STALL || 100);
 (async () => {
   const opt = { headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-gpu-shader-disk-cache'] };
-  if (process.env.CHROMIUM) opt.executablePath = process.env.CHROMIUM;
+  if (process.env.CHANNEL) { opt.channel = process.env.CHANNEL; opt.args.push('--headless=new'); }   // e.g. CHANNEL=chrome: the user's browser, still no window
+  else if (process.env.CHROMIUM) opt.executablePath = process.env.CHROMIUM;
   const b = await chromium.launch(opt);
   const p = await b.newPage({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: +(process.env.DPR || 1) });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
@@ -46,7 +47,7 @@ const STALL = +(process.env.STALL || 100);
     // which material each new program was built for (looked up after the frame, from the renderer's properties)
     const seen = new Set(R.info.programs.map(pr => pr.id));
     const progMat = pr => { let hit = null; WW.scene.traverse(o => { if (hit || !o.material) return; const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) { const pp = R.properties.get(m); if (pp && pp.currentProgram === pr) { const anc = []; for (let a = o.parent; a && a !== WW.scene && anc.length < 3; a = a.parent) anc.push(a.name || a.type); hit = (m.name || m.type) + (m.vertexColors ? '+vc' : '') + (m.map ? '+map' : '') + (m.transparent ? '+tr' : '') + '@' + (o.isInstancedMesh ? 'IM:' : '') + (o.name || o.type) + '<' + anc.join('<') + ' #' + (m.color ? m.color.getHexString() : '') + (m.clippingPlanes && m.clippingPlanes.length ? ' clip' + m.clippingPlanes.length : '') + (m.onBeforeCompile && m.onBeforeCompile.toString().length > 20 ? ' obc' : ''); return; } } }); return hit || pr.name; };
-    const L = window.__cf = { frames: [], progs: [], cuts: 0, stalls: [], t0: now(), compileMs: 0, ev: [], evN: {} };
+    const L = window.__cf = { frames: [], progs: [], cuts: 0, stalls: [], cutAt: [], t0: now(), compileMs: 0, ev: [], evN: {} };
     // big visual events: a stall soon after one is tagged with it
     ['shipBreak', 'magazine', 'deckHit', 'shipSunk', 'capsize', 'shipBoom', 'baseEvent', 'flyingBoat', 'roundStart'].forEach(k => WW.on(k, () => { L.ev.push([k, now()]); L.evN[k] = (L.evN[k] || 0) + 1; }));
     let lastT = 0, lastShot = WW.cam._shot(), lastFrameCut = -1;
@@ -59,6 +60,7 @@ const STALL = +(process.env.STALL || 100);
       const newP = [];
       for (const pr of R.info.programs) if (!seen.has(pr.id)) { seen.add(pr.id); newP.push(pr); }
       const fr = { gap: +gap.toFixed(1), cut: cut ? (shot ? shot.kind : 'none') : 0, np: newP.length };
+      if (cut) L.cutAt.push(L.frames.length);
       L.compileMs += (acc.glCompile || 0) + (acc.glLink || 0) + (acc.glProgParam || 0) + (acc.glShaderParam || 0);
       for (const k in acc) { fr[k] = +acc[k].toFixed(1); acc[k] = 0; }
       L.frames.push(gap); // compact: all gaps; details for stalls only
@@ -70,16 +72,41 @@ const STALL = +(process.env.STALL || 100);
     __sim.setScale(scale);
   }, [SCALE, STALL, !!process.env.SELFTEST]);
   if (+process.env.FF) await p.evaluate(ff => __sim.fastForward(ff), +process.env.FF); // skip the approach (sim seconds)
+  // CRIT=n: every n s of real time a ship (a different type each time) blows up from her magazine and breaks in two,
+  // so every run sees the rare big events (fx_critical.js, ship_breakup.js) and the director's cut to them
+  if (+process.env.CRIT) await p.evaluate(n => {
+    const types = ['destroyer', 'cruiser', 'battleship', 'carrier', 'pt'];
+    let k = 0;
+    setInterval(() => {
+      const B = WW.shipBreakup && WW.shipBreakup.P_BREAK; if (B) for (const c in B) for (const t in B[c]) B[c][t] = 1;
+      if (B) Object.assign(B.magazine, { battleship: 1, carrier: 1, cruiser: 1, lc: 1, destroyer: 1, pt: 1 });
+      for (let j = 0; j < types.length; j++) {
+        const ty = types[(k + j) % types.length], s = WW.world.ships.find(s => s.alive && !s.removed && s.type === ty);
+        if (!s) continue;
+        k = (k + j + 1) % types.length;
+        const w = s.toWorld(-s.stats.length * 0.15, 0);
+        WW.emit('magazine', { ship: s, x: w[0], z: w[1], hx: w[0], hz: w[1], kind: 'shell' }); s.takeDamage(s.hp + 1, w[0], w[1], 'magazine');
+        return;
+      }
+    }, n * 1000);
+  }, +process.env.CRIT);
   const end = Date.now() + MINUTES * 60000;
   while (Date.now() < end) { await p.waitForTimeout(5000); }
-  const r = await p.evaluate(() => { const L = __cf; return { frames: L.frames, stalls: L.stalls, progs: L.progs, cuts: L.cuts, compileMs: L.compileMs, evN: L.evN, secs: (performance.now() - L.t0) / 1000, programs: WW.renderer.info.programs.length, mem: WW.renderer.info.memory }; });
+  const r = await p.evaluate(() => { const L = __cf; return { frames: L.frames, stalls: L.stalls, progs: L.progs, cuts: L.cuts, cutAt: L.cutAt, compileMs: L.compileMs, evN: L.evN, secs: (performance.now() - L.t0) / 1000, programs: WW.renderer.info.programs.length, warm: WW.shaderWarm && WW.shaderWarm.stats, mem: WW.renderer.info.memory }; });
   const gaps = r.frames.slice(30); // skip the probe's first frames
   const big = gaps.filter(g => g > STALL).length, huge = gaps.filter(g => g > 250).length;
   const stallsAtCut = r.stalls.filter(s => !s.minor && s.sinceCut >= 0 && s.sinceCut <= 3).length;
   const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
   const sorted = gaps.slice().sort((a, b) => a - b), pct = q => sorted[Math.floor(q * (sorted.length - 1))];
-  const sum = { gpu, secs: +r.secs.toFixed(0), frames: gaps.length, fps: +(1000 / mean).toFixed(1), p99: pct(0.99), max: sorted[sorted.length - 1],
-    stallsPerMin: +(big / (r.secs / 60)).toFixed(2), over250PerMin: +(huge / (r.secs / 60)).toFixed(2), cuts: r.cuts, stallsAtCut, newPrograms: r.progs.length, compileMs: Math.round(r.compileMs), events: r.evN, programs: r.programs, mem: r.mem, errors: errs.slice(0, 5) };
+  // stalls split by where the time went: shader compiles, the render otherwise (fill / GPU back-pressure), the sim, else
+  // unattributed (another process, GC: on a busy machine)
+  const real = r.stalls.filter(s => !s.minor && s.i >= 30), split = { compile: 0, render: 0, sim: 0, other: 0 };
+  for (const s of real) { const c = (s.glProgParam || 0) + (s.glShaderParam || 0) + (s.glLink || 0) + (s.glCompile || 0); split[c > s.gap * 0.4 ? 'compile' : (s.render || 0) > s.gap * 0.4 ? 'render' : (s.sim || 0) + (s.fxUpd || 0) > s.gap * 0.4 ? 'sim' : 'other']++; }
+  for (const k in split) split[k] = +(split[k] / (r.secs / 60)).toFixed(2);
+  const near = new Set(); for (const c of r.cutAt) for (let k = c; k < c + 60; k++) near.add(k);
+  let h = 0, hc = 0; r.frames.forEach((g, i) => { if (i >= 30 && g > 34) { h++; if (near.has(i)) hc++; } });
+  const sum = { hitchPerMin: +(h / (r.secs / 60)).toFixed(1), hitchNearCutPerMin: +(hc / (r.secs / 60)).toFixed(1), split, gpu, secs: +r.secs.toFixed(0), frames: gaps.length, fps: +(1000 / mean).toFixed(1), p99: pct(0.99), max: sorted[sorted.length - 1],
+    stallsPerMin: +(big / (r.secs / 60)).toFixed(2), over250PerMin: +(huge / (r.secs / 60)).toFixed(2), cuts: r.cuts, stallsAtCut, newPrograms: r.progs.length, compileMs: Math.round(r.compileMs), events: r.evN, programs: r.programs, warm: r.warm, mem: r.mem, errors: errs.slice(0, 5) };
   console.log(JSON.stringify(sum));
   for (const s of r.stalls.filter(s => !s.minor).slice(0, 60)) console.log('  stall', JSON.stringify(s));
   if (process.env.OUT) fs.writeFileSync(process.env.OUT, JSON.stringify({ sum, stalls: r.stalls, progs: r.progs }, null, 1));

@@ -342,10 +342,17 @@ window.WW = window.WW || {};
       if (V) { V.puff.clear(); V.core.clear(); }
     },
     cfg: { HEAVY: HEAVY, LIGHT: LIGHT, JINK: JINK, HEAVY_SHARE: HEAVY_SHARE },
+    _vis: function () { initVisuals(); return V; },   // the shared materials (shader_warm.js warms them)
     _debug: function () {
       return { pending: pending.length, peakPending: dbg.peakPending, bursts: dbg.bursts, heavyKills: dbg.heavyKills, lightKills: dbg.lightKills,
                puffs: V ? V.puff.mesh.count : 0, cores: V ? V.core.mesh.count : 0 };
     }
   };
   if (WW.combat && WW.combat._i) WW.combat._i.updaters.aatracer = updateTracerAA;
+  // after the camera moves (main.js frame): the live light-AA rounds' near-camera fade re-sized for this frame's camera
+  // (dt 0: nothing advances), so a hard cut has no frame of rounds sized for the old view
+  (WW.afterCamera = WW.afterCamera || []).push(function () {
+    var ci = I(); if (!ci || !V || WW.simOnly) return;
+    for (var i = 0, a = ci.active; i < a.length; i++) if (a[i].kind === 'aatracer' && !a[i].dead) updateTracerAA(a[i], 0);
+  });
 })();
