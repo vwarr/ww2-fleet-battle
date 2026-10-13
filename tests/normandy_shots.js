@@ -13,6 +13,8 @@
 //   ramps      Easy Red at H+40 (sim 160 s): craft beached with their ramps down, a wreck burning
 //   shingle    Easy Red at H+35 (sim 150 s): men at the shingle, the wounded and the dead on the sand, craft behind
 //   bluff      the men climbing the bluff between the draws (sim 300 s)
+//   soldiers   close up on a squad ashore (the figures: run / crouch / prone poses, the fallen)
+//   pinned     close up on men pinned down (prone: the test forces their suppression for the still)
 //   inland     the plateau running on past the map's south edge (the terrain skirts)
 //   plot       the plot table (map view): the coastline chart from the depth grid
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/normandy_shots.js [seed=1] [shot,...]
@@ -35,6 +37,8 @@ const SHOTS = [
   ['ramps', () => { __sim.fastForward(110); const z = T.shoreZ(1760); return [1740, 6, z - 40, 1765, 0.5, z + 5]; }],
   ['shingle', () => { __sim.fastForward(120); const q = WW.infantry.squads.find(q => q.alive && q.sector === 'easyRed' && q.kind !== 'tank') || WW.infantry.squads.find(q => q.alive); return [q.x - 14, 5, q.z - 18, q.x + 2, 0.5, q.z + 4]; }],
   ['bluff', () => { __sim.fastForward(270); const q = WW.infantry.squads.find(q => q.alive && q.state === 'climb') || WW.infantry.squads.find(q => q.alive); return [q.x - 16, q.y + 6, q.z - 16, q.x, q.y, q.z + 3]; }],
+  ['soldiers', () => { __sim.fastForward(140); const q = WW.infantry.squads.filter(q => q.alive && q.kind !== 'tank' && q.men > 6).sort((a, b) => b.speed - a.speed)[0]; return [q.x - 3.2, q.y + 1.3, q.z - 2.6, q.x, q.y + 0.2, q.z]; }],
+  ['pinned', () => { __sim.fastForward(190); const q = WW.infantry.squads.filter(q => q.alive && q.kind !== 'tank' && (q.state === 'shingle' || q.state === 'cross')).sort((a, b) => b.men - a.men)[0] || WW.infantry.squads.find(q => q.alive); WW.infantry.squads.forEach(o => { if (o.alive && Math.hypot(o.x - q.x, o.z - q.z) < 12) o.sup = 3; }); return [q.x - 3.5, q.y + 1.6, q.z - 4, q.x, q.y, q.z - 0.5]; }],
   ['inland', () => [1400, 40, 1420, 1400, 4, 1750]],
   ['plateau', () => { const z = T.bluffTopZ(1385); return [1330, 16, z - 15, 1395, 3, z + 60]; }]
 ];

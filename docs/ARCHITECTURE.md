@@ -125,7 +125,8 @@ js/camera_follow.js     WW.camFollow: keys F / Tab / 8 / 9, the follow label, fi
 js/camera_score.js      WW.camScore: one director score (the drama ladder), re-evaluation of the running shot with hysteresis
 js/air_captions.js      WW.airCaptions: squadron / leader film captions for what the director films (visual only)
 js/models_landing.js    WW.landingFx: the landing craft on screen (instanced hulls, ramps, tanks, DD screens, wrecks)
-js/models_infantry.js   WW.infantryFx: instanced soldiers (posture by state), the fallen, tanks ashore
+js/models_soldier.js    WW.soldierModel: the GI figure (legs, boots, jacket, webbing, pack, arms, M1 rifle, face, M1 helmet) per pose: run (2 frames), stand, crouch, prone, fallen
+js/models_infantry.js   WW.infantryFx: instanced soldiers posed by state (running stride, crouch, prone), the fallen, Sherman tanks ashore
 js/models_bunker.js     WW.bunkerModels: casemates, gun pits, Tobruks, MG nests, mortar pits, flak, the 155s (visual)
 js/base_fx.js           WW.baseFx: the base on screen (models, craters, fires, parked planes, captions, diary, camera hooks)
 js/admirals_flags.js    WW.admiralFlags: pennant, signal hoists and night blinker lamps on the flagships, admiral captions (visual only)
