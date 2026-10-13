@@ -95,17 +95,19 @@ window.WW = window.WW || {};
   // latency), again when it first makes out carriers, and once for a raid heading for its own island ("Many planes
   // heading Midway"). 'flyingBoat' order 'sighting' { comp: { type: n } as the boat believes them, carriers, x, z (the
   // reported position), planes (a raid: n bombers), unit }: the war diary, the camera, the island's alarm (base_alert.js).
+  // A PT boat or a submarine alone is not the enemy fleet: no report until a warship is in sight.
   function radio(p, u) {
     if (!u || !WW.intel || p.cvRadioed) return;
-    var cs = WW.intel.enemyShips(p.nation, { fresh: 3 }), comp = {}, cv = 0, c0 = WW.intel.known(p.nation, u);
+    var cs = WW.intel.enemyShips(p.nation, { fresh: 3 }), comp = {}, cv = 0, k = 0, c0 = null;
     for (var i = 0; i < cs.length; i++) {
-      var c = cs[i]; if (c.by !== p || !c.unit || WW.dist(c.x, c.z, u.x, u.z) > 300) continue;
-      var t = WW.intel.typeOf(c); comp[t] = (comp[t] || 0) + 1; if (t === 'carrier') cv++;
+      var c = cs[i], t = WW.intel.typeOf(c); if (c.by !== p || !c.unit || c.unit.isBase || t === 'pt' || t === 'submarine') continue;
+      comp[t] = (comp[t] || 0) + 1; k++; if (t === 'carrier') cv++;
+      if (!c0 || VAL[t] > VAL[WW.intel.typeOf(c0)]) c0 = c;   // the report's position: the biggest ship seen
     }
-    if (p.radioed && !cv) return;
+    if (!k || (p.radioed && !cv)) return;
     p.radioed = true; if (cv) p.cvRadioed = true;
     FB.stats.radio[p.nation]++;
-    WW.emit('flyingBoat', { plane: p, nation: p.nation, order: 'sighting', x: c0 ? c0.x : u.x, z: c0 ? c0.z : u.z, unit: u, comp: comp, carriers: cv, planes: 0 });
+    WW.emit('flyingBoat', { plane: p, nation: p.nation, order: 'sighting', x: c0.x, z: c0.z, unit: c0.unit, comp: comp, carriers: cv, planes: 0 });
   }
   function raid(p) {   // enemy bombers in sight of the boat, heading for its own island
     var b = WW.islandBase && WW.islandBase.base;
