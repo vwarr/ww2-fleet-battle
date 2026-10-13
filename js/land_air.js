@@ -107,10 +107,10 @@ window.WW = window.WW || {};
     a.capT -= dt;
     if (a.capT <= 0) {
       a.capT = 1;
-      const pic = WW.airOps ? WW.airOps.picture(b) : null, raid = !!(pic && pic.near > 0);
+      const pic = WW.airOps ? WW.airOps.picture(b) : null, raid = !!(pic && pic.near > 0) || (b.alertT || 0) > now; // alertT: the own flying boat's report (base_alert.js)
       // enemy planes over the field (inside OVER_R; fighters too: a sweep draws a fight, Zeros over Midway): the field
       // scrambles more, up to SCRAMBLE_MAX in the air, one more for each of them (a raid on the fleet farther out: no)
-      let over = 0; if (raid && WW.intel) for (const c of WW.intel.enemyPlanes(b.nation)) if (c.unit && c.unit.alive && WW.dist(c.x, c.z, b.x, b.z) < OVER_R) over++;
+      let over = (b.alertT || 0) > now ? 2 : 0; if (raid && WW.intel) for (const c of WW.intel.enemyPlanes(b.nation)) if (c.unit && c.unit.alive && WW.dist(c.x, c.z, b.x, b.z) < OVER_R) over++;
       const cw = WW.airOps ? WW.airOps.capWanted(b) : 2, want = over ? Math.min(SCRAMBLE_MAX, Math.max(4, cw + over)) : Math.min(4, cw), cs = capState(b);
       const queued = a.queue.filter(q => VAR[q.v].kind === 'fighter' && !q.target).length;
       let need = want - cs.on - cs.coming - queued;
