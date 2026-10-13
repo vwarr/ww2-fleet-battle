@@ -25,7 +25,14 @@ window.WW = window.WW || {};
   // where the depth is BRK.d0-BRK.d1 (the bar and the flat), spilling white on their faces
   const BRK = { A: 0.55, L: 15, V: 3.2, d0: 0.5, d1: 3.2, p: 6 };
   const G = 3.2;   // dispersion: omega = sqrt(G k) x speed k (a ~6 s swell period on the real clock)
-  const W = WAVES.map(([L, A, dx, dz, sk]) => { const n = Math.hypot(dx, dz), k = 2 * Math.PI / L; return { k, A, dx: dx / n, dz: dz / n, w: Math.sqrt(G * k) * sk }; });
+  const W = WAVES.map(([L, A, dx, dz, sk]) => { const n = Math.hypot(dx, dz), k = 2 * Math.PI / L; return { L, k, A, dx: dx / n, dz: dz / n, w: Math.sqrt(G * k) * sk }; });
+  // the mesh's resolution (rows follow the coast, DX u apart along it): a wave shorter than ~2.5 samples cannot be drawn,
+  // so it is faded out where the mesh is coarse, in the shader and in height() alike, and what the boats ride is what is
+  // drawn (the transport area 1,000 u out showed boats sunk to the gunwales in a sea drawn flat)
+  const DX = 5;
+  const rowStep = s => (s < 60 ? 1.1 : s < 300 ? 3 : s < 1300 ? 6 : 40);
+  const spacing = s => Math.max(DX, rowStep(Math.max(-16, s)));
+  const resolved = (L, sp) => smJ(1.6 * sp, 2.5 * sp, L);
   const SHOAL = { grow: 1.1, sharp: 2.2, deep: 9, brk: 1.3 };
   let T = 0, mesh = null, mat = null, depthOf = null, active = false;
   // the Channel on the morning of 6 June: grey-green, turbid over the sand, slate far out; foam a little off-white
@@ -48,12 +55,13 @@ window.WW = window.WW || {};
   // the surface at (x, z): height (u above sea level); d: the depth there; s: u offshore (breakers)
   function heightAt(x, z, d, t, s) {
     const a = ampK(d), sharp = 1 + SHOAL.sharp * (1 - Math.min(1, Math.max(0, (d - SHOAL.brk) / (SHOAL.deep - SHOAL.brk))));
+    if (s === undefined) s = WW.normandyTerrain ? WW.normandyTerrain.shoreZ(x) - z : 99;
+    const sp = spacing(s);
     let h = 0;
     for (const c of W) {
-      const ph = c.k * (c.dx * x + c.dz * z) - c.w * t, s = 0.5 + 0.5 * Math.sin(ph);
-      h += c.A * (2 * Math.pow(s, sharp) - 1 + (sharp - 1) * 0.18);   // peaked crests, flat troughs in the shallows
+      const ph = c.k * (c.dx * x + c.dz * z) - c.w * t, q = 0.5 + 0.5 * Math.sin(ph);
+      h += c.A * resolved(c.L, sp) * (2 * Math.pow(q, sharp) - 1 + (sharp - 1) * 0.18);   // peaked crests, flat troughs in the shallows
     }
-    if (s === undefined) s = WW.normandyTerrain ? WW.normandyTerrain.shoreZ(x) - z : 99;
     return h * a + BRK.A * brkBell(d) * Math.pow(0.5 + 0.5 * Math.sin(2 * Math.PI / BRK.L * s + BRK.V * 2 * Math.PI / BRK.L * t), BRK.p);
   }
   // the tide (tide.js) raises the whole sea and moves the surf in with it
@@ -69,7 +77,7 @@ window.WW = window.WW || {};
 
   // ---- the surface mesh: rows that follow the coast (z = shoreZ(x) - s), fine in the surf, coarse far out ----
   // rows from the shingle (the tide reaches it) out to sea
-  function rows() { const r = []; let s = -16; while (s < 2700) { r.push(s); s += s < 60 ? 1.1 : s < 300 ? 4 : s < 800 ? 12 : 60; } return r; }
+  function rows() { const r = []; let s = -16; while (s < 2700) { r.push(s); s += rowStep(s); } return r; }
   function build() {
     const T0 = WW.normandyTerrain, X0 = -1400, X1 = 3800, DX = 5, xs = [], R = rows();
     for (let x = X0; x <= X1; x += DX) xs.push(x);
@@ -102,8 +110,8 @@ window.WW = window.WW || {};
     float brkBell(float d) { return smoothstep(0.0, ${BRK.d0.toFixed(2)}, d) * (1.0 - smoothstep(${(BRK.d1 * 0.6).toFixed(2)}, ${BRK.d1.toFixed(2)}, d)); }
     float brkPh(float s, float t) { return ${(2 * Math.PI / BRK.L).toFixed(5)} * s + ${(BRK.V * 2 * Math.PI / BRK.L).toFixed(5)} * t; }
     float waveH(vec2 p, float d, float t, float s) {
-      float h = 0.0, sh = sharpK(d);
-      ${W.map((c, i) => `{ float ph = ${c.k.toFixed(5)} * dot(vec2(${c.dx.toFixed(5)}, ${c.dz.toFixed(5)}), p) - ${c.w.toFixed(5)} * t; float s = 0.5 + 0.5 * sin(ph); h += ${c.A.toFixed(4)} * (2.0 * pow(s, sh) - 1.0 + (sh - 1.0) * 0.18); }`).join('\n      ')}
+      float h = 0.0, sh = sharpK(d), ss = max(-16.0, s), sp = max(5.0, ss < 60.0 ? 1.1 : ss < 300.0 ? 3.0 : ss < 1300.0 ? 6.0 : 40.0);
+      ${W.map((c, i) => `{ float ph = ${c.k.toFixed(5)} * dot(vec2(${c.dx.toFixed(5)}, ${c.dz.toFixed(5)}), p) - ${c.w.toFixed(5)} * t; float q = 0.5 + 0.5 * sin(ph); h += ${c.A.toFixed(4)} * smoothstep(1.6 * sp, 2.5 * sp, ${c.L.toFixed(2)}) * (2.0 * pow(q, sh) - 1.0 + (sh - 1.0) * 0.18); }`).join('\n      ')}
       return h * ampK(d) + ${BRK.A.toFixed(3)} * brkBell(d) * pow(0.5 + 0.5 * sin(brkPh(s, t)), ${BRK.p.toFixed(1)});
     }`;
   const VERT = `
