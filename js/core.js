@@ -14,6 +14,9 @@ window.WW = window.WW || {};
   // Seedable RNG (mulberry32). WW.seedRandom(n) resets it; default seeded from Math.random.
   let _s = (Math.random() * 4294967296) >>> 0;
   WW.seedRandom = function (seed) { _s = (seed >>> 0) || 1; };
+  // the generator's whole state (main.js round record: a look-ahead copy of the round starts from the same draws)
+  WW.randState = () => _s;
+  WW.setRandState = s => { _s = s >>> 0; };
   WW.rand = function () {
     _s = (_s + 0x6D2B79F5) >>> 0;
     let t = _s;

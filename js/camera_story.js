@@ -239,7 +239,8 @@ window.WW = window.WW || {};
       const c = live.concat(old.wave ? old.wave.members.filter(m => airborne(m) && live.indexOf(m) < 0) : [])
         .filter(m => m !== old && m.ordnance && (m.phase === 'run' || m.phase === 'roll' || m.phase === 'dive' || m.sk === 'anvil' || m.state === 'attack') && Math.hypot(m.x - old.x, m.z - old.z) < 90);
       c.sort((a, b) => Math.hypot(a.x - old.x, a.z - old.z) - Math.hypot(b.x - old.x, b.z - old.z));
-      return c[0] || null;
+      const h = WW.camLook && WW.camLook.successorHint(c);   // camera5: the wingman that WILL hit takes the story on
+      return h || c[0] || null;
     }
     let n = old.element && old.element.members.find(m => m !== old && airborne(m));
     if (!n) n = live[0];
@@ -339,6 +340,7 @@ window.WW = window.WW || {};
       if ((checkT -= rdt) > 0) return;
       checkT = 1;
       if (WW.game.roundTime !== undefined && WW.game.roundTime < 20) return;
+      if (WW.camLook && WW.camLook.owns()) return;   // camera5: the look-ahead director starts the stories (plan())
       const a = bestArc();
       // an imminent attack may start after a short rest (if it beats what the director films now: camera_score.js); anything
       // else waits for the long one
@@ -454,6 +456,9 @@ window.WW = window.WW || {};
     stop() { end(false); },
     // camera_follow.js: start on an arc { lead, mission, item } as the user's story; the running story, if any
     begin(arc) { return start(arc, true); },
+    // camera_lookahead.js: a story chosen by its known outcome (meta: the plan, logged on the arc); not the user's, it cuts in
+    // as the running shot allows (an imminent story)
+    plan(arc, meta) { if (S && S.begun) return false; start(arc, false); if (S && S.arc && meta) S.arc.plan = meta; return !!S; },
     story() { return S ? { lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
     interrupted(c) { if (S) { S.lastCutaway = wall(); S.cutaway = null; log.push({ interrupt: c.kind, at: wall() }); } }, // camera.js interrupt(): the story resumes after it
     // camera.js recut(): a bigger action elsewhere takes the camera; an automatic story ends for it (the user's does not)

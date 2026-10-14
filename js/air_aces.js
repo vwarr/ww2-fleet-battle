@@ -221,4 +221,11 @@ window.WW = window.WW || {};
     },
     reset: function () { rosters.USN.length = 0; rosters.IJN.length = 0; clear(); }
   };
+  // the rosters carry over between rounds (and the skill they give is sim): part of the round record (round_rec.js)
+  if (WW.roundRec) WW.roundRec.add('aces', function () { return { rosters: rosters, nextId: nextId }; }, function (d) {
+    Object.keys(rosters).forEach(function (n) { delete rosters[n]; });
+    Object.keys(d.rosters).forEach(function (n) { rosters[n] = d.rosters[n]; });
+    if (!rosters.USN) rosters.USN = []; if (!rosters.IJN) rosters.IJN = [];
+    nextId = d.nextId; flying.length = 0; pending.length = 0;
+  });
 })();

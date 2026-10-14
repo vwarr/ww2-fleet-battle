@@ -189,6 +189,7 @@ window.WW = window.WW || {};
     WW.sides().forEach(function (n) { var A = cur[n]; if (A && A.confusedUntil) { stats.confusionSec += WW.time.now - A.confusedAt; A.confusedUntil = 0; } });
   });
   WW.on('roundStart', function () { roll(usePreview); usePreview = false; });
+  if (WW.roundRec) WW.roundRec.add('admirals', function () { return { preview: preview, usePreview: usePreview }; }, function (d) { preview = d.preview; usePreview = d.usePreview; });
   WW.on('setupStart', function () { cur = {}; reroll(); });
   function reroll() { // setup panel preview (Math.random: setup is not replayable; Start uses it)
     preview = {}; WW.sides().forEach(function (n) { preview[n] = pickKey(n, Math.random()); });

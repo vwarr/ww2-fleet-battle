@@ -22,6 +22,10 @@ const SIM = +arg('--sim', 600), WORKERS = +arg('--workers', 2), TAG = arg('--tag
 const OUT = arg('--out', path.join(__dirname, 'shots', 'camera_audit'));
 const SHEET = arg('--sheet', null), SUMMARIZE = args.includes('--summarize'), FAST = args.includes('--fast'); // --fast: stub the per-frame visual modules (their event handlers then draw fewer of the camera's dice, so a --sheet replay of a --fast survey shows other shots)
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8779/';
+const CAM = arg('--cam', process.env.CAM || ''); // --cam lookahead | forecast: the director (camera5: js/lookahead.js); '' = the page's default
+// with the look-ahead worker, each chunk of frames waits until the worker is past the director's horizon plus the chunk, so
+// what the director sees does not depend on the machine's speed (a survey and its --sheet replay match)
+const WAIT = `(async () => { const L = WW.lookahead; if (L && L.on) await L.waitAhead(L.HORIZON + 10, 120000); })()`;
 const FONT = ['/System/Library/Fonts/Supplemental/Arial.ttf', '/System/Library/Fonts/Helvetica.ttc'].find(f => fs.existsSync(f)) || 'Helvetica';
 const rep = (t, n) => Array(n).fill(t);
 const ODD = [['cv_vs_pt', rep('carrier', 3), rep('pt', 10)], ['cv3_vs_bb2ca2', rep('carrier', 3), ['battleship', 'battleship', 'cruiser', 'cruiser']],
@@ -550,7 +554,7 @@ async function openRound(b, spec) {
   const p = await b.newPage({ viewport: { width: 960, height: 540 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.addInitScript(INIT(spec.seed * 31 + 7));
-  await p.goto(BASE_URL + 'index.html?auto');
+  await p.goto(BASE_URL + 'index.html?auto' + (CAM ? '&cam=' + CAM : ''));
   await p.waitForTimeout(1500);
   const comp = await p.evaluate(([install, cfg]) => {
     const pr = WW.post.render.bind(WW.post); WW.post.render = (a, b) => { if (!window.__render) return; const mr = Math.random; Math.random = window.__prng2; try { pr(a, b); } finally { Math.random = mr; } };
@@ -564,8 +568,8 @@ async function survey(b, spec, dir) {
   const { p, errs, comp } = await openRound(b, spec);
   const t0 = Date.now();
   let t = 0;
-  while (true) { t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
-  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null }; });
+  while (true) { await p.evaluate(WAIT); t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null, la: WW.lookahead && WW.lookahead.on ? { checks: WW.lookahead.checks, diverged: WW.lookahead.diverged, mismatch: WW.lookahead.mismatch, steps: WW.lookahead.stepsRun, bootMs: WW.lookahead.bootMs, errs: WW.lookahead.errs.slice(0, 5) } : null }; });
   R.errs = errs.slice(0, 5);
   fs.writeFileSync(path.join(dir, `${spec.name}_${spec.seed}.json`), JSON.stringify(R));
   const M = analyse(R);
@@ -578,10 +582,11 @@ async function sheet(b, specTxt) {
   const dir = path.join(OUT, 'sheets', `${name}_${seed}_${from}-${to}`); fs.mkdirSync(dir, { recursive: true });
   const { p } = await openRound(b, spec);
   const f0 = Math.round(+from * 30);
-  await p.evaluate(n => { let left = n; while (left > 0 && WW.game.state === 'battle') { const k = Math.min(300, left); __step(k); left -= k; } }, f0);
+  for (let left = f0; left > 0;) { await p.evaluate(WAIT); const k = Math.min(300, left); const go = await p.evaluate(k => { __step(k); return WW.game.state === 'battle'; }, k); left -= k; if (!go) break; }
   const frames = [], FKEY = +arg('--fkey', 0); let fDone = !FKEY;   // --fkey W: press F (camera_follow.js f()) at wall W of the window
   for (let w = +from; w <= +to; w += EV) {
     if (!fDone && w >= FKEY) { fDone = true; console.log('  F at ' + w + ': ' + await p.evaluate(() => WW.camFollow.f())); }
+    await p.evaluate(WAIT);
     const info = await p.evaluate(([k]) => { __render = false; if (k > 1) __step(k - 1); __render = true; __step(1); const fd = document.getElementById('fade'); if (fd) fd.style.opacity = '0';
       const s = WW.cam._shot(), d = WW.camStory._dbg() || {}, lab = WW.camFollow.labelText(), cap = document.querySelector('.caption.on'), top = (window.__audit.rec.slice(-1)[0] || {}).top || [];
       return { w: Math.round(performance.now() / 1000), shot: s ? (s.story ? 'story/' + s.sk + '/' + (d.phase || '') : s.kind) + (s.stage ? ':' + s.stage : '') : '-', label: lab.replace(/Following /, ''), cap: cap ? cap.textContent.trim().slice(0, 60) : '', top: top[0] ? top[0].kind + ' ' + top[0].score + (top[0].on ? ' ON' : ' off') : '' }; }, [Math.round(EV * 30)]);

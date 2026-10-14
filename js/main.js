@@ -137,13 +137,21 @@ window.WW = window.WW || {};
     roundTime: 0, victoryTime: 0, seed: 0, lastSink: 0, contactT: null, metT: null, endReason: null, noRetire: false, // noRetire: tests (no retire ending)
     hadMajor: {},
     // opts.keepMap: start on the current map (used by "Start battle" in setup mode)
+    // opts.replay: a round record (WW.roundRec.capture, below): the look-ahead copy of the round (lookahead_worker.js)
+    // starts the same round from the same state
     startRound(opts) {
       opts = opts || {};
-      if (!opts.keepMap || !WW.terrain.seed) {
+      const rec = opts.replay || null;
+      if (rec) { opts.keepMap = rec.keepMap; if (WW.terrain.seed !== rec.terrain) WW.terrain.generate(rec.terrain); }
+      else if (!opts.keepMap || !WW.terrain.seed) {
         game.seed = (WW.rand() * 1e9) >>> 0; // WW.rand: the round after a seeded round replays too
         WW.terrain.generate(game.seed);
       }
+      const rng0 = WW.randState();      // (before clearModules: damage.js rolls the round's wind there)
+      if (rec) { WW.setRandState(rec.rng); WW.time.now = rec.now; }
       clearModules();
+      if (rec) WW.roundRec.apply(rec); else game.rec = WW.roundRec.capture(opts.keepMap, rng0);
+      game.stepN = 0;
       WW.stats.round++;
       game.winner = null; game.endReason = null; game.roundTime = 0; sideReset(); game.victoryTime = 0; game.lastSink = 0; game.contactT = null; game.metT = null; game.lastHit = 0;
       let comp;
@@ -350,11 +358,32 @@ window.WW = window.WW || {};
     if (!WW.simOnly) { call('fx', 'update', dt); call('lifeboats', 'update', dt); } // visual only
     updateGame(dt);
   }
+  // The live game steps the sim in FIXED steps of LIVE_STEP sim s (camera5): the same steps in the same order whatever the
+  // frame rate, the time scale or the slow motion, so a second copy of the round (lookahead_worker.js) stepping the same
+  // LIVE_STEP from the same round record (game.rec) reproduces it bit for bit, ahead of the screen. At 1x and 60 fps it is
+  // one step a frame (as before); a frame takes as many whole steps as its sim time holds and carries the remainder
+  // (acc). A frame never shrinks or skips a step: when the steps of one frame cost more than STEP_BUDGET ms of wall time
+  // (a high time scale on a slow machine) the rest waits and the backlog is capped (the battle then runs slower than asked,
+  // never differently). The tests' fastForward keeps its 0.05 s steps (their baselines); __sim.stepFixed(n) runs n live steps.
+  const LIVE_STEP = 1 / 120, STEP_BUDGET = 30, MAX_BACKLOG = 0.5;
+  let acc = 0;
+  // WW.afterStep(n): optional hook after each live step (n: the round's step count): the look-ahead worker's log, tests
+  function stepLive() { step(LIVE_STEP); game.stepN = (game.stepN || 0) + 1; if (WW.afterStep) WW.afterStep(game.stepN); }
+  // (SNAP: a frame within a quarter step of a whole number of steps takes that number, so the frame clock's jitter at 1x
+  // never makes a 0-step frame followed by a 2-step one: the sim clock runs a hair elastic against the wall clock instead)
+  const SNAP = 0.25;
   function advance(simDt) {
-    const n = Math.max(1, Math.ceil(simDt / STEP - 1e-6));
-    const d = simDt / n;
-    for (let i = 0; i < n; i++) step(d);
+    acc += simDt;
+    let n = Math.floor(acc / LIVE_STEP + SNAP);
+    if (n <= 0) return;
+    acc -= n * LIVE_STEP;
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) {
+      stepLive();
+      if (i < n - 1 && performance.now() - t0 > STEP_BUDGET) { acc = Math.min(acc + (n - 1 - i) * LIVE_STEP, MAX_BACKLOG); break; }
+    }
   }
+  WW.on('roundStart', () => { acc = 0; });
   // Frame pacing (battery): at most FPS_CAP frames a second (a 120 Hz ProMotion display otherwise draws, and steps
   // the sim, twice as often for no visible gain), and FPS_IDLE on the ready screen while the user is not touching
   // anything. A skipped rAF does nothing at all (no sim step, no render) and leaves `last` alone, so the next drawn
@@ -419,7 +448,12 @@ window.WW = window.WW || {};
     call('dmgVis', 'unpose');
     while (left > 1e-9) { const d = Math.min(STEP, left); step(d); left -= d; if (onStep) onStep(d); }
   }
-  window.__sim = { stats: WW.stats, game: WW.game, world: WW.world, fastForward, setScale,
+  function stepFixed(n, onStep) {
+    call('shipSwell', 'unpose');
+    call('dmgVis', 'unpose');
+    for (let i = 0; i < n; i++) { stepLive(); if (onStep) onStep(); }
+  }
+  window.__sim = { stats: WW.stats, game: WW.game, world: WW.world, fastForward, setScale, stepFixed, LIVE_STEP,
     focus: (x, z, w, hold) => call('cam', 'focus', x, z, w, hold), snapCamera: () => call('cam', 'snap') };
 
   // Sim-only mode (WW.simOnly, index.html?sim): a scene graph for the models (the sim reads turret, deck and hull

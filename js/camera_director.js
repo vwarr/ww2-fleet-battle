@@ -128,7 +128,7 @@ window.WW = window.WW || {};
     out.sort((a, b) => b.pr - a.pr);
     return (fc = out);
   }
-  const forecastFor = s => forecast().find(e => e.s === s) || null;
+  const forecastFor = s => (WW.camLook && WW.camLook.active() ? WW.camLook.forecastFor(s) : forecast().find(e => e.s === s) || null);
   function labelOf(e) {
     const k = e.kind, s = nameOf(e.s), sink = e.kill ? ' · she may not survive it' : '';
     if (k === 'torp') return 'Torpedoes running at ' + s + sink;
@@ -143,6 +143,8 @@ window.WW = window.WW || {};
   // The arc picker, the arcs' climaxes and the brace candidates read ONLY this list, so another source (a look-ahead
   // sim's event log) can replace forecast() behind it.
   function events() {
+    if (WW.camLook && WW.camLook.active()) return WW.camLook.events().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
+      x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));   // camera5: the look-ahead's known future (camera_lookahead.js)
     return forecast().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
       x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));
   }
@@ -484,7 +486,8 @@ window.WW = window.WW || {};
     if (sa) tickShipArc(shot);
     const st = storyNow();
     // a carrier about to be struck: break into whatever arc runs (a clean cut; the old arc is closed, not resumed)
-    const cv = (!(st && st.user) && !(sa && sa.user) && !(shot && shot.user && !shot.fkey)) ? carrierCall(shot) : null;
+    const look = !!(WW.camLook && WW.camLook.owns());   // camera5: the look-ahead director picks the arcs (camera_lookahead.js)
+    const cv = (!look && !(st && st.user) && !(sa && sa.user) && !(shot && shot.user && !shot.fkey)) ? carrierCall(shot) : null;
     if (cv && (arcBusy() || !(shot && shot.subj === cv.subj))) {
       if (st && WW.camStory.supersede) WW.camStory.supersede();
       if (startShipArc(cv)) { ST.cuts++; ST.byKind['arc:cv'] = (ST.byKind['arc:cv'] || 0) + 1; log.push({ at: wall(), from: st ? 'story' : shot ? shot.kind : '-', to: 'arc:raid cv' }); }
@@ -493,7 +496,7 @@ window.WW = window.WW || {};
     // an air story still in its quiet setup (forming up, the long transit, home) gives way to a ship arc with a big ship at
     // stake (a battleship / carrier torpedo charge, a duel on a battleship): the story is closed; its strike comes back as
     // an arc of its own when its run-in begins
-    if (st && st.begun && !st.user && !sa && shot && shot.story && !shot.stage && shot.t > 3) {
+    if (!look && st && st.begun && !st.user && !sa && shot && shot.story && !shot.stage && shot.t > 3) {
       const ph = (WW.camStory._dbg() || {}).phase;
       if (ph === 'transit' || ph === 'form' || ph === 'home' || ph === 'launch') {
         const b = shipArcs()[0];
@@ -515,7 +518,7 @@ window.WW = window.WW || {};
     if (L && L.release) return;                                        // the final seconds of an attack: never
     if (st && (st.user || !st.begun)) return;                           // a story waiting for this shot to end
     // between arcs: start the best ship arc (an air story starts from camera_story.js's own tick)
-    if (shot.t > 2.5 && !L && !shot.interrupt) {
+    if (!look && shot.t > 2.5 && !L && !shot.interrupt) {
       const b = shipArcs()[0];
       if (b && b.promise >= ARC_MIN && startShipArc(b)) { ST.cuts++; const k = 'arc:' + b.kind; ST.byKind[k] = (ST.byKind[k] || 0) + 1; log.push({ at: wall(), from: shot.kind, to: k + ' ' + b.promise.toFixed(1) }); return; }
     }
