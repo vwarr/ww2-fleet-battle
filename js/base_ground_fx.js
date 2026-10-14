@@ -21,13 +21,17 @@ window.WW = window.WW || {};
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
 
   const V = () => WW.landAir.VAR;
+  // a plane's ground variant: its land_air.js VAR entry, or for a carrier plane taken in by the field (land_flow.js
+  // field: variant null) a small-class plane drawn as its nation's carrier model of its kind (k: the plane's kind, kept
+  // on its wreck and hulk)
+  const VA = (v, k) => V()[v] || { kind: k || 'fighter', cls: 'S' };
   const gy = (x, z) => Math.max(base.site.padH, -WW.terrain.depthAt(x, z));
-  const CLS = v => WW.airfieldLayout.CLS[V()[v].cls || 'S'];
+  const CLS = v => WW.airfieldLayout.CLS[VA(v).cls || 'S'];
 
   // ---------- pooled plane models: parked and wrecked ----------
-  function model(v) { const m = WW.air._pool.get(V()[v].model || V()[v].kind, base.nation); if (m.payload) m.payload.visible = true; if (m.disc) { m.disc.visible = false; m.blades.visible = true; } return m; }
+  function model(v, k) { const a = VA(v, k), m = WW.air._pool.get(a.model || a.kind, base.nation); if (m.payload) m.payload.visible = true; if (m.disc) { m.disc.visible = false; m.blades.visible = true; } return m; }
   function place(m, v, x, z, h, wreck, age) {
-    const gear = V()[v].gear || WW.air._pool.deckY;
+    const gear = VA(v).gear || WW.air._pool.deckY;
     m.group.position.set(x, gy(x, z) + gear - (wreck ? gear * 0.55 : 0), z);
     m.group.rotation.set(wreck ? 0.32 : 0, -h, wreck ? -0.12 : 0);
     if (wreck && m.payload) m.payload.visible = false;
@@ -100,7 +104,7 @@ window.WW = window.WW || {};
     const all = (base.wrecks || []).filter(w => !w.fell).concat(base.hulks || []);   // wrecks where they fell (a shot-down plane's own airframe is drawn: fell); crash hulks bulldozed onto the grass
     for (const w of all) {
       let m = wrecks.get(w);
-      if (!m) { m = model(w.v); wrecks.set(w, m); }
+      if (!m) { m = model(w.v, w.k); wrecks.set(w, m); }
       place(m, w.v, w.x, w.z, w.h, true); burnAt(w.x, w.z, now - w.t, w.crash ? 45 : 25);
     }
     for (const [w, m] of wrecks) if (!all.includes(w)) { WW.air._pool.release(m); wrecks.delete(w); }
@@ -182,7 +186,7 @@ window.WW = window.WW || {};
   function crashCrew(cam, now) {
     for (const w of base.wrecks || []) {
       const age = now - w.t; if (!w.crash || age > 40 || (w.x - cam.x) ** 2 + (w.z - cam.z) ** 2 > NEAR_FIG * NEAR_FIG) continue;
-      const n = V()[w.v] && V()[w.v].kind === 'fighter' ? 1 : 3;
+      const n = VA(w.v, w.k).kind === 'fighter' ? 1 : 3;
       for (let i = 0; i < n; i++) {
         const a = w.h + Math.PI * 0.5 + (i - (n - 1) / 2) * 0.5, r = w.r + 0.6 + Math.min(age, 4) * 2.4;
         figure(w.x + Math.cos(a) * r, w.z + Math.sin(a) * r, age < 4 ? a : a + Math.PI, base.nation, 'o', age < 4);
