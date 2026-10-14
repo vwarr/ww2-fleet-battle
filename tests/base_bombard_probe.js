@@ -51,7 +51,7 @@ function install() {
   // swapped base x / z) and what it was (a facility kind or the runway), the miss distance and the outcome
   WW.on('weaponDropped', e => {
     const b = WW.islandBase.base; if (!b || !e || e.kind !== 'bomb' || !e.plane || e.target !== b) return;
-    const pl = e.plane, how = (pl.level ? (pl.variant ? pl.variant : 'kate') + '-level' : pl.kind), what = pl.aimF ? (pl.aimF.f ? pl.aimF.f.kind : 'runway') : 'centre';
+    const pl = e.plane, how = (pl.level ? (pl.variant ? pl.variant : 'kate') + '-level' : pl.kind), what = pl.aimF ? (pl.aimF.what || (pl.aimF.f ? pl.aimF.f.kind : 'runway')) : 'centre';
     S.bmAim.set(e.proj, { x: b.x, z: b.z, how, what }); mark('bomb');
   });
   WW.on('weaponImpact', e => {

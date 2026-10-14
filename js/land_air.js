@@ -25,7 +25,7 @@
 //    if it is close), then straight and level, a stick released on the throw point; dropBomb's scatter grows with
 //    height and, on a ship under way, with the real time of fall (the ship turned under the bombs), so a B-17 at
 //    7,000 m rarely hits a ship (historically they hit nothing at Midway).
-//  - Strikes on the base: each bomber aims at one of its facilities (aimFor), not the island's centre.
+//  - Strikes on the base: each bomber aims at one of its points (aimFor: AA pits, hangars, fuel, tower, ramp, parked rows; runways last); a level stick walks across it.
 window.WW = window.WW || {};
 (function () {
   'use strict';
@@ -328,17 +328,38 @@ window.WW = window.WW || {};
   }
 
   // ---------- level bombing, and strikes on the base aimed at its facilities ----------
+  // The aim points, weighted the historical way (Midway, 4 June 1942: the fuel tanks, hangars, power plant and seaplane
+  // hangar burned, the runways stayed usable): the dive bombers go for the AA pits first (flak suppression), then the
+  // hangars, the fuel, the tower, the seaplane ramp and the planes parked in their rows; the level bombers for the
+  // hangars, the fuel and the rows; an open runway (one point, its middle third) last. Each point is listed W times,
+  // pass by pass (every point once, then those worth 2, ...), and the round-robin aimN spreads a raid over them.
+  const AIM_W = {
+    dive: { aa: 3, hangar: 2, fuel: 2, tower: 2, ramp: 2, ammo: 1, battery: 1, row: 2, runway: 1 },
+    level: { aa: 1, hangar: 3, fuel: 3, tower: 2, ramp: 2, ammo: 1, battery: 0, row: 3, runway: 1 }
+  };
+  const STICK = 8;   // u between the bombs of a level bomber's stick, released in train along the run line
+  function rowAim(b, ri) {   // the parked planes of dispersal row ri: their centre and count
+    let x = 0, z = 0, n = 0;
+    for (const s of b.slots || []) if (s.spot && s.spot.row === ri && (s.state === 'parked' || s.state === 'rearm')) { x += s.x; z += s.z; n++; }
+    return n ? { x: x / n, z: z / n, n } : null;
+  }
+  function stale(a, b) { return a.f ? a.f.out : a.rw ? a.rw.closed : a.row !== undefined ? !rowAim(b, a.row) : false; }
   function aimFor(pl, b) {
-    if (pl.aimF && !(pl.aimF.f && pl.aimF.f.out && !pl.phase)) return pl.aimF;
+    if (pl.aimF && !(!pl.phase && stale(pl.aimF, b))) return pl.aimF;
+    const W = AIM_W[pl.level ? 'level' : 'dive'], P = [];
+    for (const f of b.facilities) if (!f.out && W[f.kind]) P.push({ w: W[f.kind], a: { x: f.x, z: f.z, f, what: f.kind } });
+    const rows = (b.layout && b.layout.rows) || [];
+    for (let i = 0; i < rows.length; i++) { const r = rowAim(b, i); if (r) P.push({ w: W.row, a: { x: r.x, z: r.z, row: i, what: 'row' } }); }
+    for (const r of b.runways) if (!r.closed) { const k = ((b.ai.aimN * 0.618) % 1 - 0.5) * 0.6 * r.len; P.push({ w: W.runway, a: { x: r.x + r.c * k, z: r.z + r.s * k, rw: r, what: 'runway' } }); }
+    P.sort((p, q) => q.w - p.w);   // stable: the heaviest first in every pass
     const L = [];
-    for (const r of b.runways) if (!r.closed) { L.push({ x: r.x, z: r.z }); L.push({ x: r.x + r.c * r.len * 0.3, z: r.z + r.s * r.len * 0.3 }); }
-    for (const f of b.facilities) if (!f.out && (f.kind === 'battery' || f.kind === 'aa' || f.kind === 'hangar' || f.kind === 'fuel')) L.push({ x: f.x, z: f.z, f });
-    if (!L.length) L.push({ x: b.x, z: b.z });
+    for (let p = 0; L.length < 200; p++) { let any = false; for (const q of P) if (q.w > p) { L.push(q.a); any = true; } if (!any) break; }
+    if (!L.length) L.push({ x: b.x, z: b.z, what: 'centre' });
     return (pl.aimF = L[(b.ai.aimN++) % L.length]);
   }
-  function swap(pl, t, fn) { // run fn with the base's x / z moved to this plane's aim point
-    const a = aimFor(pl, t), ox = t.x, oz = t.z;
-    t.x = a.x; t.z = a.z;
+  function swap(pl, t, fn, off) { // run fn with the base's x / z moved to this plane's aim point (off: u along his heading)
+    const a = aimFor(pl, t), ox = t.x, oz = t.z, o = off || 0;
+    t.x = a.x + Math.cos(pl.heading || 0) * o; t.z = a.z + Math.sin(pl.heading || 0) * o;
     try { return fn(); } finally { t.x = ox; t.z = oz; }
   }
   function level(pl, dt) {
@@ -368,7 +389,9 @@ window.WW = window.WW || {};
     const he = pl.fly(px + ox, pz + oz, LA, dt, pl.pt.speed, 0.8);
     const rel = pl.speed * 0.75 * T;
     if (d < rel && Math.abs(he) < 0.3 && pl.y > LA * (pl.lvLand ? 0.9 : 0.75)) {
-      for (let k = 0; k < (L.bombs || 1); k++) { if (isB) swap(pl, t, () => WW.combat.dropBomb(pl, t)); else WW.combat.dropBomb(pl, t); }
+      // the stick in train: on the field each bomb falls STICK u further along the run line, walked across the aim point
+      const nb = L.bombs || 1;
+      for (let k = 0; k < nb; k++) { if (isB) swap(pl, t, () => WW.combat.dropBomb(pl, t), (k - (nb - 1) / 2) * STICK); else WW.combat.dropBomb(pl, t); }
       pl.dropped(); pl.lvPh = 'away'; pl.phaseT = 5; ST.levelDrops++;
       if (pl.carrier && pl.carrier.isBase) WW.islandBase.stats.landDrops++;
     } else if (d < 12) { pl.lvPh = 'away'; pl.phaseT = 7; } // overshot: run on and come round again
