@@ -26,7 +26,7 @@ const STALL = +(process.env.STALL || 100);
     const r = await route.fetch(); const n = Date.now() % 1e7;
     await route.fulfill({ response: r, body: (await r.text()) + `\n;(function(){var C=THREE.ShaderChunk;C.begin_vertex+='\\nif (position.x < -${n}.5e20) transformed.x += 1.0;';C.clipping_planes_fragment+='\\nif (gl_FragCoord.x < -${n}.5) discard;';})();` });
   });
-  await p.goto(BASE + 'index.html?infinite&v=' + Date.now());
+  await p.goto(BASE + 'index.html?infinite&' + (process.env.QUERY ? process.env.QUERY + '&' : '') + 'v=' + Date.now());
   await p.waitForFunction(() => window.WW && WW.renderer && WW.cam && WW.post && WW.game && WW.game.state === 'battle', null, { timeout: 60000 });
   const gpu = await p.evaluate(() => { const gl = WW.renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : '?'; });
   console.log('GPU:', gpu);
