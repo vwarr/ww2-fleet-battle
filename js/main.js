@@ -355,9 +355,29 @@ window.WW = window.WW || {};
     const d = simDt / n;
     for (let i = 0; i < n; i++) step(d);
   }
+  // Frame pacing (battery): at most FPS_CAP frames a second (a 120 Hz ProMotion display otherwise draws, and steps
+  // the sim, twice as often for no visible gain), and FPS_IDLE on the ready screen while the user is not touching
+  // anything. A skipped rAF does nothing at all (no sim step, no render) and leaves `last` alone, so the next drawn
+  // frame's rdt is the whole real time since the last one: the sim still advances by real time (in render mode its
+  // step size already follows the frame rate; the tests drive __sim.fastForward and never see this). The 3 ms slack
+  // keeps a 60 cap on a 120 Hz display at every other vsync instead of alternating 8 / 16 ms. A hidden tab gets no
+  // rAF at all (the browser stops it; audio.js mutes on visibilitychange). ?nocap: uncapped (fps / stress tests).
+  const FPS_CAP = 60, FPS_IDLE = 30, IDLE_AFTER = 1500, NO_CAP = /[?&]nocap\b/.test(location.search);
+  let lastInput = -1e9;
+  const touched = () => { lastInput = performance.now(); };
+  ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'].forEach(k => window.addEventListener(k, touched, { passive: true }));
+  WW.frames = { drawn: 0, skipped: 0 };
+  function frameCap(t) {
+    if (NO_CAP) return 0;
+    if (game.state === 'setup' && t - lastInput > IDLE_AFTER) return FPS_IDLE;
+    return FPS_CAP;
+  }
   let last = 0;
   function frame(t) {
     requestAnimationFrame(frame);
+    const cap = frameCap(t);
+    if (cap && last && t - last < 1000 / cap - 3) { WW.frames.skipped++; return; }
+    WW.frames.drawn++;
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
     call('shipSwell', 'unpose');   // Normandy: the swell's pose comes off first (ship_swell.js)

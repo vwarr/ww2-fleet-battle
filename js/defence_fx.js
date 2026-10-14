@@ -70,7 +70,7 @@ window.WW = window.WW || {};
       const f = fade ? 1 - t : 1; this.m.setColorAt(k, _c.setRGB(p.r * f, p.gg * f, p.b * f));
       k++;
     }
-    this.m.count = k; this.m.instanceMatrix.needsUpdate = true; if (this.m.instanceColor) this.m.instanceColor.needsUpdate = true;
+    this.m.count = k; WW.instUsed(this.m, true);
   };
   Pool.prototype.clear = function () { for (const p of this.a) p.on = false; this.m.count = 0; };
 
@@ -282,8 +282,8 @@ window.WW = window.WW || {};
         put(((vt * 6 + k * 0.5) | 0) & 1 ? 'runA' : 'runB', x, y, z, yaw);
       }
     }
-    for (const k in figs) figs[k].instanceMatrix.needsUpdate = true;
-    props.mg42.instanceMatrix.needsUpdate = true; props.mortar.instanceMatrix.needsUpdate = true;
+    for (const k in figs) WW.instUsed(figs[k]);
+    WW.instUsed(props.mg42); WW.instUsed(props.mortar);
     // the tracers fly; the rounds that arrive kick up the sand or the water
     let k = 0;
     for (const p of tr.a) {
@@ -298,7 +298,7 @@ window.WW = window.WW || {};
       const hot = (p.age < 0.05 ? 1.3 : 1) * (0.55 + 0.45 / kf); tr.m.setColorAt(k, _c.setRGB(1.0 * hot, 0.42 * hot, 0.12 * hot));
       k++;
     }
-    tr.m.count = k; tr.m.instanceMatrix.needsUpdate = true; if (tr.m.instanceColor) tr.m.instanceColor.needsUpdate = true;
+    tr.m.count = k; WW.instUsed(tr.m, true);
     puff.step(dt, false); glow.step(dt, true);
   }
   // a mortar round away: the flash and the puff at the tube's mouth

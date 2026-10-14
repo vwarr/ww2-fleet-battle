@@ -87,7 +87,7 @@ window.WW = window.WW || {};
         const p = at(e, f); put('climber', p[0], p[1] - 0.12, p[2] - 0.06, Math.PI / 2, -0.5);
       }
     }
-    for (const k in M) M[k].instanceMatrix.needsUpdate = true;
+    for (const k in M) WW.instUsed(M[k]);
   }
   WW.on('hocEvent', e => {
     if (!on() || !e) return;

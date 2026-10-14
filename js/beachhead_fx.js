@@ -155,7 +155,7 @@ window.WW = window.WW || {};
       if (age < HULK_FIRE_T && WW.fx && WW.fx.fire) WW.fx.fire(h.x, hAt(h.x, h.z) + 0.35, h.z);
       if (age < HULK_SMOKE_T && WW.fx && WW.fx.smoke && Math.random() < (rdt || 0.016) * (age < HULK_FIRE_T ? 3 : 1.2)) WW.fx.smoke(h.x, hAt(h.x, h.z) + 0.5, h.z, true, age < HULK_FIRE_T ? 0.9 : 0.6);
     }
-    M.hulk.count = nh; M.hulk.instanceMatrix.needsUpdate = true; if (M.hulk.instanceColor) M.hulk.instanceColor.needsUpdate = true;
+    M.hulk.count = nh; WW.instUsed(M.hulk, true);
     // the battle's haze: smoke and dust hanging low over the beach and the bluffs and drifting along them on the wind,
     // thicker the harder the fighting has been lately (heat: the shells, bombs, mortars and MG fire of the last minute)
     heat *= Math.exp(-HEAT_DECAY * dts);

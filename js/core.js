@@ -25,6 +25,15 @@ window.WW = window.WW || {};
   WW.randInt = (a, b) => Math.floor(a + (b - a + 1) * WW.rand()); // inclusive
   WW.pick = arr => arr[Math.floor(WW.rand() * arr.length)];
   WW.clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  // An InstancedMesh written densely in [0, count): upload only those instances (and their colours too with
+  // `color`, when it has them) instead of the whole capacity every frame, and nothing when none are drawn. For visual modules only.
+  // Several calls before one render keep the widest range (three resets updateRange.count to -1 on upload).
+  const usedRange = WW.attrUsed = (a, c) => { const r = a.updateRange; r.offset = 0; r.count = Math.max(r.count, c); a.needsUpdate = true; }; // any attribute: its first c floats
+  WW.instUsed = function (im, color) {
+    const n = im.count; if (!(n > 0)) return;
+    usedRange(im.instanceMatrix, n * 16);
+    if (color && im.instanceColor) usedRange(im.instanceColor, n * 3);
+  };
   WW.lerp = (a, b, t) => a + (b - a) * t;
   // signed shortest diff b-a in (-PI, PI]
   WW.angleDiff = function (a, b) {

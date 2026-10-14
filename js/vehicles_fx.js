@@ -194,7 +194,7 @@ window.WW = window.WW || {};
     for (let i = 0; i < nDeck; i++) { const d = deck[i]; if (d.k === 'tankdozer') { putM('sherman', d.m); putM('blade', d.m); } else if (d.k === 'dukw105') { putM('dukw', d.m); putM('howitzer', d.m); } else putM(d.k, d.m); }
     nDeck = 0;
     dukws(t); ashore(dts); lanes(t); people(t); burning(dts);
-    for (const k in M) { M[k].instanceMatrix.needsUpdate = true; if (M[k].instanceColor) M[k].instanceColor.needsUpdate = true; }
+    for (const k in M) WW.instUsed(M[k], true);
   }
   WW.on('craftEvent', e => {
     if (!on() || !e || !e.craft) return;

@@ -91,7 +91,7 @@ window.WW = window.WW || {};
       m.setColorAt(k, _c);
     }
     m.count = this.count;
-    if (this.count) { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
+    WW.instUsed(m, true); // only the live instances (not the pool's whole capacity)
   };
   Pool.prototype.clear = function () { while (this.count > 0) this.kill(this.act[0]); this.head = 0; this.mesh.count = 0; };
 

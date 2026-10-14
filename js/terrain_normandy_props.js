@@ -197,8 +197,8 @@ window.WW = window.WW || {};
         on && o.mined ? put(O.mines, nm++, o.x, y + L * Math.cos(tilt), o.z - L * Math.sin(tilt), -tilt, 0, 0, 1, 1, 1) : hide(O.mines, nm++);
       }
     }
-    for (const im of [O.beams, O.poles, O.mines, O.gates]) { im.instanceMatrix.needsUpdate = true; }
     O.beams.count = nb; O.poles.count = np; O.mines.count = nm; O.gates.count = ng;
+    for (const im of [O.beams, O.poles, O.mines, O.gates]) WW.instUsed(im);
     lastAlive = alive;
   }
   // per frame (base_fx-style hook, cheap): re-place only when the number of standing obstacles changed
