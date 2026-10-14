@@ -22,9 +22,9 @@ window.WW = window.WW || {};
   const ID = 9001;                                   // never collides with ships.js ids (intel LOS cache, orders)
   const BASE_TONS = 26000;                           // an intact base in the time-limit tonnage tiebreak
   const CLOSE = 1.5, REPAIR_T = 13, REPAIR_W = 0.5;  // crater weight that closes a runway; a crew fills REPAIR_W every REPAIR_T s
-  const CRATER = { bomb: 1, big: 0.8, med: 0.35 };   // crater weight per hit (small shells only chip the surface)
+  const CRATER = { bomb: 1, big: 0.8, med: 0.35, crash: 0.6 };   // crater weight per hit (small shells only chip the surface; crash: a wreck gouges and fouls it, air_impact.js)
   const CRATER_MAX = 3.5;                            // a runway holds at most this much crater weight (the repair backlog)
-  const BLAST = { bomb: 7, big: 5, med: 3, small: 1.5, mg: 0 };
+  const BLAST = { bomb: 7, big: 5, med: 3, small: 1.5, mg: 0, crash: 3 };
   const BATTERY = { cal: 'med', count: 2, range: 140, reload: 10 };      // a coastal battery (7-inch / 5-inch guns)
   const PIT_AA = { range: 42, dps: 4.5 };            // one AA pit (3-inch + .50s): heavy share in combat_aa HEAVY_SHARE.base
   const DUEL_K = 3;                                  // battery rate x this against a ship that is shelling the island
@@ -159,10 +159,10 @@ window.WW = window.WW || {};
     return Math.abs(u) < r.len / 2 + pad && Math.abs(v) < r.w / 2 + pad;
   }
   function impact(nation, x, z, dmg, kind, cal) {
-    if (!base || nation === base.nation || !(dmg > 0)) return false;
+    if (!base || (nation === base.nation && kind !== 'crash') || !(dmg > 0)) return false;   // a crashing wreck hits either side's field
     if (WW.dist2(x, z, base.x, base.z) > 110 * 110 || WW.terrain.depthAt(x, z) > 0.3) return false; // in the water: a splash
     stats.impacts++;
-    const key = kind === 'bomb' ? 'bomb' : cal || 'small', blast = BLAST[key] || 2, cw = CRATER[key] || 0;
+    const key = kind === 'bomb' || (kind === 'crash' && cal === 'big') ? 'bomb' : kind === 'crash' ? 'crash' : cal || 'small', blast = BLAST[key] || 2, cw = CRATER[key] || 0;
     WW.emit('baseImpact', { base, x, z, key, nation });   // base_fx.js: the burst on land (big shells throw up earth)
     if (cw) for (const r of base.runways) if (onRunway(r, x, z, 0.8) && weight(r) < CRATER_MAX) {
       const c = { x, z, w: cw, r: key === 'bomb' ? 2.2 : key === 'big' ? 1.8 : 1, rw: r.i, at: WW.time.now };
@@ -179,7 +179,7 @@ window.WW = window.WW || {};
     }
     if (WW.baseLifeLayout) WW.baseLifeLayout.hit(base, x, z, dmg, blast);   // the camp's huts and tents (base.decor)
     base.hitT = WW.time.now; base.hitX = x; base.hitZ = z;                   // the ground life takes cover / runs to it
-    if (!base.alarm) raiseAlarm(kind === 'bomb' ? 'bombed' : 'shelled', x, z);
+    if (!base.alarm && kind !== 'crash') raiseAlarm(kind === 'bomb' ? 'bombed' : 'shelled', x, z);
     if (cw && WW.landGround) WW.landGround.groundHit(base, x, z, blast); // planes on the ground in the blast are wrecked
     refresh(); check();
     return true;

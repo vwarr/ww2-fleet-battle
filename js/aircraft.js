@@ -42,6 +42,10 @@ window.WW = window.WW || {};
     ln.material.opacity = 0.5;
   }
 
+  // the stock fall / ditch (only when air_deaths.js is missing or failed): their splashes
+  function stockSplash(p) { WW.fx.splash(p.x, p.z, 1.6 * FXK); WW.fx.explosion(p.x, 0.3, p.z, 0.6 * FXK); p.remove(); }
+  function stockDitch(p) { WW.fx.splash(p.x, p.z, FXK); p.remove(); }
+
   class Plane {
     constructor(kind, nation, carrier, target, m) {
       this.kind = kind; this.nation = nation; this.carrier = carrier; this.target = target || null;
@@ -130,8 +134,14 @@ window.WW = window.WW || {};
       this.vy += WW.clamp(tv - this.vy, -10 * dt, 10 * dt);
     }
     speedTo(v, dt) { this.speed += WW.clamp(v - this.speed, -10 * dt, 8 * dt); }
+    // the lowest a live plane flies over (x, z): 1.5 over the wave tops, the hills or the roofs (integrate's floor)
+    floorAt(x, z) { return 1.5 + Math.max(0, -WW.terrain.depthAt(x, z), WW.landSites ? WW.landSites.roofAt(x, z) : 0); }
     fly(px, pz, alt, dt, spd, rate) {
       const d = this.turnTo(Math.atan2(pz - this.z, px - this.x), dt, rate || 1.1);
+      if (alt < 16 && this.alive && this.state !== 'landing' && this.state !== 'takeoff') {   // over land: climb ahead of rising ground (~2 s out) instead of scraping up the slope (sea: unchanged)
+        const k = this.speed * 2, g = Math.max(this.floorAt(this.x, this.z), this.floorAt(this.x + Math.cos(this.heading) * k, this.z + Math.sin(this.heading) * k));
+        if (g > 1.5) alt = Math.max(alt, g + 1);
+      }
       this.climbTo(alt, dt, alt > this.y && WW.airFlight ? WW.airFlight.climbV(this) : 7); this.speedTo(spd || this.pt.speed, dt);   // cruise climb (air_flight.js)
       return d;
     }
@@ -153,13 +163,15 @@ window.WW = window.WW || {};
         this.vy -= 9 * dt; this.heading += this.spin * dt; this.turn = this.spin * 2; this.speed *= 1 - 0.3 * dt;
         this.trail(dt, true);
         this.integrate(dt, true);
-        if (this.y <= 0) { fx.splash(this.x, this.z, 1.6 * FXK); fx.explosion(this.x, 0.3, this.z, 0.6 * FXK); this.remove(); }
+        if (WW.airImpact) { WW.airImpact.hit(this, stockSplash); return; }   // a ship, the island, a hillside or the sea (air_impact.js)
+        if (this.y <= 0) stockSplash(this);
         return;
       }
       if (this.state === 'ditch') {
         this.vy += WW.clamp(-3 - this.vy, -4 * dt, 4 * dt); this.speed = Math.max(8, this.speed - 4 * dt); this.turn = 0;
         this.integrate(dt, true);
-        if (this.y <= 0.3) { fx.splash(this.x, this.z, FXK); this.remove(); }
+        if (WW.airImpact) { WW.airImpact.hit(this, stockDitch, true); return; }
+        if (this.y <= 0.3) stockDitch(this);
         return;
       }
       const c = this.carrier;
@@ -194,7 +206,7 @@ window.WW = window.WW || {};
       this.x += Math.cos(this.heading) * this.speed * dt;
       this.z += Math.sin(this.heading) * this.speed * dt;
       this.y += this.vy * dt;
-      const fl = this.y < 16 ? 1.5 + Math.max(0, -WW.terrain.depthAt(this.x, this.z), WW.landSites ? WW.landSites.roofAt(this.x, this.z) : 0) : 0; // wave tops, or 1.5 over the hills / roofs
+      const fl = this.y < 16 ? this.floorAt(this.x, this.z) : 0; // wave tops, or 1.5 over the hills / roofs
       if (!free && this.state !== 'takeoff' && this.state !== 'landing' && this.y < fl) { this.y = fl; this.vy = Math.max(0, this.vy); }
       this.sync(dt);
     }

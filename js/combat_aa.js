@@ -30,6 +30,13 @@ window.WW = window.WW || {};
   // light AA reach = aa.range * rangeK (3D): 20 / 25 mm, 1.1 in and 40 mm reach ~0.6-1 km, over the torpedo bombers' drop
   // point (80-100 u out) (balance pass: 1, the run was out of reach until the drop)
   var LIGHT = { interval: 0.25, maxAlt: 24, hitK: 0.38, dmgK: 1.25, rangeK: 2 };
+  // Blown apart in the air (air_deaths.js 'burst'): a burst this close (f = 1 - d / radius above f0) either kills
+  // outright (lethal damage from a burst closer than f1: no draw) or, with chance k x closeness x shell x frailty (one WW.rand
+  // draw, only for close bursts), sets off the tanks or the bomb load. A minority of 1942 flak kills: most planes
+  // went down burning or crippled. shell: 5-inch-class rounds (the USN 5"/38 and 5"/25, 25 kg; the IJN 12.7 cm Type
+  // 89, 23 kg). frail: the target's nation: IJN planes had no self-sealing tanks or armour (a Betty was the
+  // "one-shot lighter"), USN planes had both.
+  var BLOW = { f0: 0.55, f1: 0.8, k: 0.06, shell: { USN: 1, IJN: 0.95 }, frail: { IJN: 1.3, USN: 0.75 } };
   var JINK = { decay: 0.3, hitMul: 0.45, steadyMul: 1.35, turn: 0.4, climb: 3 };
   var TR_SPEED = 85, TR_LEN = 2.4, TR_W = 0.22;   // light-AA rounds: thin hot lines (widened with distance so they read at battle range)
 
@@ -67,7 +74,7 @@ window.WW = window.WW || {};
   }
 
   // ---------- visual pools (bounded rings, one draw call each) ----------
-  var V = null, dbg = { bursts: 0, heavyKills: 0, lightKills: 0, peakPending: 0 };
+  var V = null, dbg = { bursts: 0, heavyKills: 0, lightKills: 0, peakPending: 0, blownUp: 0 };
   function Ring(n, geo, mat) {
     this.n = n; this.head = 0;
     this.mesh = new THREE.InstancedMesh(geo, mat, n);
@@ -249,7 +256,14 @@ window.WW = window.WW || {};
       var dx = pl.x - b.x, dy = (pl.y || 0) - b.y, dz = pl.z - b.z;
       if (dx > J || dx < -J || dz > J || dz < -J) continue;
       var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d < R) { var f = 1 - d / R; hitPlane(pl, b.dmg * f * f, b.ship, 'heavyKills'); }
+      if (d < R) {
+        var f = 1 - d / R, amt = b.dmg * f * f;
+        if (f > BLOW.f0 && ((amt >= pl.hp && f > BLOW.f1) || rnd() < BLOW.k * (f - BLOW.f0) / (1 - BLOW.f0) * (BLOW.shell[b.nation] || 1) * (BLOW.frail[pl.nation] || 1))) {
+          pl._force = 'burst'; amt = Math.max(amt, pl.hp + 1); dbg.blownUp++;
+        }
+        hitPlane(pl, amt, b.ship, 'heavyKills');
+        if (pl._force === 'burst') pl._force = null;   // (consumed by air_deaths.js pick on a kill)
+      }
       if (pl.alive && d < J && pl.kind !== 'fighter') pl.jink = Math.min(1, (pl.jink || 0) + 0.5 * (1 - d / J) + 0.2);
     }
   }
@@ -341,10 +355,10 @@ window.WW = window.WW || {};
       if (typeof WeakMap !== 'undefined') timers = new WeakMap();
       if (V) { V.puff.clear(); V.core.clear(); }
     },
-    cfg: { HEAVY: HEAVY, LIGHT: LIGHT, JINK: JINK, HEAVY_SHARE: HEAVY_SHARE },
+    cfg: { BLOW: BLOW, HEAVY: HEAVY, LIGHT: LIGHT, JINK: JINK, HEAVY_SHARE: HEAVY_SHARE },
     _vis: function () { initVisuals(); return V; },   // the shared materials (shader_warm.js warms them)
     _debug: function () {
-      return { pending: pending.length, peakPending: dbg.peakPending, bursts: dbg.bursts, heavyKills: dbg.heavyKills, lightKills: dbg.lightKills,
+      return { pending: pending.length, peakPending: dbg.peakPending, bursts: dbg.bursts, heavyKills: dbg.heavyKills, blownUp: dbg.blownUp, lightKills: dbg.lightKills,
                puffs: V ? V.puff.mesh.count : 0, cores: V ? V.core.mesh.count : 0 };
     }
   };

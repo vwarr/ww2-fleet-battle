@@ -48,6 +48,7 @@ window.WW = window.WW || {};
   // ---- hits ----
   // kind: 'shell' | 'torpedo' | 'bomb' | 'dc' | undefined; cal: shell calibre.
   function hit(ship, amount, hx, hz, kind, cal) {
+    if (kind === 'crash') kind = 'bomb';   // a wreck onto the deck (air_impact.js) burns and smokes like a bomb hit
     if (!ship || !ship.group || typeof THREE === 'undefined') return;
     var H = hullInfo(ship), L = H.L, fx = WW.fx;
     if (hx === undefined || hz === undefined || !isFinite(hx) || !isFinite(hz)) {

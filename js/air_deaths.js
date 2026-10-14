@@ -6,8 +6,12 @@
 //   ditch   controlled water landing, floating wreck (tail up) + raft, sinks after 20-30 s
 //   abandon crew bails out of a crippled plane, the empty plane spirals in
 //   slide   tipped over a carrier's deck edge (slideOff, for the deck code)
-// Sim choices that change the battle (which mode, crash target, crippled bail-out) use WW.rand;
-// looks (bail-outs from a falling plane, timings, wobble) use Math.random.
+//   burst   blown apart by a close heavy-AA burst (combat_aa.js): a fireball, both wings and the debris flung off, the
+//           fuselage tumbling straight down (no long fall)
+// Every falling wreck ends where it meets the world (air_impact.js: a ship's deck, the island base, a hillside, the
+// sea), never below it. Sim choices that change the battle (which mode, crash target, crippled bail-out) use WW.rand;
+// the falling path decides where a wreck lands (a ship, the runway), so the path's spin / roll come from hr(), a hash
+// of the plane's position (deterministic, no draw); looks (bail-outs, timings, wobble) use Math.random.
 window.WW = window.WW || {};
 (function () {
   'use strict';
@@ -17,11 +21,25 @@ window.WW = window.WW || {};
   var DECK_Y = 0.75 * PK;                // fuselage above the flight deck (aircraft.js)
   function deckHalf(c) { var k = c && c.model && c.model.deckDims; return k ? k.halfW : 2.5 * (WW.cfg.DECK_K || 1.8) / 1.8; } // flight-deck half width
   var v3 = null, P = function () { return WW.airProps; };
-  var count = { spin: 0, wing: 0, comet: 0, crash: 0, ditch: 0, abandon: 0, slide: 0, chutes: 0, shipHits: 0 };
+  var count = { spin: 0, wing: 0, comet: 0, crash: 0, ditch: 0, abandon: 0, slide: 0, burst: 0, chutes: 0, shipHits: 0 };
+  var I = function () { return WW.airImpact; };
 
   function deckY(s) {
     if (s.model && s.model.deck) { if (!v3) v3 = new THREE.Vector3(); s.group.updateMatrixWorld(true); return Math.max(1, s.model.deck.getWorldPosition(v3).y); }
     return 1.4 + (s.depthY || 0);
+  }
+  // a deterministic 0..1 from the plane's position (and k): the falling path's spin / roll (no WW.rand draw)
+  function hr(p, k) {
+    var h = Math.imul((p.x * 1009) | 0, 0x9E3779B1) ^ Math.imul((p.z * 917) | 0, 0x85EBCA77) ^ Math.imul(k + 7, 0x27D4EB2F);
+    h = Math.imul(h ^ (h >>> 15), 0x2C1B3C6D); h ^= h >>> 13;
+    return (h >>> 0) / 4294967296;
+  }
+  function hrr(p, k, a, b) { return a + (b - a) * hr(p, k); }
+  // the wreck met a surface (air_impact.js): a ship, the island base, land, or the sea (onWater: the mode's own splash)
+  function landed(p, onWater, belly) {
+    if (I()) return I().hit(p, onWater, belly);
+    if (p.y > 0) return false;
+    onWater(p); return true;
   }
   // nearest alive, surfaced enemy ship within maxD and roughly ahead
   function shipAhead(p, maxD) {
@@ -61,22 +79,23 @@ window.WW = window.WW || {};
       if (mode === 'spin') { if (R() < 0.4 && p.y > 10) bail(p, rr(0.4, 1.2)); return; }
       if (mode === 'ditch') { p.state = 'ditch'; startDitch(p); p.vy = Math.min(p.vy, -0.5); return; }
       if (mode === 'wing') {
-        var m = p.model, side = R() < 0.5 ? -1 : 1, w = side < 0 ? m.wingL : m.wingR;
+        var m = p.model, side = hr(p, 1) < 0.5 ? -1 : 1, w = side < 0 ? m.wingL : m.wingR;
         var c = Math.cos(p.heading), s = Math.sin(p.heading), sp = p.speed * 0.8;
         var lat = side * 3;                      // outward kick: local +z is world (-sin h, cos h)
         if (P()) P().wing(m, w, c * sp - s * lat, p.vy + 2.5, s * sp + c * lat);
-        w.visible = false; p.side = side; p.rollA = p.roll; p.rollRate = side * rr(3.5, 5.5);
-        p.spin = side * rr(0.9, 1.4);
+        w.visible = false; p.side = side; p.rollA = p.roll; p.rollRate = side * hrr(p, 2, 3.5, 5.5);
+        p.spin = side * hrr(p, 3, 0.9, 1.4);
         if (fx) { fx.explosion(p.x - s * side * 1.2 * PK, p.y, p.z + c * side * 1.2 * PK, 0.45 * FXK); fx.sparks(p.x, p.y, p.z); }
         if (R() < 0.35 && p.y > 12) bail(p, rr(0.6, 1.4));
         return;
       }
       if (mode === 'comet') {
         if (fx) { fx.explosion(p.x, p.y, p.z, 1.2 * FXK); fx.fire(p.x, p.y, p.z); }
-        p.vy = Math.max(p.vy, 0.5); p.speed = Math.max(p.speed, 18); p.spin = (R() - 0.5) * 0.3; p.rollA = p.roll;
+        p.vy = Math.max(p.vy, 0.5); p.speed = Math.max(p.speed, 18); p.spin = (hr(p, 4) - 0.5) * 0.3; p.rollA = p.roll;
         if (R() < 0.12 && p.y > 14) bail(p, rr(0.2, 0.6));
         return;
       }
+      if (mode === 'burst') { burst(p); return; }
       if (mode === 'crash') { p.crashTgt = p.crashTgt || shipAhead(p, 400); p.rollA = p.roll; if (!p.crashTgt) p.deathMode = 'comet'; }
     } catch (e) { p.deathMode = null; } // fall back to the stock spin in aircraft.js
   }
@@ -89,7 +108,7 @@ window.WW = window.WW || {};
     try {
       if (p.y < 14 || WW.rand() >= 0.15) return false;
       p.alive = false; p.state = 'falling'; WW.stats.planesLost++;
-      p.deathMode = 'abandon'; p.dT = 0; p.spin = (R() < 0.5 ? -1 : 1) * rr(0.5, 0.9); p.rollA = p.roll; count.abandon++;
+      p.deathMode = 'abandon'; p.dT = 0; p.spin = (hr(p, 5) < 0.5 ? -1 : 1) * hrr(p, 6, 0.5, 0.9); p.rollA = p.roll; count.abandon++;
       bail(p, 0.25);
       return true;
     } catch (e) { return false; }
@@ -102,6 +121,10 @@ window.WW = window.WW || {};
     if (fx) { fx.splash(p.x, p.z, size); fx.explosion(p.x, 0.3, p.z, size * 0.35); }
     p.remove();
   }
+  function splash15(p) { splashDown(p, 1.5); }
+  function splash16(p) { splashDown(p, 1.6); }
+  function splash18(p) { splashDown(p, 1.8); }
+  function splash12(p) { splashDown(p, 1.2); }
   function poseRoll(p, pitch) { var g = p.group; g.rotation.x = p.rollA; if (pitch !== undefined) g.rotation.z = pitch; }
 
   function updatePlane(p, dt) {
@@ -115,12 +138,12 @@ window.WW = window.WW || {};
       case 'spin':
         p.vy -= 9 * dt; p.heading += p.spin * dt; p.turn = p.spin * 2; p.speed *= 1 - 0.3 * dt;
         p.trail(dt, true); p.integrate(dt, true);
-        if (p.y <= 0) splashDown(p, 1.6);
+        landed(p, splash16);
         return;
       case 'abandon':
         p.vy = Math.max(-14, p.vy - 4 * dt); p.heading += p.spin * dt; p.turn = p.spin * 1.5; p.speed = Math.max(16, p.speed * (1 - 0.1 * dt));
         p.trail(dt, false); p.integrate(dt, true);
-        if (p.y <= 0) splashDown(p, 1.5);
+        landed(p, splash15);
         return;
       case 'wing': {
         p.vy = Math.max(-15, p.vy - 7.5 * dt); p.speed *= 1 - 0.35 * dt; p.heading += p.spin * dt; p.turn = 0;
@@ -131,16 +154,18 @@ window.WW = window.WW || {};
           p.fT = 0.07; var c = Math.cos(p.heading), s = Math.sin(p.heading);
           fx.fire(p.x - s * p.side * 0.8 * PK, p.y, p.z + c * p.side * 0.8 * PK);
         }
-        if (p.y <= 0) splashDown(p, 1.8);
+        landed(p, splash18);
         return;
       }
       case 'comet': {
         p.vy = Math.max(-26, p.vy - 3.4 * dt); p.speed = Math.max(14, p.speed * (1 - 0.06 * dt)); p.heading += p.spin * dt; p.turn = 0;
         p.rollA += 0.7 * dt;
         p.trail(dt, true); cometTail(p, dt); p.integrate(dt, true); poseRoll(p);
-        if (p.y <= 0) cometSplash(p);
+        landed(p, cometSplash);
         return;
       }
+      case 'burst': return burstFall(p, dt);
+      case 'wrecked': if (I()) I().wreck(p, dt); else p.remove(); return;
       case 'crash': return crash(p, dt);
       case 'ditch': return glide(p, dt);
       case 'ditched': return floatWreck(p, dt);
@@ -171,8 +196,45 @@ window.WW = window.WW || {};
     p.remove();
   }
 
+  // Blown apart by a close heavy-AA burst (combat_aa.js): the tanks or the bomb load go up, both wings and the tail
+  // feathers fly off, and what is left of the fuselage tumbles down burning. Unarmoured planes with no self-sealing
+  // tanks went this way most often: Kates and Bettys "flamed" in one burst; at Santa Cruz South Dakota's 5-inch and
+  // 40 mm blew several attackers apart short of the screen.
+  function burst(p) {
+    var fx = WW.fx, m = p.model, c = Math.cos(p.heading), s = Math.sin(p.heading), sp = p.speed * 0.5, big = p.ordnance;
+    if (m && P()) {   // both wings flung outward (local +z is world (-sin h, cos h))
+      if (m.wingL) P().wing(m, m.wingL, c * sp + s * 4, p.vy + 3, s * sp - c * 4);
+      if (m.wingR) P().wing(m, m.wingR, c * sp - s * 4, p.vy + 3, s * sp + c * 4);
+    }
+    if (m) { if (m.wingL) m.wingL.visible = false; if (m.wingR) m.wingR.visible = false; }
+    if (p.payload) p.payload.visible = false;   // the bomb or torpedo went up with it
+    p.wingless = true; p.rollA = p.roll; p.tumA = 0;
+    p.rollRate = (hr(p, 7) < 0.5 ? -1 : 1) * hrr(p, 8, 5, 9); p.tumRate = -hrr(p, 9, 2.5, 4.5);
+    p.spin = (hr(p, 10) - 0.5) * 1.2; p.speed *= 0.45; p.vy = Math.min(p.vy, 0) + 1;
+    if (fx) {
+      var k = (big ? 2.6 : 1.9) * FXK + 0.5;
+      fx.explosion(p.x, p.y, p.z, k); fx.explosion(p.x + rr(-1, 1) * PK, p.y + rr(-0.5, 0.5), p.z + rr(-1, 1) * PK, k * 0.6);
+      for (var i = 0; i < 5; i++) fx.fire(p.x + rr(-1.2, 1.2) * PK, p.y + rr(-0.6, 0.6) * PK, p.z + rr(-1.2, 1.2) * PK);
+      fx.sparks(p.x, p.y, p.z); fx.sparks(p.x, p.y + 0.3, p.z);
+      fx.smoke(p.x, p.y, p.z, true, 2.2 * FXK); fx.smoke(p.x + rr(-1, 1), p.y + 0.5, p.z + rr(-1, 1), true, 1.6 * FXK);
+    }
+  }
+  function burstFall(p, dt) {
+    var fx = WW.fx;
+    p.vy = Math.max(-24, p.vy - 13 * dt); p.speed *= 1 - 0.9 * dt; p.heading += p.spin * dt; p.turn = 0;
+    p.rollA += p.rollRate * dt; p.tumA += p.tumRate * dt;
+    p.trail(dt, true); p.integrate(dt, true); poseRoll(p, p.tumA);
+    p.fT = (p.fT || 0) - dt;
+    if (fx && p.fT <= 0 && p.dT < 2.5) {   // burning debris shed as it falls
+      p.fT = 0.08;
+      fx.fire(p.x, p.y, p.z);
+      if (fx.trail && R() < 0.5) fx.trail(p.x + rr(-1.5, 1.5) * PK, p.y + rr(-0.5, 1), p.z + rr(-1.5, 1.5) * PK, true, rr(0.5, 0.9) * FXK, 1.6);
+    }
+    landed(p, splash12);
+  }
+
   function crash(p, dt) {
-    var t = p.crashTgt, fx = WW.fx;
+    var t = p.crashTgt;
     if (!t || !t.alive || t.removed) { p.deathMode = 'comet'; return; }
     var dy0 = deckY(t), d = Math.hypot(t.x - p.x, t.z - p.z), v = Math.max(26, p.speed), tt = d / v;
     var px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
@@ -182,17 +244,7 @@ window.WW = window.WW || {};
     p.vy += ((off < 0.6 ? dy / len * v : -1) - p.vy) * Math.min(1, dt * 2);
     p.rollA += (WW.clamp(p.turn * 0.7, -1.2, 1.2) + Math.sin(p.dT * 6) * 0.2 - p.rollA) * Math.min(1, dt * 3);
     p.trail(dt, true); cometTail(p, dt * 0.5); p.integrate(dt, true); poseRoll(p);
-    // hit test in the ship's frame
-    var ex = p.x - t.x, ez = p.z - t.z, c = Math.cos(t.heading), s = Math.sin(t.heading);
-    var al = ex * c + ez * s, la = -ex * s + ez * c, L = t.stats.length;
-    if (Math.abs(al) < L * 0.5 && Math.abs(la) < L * 0.1 + 0.8 && p.y < dy0 + 1.5) {
-      var hx = t.x + c * al, hz = t.z + s * al; // on the centre line under the plane
-      if (fx) { fx.explosion(p.x, dy0 + 0.5, p.z, 1.8); fx.sparks(p.x, dy0 + 1, p.z); fx.smoke(p.x, dy0 + 1, p.z, true, 1.5); }
-      try { t.takeDamage(p.ordnance ? WW.BOMB.dmg * 0.9 : 70, hx, hz, 'bomb'); } catch (e) { /* never throw */ }
-      count.shipHits++; p.crashedInto = t;
-      p.remove(); return;
-    }
-    if (p.y <= 0) cometSplash(p);
+    if (landed(p, cometSplash) && p.crashedInto === t) count.shipHits++;   // her deck or another ship's, a hillside, the sea (air_impact.js)
   }
 
   // Controlled water landing: steady glide, flare, touch down, then float tail-up.
@@ -202,10 +254,11 @@ window.WW = window.WW || {};
     p.speed = Math.max(9, p.speed - 3 * dt); p.turn = 0;
     p.trail(dt, false); p.integrate(dt, true);
     p.group.rotation.z = flare ? 0.12 : Math.atan2(p.vy, Math.max(1, p.speed)) * 0.6;
-    if (p.y <= 0.35) {
-      if (WW.fx) { WW.fx.splash(p.x, p.z, 1.3 * FXK); WW.fx.wake(p.x, p.z, p.heading, 1.5 * FXK); }
-      startFloat(p, rr(20, 30), true);
-    }
+    landed(p, ditchWater, true);   // over land: a belly landing (air_impact.js)
+  }
+  function ditchWater(p) {
+    if (WW.fx) { WW.fx.splash(p.x, p.z, 1.3 * FXK); WW.fx.wake(p.x, p.z, p.heading, 1.5 * FXK); }
+    startFloat(p, rr(20, 30), true);
   }
   function startFloat(p, life, raft) {
     p.deathMode = 'ditched'; p.state = 'ditched'; p.fT = 0; p.floatLife = life; p.vy = 0; p.wkT = 0;
@@ -289,7 +342,7 @@ window.WW = window.WW || {};
     if (m.group) { m.group.visible = true; m.group.rotation.x = 0; m.group.rotation.z = 0; }
   }
 
-  // ---- debug: force a death on a plane (tests). mode: spin|bail|wing|comet|ditch|crash|abandon|slide ----
+  // ---- debug: force a death on a plane (tests). mode: spin|bail|wing|comet|ditch|crash|abandon|slide|burst ----
   function force(mode, plane) {
     var ps = WW.world.planes, p = plane;
     if (!p) for (var i = 0; i < ps.length && !p; i++) if (ps[i].alive && (mode === 'slide' || ps[i].y > 15) && ps[i].state !== 'rollout' && ps[i].state !== 'takeoff') p = ps[i];

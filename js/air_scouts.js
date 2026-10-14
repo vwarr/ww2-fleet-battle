@@ -88,7 +88,8 @@ window.WW = window.WW || {};
       if (this.scale < SCALE_FLY) this.setScale(Math.min(SCALE_FLY, this.scale + dt * (SCALE_FLY - SCALE_CAT) / 3));
       this.trail(dt, false);
       this.integrate(dt, true);
-      if (this.y < 1.2 && this.state !== 'alight') { this.y = 1.2; this.vy = Math.max(0, this.vy); }
+      const fl = this.state === 'alight' ? 0 : Math.max(1.2, this.floorAt(this.x, this.z));   // the sea, or 1.5 over an island
+      if (this.y < fl) { this.y = fl; this.vy = Math.max(0, this.vy); }
     }
     catapult(dt) {
       if (this.t < CAT_HOLD) {
