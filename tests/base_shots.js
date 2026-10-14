@@ -49,6 +49,10 @@ const SHOTS = [
     __until(() => WW.baseLife.phase === 'after', 400); __ff(20); return __camp('huts', 26, 12, 8); }],
   ['night_peace', () => { __ff(15); return __camp('huts', 30, 12, 8); }],
   ['night', () => { if (!__until(() => __ev.alarm, 400)) return null; __ff(4); return __camp('huts', 40, 14, 10); }],
+  ['motor_pool', () => { // high over the field's edge, toward the motor pool (the trucks and jeeps: on the field's own island?)
+    const L = B.layout, its = B.decor.filter(d => d.group === 'motor'); if (!its.length) return null;
+    const u = its.reduce((a, d) => a + d.u, 0) / its.length, v = its.reduce((a, d) => a + d.v, 0) / its.length, k = 45 / Math.hypot(u, v);
+    const t = L.toW(u, v), c = L.toW(u * (1 - k) * 0.5, v * (1 - k) * 0.5); return [c.x, 55, c.z, t.x, 0, t.z]; }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
   ['revetments', () => {
     const r = B.layout.rows.find(r => r.spots.length >= 3) || B.layout.rows[0], sp = r.spots[Math.floor(r.spots.length / 2)];

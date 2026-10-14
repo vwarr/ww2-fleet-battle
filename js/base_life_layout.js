@@ -5,7 +5,7 @@
 // machine-gun pits, slit trenches, fuel-drum stacks, searchlights, a motor pool (trucks and jeeps), a laundry line, a
 // card table and a drill ground. Each item: { kind, u, v, x, z, a (world yaw of its +x), hx, hz (half extents along
 // its +x / +z), r (bounding radius), hp, maxHp, out, outAt, solid (people walk round it), roof, decor: true }.
-//  - Where: a 1 u grid of the free ground (on low land, off the taxi network and the climb-out lanes, clear of the
+//  - Where: a 1 u grid of the free ground (on low land of the field's own island (airfield_layout home()), off the taxi network and the climb-out lanes, clear of the
 //    revetments and the facilities, flat). Each group (a row of huts, the mess with its sick bay, ...) goes to the
 //    free place nearest its preferred spots, along the runway or turned across it, whichever fits first.
 //  - Not facilities: no AI, strike or bombardment code reads base.decor, and base.hp ignores it. Bombs and shells
@@ -57,7 +57,7 @@ window.WW = window.WW || {};
     for (var j = 0; j < NV; j++) for (var i = 0; i < NU; i++) {
       var u = U0 + i, v = V0 + j, w = L.toW(u, v), d = WW.terrain.depthAt(w.x, w.z), c = j * NU + i;
       hy[c] = Math.max(S.padH, -d);
-      if (!(d < -0.6 && d > -2.6) || (Math.abs(u) < 50 && Math.abs(v) < L.TAXI_V + 6) || AL.onNetwork(L, u, v, NET) || AL.climbOut(L, u, v, NET)) continue;
+      if (!(d < -0.6 && d > -2.6) || !AL.home(L, u, v) || (Math.abs(u) < 50 && Math.abs(v) < L.TAXI_V + 6) || AL.onNetwork(L, u, v, NET) || AL.climbOut(L, u, v, NET)) continue;
       var bad = false;
       for (var k = 0; k < L.spots.length && !bad; k++) { var p = L.spots[k]; bad = Math.abs(p.u - u) < p.span / 2 + 2.2 && Math.abs(p.v - v) < p.len / 2 + 2.2; }
       for (k = 0; k < fac.length && !bad; k++) bad = Math.hypot(fac[k][0] - u, fac[k][1] - v) < fac[k][2];
