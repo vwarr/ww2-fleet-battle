@@ -242,6 +242,11 @@ busy battle, i.e. ~21 ms per real second at 1x (about 2% of a core), and a burst
 of one core). Boot ~0.5 s.
 
 ## Gates
-determinism --cross 1,2 200 PASS; sim_behaviour 6 seeds PASS 352 FAIL 0; dive_film 100% PASS; action_cam errors 0, max
-view rotation 0.65 rad/s; story_cam: all PASS but "relative orbit / zoom", which fails on main too (a sim-state-dependent
-test: the subject's turn); min hull clearance now measures a deck camera by its height over its own deck.
+On the final code: determinism --cross 1,2 200 PASS; sim_behaviour 6 seeds PASS 352 FAIL 0 (the 3 old baseline FAILs are
+gone); lookahead_trace (standard, carrier_duel x seeds 1-2, 300 s + 150 s carried over) PASS, and 32 / 32 over 16 seeds
+x 600 s + 300 s earlier; dive_film (it drives frames, so the look-ahead runs): seeds 1-4 had no strike story whose wave
+dived (n/a), seeds 5-10 90% (9 / 10) PASS; action_cam errors 0, max view rotation 0.65 rad/s; story_cam all PASS (its
+"relative orbit / zoom" check failed once on both this branch and main, a sim-state-dependent test, and passed on the
+final run), min hull clearance 4.5 (a deck camera is now measured by its height over its own deck; the old -6.4 was the
+deck AA shot standing on its own carrier). Tests that call fastForward (story_cam, action_cam) desync the look-ahead and
+so exercise the forecast fallback.
