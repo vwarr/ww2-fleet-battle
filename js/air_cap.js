@@ -11,8 +11,8 @@
 //   medium; they react only when a raid is seen and every shotai goes for it, the torpedo planes first.
 // - Over the island base (base.isBase) the CAP does not stack over the field: the USN inner section keeps its station
 //   BASE_IN out on the threat bearing and the pickets BASE_OUT farther out (the racetrack turns clear of the field);
-//   the IJN shotai each loop a sector of their own (BASE_SEC out, 120 deg apart, the first on the threat bearing),
-//   round the island rather than concentric over it.
+//   the IJN shotai each loop a sector of their own on the threat side (BASE_SEC out, on the bearing and 50 deg either
+//   side of it), all BASE_DY higher than over a fleet, with leashes BASE_LEASH longer: out where the raid comes from.
 // Engagement (plane.foe) starts only at visual range (ENGAGE): the vector is flown with plane.vec, no foe.
 // Sim code: WW.rand never needed (deterministic geometry). State: cv._cap (per carrier), plane.capWp / vec.
 window.WW = window.WW || {};
@@ -31,14 +31,18 @@ window.WW = window.WW || {};
   const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 64 }, { d: 60, a: 0, y: 30, inner: true }];
   const LEG = 90, TURN = 0.42;           // racetrack half-leg (u) and turn rate (rad/s)
   const RING_A = 0.35, RING_D = 15, RING_DY = 1.5;   // USN: a further round of sections, across the bearing, ~300 ft up
-  const BASE_OUT = 25, BASE_IN = 120, BASE_SEC = 120, BASE_LR = 45;   // the island base: pickets farther out, the inner station, the IJN sector loops (centre out, radius)
+  // the island base: pickets BASE_OUT farther out, the inner station BASE_IN out, the IJN sector loops (centre BASE_SEC out on
+  // the threat side, radius BASE_LR), all BASE_DY higher, the leashes BASE_LEASH longer: the CAP waits out on the threat
+  // bearing, never over the field (the field is not a carrier: no deck to guard close in, the AA pits cover it)
+  const BASE_OUT = 80, BASE_IN = 190, BASE_SEC = 210, BASE_LR = 45, BASE_DY = 10, BASE_LEASH = 90;
   // IJN loops round the fleet, low and medium (Zeros at 1,000-2,500 m: 27-38 u), shotai a few hundred feet apart in a band
   const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 38, dir: -1 }, { r: 80, y: 29, dir: 1 }];
   const ST = { vectors: 0, contacts: 0, joins: 0 };
 
-  function doc(nation) {
+  const DOC_BASE = {}; for (const k in DOC) DOC_BASE[k] = Object.assign({}, DOC[k], { leash: DOC[k].leash + BASE_LEASH, leash2: DOC[k].leash2 + BASE_LEASH, vecR: DOC[k].vecR + BASE_LEASH });
+  function doc(nation, base) {
     const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(nation) : null;
-    return DOC[(d && d.air && d.air.cap) || (nation === 'IJN' ? 'overhead' : 'picket')];
+    return (base ? DOC_BASE : DOC)[(d && d.air && d.air.cap) || (nation === 'IJN' ? 'overhead' : 'picket')];
   }
   function style(nation) { const d = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(nation) : null; return (d && d.air && d.air.cap) || (nation === 'IJN' ? 'overhead' : 'picket'); }
 
@@ -152,7 +156,7 @@ window.WW = window.WW || {};
 
   // A CAP leader (or a lone fighter) with no foe: vector onto a raid, or fly the station. Returns true if it flew.
   function patrol(pl, dt) {
-    const c = pl.carrier, D = doc(pl.nation), b = bearing(c), sty = style(pl.nation), i = sectionIndex(pl);
+    const c = pl.carrier, D = doc(pl.nation, c.isBase), b = bearing(c), sty = style(pl.nation), i = sectionIndex(pl);
     if (sty === 'picket') {
       const S = PICKET[i % PICKET.length], band = S.y > 45 ? 'high' : 'low';
       pl.capBand = band;                  // capPick: the high band takes the dive bombers, the low band the torpedo planes
@@ -163,7 +167,7 @@ window.WW = window.WW || {};
       // stations a few hundred feet apart in the band (RING_DY, the altitude rule y = 0.4 h^0.59), not a stack 8 u a step
       const ring = Math.floor(i / PICKET.length), ra = ring ? (ring % 2 ? 1 : -1) * Math.ceil(ring / 2) * RING_A : 0;
       const a = b + S.a + ra, sd = (c.isBase ? (S.inner ? BASE_IN : S.d + BASE_OUT) : S.d) + ring * RING_D, p = inMap(c.x + Math.cos(a) * sd, c.z + Math.sin(a) * sd, 60);
-      racetrack(pl, p[0], p[1], a, S.y + ring * RING_DY, D, dt);
+      racetrack(pl, p[0], p[1], a, S.y + ring * RING_DY + (c.isBase ? BASE_DY : 0), D, dt);
       return true;
     }
     // overhead: loops round the fleet, shifted a little toward the threat; all react to a seen raid
@@ -171,12 +175,12 @@ window.WW = window.WW || {};
     pl.capBand = null;                    // the Zeros all go for whatever is lowest and nearest (drawn to the torpedo planes)
     if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, L.y < 35 ? 'low' : 'high', dt); return true; }
     pl.vec = null;
-    const sa = b + (i % LOOP.length) * 2.094 + lr * 1.05, bo = c.isBase ? BASE_SEC : 25, ba = c.isBase ? sa : b;
+    const sa = b + (c.isBase ? [0, 0.9, -0.9][i % 3] : (i % LOOP.length) * 2.094 + lr * 1.05), bo = c.isBase ? BASE_SEC : 25, ba = c.isBase ? sa : b;
     const cx = c.x + Math.cos(ba) * bo, cz = c.z + Math.sin(ba) * bo;
     const r = (c.isBase ? BASE_LR + lr * 10 : L.r) * (1 + 0.12 * Math.sin(WW.time.now * 0.11 + i)), a = Math.atan2(pl.z - cz, pl.x - cx) + L.dir * 0.4;
     const p = inMap(cx + Math.cos(a) * r, cz + Math.sin(a) * r, 40);
     const far = WW.dist(pl.x, pl.z, cx, cz) > r * 1.6;
-    pl.fly(p[0], p[1], L.y, dt, (pl.pt.cruise || pl.pt.speed * 0.8) * (far ? 1.1 : 1), far ? 0.7 : 0.5);
+    pl.fly(p[0], p[1], L.y + (c.isBase ? BASE_DY : 0), dt, (pl.pt.cruise || pl.pt.speed * 0.8) * (far ? 1.1 : 1), far ? 0.7 : 0.5);
     return true;
   }
   // The CAP's foe at visual range: the nearest raider of note within ENGAGE of this fighter (capPick scores it).

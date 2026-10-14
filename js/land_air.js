@@ -46,6 +46,7 @@ window.WW = window.WW || {};
   for (const k in VAR) if (VAR[k].gear) VAR[k].gear *= WW.cfg.PLANE_K || 1;   // gear heights above were measured at the 1.7 plane scale
   const KATE = { alt: 40, bombs: 1 };
   const SCRAMBLE_MAX = 6, OVER_R = 220;    // base fighters in the air under a raid (VMF-221 put up 25 at Midway; the roster limits it)
+  const CAP_QUIET = 2;                      // the standing CAP with no raid on the plot: one section, out on the threat bearing (air_cap.js)
   const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0, defence: 0, defStrikes: 0 };
 
   const groundY = b => b.site.padH;
@@ -127,7 +128,7 @@ window.WW = window.WW || {};
       // enemy planes over the field (inside OVER_R; fighters too: a sweep draws a fight, Zeros over Midway): the field
       // scrambles more, up to SCRAMBLE_MAX in the air, one more for each of them (a raid on the fleet farther out: no)
       let over = (b.alertT || 0) > now ? 2 : 0; if (raid && WW.intel) for (const c of WW.intel.enemyPlanes(b.nation)) if (c.unit && c.unit.alive && WW.dist(c.x, c.z, b.x, b.z) < OVER_R) over++;
-      const cw = WW.airOps ? WW.airOps.capWanted(b) : 2, want = over ? Math.min(SCRAMBLE_MAX, Math.max(4, cw + over)) : Math.min(4, cw), cs = capState(b);
+      const cw = WW.airOps ? WW.airOps.capWanted(b) : 2, want = over ? Math.min(SCRAMBLE_MAX, Math.max(4, cw + over)) : raid ? Math.min(4, cw) : Math.min(CAP_QUIET, cw), cs = capState(b);
       const queued = a.queue.filter(q => VAR[q.v].kind === 'fighter' && !q.target).length;
       let need = want - cs.on - cs.coming - queued;
       for (; need > 0; need--) {

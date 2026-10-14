@@ -118,7 +118,7 @@ window.WW = window.WW || {};
   // CAP priority: a torpedo bomber on its run (or heading at a ship of ours) > a dive bomber in the wheel / dive >
   // other armed bombers > fighters > the rest; nearer is better. Only targets inside the leash of the carrier, and
   // (with air_cap.js) only at visual range of this fighter: the vector out to a raid is flown without a foe.
-  const leashOf = pl => (WW.cap ? WW.cap.doc(pl.nation) : { leash: LEASH, leash2: LEASH2 });
+  const leashOf = pl => (WW.cap ? WW.cap.doc(pl.nation, pl.carrier && pl.carrier.isBase) : { leash: LEASH, leash2: LEASH2 });   // (the island base: longer, air_cap.js)
   // an enemy fighter riding with an armed raid (escort or sweep), or already on one of ours
   function escorting(u, nation) {
     if (u.kind !== 'fighter') return false;
