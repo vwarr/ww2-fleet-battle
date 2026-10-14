@@ -9,6 +9,7 @@
 //   reopened       the craters filled: the runway open again and the launches resumed
 //   crash_truck    a damaged plane's landing, the crash truck racing out
 //   crash_wreck    the crash-landed plane a burning wreck where it stopped, the crash trucks beside it
+//   taxi_wreck     a shot-down plane come down on the taxiway: the planes taxiing out stopped short of it, holding
 //   pby_takeoff / pby_alight / pby_ramp   the island's flying boat: the take-off run in the lagoon, touching down
 //                  on the way home, hauled up the ramp onto the apron (seaplane_base.js)
 //   burning        hangars and fuel tanks burning after a raid
@@ -131,6 +132,18 @@ const SHOTS = [
     if (!ok) return null;
     __ff(5);
     const w = __ev.crashWreck.wreck; return [w.x + 20, 10, w.z + 16, w.x, 0.5, w.z];
+  }],
+  ['taxi_wreck', () => { // a shot-down plane on the taxiway ahead of a taxiing line: they stop short of it and hold
+    const G = WW.landGround, ok = __until(() => WW.world.planes.filter(p => p.carrier === B && p.alive && p.state === 'takeoff' && p.rwPh === 'taxi' && p.pi >= 3).length >= 2, 400);
+    if (!ok) return null;
+    const lead = WW.world.planes.find(p => p.carrier === B && p.alive && p.state === 'takeoff' && p.rwPh === 'taxi' && p.pi >= 3);
+    const q = WW.world.planes.find(p => p.alive && !G.onGround(p) && p.y > 6 && !/takeoff|landing|rollout/.test(p.state)); if (!q) return null;
+    let left = 10, x0 = lead.x, z0 = lead.z, ax = x0, az = z0;
+    for (let k = lead.pi; k < lead.path.length && left > 0; k++) { const t = lead.path[k], d = Math.hypot(t.x - x0, t.z - z0), f = Math.min(1, left / Math.max(d, 1e-6)); ax = x0 + (t.x - x0) * f; az = z0 + (t.z - z0) * f; left -= d; x0 = t.x; z0 = t.z; }
+    q.shotDown(); q.x = ax; q.z = az; q.y = B.site.padH + 0.5; q.vy = -14; q.speed = 20; q.heading = lead.heading + 2.4;
+    __ff(8);
+    const c = Math.cos(lead.heading), s = Math.sin(lead.heading), y0 = B.site.padH;
+    const mx = ax - c * 7, mz = az - s * 7; return [mx - s * 20 - c * 6, y0 + 6, mz + c * 20 - s * 6, mx, y0 + 0.5, mz];   // from the side: the wreck, the gap, the line held behind it
   }],
   ['pby_takeoff', () => {
     const p = __pby(); if (!p || !__until(() => p.state === 'depart' && p.speed > 12, 120)) return null;

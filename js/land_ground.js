@@ -21,9 +21,12 @@ window.WW = window.WW || {};
   var BLAST_K = 0.9;          // a parked plane inside BLAST_K x the blast radius (+ its own size) is wrecked (was 0.6: ~4 u for a 14-inch shell)
   var SPREAD_T = 8, SPREAD_P = 0.35, SPREAD_GAP = 2.5;   // a burning wreck sets a neighbour within SPREAD_GAP of it alight after SPREAD_T s (fuel, ammunition), with SPREAD_P
   var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
+  var SMASH_V = 4, SMASH_K = 1.4, REPAIR_T = 90, WRECK_GAP = 3;   // a wreck meeting a plane on the ground (wing reach: x SMASH_K the clearance radii): a skid
+  // at SMASH_V u/s or more (about 25 mph) or a falling wreck wrecks it (fuel, ammunition: it burns); a slower skid
+  // stoves in a wing or the tail: towed to its spot, repaired for REPAIR_T s
   var MIX = { USN: { f4f: 0.35, sbd: 0.3, b26: 0.12, b17: 0.23 }, IJN: { a6m: 0.4, g4m: 0.35, g4mL: 0.25 } };
   var TOWLOG = [];
-  var ST = { slots: 0, capped: 0, towOut: 0, tows: 0, aborts: 0, groundLost: 0, modeSwitches: 0, launchClosed: 0, crashes: 0 };
+  var ST = { slots: 0, capped: 0, towOut: 0, tows: 0, aborts: 0, groundLost: 0, modeSwitches: 0, launchClosed: 0, crashes: 0, rammed: 0 };
   var obsT = -1, obs = [];
 
   function VAR() { return WW.landAir.VAR; }
@@ -101,7 +104,7 @@ window.WW = window.WW || {};
     var step = Math.min(d, spd * dt), nx = p.x + dx / d * step, nz = p.z + dz / d * step, rp = rad(p.variant), O = obstacles(b);
     for (var i = 0; i < O.length; i++) {
       var q = O[i]; if (q.p === p || (q.slot && q.slot === p.slot && !q.p)) continue;
-      var d0 = Math.hypot(q.x - p.x, q.z - p.z), d1 = Math.hypot(q.x - nx, q.z - nz), min = rp + q.r + GAP;
+      var d0 = Math.hypot(q.x - p.x, q.z - p.z), d1 = Math.hypot(q.x - nx, q.z - nz), min = q.wreck ? (rp + q.r) * SMASH_K + WRECK_GAP : rp + q.r + GAP;   // a burning wreck: held well short of it
       if (d1 < min && d1 < d0) { p.gs = 0; p.blk = q; return 'blocked'; }
       if (q.p && p.rwPh !== 'lineup' && q.p.rwPh !== 'hold' && q.p.rwPh !== 'warm' && !q.p.xWait && d0 < min + FOLLOW && ((q.x - p.x) * dx + (q.z - p.z) * dz) / d > d0 * 0.7) { // a plane ahead in the queue
         if (!(aheadOf(q.p, p) && p.gid < q.p.gid)) { p.gs = 0; p.blk = q; return 'blocked'; } // facing each other: the older plane goes
@@ -135,6 +138,9 @@ window.WW = window.WW || {};
   }
   function wreckAt(b, sp) { var W = b.wrecks; if (W) for (var i = 0; i < W.length; i++) if (Math.hypot(W[i].x - sp.x, W[i].z - sp.z) < W[i].r + sp.r + GAP) return true; return false; }
   function fouled(b) { var W = b.wrecks; if (W) for (var i = 0; i < W.length; i++) if (W[i].runway) return true; return false; }
+  function crossFouled(b) { // a wreck lying on the cross runway (the emergency strip): nothing lands on it until it is cleared
+    var W = b.wrecks, L = b.layout; if (W) for (var i = 0; i < W.length; i++) { var q = L.toL(W[i].x, W[i].z); if (L.crossD(q.u, q.v) < WW.airfieldLayout.RUN_HALF_W + W[i].r) return true; } return false;
+  }
   function opsOpen(b) { return !b.runways[0].closed && !b.neutralized && !fouled(b); }
   function out(p, dt) {
     var b = p.carrier, o = b.ops, ph = p.rwPh;
@@ -198,21 +204,28 @@ window.WW = window.WW || {};
   function crash(p, b) {
     p.rwPh = 'crash'; p.rollV = p.speed; p.waitT = 0; p.tdX = p.x; p.tdZ = p.z; p.crashed = true; ST.crashes++;
     p.loop = ((p.id || 0) % 2 ? 1 : -1) * (0.5 + ((p.id || 0) % 5) * 0.2);   // which way it ground-loops (deterministic)
+    if (skidHit(p, b, p.x, p.z) === 'hit') { smash(b, p.x, p.z, rad(p.variant), p.rollV >= SMASH_V, p); p.rollV = p.speed = 0; }   // down on top of a plane on the ground
   }
-  // a skid's next position on another wreck (or burned-out hulk) or a plane on the ground in its spot (x 1.4: the
-  // clearance radii are a plane's middle; a wing swung round reaches further)
-  function skidBlocked(p, b, x, z) {
-    var r = rad(p.variant), i, w, K = 1.4;
+  // what a skid's next position runs into (x SMASH_K: the clearance radii are a plane's middle; a wing swung round
+  // reaches further): another wreck, a burned-out hulk or a burning plane in its spot (true: it fetches up against it),
+  // or a plane on the ground, parked or taxiing ('hit': it rams it), else false
+  function skidHit(p, b, x, z) {
+    var r = rad(p.variant), i, w, K = SMASH_K, P = WW.world.planes;
     for (i = 0; b.wrecks && i < b.wrecks.length; i++) { w = b.wrecks[i]; if (Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
     for (i = 0; b.hulks && i < b.hulks.length; i++) { w = b.hulks[i]; if (Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
-    for (i = 0; i < b.slots.length; i++) { w = b.slots[i]; if ((w.state === 'parked' || w.state === 'rearm' || w.state === 'wreck') && Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
+    for (i = 0; i < b.slots.length; i++) { w = b.slots[i]; if (w.state === 'wreck' && Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return true; }
+    for (i = 0; i < b.slots.length; i++) { w = b.slots[i]; if ((w.state === 'parked' || w.state === 'rearm') && Math.hypot(w.x - x, w.z - z) < (r + w.r) * K) return 'hit'; }
+    for (i = 0; i < P.length; i++) { w = P[i]; if (w !== p && w.carrier === b && onGround(w) && Math.hypot(w.x - x, w.z - z) < (r + rad(w.variant)) * K) return 'hit'; }
     return false;
   }
   function wreckAtStop(p, b) {
     var q = b.layout.toL(p.x, p.z), r = rad(p.variant), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + r && Math.abs(q.u) < 48;
     rw = rw || b.layout.crossD(q.u, q.v) < WW.airfieldLayout.RUN_HALF_W + r;
     var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, t: WW.time.now, runway: rw, crash: true };
-    (b.wrecks = b.wrecks || []).push(w); p.wreck = w;
+    var on = null; for (var i = 0; b.wrecks && i < b.wrecks.length && !on; i++) if (Math.hypot(b.wrecks[i].x - w.x, b.wrecks[i].z - w.z) < b.wrecks[i].r + w.r) on = b.wrecks[i];
+    if (on) { on.runway = on.runway || rw; on.crash = true; w = on; }   // fetched up on another wreck: one heap to clear
+    else (b.wrecks = b.wrecks || []).push(w);
+    p.wreck = w;
     var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
     if (b.ops.occ === p) b.ops.occ = null;
     if (b.ops.crossOcc === p) b.ops.crossOcc = null;
@@ -231,7 +244,9 @@ window.WW = window.WW || {};
       p.rollV = Math.max(0, p.rollV - 11 * dt);
       p.heading += p.loop * dt * Math.min(1, p.rollV / 8);
       var nx = p.x + Math.cos(p.heading) * p.rollV * dt, nz = p.z + Math.sin(p.heading) * p.rollV * dt;
-      if (skidBlocked(p, b, nx, nz)) p.rollV = 0;   // fetched up short of a wreck or a plane in its revetment
+      var sk = skidHit(p, b, nx, nz);
+      if (sk === 'hit') { smash(b, nx, nz, rad(p.variant), p.rollV >= SMASH_V, p); p.rollV = 0; }   // rammed a plane on the ground: it stops against it
+      else if (sk) p.rollV = 0;   // fetched up short of a wreck
       else { p.x = nx; p.z = nz; }
       if (p.rollV <= 0.2) { pin(p, b); wreckAtStop(p, b); return; }
     } else if (p.rwPh === 'land') { // decelerate along the heading, then taxi to the spot
@@ -331,8 +346,8 @@ window.WW = window.WW || {};
     }
     // wrecks off the spots: bulldozed after FOUL_T (one on the runway fouls it until then: no takeoff, no landing)
     if (b.wrecks && b.wrecks.length && !b.neutralized) for (i = b.wrecks.length - 1; i >= 0; i--) if (now - b.wrecks[i].t > FOUL_T) {
-      var wk = b.wrecks.splice(i, 1)[0]; obsT = -1; WW.emit('baseEvent', { kind: 'wreckCleared', base: b, nation: b.nation, x: wk.x, z: wk.z, runway: wk.runway });
-      if (wk.crash) hulk(b, wk);
+      var wk = b.wrecks.splice(i, 1)[0]; obsT = -1; wk.cleared = true; WW.emit('baseEvent', { kind: 'wreckCleared', base: b, nation: b.nation, x: wk.x, z: wk.z, runway: wk.runway });
+      if (wk.crash || wk.fell) hulk(b, wk);
     }
     if (b.neutralized && !o.frozen) freeze(b);
     sync(b);
@@ -366,23 +381,71 @@ window.WW = window.WW || {};
     var P = WW.world.planes.slice();
     for (var j = 0; j < P.length; j++) {
       var p = P[j]; if (p.carrier !== b || !onGround(p)) continue;
-      if (Math.hypot(p.x - x, p.z - z) < blast * BLAST_K + rad(p.variant)) {
-        // a wreck where it was hit (a taxiway, the runway): its spot is free for a reserve plane; the crash crew clears it
-        var q = b.layout.toL(p.x, p.z), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + rad(p.variant) && Math.abs(q.u) < 48;
-        (b.wrecks = b.wrecks || []).push({ x: p.x, z: p.z, h: p.heading, r: rad(p.variant), v: p.variant, t: WW.time.now, runway: rw });
-        var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
-        if (b.ops.occ === p) b.ops.occ = null;
-        WW.stats.planesLost++; p.alive = false; p.remove(); n++; ST.groundLost++;
-      }
+      if (Math.hypot(p.x - x, p.z - z) < blast * BLAST_K + rad(p.variant)) { wreckGround(p, b); n++; }
     }
     if (n) { obsT = -1; WW.emit('baseEvent', { kind: 'planesHit', base: b, nation: b.nation, x: x, z: z, n: n }); }
     return n;
+  }
+  // a plane on the ground (taxiing, holding, rolling) destroyed where it stands: a wreck there (a taxiway, the runway:
+  // b.wrecks, an obstruction until the crash crew clears it); its spot is free for a reserve plane
+  function wreckGround(p, b) {
+    var q = b.layout.toL(p.x, p.z), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + rad(p.variant) && Math.abs(q.u) < 48;
+    (b.wrecks = b.wrecks || []).push({ x: p.x, z: p.z, h: p.heading, r: rad(p.variant), v: p.variant, t: WW.time.now, runway: rw });
+    var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
+    var hq = b.ops.holdQ.indexOf(p); if (hq >= 0) b.ops.holdQ.splice(hq, 1);
+    if (b.ops.occ === p) b.ops.occ = null;
+    if (b.ops.crossOcc === p) b.ops.crossOcc = null;
+    WW.stats.planesLost++; p.alive = false; p.remove(); ST.groundLost++; obsT = -1;
+  }
+  // A wreck (radius r) meeting the planes on the ground at (x, z): a skidding crash landing (hard: at SMASH_V or more)
+  // or a wreck falling on the field (always hard). Hard: each plane its wings reach (x SMASH_K) is wrecked, parked
+  // (the slot burns, and can set its neighbours alight) or taxiing (a wreck on the taxiway). Soft: damaged, out of the
+  // fight for REPAIR_T s (a moving one is towed back to its spot). except: the wreck itself (a skidding plane).
+  function smash(b, x, z, r, hard, except) {
+    if (!b || !b.slots) return 0;
+    var now = WW.time.now, n = 0, i, s;
+    for (i = 0; i < b.slots.length; i++) {
+      s = b.slots[i]; if ((s.state !== 'parked' && s.state !== 'rearm') || Math.hypot(s.x - x, s.z - z) >= (r + s.r) * SMASH_K) continue;
+      if (hard) { s.state = 'wreck'; s.wreckT = now; ST.groundLost++; } else { s.state = 'rearm'; s.readyAt = Math.max(s.readyAt, now + REPAIR_T); }
+      n++; ST.rammed++;
+    }
+    var P = WW.world.planes.slice();
+    for (i = 0; i < P.length; i++) {
+      var p = P[i]; if (p === except || p.carrier !== b || !onGround(p) || Math.hypot(p.x - x, p.z - z) >= (r + rad(p.variant)) * SMASH_K) continue;
+      if (!hard && p.crashed) continue;   // (another crash still skidding: it stops on its own)
+      if (hard) {
+        if (except && except.crashed) { // rammed by a skidding plane: shoved ahead of it, the two wrecks side by side
+          var ex = p.x - except.x, ez = p.z - except.z, ed = Math.hypot(ex, ez), need = rad(except.variant) + rad(p.variant) + 0.1;
+          if (ed < need) { if (ed < 1e-3) { ex = Math.cos(except.heading); ez = Math.sin(except.heading); ed = 1; } p.x = except.x + ex / ed * need; p.z = except.z + ez / ed * need; }
+        }
+        wreckGround(p, b);
+      } else { s = p.slot; shutDown(p, b); if (s) { s.state = 'rearm'; s.readyAt = now + REPAIR_T; } }
+      n++; ST.rammed++;
+    }
+    if (n) { obsT = -1; WW.emit('baseEvent', { kind: 'planesHit', base: b, nation: b.nation, x: x, z: z, n: n }); }
+    return n;
+  }
+  // A shot-down plane come down on the field (air_impact.js onLand, after the blast): it smashes the planes on the
+  // ground under it, and where it lies on the movement area (a runway, the taxiways, a column or lane) it is an
+  // obstruction like any wreck (b.wrecks, fell: its own Plane is the wreck drawn): nothing taxis through it, and on the
+  // runway it fouls the field, until the crash crew clears it (FOUL_T). Returns the wreck (or one it fell on), or null.
+  function fallWreck(b, p) {
+    if (!b || !b.slots || !b.layout) return null;
+    var r = rad(p.variant), L = b.layout, q = L.toL(p.x, p.z), AL = WW.airfieldLayout, i;
+    smash(b, p.x, p.z, r, true, p);
+    var rw = (Math.abs(q.v) < AL.RUN_HALF_W + r && Math.abs(q.u) < 48) || L.crossD(q.u, q.v) < AL.RUN_HALF_W + r;
+    if (!rw && !AL.onNetwork(L, q.u, q.v, r)) return null;   // on the grass, among the revetments: in no one's way
+    for (i = 0; b.wrecks && i < b.wrecks.length; i++) { var o = b.wrecks[i]; if (Math.hypot(o.x - p.x, o.z - p.z) < o.r + r) { o.runway = o.runway || rw; return o; } }   // on another wreck: one heap to clear
+    var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, t: WW.time.now, runway: rw, fell: true };
+    (b.wrecks = b.wrecks || []).push(w); obsT = -1;
+    WW.emit('baseEvent', { kind: 'fallWreck', base: b, nation: b.nation, x: w.x, z: w.z, wreck: w, runway: rw });
+    return w;
   }
   // per round; slots / capped belong to the field built in island_base's roundStart handler (it runs first), kept
   function reset() { for (var k in ST) if (k !== 'slots' && k !== 'capped') ST[k] = 0; obsT = -1; }
   WW.on('roundStart', reset);
 
   WW.landGround = { plan: plan, setup: setup, sync: sync, ready: ready, take: take, launched: launched, out: out, touchdown: touchdown,
-    inbound: inbound, crash: crash, update: update, groundHit: groundHit, opsOpen: opsOpen, fouled: fouled, onGround: onGround, rad: rad, finalPlane: finalPlane,
+    inbound: inbound, crash: crash, update: update, groundHit: groundHit, smash: smash, fallWreck: fallWreck, crossFouled: crossFouled, opsOpen: opsOpen, fouled: fouled, onGround: onGround, rad: rad, finalPlane: finalPlane,
     carrierGroup: carrierGroup, MIX: MIX, stats: ST, towLog: TOWLOG };
 })();
