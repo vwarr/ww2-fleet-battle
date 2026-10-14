@@ -421,9 +421,6 @@ window.WW = window.WW || {};
     side: side, order: order, airGroup: airGroup,
     seenHp: function (n, u) { var B = sides[n]; return B && u && !u.isBase && !u.isLand ? knownHp(B, u) : u ? u.hp / u.maxHp : 1; },   // an enemy ship's hp fraction as the side last saw it (F5)
     bigFoe: function (n) { var B = sides[n]; return !!B && bigFoe(B) && B.posture !== 'pursue'; },   // the SMALL rule's test (air_ops pickTarget near)
-    // no enemy carrier, battleship or cruiser seen yet this round: the main body is still to be found (air_staff.js
-    // sends a division, not the deck load, at a destroyer the scouts report first)
-    mainUnseen: function (n) { var B = sides[n]; if (!B || B.foeCV.size) return false; var k = true; B.foeSeen.forEach(function (u) { if (u.type === 'battleship' || u.type === 'cruiser') k = false; }); return k; },
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },
     incoming: function (nation, target) { var B = sides[nation]; return (B && B.incoming.get(target)) || 0; },
