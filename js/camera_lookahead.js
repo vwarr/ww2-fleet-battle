@@ -89,9 +89,29 @@ window.WW = window.WW || {};
     if (e.src && e.src.obj === P && ok(P) && P.ordnance) return null;   // (its own bomb / torpedo already away: the target, braced)
     // past its own attack, the story waits only for its own wave's hits (another strike's are another story)
     const past = !ok(P) || !P.ordnance, so = e.src && e.src.obj;
-    if (past && !dead && so && so !== P && (!so.pt || !P.wave || so.wave !== P.wave)) return null;
+    if (past && !dead && T.type !== 'carrier' && so && so !== P && (!so.pt || !P.wave || so.wave !== P.wave)) return null;   // (a carrier struck: from anyone)
     ST.storyBraces = (ST.storyBraces || 0) + 1;
     return { kind: 'brace', subj: T, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(e.lastReal + 2.6, 4, 12), why: e.kind, label: D() && D().labelOf ? D().labelOf(e) : '' };
+  }
+
+  // camera_action.js torpedo hand-off: the plane's own torpedo is known to MISS and another hit on its target is due
+  // within 1.5-6 real s: let the wake go now (the story braces for the hit)
+  function handoffLetGo(shot) {
+    if (!active() || !shot || shot.stage !== 'torp' || !shot.proj) return false;
+    const o = shot.proj.owner, T = shot.tship; if (!o || !o.lid || !isShip(T)) return false;
+    const id = 'p' + o.lid; let mine = null;
+    for (const e of WW.lookahead.future(0)) if (e.k === 'imp' && e.src === id) { mine = e; break; }
+    if (!mine || mine.hit) return false;
+    const e = evs().find(v => v.s === T);
+    if (!e || e.etaReal < 1.5 || e.etaReal > 6 || (e.src && e.src.obj === o)) return false;
+    ST.letGo = (ST.letGo || 0) + 1; return true;
+  }
+  // camera_action.js hold (the beat on a result): another hit on the same ship lands within the beat: aim at it
+  function holdAim(shot) {
+    if (!active() || !shot) return null;
+    const T = shot.tship || (shot.subj && (shot.subj.diveTgt || shot.subj.target)); if (!isShip(T)) return null;
+    const e = evs().find(v => v.s === T); if (!e || e.etaReal > (shot.hold || 2.2) - (shot.st || 0) + 1.5 || e.etaReal < 0) return null;
+    return { x: T.x + e.ox, y: 1.5, z: T.z + e.oz, eta: e.etaReal };
   }
 
   // ---------- plan(): the arcs the future holds ----------
@@ -320,7 +340,7 @@ window.WW = window.WW || {};
   WW.on('roundStart', () => { cur = null; tk = 0; ban = new WeakMap(); evCache = plCache = null; evAt = plAt = -1; });
 
   WW.camLook = {
-    active, storyBrace, events: evs, forecastFor: s => evs().find(e => e.s === s) || null, plan, protagonist, successorHint, stats: ST, log,
+    active, storyBrace, handoffLetGo, holdAim, events: evs, forecastFor: s => evs().find(e => e.s === s) || null, plan, protagonist, successorHint, stats: ST, log,
     // camera_director.js / camera_story.js: the look-ahead chooses the arcs (their own pickers stand down)
     owns
   };

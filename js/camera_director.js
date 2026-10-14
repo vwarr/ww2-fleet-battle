@@ -543,7 +543,12 @@ window.WW = window.WW || {};
   // camera.js pickShot(): the next shot of the ship arc; else, right after an arc, a short wide establishing shot
   function arcPick() {
     if (sa) { const c = arcShot(); if (c) return c; closeShipArc('complete'); }
-    if (wideNext) { wideNext = false; return { kind: 'wide', dur: 6 + Math.random() * 2, pr: 2 }; }
+    if (wideNext) {
+      wideNext = false;
+      // (camera5: a carrier hit known to land within 9 s: no establishing shot first, the brace on her)
+      if (WW.camLook && WW.camLook.active()) for (const v of events()) if (v.target && v.target.type === 'carrier' && v.t > 1.5 && v.t < 9) { const e = v._f; return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) }; }
+      return { kind: 'wide', dur: 6 + Math.random() * 2, pr: 2 };
+    }
     return null;
   }
 
