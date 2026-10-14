@@ -83,7 +83,7 @@ window.WW = window.WW || {};
     const P = st.lead, T = (isShip(st.laTarget) && st.laTarget) || P.diveTgt || P.target || (P.wave && P.wave.target);   // (the planned arc's target: a plane past its drop may have dropped its own)
     if (!isShip(T) || (!T.alive && !T.sinking)) return null;
     if (ok(P) && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;
-    const e = evs().find(v => v.s === T); if (!e || e.etaReal < 0.8 || e.etaReal > 8) return null;
+    const e = evs().find(v => v.s === T); if (!e || e.etaReal < 0.8 || e.etaReal > 10) return null;
     if (e.src && e.src.obj === P && ok(P) && P.ordnance) return null;   // (its own bomb / torpedo already away: the target, braced)
     ST.storyBraces = (ST.storyBraces || 0) + 1;
     return { kind: 'brace', subj: T, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(e.lastReal + 2.6, 4, 12), why: e.kind, label: D() && D().labelOf ? D().labelOf(e) : '' };
@@ -232,7 +232,24 @@ window.WW = window.WW || {};
   }
   // the carrier arc for a carrier struck by something no air arc can carry (a ship's torpedo, no attacker left): her raid
   function cvRaid(it) { return { kind: 'cvraid', target: it.target, subj: it.target, climax: it.climax, climaxR: it.climaxR, value: it.value, endR: it.endR, cv: true, hits: it.hits }; }
+  // every frame: the running shot of an arc is not cut in the last seconds before a known impact on the arc's target
+  // (it is held through the impact and a beat), when it shows the target
+  function hold() {
+    const shot = WW.cam._shot(); if (!shot || shot.stage || shot.t < 1 || shot.dur - shot.t > 1.2 || shot.kind === 'brace') return;
+    const st = S() && S().story(), d = D();
+    let T = null;
+    if (st && st.begun && shot.story) T = isShip(st.laTarget) ? st.laTarget : st.lead && (st.lead.diveTgt || st.lead.target || (st.lead.wave && st.lead.wave.target));
+    else if (shot.arc && d && d.arcBusy()) T = shot.subj;
+    if (!isShip(T)) return;
+    const e = evs().find(v => v.s === T); if (!e || e.etaReal > 3.5 || e.etaReal < 0) return;
+    const c = WW.camera; if (!c) return;
+    _hv.set(T.x, 2, T.z).project(c);
+    if (!(_hv.z < 1 && Math.abs(_hv.x) < 0.95 && Math.abs(_hv.y) < 0.95)) return;   // the target is not in this shot: the cut may go
+    shot.dur = Math.max(shot.dur, shot.t + e.etaReal + 1.8); ST.holds = (ST.holds || 0) + 1;
+  }
+  const _hv = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
   function tick(rdt) {
+    if (active() && _hv) { try { hold(); } catch (e) { /* never break the camera */ } }
     if ((tk -= rdt) > 0) return;
     tk = TICK;
     if (!active() || !(WW.game && WW.game.state === 'battle') || WW.cam.mode !== 'director' || (WW.freecam && WW.freecam.active()) || WW.cam.forced()) return;

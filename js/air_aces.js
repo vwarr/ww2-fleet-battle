@@ -156,6 +156,10 @@ window.WW = window.WW || {};
     var j = 0;
     for (i = 0; i < flying.length; i++) {
       var p = flying[i];
+      // a plane lost without shotDown / ditch (the crew bailed out of a cripple, a slide off the deck): its pilot is lost
+      // NOW (camera5: it used to rejoin the roster when the floating wreck sank, a Math.random lifetime, so the next
+      // strike's pilots, and their ace skill, depended on a visual timer: seeded rounds diverged)
+      if (!p.alive && !p.removed && !p._downed) p._downed = 'lost';
       if (!p.removed) { flying[j++] = p; continue; }
       dropMarks(p);
       // landed (removed without being shot down / ditched): the pilot rejoins the carrier's roster

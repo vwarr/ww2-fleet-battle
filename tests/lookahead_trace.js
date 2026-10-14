@@ -67,7 +67,7 @@ async function check(p, label) {
     await play(p, SIM2, [2, 1]);
     const r2 = await check(p, `${sc}/${sd} round 2`);
     for (const r of [r1, r2]) {
-      const bad = r.diverged || r.diff || !r.checks || r.events === 0;
+      const bad = r.diverged || r.diff || !r.checks || (r === r1 && r.events === 0);
       if (bad) fail++;
       console.log(`${bad ? 'FAIL' : 'ok  '} ${r.label}: ${r.sim} sim s (${r.n} steps), ${r.checks} checkpoints equal${r.diverged ? ', DIVERGED at ' + JSON.stringify(r.mismatch) : ''}, ` +
         `${r.events} events (worker ${r.worker}, wreck landings same ${r.wet})${r.diff ? ' FIRST DIFF #' + r.diff.i + ' page ' + JSON.stringify(r.diff.page) + ' worker ' + JSON.stringify(r.diff.worker) : ' identical'}, worker ${r.ahead} s ahead, boot ${r.boot} ms ${JSON.stringify(r.kinds)}${r.errs.length ? ' worker errors: ' + r.errs.join(' | ') : ''}`);

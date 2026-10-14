@@ -253,6 +253,10 @@ window.WW = window.WW || {};
     if (!S) return null;
     if (!S.begun) { if (!ok(S.lead)) { S = null; return null; } S.begun = true; S.t0 = wall(); S.titleUntil = wall() + CAPS; }
     const now = wall();
+    if (WW.camLook && WW.camLook.storyBrace) { // camera5: the wave's hit on the target, known ahead: braced for it (before the story's closing shot too)
+      const b = WW.camLook.storyBrace(S);
+      if (b && S.last !== 'insert') { S.last = 'insert'; S.shots++; log.push({ sk: 'insert', kind: 'brace', phase: S.phase, at: now, dur: +b.dur.toFixed(1), hard: false }); return Object.assign(b, { story: true, insert: true }); }
+    }
     if (S.ending) { // the closing high shot, unless a big ship / base event is on (the director has better to show)
       if (S.ending === 1 && !(WW.camScenes && WW.camScenes.bigNow() >= 8)) { S.ending = 2; const L = S.lead, c = mk('high', L, 7, false); if (L.removed) c.subj = { x: L.x, y: L.y, z: L.z, heading: L.heading, nation: L.nation }; return c; }
       end(true, S.downed ? 'protagonistDown' : 'complete'); return null;
@@ -276,10 +280,6 @@ window.WW = window.WW || {};
       const c = S.insert; S.insert = null; S.last = 'insert'; S.shots++;
       log.push({ sk: 'insert', kind: c.kind, phase: S.phase, at: now, dur: +(c.dur || 0).toFixed(1), hard: false });
       return Object.assign(c, { story: true, insert: true });
-    }
-    if (WW.camLook && WW.camLook.storyBrace) { // camera5: the wave's hit on the target, known ahead: braced for it
-      const b = WW.camLook.storyBrace(S);
-      if (b && S.last !== 'insert') { S.last = 'insert'; S.shots++; log.push({ sk: 'insert', kind: 'brace', phase: S.phase, at: now, dur: +b.dur.toFixed(1), hard: false }); return Object.assign(b, { story: true, insert: true }); }
     }
     if (S.cutaway && now - S.cutaway.at < 8 && S.cutaway.s && !S.cutaway.s.removed && phaseOf(S.lead) !== 'attack') { // a ship going down elsewhere
       const s = S.cutaway.s; S.cutaway = null; S.lastCutaway = now; ST.cutaways++;
