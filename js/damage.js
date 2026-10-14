@@ -64,15 +64,16 @@ window.WW = window.WW || {};
     var p = worldOf(ship, site), px = p.x, py = p.y, pz = p.z;
     if (fx) {
       if (kind === 'torpedo') {
+        ship.joltAt = WW.time.now; ship.joltA = 0.05 / Math.sqrt(L / 12);   // the hull shudders (ships.js syncGroup)
         if (fx.torpedoHit) fx.torpedoHit(px, pz, -sn * side, c * side, clamp(L / 16, 0.9, 1.6) * (amount > 300 ? 1.15 : 1)); // underwater flash, column, slick
         else { fx.splash(px, pz, 3.5); fx.explosion(px, 0.8, pz, 1.4); }
       } else if (kind === 'dc' || kind === 'near') {
         // the depth charge / the near miss already threw its water column
       } else if (under) {
         fx.splash(px, pz, 1.5);
-      } else if (kind === 'bomb') {
-        fx.explosion(px, py + 0.3, pz, 1.7); fx.sparks(px, py + 0.5, pz);
-        fx.smoke(px, py + 0.8, pz, true, 1.3);
+      } else if (kind === 'bomb') {   // a sharp, brief flash and a fireball ~10 m across, then dark smoke (the fire site below lingers)
+        fx.explosion(px, py + 0.3, pz, 1.1); fx.sparks(px, py + 0.5, pz);
+        fx.smoke(px, py + 0.8, pz, true, 1.4); fx.smoke(px, py + 1.2, pz, true, 1.1);
       } else if (cal === 'mg') {
         fx.sparks(px, py + 0.2, pz);
       } else {

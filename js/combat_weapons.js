@@ -174,6 +174,7 @@ window.WW = window.WW || {};
       if (d < bd) { bd = d; best = s; }
     }
     if (best) I.damage(best, p.dmg * N.k * (1 - 0.6 * bd / N.r), p.x, p.z, 'near');
+    return best;
   }
 
   function updateBomb(p, dt) {
@@ -192,8 +193,7 @@ window.WW = window.WW || {};
     } else if (I.depthAt(p.x, p.z) <= 0) {
       I.fx('explosion', p.x, 0.6, p.z, 1.2); I.fx('smoke', p.x, 1, p.z, true, 1.5);
     } else {
-      I.fx('splash', p.x, p.z, 3);
-      nearMiss(p);
+      if (nearMiss(p)) I.fx('waterColumn', p.x, p.z, 1.3); else I.fx('splash', p.x, p.z, 3);   // close aboard: a towering column
     }
     if (WW.emit) WW.emit('weaponImpact', { kind: 'bomb', proj: p, x: p.x, z: p.z, ship: hit || null });
     p.dead = true;
