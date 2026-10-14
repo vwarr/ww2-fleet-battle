@@ -323,7 +323,7 @@ window.WW = window.WW || {};
   // cruise, plus BINGO_M), so a stack over a shut field breaks up one by one, never all together
   function bingoOut(p) { const F = WW.airFlight; return p.fuel + F.reserve(p) < outlet(p).d / F.cruise(p) * F.CRUISE_BURN * 1.1 + BINGO_M; }
   function leave(p, b, dt) {
-    if (!p.leaveT) {
+    if (!p.ditchTo) {   // (a plane that diverted once and came back to a shut field chooses again)
       p.leaveT = WW.time.now;
       const o = outlet(p), cv = o.cv, ship = o.ship;
       const i = b.ai.lq.indexOf(p); if (i >= 0) b.ai.lq.splice(i, 1);
