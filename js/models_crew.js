@@ -382,8 +382,8 @@ window.WW = window.WW || {};
     for (i = 0; i < nFigs; i++) { var fg = figs[i]; if (cam.distanceToSquared(_v.setFromMatrixPosition(fg.m)) > FAR * FAR) continue; _m.copy(fg.m); if (put(n, fg.c, true, fg.pose ? fg.p : null)) n++; }
     nFigs = 0;
     if (WW.crewProps) WW.crewProps.update(dt);   // hose streams and cargo nets (crew_props.js)
-    meshes.forEach(function (m) { m.count = m === arms ? n * 2 : n; m.visible = n > 0; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
-    mat4.needsUpdate = true; arms.instanceMatrix.needsUpdate = true;
+    meshes.forEach(function (m) { m.count = m === arms ? n * 2 : n; m.visible = n > 0; if (n && m.instanceColor) WW.attrUsed(m.instanceColor, m.count * 3); });
+    if (n) { WW.attrUsed(mat4, n * 16); WW.attrUsed(arms.instanceMatrix, n * 2 * 16); } // only the figures drawn (not MAX), nothing when none
     var ms = performance.now() - t0 - (perf.build - b0); // steady-state cost (one-time station builds excluded)
     perf.ms = perf.ms * 0.95 + ms * 0.05; perf.max = Math.max(perf.max * 0.999, ms); perf.vis = n;
   }

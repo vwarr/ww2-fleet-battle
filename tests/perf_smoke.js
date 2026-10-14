@@ -12,13 +12,7 @@ const OUT = process.argv[2], SCN = process.argv[3] || 'pacific', SEED = +(proces
   await p.evaluate(([seed, ff]) => {
     const G = WW.game; WW.terrain.generate(seed); WW.seedRandom(seed); G.seed = seed; WW.time.now = 0; G.composition = null; G.mode = 'auto'; G.startRound({ keepMap: true });
     __sim.fastForward(ff); WW.time.scale = 1e-6;
-    // a fixed camera on the busiest spot (the sim is seeded, so the same in both trees): the first landing craft
-    // in the middle of the list (Normandy) or the first ship alive, from 70 u off and 30 u up
-    const arr = WW.isScn && WW.isScn('normandy') && WW.landingCraft ? WW.landingCraft.craft : null;
-    const lc = arr && arr.length ? arr[arr.length >> 1] : null;
-    const t = lc || WW.world.ships.find(s => s.alive);
-    const x = t.x, z = t.z;
-    WW.cam.update = function () { WW.camera.position.set(x - 50, 30, z - 50); WW.camera.lookAt(x, 0, z); WW.camera.updateMatrixWorld(); };
+    // the camera stays the director's: usually the same shot in both trees (seeded, frozen), not always
   }, [SEED, FF]);
   await p.waitForTimeout(3000);
   await p.screenshot({ path: OUT });

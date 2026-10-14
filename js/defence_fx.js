@@ -298,7 +298,7 @@ window.WW = window.WW || {};
       const hot = (p.age < 0.05 ? 1.3 : 1) * (0.55 + 0.45 / kf); tr.m.setColorAt(k, _c.setRGB(1.0 * hot, 0.42 * hot, 0.12 * hot));
       k++;
     }
-    tr.m.count = k; tr.m.instanceMatrix.needsUpdate = true; if (tr.m.instanceColor) tr.m.instanceColor.needsUpdate = true;
+    tr.m.count = k; WW.instUsed(tr.m, true);
     puff.step(dt, false); glow.step(dt, true);
   }
   // a mortar round away: the flash and the puff at the tube's mouth

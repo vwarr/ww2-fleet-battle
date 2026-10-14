@@ -28,7 +28,7 @@ window.WW = window.WW || {};
   // An InstancedMesh written densely in [0, count): upload only those instances (and their colours too with
   // `color`, when it has them) instead of the whole capacity every frame, and nothing when none are drawn. For visual modules only.
   // Several calls before one render keep the widest range (three resets updateRange.count to -1 on upload).
-  const usedRange = (a, c) => { const r = a.updateRange; r.offset = 0; r.count = Math.max(r.count, c); a.needsUpdate = true; };
+  const usedRange = WW.attrUsed = (a, c) => { const r = a.updateRange; r.offset = 0; r.count = Math.max(r.count, c); a.needsUpdate = true; }; // any attribute: its first c floats
   WW.instUsed = function (im, color) {
     const n = im.count; if (!(n > 0)) return;
     usedRange(im.instanceMatrix, n * 16);
