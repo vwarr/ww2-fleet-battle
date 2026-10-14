@@ -70,7 +70,7 @@ window.WW = window.WW || {};
   // How harried a bomber is at its release, 0..1: a fighter on it now (the jink's threat, air_dogfight.js) or a
   // shot-up airframe. The CAP's real effect on the raiders that got through in 1942 was the drop: a pilot with a
   // Zero or a Wildcat on his tail, or a holed plane, released early, wide and shallow (combat_weapons.js diveAim
-  // widens the aim error, air_attack.js torp throws the torpedo off its line). Deterministic.
+  // widens the aim error, air_attack.js run points the torpedo plane off its line: runErr). Deterministic.
   function harryK(pl) {   // the same reading, no bookkeeping
     const s = pl.df;
     let on = s && s.from && s.from.alive && WW.dist(s.from.x, s.from.z, pl.x, pl.z) < 45 ? 1 : 0;

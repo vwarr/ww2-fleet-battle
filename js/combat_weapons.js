@@ -9,7 +9,11 @@ window.WW = window.WW || {};
   var EVADE = 0.7;   // u/s: a ship's drift off its predicted track while it turns under a high level-bombing attack
 
   // ---------- torpedoes ----------
-  function fireTorpedo(owner, x, z, heading, nation, range) {
+  // drop (optional, an aerial release: air_attack.js run): { y, v, vy } the height it leaves the belly at and the
+  // plane's speed and climb rate; it falls (TORP_G) carrying the plane's way, nose a touch down, and its run starts
+  // where it enters the water. A ship's tube launch starts in the water.
+  var TORP_G = 4;   // u/s^2: the fall from the game's compressed drop height takes ~1-1.5 s (a real 30-60 m drop: 2.5-3.5 s)
+  function fireTorpedo(owner, x, z, heading, nation, range, drop) {
     try {
       if (!isFinite(x) || !isFinite(z)) return null;
       nation = nation || (owner && owner.nation);
@@ -25,8 +29,15 @@ window.WW = window.WW || {};
       if (WW.dstat) WW.dstat('torpFired' + p.src, nation);
       p.range = range || 100; p.run = 0; p.wakeT = 0; p.under = null;
       p.dmg = ((WW.TORPEDO && WW.TORPEDO.dmg) || 220) * (q.dmgK || 1) * I.rr(0.9, 1.1);   // the nation's warhead (core.js TORPEDO_NATION dmgK)
-      I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
-      I.fx('splash', x, z, 0.8);
+      p.fall = !!(drop && drop.y > 0);
+      if (p.fall) {
+        p.y = drop.y; p.vy = Math.min(0, drop.vy || 0); p.vh = drop.v || p.sp;
+        if (p.mesh) p.mesh.scale.set(0.65, 0.45, 0.45);   // in the air at the airframe's scale (~5.5 m, the payload under the belly)
+        I.place(p, x, p.y, z); I.orient(p, Math.cos(p.h) * p.vh, p.vy - 1, Math.sin(p.h) * p.vh);   // nose a little down
+      } else {
+        I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
+        I.fx('splash', x, z, 0.8);
+      }
       I.stat('torpedoesFired');
       if (WW.emit) WW.emit('weaponDropped', { kind: 'torpedo', proj: p, plane: owner || null }); // camera hand-off hook
       return p;
@@ -35,6 +46,15 @@ window.WW = window.WW || {};
 
   function updateTorp(p, dt) {
     var c = Math.cos(p.h), s = Math.sin(p.h);
+    if (p.fall) { // in the air under the plane's line: no hits; it enters the water with a splash and runs from there
+      p.vy -= TORP_G * dt; p.y += p.vy * dt; p.x += c * p.vh * dt; p.z += s * p.vh * dt;
+      if (p.y > 0) { I.place(p, p.x, p.y, p.z); I.orient(p, c * p.vh, p.vy - 1, s * p.vh); return; }
+      p.fall = false;
+      if (p.mesh) p.mesh.scale.set(1, 1, 1);
+      I.place(p, p.x, -0.2, p.z); I.orient(p, c, 0, s);
+      I.fx('splash', p.x, p.z, 0.9);
+      return;
+    }
     // sub-step so a fast step never skips over a narrow hull
     var total = p.sp * dt, steps = Math.max(1, Math.ceil(total / 0.5)), d = total / steps;
     for (var i = 0; i < steps; i++) {
@@ -247,5 +267,6 @@ window.WW = window.WW || {};
   WW.combat.dropBomb = dropBomb;
   WW.combat.dropDepthCharge = dropDepthCharge;
   WW.combat.diveErr = diveErr;
+  WW.combat.torpFall = function (y) { return Math.sqrt(2 * Math.max(0, y) / TORP_G); };   // s: an aerial torpedo's fall from y (air_attack.js run)
   WW.combat.flakAt = flakAt;                   // the AA a plane flies into round a point (air_intercept.js pressure)
 })();

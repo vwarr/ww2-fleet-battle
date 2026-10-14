@@ -741,7 +741,7 @@ Each hit becomes a damage site in the ship's local coordinates. Each frame, the 
 WW.combat = {
   init(), update(dt), clearAll(),
   fireShell(ship, turret, target, cal),
-  fireTorpedo(owner, x, z, heading, nation, range),
+  fireTorpedo(owner, x, z, heading, nation, range, drop),   // drop { y, v, vy }: an aerial release falls from the belly first
   dropBomb(plane, target),
   dropDepthCharge(ship, x, z)
 };
