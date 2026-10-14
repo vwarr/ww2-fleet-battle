@@ -201,13 +201,17 @@ window.WW = window.WW || {};
     var along = (p.x - ship.x) * ch + (p.z - ship.z) * sh, cross = -(p.x - ship.x) * sh + (p.z - ship.z) * ch;
     o.onSta = d < (o.onSta ? KEEP_OUT : KEEP_IN) * L + 6;
     // a station across the ring (the threat axis swung): steam round the ring the short way, never through the carrier
-    var R = WW.dist(cv.x, cv.z, p.x, p.z), as = Math.atan2(ship.z - cv.z, ship.x - cv.x), da = WW.angleDiff(as, Math.atan2(p.z - cv.z, p.x - cv.x));
+    var R = WW.dist(cv.x, cv.z, p.x, p.z), as = Math.atan2(ship.z - cv.z, ship.x - cv.x), da = WW.angleDiff(as, Math.atan2(p.z - cv.z, p.x - cv.x)), course = false;
     if (Math.abs(da) > ARC_STEP && WW.dist(ship.x, ship.z, cv.x, cv.z) < R * 1.8) {
       var wa = as + Math.sign(da) * ARC_STEP, wx = cv.x + Math.cos(wa) * R + ch * lead, wz = cv.z + Math.sin(wa) * R + sh * lead;
       want = Math.atan2(wz - ship.z, wx - ship.x); o.onSta = false;
-    } else if (o.onSta || (along < 0 && Math.abs(cross) < KEEP_OUT * L)) // on station, or ahead of it: the carrier's course, speed fixes the rest
-      want = cv.heading + WW.clamp(cross * XTRACK, -XMAX, XMAX);
-    var v = cv.speed + (along >= 0 ? d : along) / KEEP_T;   // ahead of the station: slower than the carrier, never round
+    } else if (o.onSta || (along < 0 && Math.abs(cross) < KEEP_OUT * L)) { // on station, or ahead of it: the carrier's course, speed fixes the rest
+      want = cv.heading + WW.clamp(cross * XTRACK, -XMAX, XMAX); course = true;
+    }
+    // ahead of the station on the carrier's course: slower than the carrier, never round. Steering for the point (far off
+    // the track, or across the ring) it closes at the carrier's speed plus d / KEEP_T: a ring escort far ahead and wide of
+    // its station turned back for it at the 0.1 floor and lay there while the carrier steamed off (midway seed 4)
+    var v = cv.speed + (course && along < 0 ? along : d) / KEEP_T;
     ship.throttle = WW.clamp(v / ship.stats.speed, 0.1, 1);
     ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk[ship.type] || 0.5) : want;
     return true;

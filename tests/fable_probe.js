@@ -80,6 +80,7 @@ function install() {
     if (!live() || !e || !e.plane || !e.plane.kind || (e.plane.kind !== 'dive' && e.plane.kind !== 'torpedo')) return;
     const p = e.plane, tg = p.target; if (!tg || !tg.type || tg.isBase) return;
     add('drops');
+    if (p.opp) add('oppDrop_' + p.opp);   // a target of opportunity (air_cag.js / air_ops homeward / air_search scout), by reason
     if (SMALL[tg.type]) {
       const big = bigSeen(p.nation);
       if (big) {
@@ -292,6 +293,8 @@ function install() {
     F('st_night_', WW.nightOps && WW.nightOps.stats, ['starShells', 'searchlights', 'radarSights']);
     F('st_fb_', WW.flyingBoats && WW.flyingBoats.stats, ['dispatched', 'landed', 'rescues', 'aborted', 'waited', 'catLost', 'patrols', 'lost', 'bombs', 'bombHits', 'evades']);
     F('st_base_', WW.landAir && WW.landAir.stats, ['launches', 'ditched', 'diverted', 'holds', 'emergency', 'closedLaunches', 'strikes', 'levelDrops']);
+    F('st_cag_', WW.cag && WW.cag.stats, ['upgrades', 'oppHarried', 'oppDamaged', 'oppFlak', 'oppFuel', 'oppJettison']);
+    F('st_air_', WW.airOps && WW.airOps.stats, ['jettisons', 'homeAttacks']);
     F('st_intel_', WW.intel && WW.intel.stats, ['wrongStrikes', 'wrongRedirects', 'misid']);
     F('st_adm_', WW.admirals && WW.admirals.stats, ['flagLost', 'transfers', 'confusionSec']);
     if (S.lastNear < 1e8) S.m.lastThirdNearest = +S.lastNear.toFixed(0);
