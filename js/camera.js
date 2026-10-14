@@ -408,7 +408,7 @@ window.WW = window.WW || {};
       fctx.drawImage(src, 0, 0);
       fade.style.transition = 'none'; fade.style.opacity = '1';
       void fade.offsetWidth; // restart the transition
-      fade.style.transition = 'opacity 1.4s ease-in-out'; fade.style.opacity = '0';
+      fade.style.transition = 'opacity 0.5s ease-out'; fade.style.opacity = '0'; // ease-out: the old frame dissolves at once (1.4 s ease-in-out held a still frame at every cut: read as a freeze)
     },
     target() { return L; },
     current() { return { P, L }; },
