@@ -29,7 +29,7 @@ window.WW = window.WW || {};
     if (B.contactT === undefined) { B.contactT = 0; B.heavySeen = false; B.sweepT = 0; }
     var cvKnown = false;
     for (i = 0; i < cs.length; i++) {
-      c = cs[i]; u = c.unit; if (!u || !u.alive) continue;
+      c = cs[i]; u = c.unit; if (!u || !u.alive || u.isBase) continue;   // the enemy's island is always on the chart: no contact (F18)
       if (now - c.seenAt <= SEEN_AGE) B.contactT = rt;
       if (HEAVY[u.type]) B.heavySeen = true;
       if (u.type === 'carrier') cvKnown = true;

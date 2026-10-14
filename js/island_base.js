@@ -283,6 +283,13 @@ window.WW = window.WW || {};
     const rs = SEE_SHIP * k * TUNE.radar, rp = (SEE_PLANE[base.nation] || 200) * k * TUNE.radar;
     for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation !== nation && !s.submerged && WW.dist2(s.x, s.z, base.x, base.z) < rs * rs) sight(s, base, 'visual');
     for (const p of WW.world.planes) if (p.alive && !p.removed && p.nation !== nation && WW.dist2(p.x, p.z, base.x, base.z) < rp * rp) sight(p, base, 'radar');
+    // each coastal battery's own fire-control eye (Fable F21): a battery on a headland sees as far as it shoots (its
+    // range finder and spotters, not the field's radar), less by night
+    const rb = BATTERY.range * (WW.daylight !== undefined && WW.daylight < 0.3 ? 0.6 : 1);
+    for (const f of base.facilities) {
+      if (f.kind !== 'battery' || f.out) continue;
+      for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation !== nation && !s.submerged && WW.dist2(s.x, s.z, f.x, f.z) < rb * rb) sight(s, base, 'visual');
+    }
   }
   // combat_aa.js hook: the ships plus the base's live AA pits (a cached array)
   const shooterArr = [];

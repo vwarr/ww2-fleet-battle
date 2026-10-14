@@ -90,7 +90,7 @@ window.WW = window.WW || {};
       for (const q of contacts(ship, 20)) if (q.unit.type === 'destroyer' && WW.dist(q.x, q.z, c.x, c.z) < 80) { iso = 0.45; break; }
       // the navy's sub doctrine (ai_sub_roles.js): IJN carriers above all, USN the nearest worthwhile target;
       // a contact it cannot get ahead of: IJN shadows it from off its quarter, USN closes its position
-      const R = WW.subRoles, k = w * iso * (u.hp < u.maxHp * 0.5 ? 1.4 : 1) * (u.stats.speed < 5 ? 1.15 : 1) * (R ? R.weight(ship, u.type) : 1);
+      const R = WW.subRoles, k = w * iso * ((WW.fleetCmd && WW.fleetCmd.seenHp ? WW.fleetCmd.seenHp(ship.nation, u) : u.hp / u.maxHp) < 0.5 ? 1.4 : 1) * (u.stats.speed < 5 ? 1.15 : 1) * (R ? R.weight(ship, u.type) : 1);
       const s = pick ? k / (1 + pick.t / (R ? R.nearT(ship) : 40)) : k * 0.2 / (1 + WW.dist(ship.x, ship.z, x0, z0) / 100);
       const shd = !pick && R ? R.shadowPoint(ship, c, x0, z0, side) : null;
       if (!best || s > best.score) best = { c, score: s, ax: pick ? pick.ax : shd ? shd.ax : x0, az: pick ? pick.az : shd ? shd.az : z0, shadow: !!shd };

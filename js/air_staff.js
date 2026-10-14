@@ -310,10 +310,11 @@ window.WW = window.WW || {};
       if (!self) cap = Math.min(cap, DECK_Q - home);
     }
     else if (Lg.mauled) cap = Math.min(cap, PACKET_DIV);
-    // a destroyer or PT boat while a carrier, battleship or cruiser is known afloat (self-defence, the pursuit): a
-    // division, not the deck load (Fable audit F4)
+    // a destroyer or PT boat while a carrier, battleship or cruiser is known afloat (self-defence, the pursuit), or
+    // before any has been found (the screen is what the scouts report first; 1942 admirals held the deck load for the
+    // main body): a division, not the deck load (Fable audit F4)
     if (tgt.type === 'submarine') { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }   // a surfaced submarine: a division at most
-    else if (!self && !tgt.isBase && (tgt.type === 'destroyer' || tgt.type === 'pt') && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(n)) { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }
+    else if (!self && !tgt.isBase && (tgt.type === 'destroyer' || tgt.type === 'pt') && WW.fleetCmd && WW.fleetCmd.bigFoe && (WW.fleetCmd.bigFoe(n) || (WW.fleetCmd.mainUnseen && WW.fleetCmd.mainUnseen(n)))) { cap = Math.min(cap, PACKET_DIV); ST.smallDiv++; }
     if (J.lastLoss >= LOSS_HEAVY && !J.last.cut) { J.last.cut = true; cap = Math.min(cap, Math.max(MIN_B, Math.round(J.last.n * (1.2 - J.lastLoss)))); ST.cuts++; }   // smaller than the strike that was mauled
     // the commitment ceiling: strike planes out at once (bombers and escorts) within commit x the air group
     const room = Math.round((cv.wingN || 60) * D.commit * (urgent ? 1.15 : 1)) - out - queued;

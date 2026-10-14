@@ -194,7 +194,7 @@ window.WW = window.WW || {};
       if (age(c) > 3 || u.submerged || !VAL[u.type]) continue;
       let iso = true;
       for (const g of guns) if (g !== c && WW.dist(g.x, g.z, c.x, c.z) < 75) { iso = false; break; }
-      const crip = u.hp < u.maxHp * 0.5, slow = u.stats.speed < 6 || u.speed < 2.5;
+      const crip = (WW.fleetCmd && WW.fleetCmd.seenHp ? WW.fleetCmd.seenHp(ship.nation, u) : u.hp / u.maxHp) < 0.5, slow = u.stats.speed < 6 || u.speed < 2.5;
       const land = (u.type === 'destroyer' || u.type === 'cruiser') && landNear(u.x, u.z, 30);
       if (!(iso || crip || land || slow || (L.bold && u.type !== 'destroyer'))) continue;
       const gate = PT.EX_MAX * (crip ? 1.6 : 1) * (land ? 1.4 : 1) * (iso ? 1.2 : 1) * (1 + PT.BOLD_GATE * (L.bold || 0));

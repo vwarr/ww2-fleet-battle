@@ -11,7 +11,7 @@
 //   caVsBB       a cruiser gun-dueling a battleship with no own battleship within 250
 //   ptFlee       a carrier fleeing (throttle 1) with a PT boat as the nearest "gun ship" (ai_carrier fleeFrom)
 //   ptDefend     a PT boat in the commander's defend list (strike dfd 3, assignment x2.5)
-//   ringAway     a ring escort more than 150 from its carrier while hunting a sub
+//   ringAway     a ring escort more than 150 from its carrier while hunting a sub (ringAwayHunt: from the hunt itself)
 //   raidShuttle  a line cruiser steaming to the raided carrier (ai_surface aaCover) and back
 //   ptSpin       a PT boat turning > 4 pi in 30 s at its lurk spot
 //   subUp        a submarine forced to surface (dive clock) with an enemy gun ship within 120; deaths within 40 s
@@ -19,6 +19,7 @@
 //   smallDrop    a bomb / torpedo dropped on a DD / PT while a bigger enemy ship (CV / BB / CA) is afloat and was seen
 //                within 120 s; redirSmall: the wave's first target was big (the strike leader's redirect)
 //   unseenSink   an enemy gun ship sank with no contact on it fresher than 10 s, yet it counts in foeBroken (fleet_cmd)
+//   mirror       F26: both sides 'press', nearest enemy gun ships 300-500 apart, no gun-ship shell for 60 s
 //   retireCap    an admiral 'retire' caption while the side is not broken; pursueBlind: 'pursue' with no contact < 60 s
 // Usage: node tests/fable_probe.js [--seeds N=20] [--only a,b] [--workers K] [--json FILE]   (--merge a.json,b.json: report saved batches)
 'use strict';
@@ -105,6 +106,7 @@ function install() {
     if (e.carrier.isBase && tg && SMALL[tg.type] && bigSeen(n)) add('baseStrikeSmall', 1, { who: n + ' base strike on ' + who(tg) });
     if (D && D.kind === 'dusk' && WW.daylight < 0.75 && tg) add('duskStrike', 1, { who: n + ' strike on ' + (tg.isBase ? 'base' : who(tg)), daylight: +WW.daylight.toFixed(2), d: +WW.dist(e.carrier.x, e.carrier.z, tg.x, tg.z).toFixed(0) });
   } catch (er) { R.err++; R.last = String(er.stack); } });
+  WW.on('shellFired', e => { if (S && e && e.ship && GUN[e.ship.type] && e.cal !== 'aa') S.shellT = WW.time.now; });
   WW.on('shipSunk', s => { try {
     if (!live() || !s || !GUN[s.type]) return;
     const n = WW.enemyOf(s.nation), a = age(n, s), B = WW.fleetCmd.side(n);
@@ -192,6 +194,12 @@ function install() {
       if (B.airRaid && B.airRaid.carrier) { const cv = B.airRaid.carrier; const k = S.raids.get(cv) || 0; if (!k) add('raids'); S.raids.set(cv, now); }
       for (const q of B.defend) if (q.enemy && q.enemy.type === 'pt') add('ptDefend', DT, { who: n + ' carrier defends against ' + who(q.enemy), d: +q.d.toFixed(0) });
     }
+    // F26 mirror standoff: both sides 'press', the nearest pair of enemy gun ships 300-500 apart, no gun-ship shell for 60 s
+    { const PU = WW.fleetCmd.side('USN'), PI = WW.fleetCmd.side('IJN');
+      if (PU && PI && PU.posture === 'press' && PI.posture === 'press' && now - (S.shellT || 0) > 60) {
+        let d = 1e9; for (const s of ships) if (s.alive && !s.sinking && s.nation === 'USN' && GUN[s.type]) for (const e of ships) if (e.alive && !e.sinking && e.nation === 'IJN' && GUN[e.type]) d = Math.min(d, WW.dist(s.x, s.z, e.x, e.z));
+        if (d >= 300 && d <= 500) add('mirror', DT, { d: +d.toFixed(0) });
+      } }
     if (now > 480) { let d = 1e9; for (const s of ships) if (s.alive && s.nation === 'USN' && !s.isBase) for (const e of ships) if (e.alive && e.nation === 'IJN' && !e.isBase) d = Math.min(d, WW.dist(s.x, s.z, e.x, e.z)); if (d < S.lastNear) S.lastNear = d; }
     for (const s of ships) {
       if (!s.alive || s.sinking || s.isBase) continue;
@@ -232,6 +240,12 @@ function install() {
       if (s.ringCv && s.ringCv.alive && (s.ai.dcLeft > 0 || s.ai.dcSub || (s.ai.sub && s.ai.sub.alive && s.ai.subC && (s.ai.subD < 200 || !tg || tg.type === 'submarine')))) { // ai_surface surfaceRole's hunt test (escort: SUB_HUNT x 2)
         const dd = WW.dist(s.x, s.z, s.ringCv.x, s.ringCv.z);
         if (dd > 150) add('ringAway', DT, { who: who(s) + ' ' + dd.toFixed(0) + ' from ' + who(s.ringCv) });
+        if (dd > 150 && s.stats.depthCharges) add('ringAwayDD', DT);   // (ringAway also counts battleships / cruisers of the ring with a sub on the plot)
+      }
+      // the same, measured from the hunt itself (ai_surface surfaceRole stamps ai.huntT): a ring destroyer actually on a sub hunt
+      if (s.ringCv && s.ringCv.alive && s.stats.depthCharges && now - (s.ai.huntT || -1e9) < DT + 0.1) {
+        const dd = WW.dist(s.x, s.z, s.ringCv.x, s.ringCv.z);
+        if (dd > 150) add('ringAwayHunt', DT, { who: who(s) + ' ' + dd.toFixed(0) + ' from ' + who(s.ringCv) });
       }
       if (s.type === 'cruiser' && o && o.role === 'line' && B && B.airRaid && B.airRaid.carrier && B.airRaid.carrier.alive) {
         const cv = B.airRaid.carrier, dd = WW.dist(s.x, s.z, cv.x, cv.z);
