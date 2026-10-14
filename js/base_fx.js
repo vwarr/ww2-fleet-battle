@@ -143,7 +143,7 @@ window.WW = window.WW || {};
       case 'hangar': return ['Hangar ablaze', n, 0];
       case 'fuel': return ['Fuel farm burning', n, 0];
       case 'strikeOut': return ['Strike from the island inbound', n + ' launches against a ' + (CV[e.target && e.target.type] || 'ship'), 1];
-      case 'bombard': return [(e.by && e.by.type === 'battleship' ? 'Battleships' : 'Cruisers') + ' shelling ' + n, 'The coastal guns answer', 0];
+      case 'bombard': return [(e.by && e.by.type === 'battleship' ? 'Battleships' : e.by && e.by.type === 'destroyer' ? 'Destroyers' : 'Cruisers') + ' shelling ' + n, 'The coastal guns answer', 0];
       case 'neutralized': return [n + ' neutralized', 'Runways closed, the guns silent', 2];
       default: return null;
     }

@@ -162,7 +162,7 @@ window.WW = window.WW || {};
     if (!base || (nation === base.nation && kind !== 'crash') || !(dmg > 0)) return false;   // a crashing wreck hits either side's field
     if (WW.dist2(x, z, base.x, base.z) > 110 * 110 || WW.terrain.depthAt(x, z) > 0.3) return false; // in the water: a splash
     stats.impacts++;
-    const key = kind === 'bomb' || (kind === 'crash' && cal === 'big') ? 'bomb' : kind === 'crash' ? 'crash' : cal || 'small', blast = BLAST[key] || 2, cw = CRATER[key] || 0;
+    const key = kind === 'bomb' || (kind === 'crash' && cal === 'big') ? 'bomb' : kind === 'crash' ? 'crash' : cal || 'small', blast = key in BLAST ? BLAST[key] : 2, cw = CRATER[key] || 0;   // (mg: 0, not the default)
     WW.emit('baseImpact', { base, x, z, key, nation });   // base_fx.js: the burst on land (big shells throw up earth)
     if (cw) for (const r of base.runways) if (onRunway(r, x, z, 0.8) && weight(r) < CRATER_MAX) {
       const c = { x, z, w: cw, r: key === 'bomb' ? 2.2 : key === 'big' ? 1.8 : 1, rw: r.i, at: WW.time.now };
@@ -180,7 +180,8 @@ window.WW = window.WW || {};
     if (WW.baseLifeLayout) WW.baseLifeLayout.hit(base, x, z, dmg, blast);   // the camp's huts and tents (base.decor)
     base.hitT = WW.time.now; base.hitX = x; base.hitZ = z;                   // the ground life takes cover / runs to it
     if (!base.alarm && kind !== 'crash') raiseAlarm(kind === 'bomb' ? 'bombed' : 'shelled', x, z);
-    if (cw && WW.landGround) WW.landGround.groundHit(base, x, z, blast); // planes on the ground in the blast are wrecked
+    if (blast >= BLAST.small && WW.landGround) WW.landGround.groundHit(base, x, z, blast); // planes on the ground in the blast are wrecked
+    // (a 5-inch shell too: the light guns walk the plane rows, base_ai.js aimLines; only bombs and heavy shells crater)
     refresh(); check();
     return true;
   }
