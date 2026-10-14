@@ -71,7 +71,7 @@ window.WW = window.WW || {};
       u.normalize();
       const C = I.clone().addScaledVector(u, 24); C.y = 11;
       const s = shipOf(ev.target) || shipOf(shot.subj);
-      if (shot.deck) C.copy(cur.P); // from the deck (camera_scenes.js aa): stay there and watch the bomb come down
+      if (shot.deck) C.copy(cur.P); // from the deck (camera_scenes.js aa): stay there and watch the bomb come down (a move off the deck in the bomb's 1-2 s fall whips the view)
       else if (s) { // broadside on the target, on the camera's side, a little toward where the camera was along the hull
         const fx = Math.cos(s.heading), fz = Math.sin(s.heading), nx = -fz, nz = fx, L = s.stats.length;
         const sg = (cur.P.x - s.x) * nx + (cur.P.z - s.z) * nz >= 0 ? 1 : -1;
@@ -146,21 +146,33 @@ window.WW = window.WW || {};
   function torp(shot, gP, gL, rdt) {
     const p = shot.proj;
     if (!p || p.dead || p.kind !== 'torp') { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; return hold(shot, gP, gL); }
-    const f = shot.fwd, s = shot.tship;
-    // low over the wake, a little to the side; after the first seconds the camera eases up and back so the wake and
-    // the target hull read together on a long run; climb as the hull comes near so we never sit beside it
-    const far = ease(WW.clamp((shot.st - 6) / 8, 0, 1)), back = 13 + 9 * far;
-    let hgt = 5.5 + 5 * far;
-    if (s && !s.removed) {
+    const f = shot.fwd, s = shot.tship && !shot.tship.removed && (shot.tship.alive || shot.tship.sinking) ? shot.tship : null;
+    // camera4: a torpedo plainly missing (no hull on its track: camera_director.js torpEta) lets go after a short look at
+    // the wake (the impact event never comes for a miss, and 40 s down an empty wake is dead air)
+    if (shot.st > 2.5 && WW.camDirector) {
+      const e = s && s.alive ? WW.camDirector.torpEta(p, s) : -1, hits = e >= 0;
+      // (and a run that is still far from the hull after 14 s: the shot has shown the wake; the director braces the ship later)
+      shot.missT = hits && !(shot.st > 14 && (WW.camFinder ? WW.camFinder.realS(e) : e) > 4) ? 0 : (shot.missT || 0) + rdt;
+      if (shot.missT > 1.2) { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; shot.proj = null; shot.from = shot.aim.clone(); shot.fromObj = null; shot.aim.set(p.x + f.x * 6, 0.5, p.z + f.z * 6); return hold(shot, gP, gL); }
+    }
+    let far = ease(WW.clamp((shot.st - 6) / 8, 0, 1)), back = 13 + 9 * far, hgt = 5.5 + 5 * far, look = 10;
+    if (s) {
+      // the wake running into the hull: back along the track, high enough over the wake that the target sits beyond it in
+      // the frame; the look point slides from the wake to the hull as she comes near
       const d = Math.hypot(s.x - p.x, s.z - p.z), R = s.stats.length * 0.5 + 7 + back + 10;
-      hgt += WW.clamp((R - d) * 0.6, 0, 10);
+      far = Math.max(far, ease(WW.clamp(d / 160, 0, 1)));
+      back = 13 + 9 * far; hgt = 6 + 7 * far + WW.clamp((R - d) * 0.25, 0, 4);
+      look = WW.clamp(d * 0.55, 10, 90);
+      shot.hullK = WW.clamp(1 - (d - 40) / 80, 0, 1);   // the last 120 u: the aim slides onto the hull (no top-down look at the wake)
     }
     _d.set(-f.x * back - f.z * shot.side * (4 + 3 * far), hgt, -f.z * back + f.x * shot.side * (4 + 3 * far));
     shot.off.lerp(_d, 1 - Math.exp(-rdt * 1.6));
     gP.set(p.x + shot.off.x, shot.off.y, p.z + shot.off.z);
-    shot.aim.set(p.x + f.x * 5, 0.3, p.z + f.z * 5);
+    shot.lk = shot.lk === undefined ? 10 : shot.lk + (look - shot.lk) * (1 - Math.exp(-rdt * 1.2));
+    shot.aim.set(p.x + f.x * shot.lk * 0.5, 0.6, p.z + f.z * shot.lk * 0.5);
+    if (s && shot.hullK) { shot.hk = (shot.hk || 0) + (shot.hullK - (shot.hk || 0)) * (1 - Math.exp(-rdt * 1.5)); shot.aim.lerp(_a.set(s.x, 2, s.z), shot.hk * 0.7); }
     settle(shot, 0.9);
-    gL.set(p.x + f.x * 10, 0.5, p.z + f.z * 10);
+    gL.set(p.x + f.x * shot.lk, 0.8, p.z + f.z * shot.lk);
     gL.lerpVectors(shot.L0, gL, ease(WW.clamp(shot.st / 1.5, 0, 1))); // turn from the plane to the wake gently
   }
   function hold(shot, gP, gL) {
@@ -238,7 +250,7 @@ window.WW = window.WW || {};
         else if (shot.stage === 'torp') torp(shot, gP, gL, rdt);
         else hold(shot, gP, gL);
         if (shot.stage !== 'hold') shot.lastP = (shot.lastP || V()).copy(gP);
-        if (!shot.deck) lift(gP, shot, 16, rdt); // (also while holding: a ship steaming into a still camera lifts it, rather than shoving it; not a deck camera off its own hull)
+        if (!shot.deck) lift(gP, shot, shot.stage === 'torp' ? 8 : 16, rdt); // (the wake running in: a shorter band, the camera stays low to the hull) // (also while holding: a ship steaming into a still camera lifts it, rather than shoving it; not a deck camera off its own hull)
         return true;
       }
       if (shot.kind === 'ots') {

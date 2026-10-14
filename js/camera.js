@@ -121,7 +121,7 @@ window.WW = window.WW || {};
       // behind the diver looking down at the deck, or from the deck looking up through the flak (camera_scenes.js aa)
       if (p.kind === 'torpedo' && p.phase === 'run' && p.target) add(8.5 + ace, 'chase', p, { dur: dur(12, 14), target: p.target });
       else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive && (p.phase === 'roll' || p.phase === 'dive')) add(8.2 + ace, 'chase', p, { dur: dur(10, 13), target: p.target, back: 18 });
-      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add((scenes ? 6.5 : 7.5) + ace, scenes && Math.random() < 0.5 ? 'aa' : 'orbit', p.target, { r: shipR(p.target, 0.34, 6), dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
+      else if (p.kind === 'dive' && p.state === 'attack' && p.target && p.target.alive) add((scenes ? 6.5 : 7.5) + ace, 'orbit', p.target, { r: shipR(p.target, 0.34, 6), dur: dur(13, 16), w: 0.05, hgt: 0.34, plane: p });
       else if (p.kind === 'fighter' && p.state === 'attack' && p.foe) add(6.5 + ace, 'ots', p, { dur: dur(10, 13) }); // over the shoulder (camera_action.js)
       else if (p.state === 'transit' && p.ordnance) add(3 + ace, 'chase', p, { dur: dur(12, 15) });
     }
@@ -182,6 +182,8 @@ window.WW = window.WW || {};
           if (o > best) { best = o; shot.a0 = a; }
         }
       }
+    } else if (c.kind === 'brace' && WW.camDirector) { // a ship about to be hit: the pose search (camera_director.js)
+      WW.camDirector.start(shot);
     } else if (WW.camScenes && (c.kind === 'duel' || c.kind === 'profile' || c.kind === 'aa' || c.kind === 'base')) {
       WW.camScenes.start(shot);
     } else if (c.kind === 'flyby') { // camera slides along the ship's beam, low over the water
@@ -234,6 +236,7 @@ window.WW = window.WW || {};
     if (shot.nd && WW.camNormandy && WW.camNormandy.goal(shot, gP, gL, rdt)) return; // Normandy's ground-level shots
     if (WW.camAction && WW.camAction.goal(shot, gP, gL, rdt)) return; // bomb / torpedo hand-offs, over-the-shoulder
     if (WW.storyShots && WW.storyShots.goal(shot, gP, gL, rdt)) return; // story mode shots (camera_story_shots.js)
+    if (WW.camDirector && WW.camDirector.goal(shot, gP, gL, rdt)) return; // a ship braced for an impact (camera_director.js)
     if (WW.camScenes && WW.camScenes.goal(shot, gP, gL, rdt)) return;   // the gun duel, a sinking, the deck under attack, the base
     const sp = shot.last;
     switch (sp ? shot.kind : 'wide') {
@@ -434,10 +437,21 @@ window.WW = window.WW || {};
       c.recut = true; startShot(c);
       return true;
     },
+    // camera_director.js: the arbiter's cut (it has checked the lock, the hysteresis and the minimum shot length); opts.user:
+    // the F key's pick, held as the user's shot (the attack lock still holds it to the result: shot.fkey)
+    take(c, opts) {
+      if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
+      const u = !!(opts && opts.user);
+      if (!u && shot && ((shot.user && !shot.fkey) || shot.pr >= 99 || (shot.stage && !(opts && opts.steal)))) return false; // steal: the arbiter leaves a long torpedo run
+      if (WW.camStory && WW.camStory.active() && !u && !WW.camStory.yieldTo(c)) return false;
+      const sh = Object.assign({}, c, { recut: true, story: false, user: u, fkey: u, hard: false });
+      delete sh.score; startShot(sh);
+      return true;
+    },
     // a big event cuts in now (camera_scenes.js: a sinking, a magazine), unless the running shot is locked against it
     interrupt(c) {
       if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
-      if (shot && (shot.user || shot.pr >= 99 || shot.subj === c.subj)) return false;
+      if (shot && ((shot.user && !shot.fkey) || shot.pr >= 99 || shot.subj === c.subj)) return false;
       if (shot && shot.t < 5 && c.pr < 11) return false;                      // a cut into a fresh shot: only for the biggest kind
       if (shot && WW.camLock && !WW.camLock.allows(shot, c.pr)) return false;
       if (WW.camStory && WW.camStory.active() && WW.camStory.interrupted) WW.camStory.interrupted(c);
@@ -466,7 +480,10 @@ window.WW = window.WW || {};
         if (!shot || shot.t >= shot.dur || (!forced && shot.t > 3 && !shot.stage && !shot.story && !locked() && dull(shot.subj))) { forced = null; pickShot(); }
         shotGoal(rdt);
         if (shot.nd && WW.camNormandy) WW.camNormandy.sane(gP, gL, shot);
-        else keepSane(gP, gL, shot.kind === 'low' || shot.kind === 'profile', shot.deck ? shot.subj : null, !!shot.field);
+        else {
+          keepSane(gP, gL, shot.kind === 'low' || shot.kind === 'profile' || shot.kind === 'brace', shot.deck ? shot.subj : null, !!shot.field);
+          if (WW.camDirector) WW.camDirector.clearSight(gP, shot, rdt); // a hull or the island between the camera and the subject: rise until it clears
+        }
         if (shot.kind !== 'wide' && !shot.noCompose && (shot.aim || shot.last)) compose(shot.aim || shot.last);
       }
       if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)

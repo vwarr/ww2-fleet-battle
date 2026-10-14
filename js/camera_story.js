@@ -325,12 +325,10 @@ window.WW = window.WW || {};
       if (S.imminent && shot && !shot.stage && !locked && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
       return;
     }
-    // an automatic story not locked in an attack gives way to a bigger action elsewhere (a sinking, a bombardment, hits in
-    // a gun duel, a dive or a run under way) on the director's one scale (camera_score.js yields(): the story's own worth
-    // plus hysteresis against the best other candidate); the story ends and the director cuts to it. A quiet phase (transit
-    // / form / home) also yields to a big ship / base event the old way (bigNow); the unlocked attack phase (the anvil
-    // set-up: 10-150 real s of circling; the wheel) yields through the score, not through the phase name
-    if (!S.user && !locked && now - S.t0 > 15 && shot && shot.story && !shot.stage && (S.ydT = (S.ydT || 0) - rdt) <= 0) {
+    // an automatic story gives way to a bigger action elsewhere through the director's arbiter (camera_director.js: the
+    // story's worth counts its whole wave's attacks; a forecast impact elsewhere wins on the one ladder with hysteresis);
+    // without the director, the old way: camera_score.js yields() and the quiet-phase bigNow()
+    if (!WW.camDirector && !S.user && !locked && now - S.t0 > 15 && shot && shot.story && !shot.stage && (S.ydT = (S.ydT || 0) - rdt) <= 0) {
       S.ydT = 1;
       const quiet = S.phase === 'transit' || S.phase === 'form' || S.phase === 'home';
       const big = quiet && WW.camScenes && WW.camScenes.bigNow() >= 8;

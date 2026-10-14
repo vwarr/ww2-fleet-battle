@@ -18,7 +18,7 @@ window.WW = window.WW || {};
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
   const TOP = { carrier: 7, battleship: 6, cruiser: 5, destroyer: 4, submarine: 2.5, pt: 2 };
   const hits = new Map(), strad = new Map(), fired = new Map(), hitBy = new Map(), crit = new Map();   // ship -> [wall times] / { at, target } / { at, kind } / wall time of a magazine or deck explosion
-  let bombard = { at: -1e9, by: null }, scrambleAt = -1e9, lastInt = -1e9, tickT = 0;
+  let bombard = { at: -1e9, by: null }, scrambleAt = -1e9, lastInt = -1e9;
   const ST = { interrupts: 0, duels: 0, profiles: 0, aa: 0, base: 0 };
   const recent = (m, s, win) => { const a = m.get(s); if (!a) return 0; const now = wall(); let n = 0; for (const w of a) if (now - w < win) n++; return n; };
   const push = (m, s) => { const a = m.get(s) || m.set(s, []).get(s); a.push(wall()); if (a.length > 12) a.shift(); };
@@ -49,12 +49,12 @@ window.WW = window.WW || {};
   WW.on('shipSunk', s => {
     if (!s || s.removed || !(WW.game && WW.game.state === 'battle')) return;
     const big = s.type === 'carrier' || s.type === 'battleship';
-    interrupt({ kind: 'profile', subj: s, pr: big ? 11 : s.type === 'cruiser' ? 10 : 9, dur: 14 + Math.random() * 4, interrupt: true });
+    interrupt({ kind: 'profile', subj: s, pr: big ? 11 : s.type === 'cruiser' ? 10 : 9, dur: (big ? 11 : 9) + Math.random() * 3, interrupt: true });
   });
   // a magazine: wide and a little high, the whole column in frame (fx_critical.js); a deck load / hangar going up: the
   // flight deck from off the quarter (the director's strongest cuts after a sinking)
-  WW.on('magazine', e => { if (e && e.ship && !e.ship.removed) { crit.set(e.ship, wall()); interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 2.2 + 36, dur: 14 + Math.random() * 4, w: 0.035, hgt: 0.32, pr: 11, interrupt: true }); } });
-  WW.on('deckHit', e => { if (e && e.ship && !e.ship.removed && e.ship.alive) { crit.set(e.ship, wall()); interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 1.8 + 24, dur: 13 + Math.random() * 4, w: 0.04, hgt: 0.24, pr: e.hangar || e.load >= 6 ? 10.5 : 10, interrupt: true }); } });
+  WW.on('magazine', e => { if (e && e.ship && !e.ship.removed) { crit.set(e.ship, wall()); interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 2.2 + 36, dur: 11 + Math.random() * 3, w: 0.035, hgt: 0.32, pr: 11, interrupt: true }); } });
+  WW.on('deckHit', e => { if (e && e.ship && !e.ship.removed && e.ship.alive) { crit.set(e.ship, wall()); interrupt({ kind: 'orbit', subj: e.ship, r: e.ship.stats.length * 1.8 + 24, dur: 10 + Math.random() * 3, w: 0.04, hgt: 0.24, pr: e.hangar || e.load >= 6 ? 10.5 : 10, interrupt: true }); } });
 
   // ---------- candidates (camera.js candidates(): WW.camHooks) ----------
   function attackers(s, R) { const out = []; for (const p of WW.world.planes) if (ok(p) && p.nation !== s.nation && (p.target === s || p.diveTgt === s || p.outTgt === s) && (p.phase || p.state === 'attack') && WW.dist2(p.x, p.z, s.x, s.z) < R * R) out.push(p); return out; }
@@ -62,9 +62,10 @@ window.WW = window.WW || {};
     const now = wall();
     for (const s of WW.world.ships) {
       if (s.removed) continue;
-      if (s.sinking && (s.sinkT || 0) < 7) { add(10 + (VALUE[s.type] >= 1.4 ? 1 : 0), 'profile', s, { dur: dur(14, 18) }); continue; }
+      // a sinking: the biggest moment at first, worth less as she settles (camera4: a forecast hit elsewhere then wins)
+      if (s.sinking && (s.sinkT || 0) < 7) { add(10 + (VALUE[s.type] >= 1.4 ? 1 : 0) - Math.max(0, (s.sinkT || 0) - 3) * 0.8, 'profile', s, { dur: dur(9, 12) }); continue; }
       if (!s.alive || s.submerged) continue;
-      const cr = crit.get(s); if (cr && now - cr < 20) add(9.6 + (VALUE[s.type] || 1) * 0.3, 'orbit', s, { r: s.stats.length * 1.8 + 24, dur: dur(11, 14), w: 0.04, hgt: 0.24 });   // the deck still going up
+      const cr = crit.get(s); if (cr && now - cr < 20) add(9.6 + (VALUE[s.type] || 1) * 0.3 - Math.max(0, now - cr - 5) * 0.25, 'orbit', s, { r: s.stats.length * 1.8 + 24, dur: dur(11, 14), w: 0.04, hgt: 0.24 });   // the deck still going up
       const f = fired.get(s), t = f && f.target;
       if (f && now - f.at < 8 && t && t.alive && !t.removed && WW.dist(s.x, s.z, t.x, t.z) < 220) {
         const h = recent(hits, t, 10), st = recent(strad, t, 8);
@@ -76,7 +77,7 @@ window.WW = window.WW || {};
         add(6 + (VALUE[s.type] || 1) + 0.4 * Math.min(3, hh) + 0.2 * Math.min(3, ss), 'orbit', s, { r: Math.max(s.stats.length * 1.6, 24) + 10, dur: dur(11, 14), w: 0.04, hgt: 0.12, loa: by });
       }
       const at = attackers(s, 130); // under air attack: planes committed (the run, the dive) count, the ones still setting up a little
-      if (at.length) { const com = at.filter(p => p.phase === 'run' || p.phase === 'roll' || p.phase === 'dive').length; add(5.8 + 0.7 * Math.min(4, com) + 0.1 * Math.min(5, at.length - com) + (VALUE[s.type] || 1) * 0.5, 'aa', s, { dur: dur(10, 14) }); }
+      if (at.length && at.some(p => p.phase === 'run' || p.phase === 'roll' || p.phase === 'dive')) { const com = at.filter(p => p.phase === 'run' || p.phase === 'roll' || p.phase === 'dive').length; add(5.8 + 0.7 * Math.min(4, com) + 0.1 * Math.min(5, at.length - com) + (VALUE[s.type] || 1) * 0.5, 'aa', s, { dur: dur(10, 14) }); }
     }
     const b = base();
     if (b) {
@@ -104,22 +105,10 @@ window.WW = window.WW || {};
     const b = base();
     if (b) { let n = 0; for (const p of WW.world.planes) if (ok(p) && p.nation !== b.nation && p.ordnance && p.target === b && (p.phase || WW.dist2(p.x, p.z, b.x, b.z) < 120 * 120)) n++; if (n >= 2) best = Math.max(best, 8); }
     if (WW.camFinder) for (const it of WW.camFinder.list()) if (it.kind === 'torps' && it.eta < 15 && it.subj && it.subj.alive) best = Math.max(best, 8.5);
+    if (WW.camDirector) for (const e of WW.camDirector.forecast()) if (e.etaReal < 10) best = Math.max(best, e.raw);   // an impact about to land (camera_director.js)
     return best;
   }
-  // every second: torpedoes about to reach a ship the camera is not on cut in (the hull, the wakes coming at it)
-  function tick(rdt) {
-    if ((tickT -= rdt) > 0 || !WW.camFinder || !(WW.game && WW.game.state === 'battle')) return;
-    tickT = 1;
-    const shot = WW.cam._shot();
-    for (const it of WW.camFinder.list()) {
-      if (it.kind !== 'torps' || it.eta > 12 || !it.subj || !it.subj.alive) continue;
-      if (shot && (shot.subj === it.subj || shot.tship === it.subj)) break;
-      const s = it.subj;
-      interrupt({ kind: 'orbit', subj: s, r: Math.max(s.stats.length * 1.6, 24) + 12, dur: 12 + Math.random() * 4, w: 0.04, hgt: 0.14, pr: 8.5 + (VALUE[s.type] || 1) * 0.5, interrupt: true });
-      break;
-    }
-  }
-  if (WW.cam && WW.cam.update) { const u = WW.cam.update; WW.cam.update = function (rdt) { try { tick(rdt || 0); } catch (e) { /* never break the camera */ } return u.apply(this, arguments); }; }
+  // (torpedoes about to reach a hull: camera_director.js forecasts them and braces the ship before the hit)
 
   // ---------- shot goals ----------
   function openSide(x, z, a, r) { // the side with more open (deep) water: +1 / -1 for angle a / a + PI

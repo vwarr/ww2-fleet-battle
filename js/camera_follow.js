@@ -135,6 +135,23 @@ window.WW = window.WW || {};
     if (nd()) return WW.camNormandy.f();
     if (!WW.game || WW.game.state !== 'battle') return 'Follow: only during a battle';
     if (following()) { handBack(); return 'Follow: off · director camera'; }
+    // camera4: the director's single best candidate NOW (camera_director.js bestNow: the same ladder the arbiter cuts on,
+    // forecast impacts included), filmed as the user's shot: the attack lock still holds it to the result
+    const best = WW.camDirector && WW.camDirector.bestNow();
+    if (best) {
+      director();
+      if (best.keep) { // the director is already on it: F names it and holds it as the user's pick
+        best.shot.user = true; best.shot.fkey = true; ST.jumps++; WW.camDirector.stats.f++;
+        cur = { item: { label: best.label }, subj: best.subj, ship: true, at: wall() }; labelT = 0;
+        return 'Follow: ' + best.label;
+      }
+      if (WW.camStory.active()) WW.camStory.stop();
+      if (WW.cam.take(best, { user: true })) {
+        ST.jumps++; WW.camDirector.stats.f++;
+        cur = { item: { label: best.label }, subj: best.subj, ship: true, at: wall() }; labelT = 0;
+        return 'Follow: ' + best.label;
+      }
+    }
     const L = WW.camFinder ? WW.camFinder.list().filter(i => i.subj && !i.subj.removed && (i.etaReal >= 0)) : [];
     if (L.length) { const it = jump(L[0]); return 'Follow: ' + say(it); }
     const b = bestNow();
@@ -182,8 +199,9 @@ window.WW = window.WW || {};
     if (fc && fo) return 'Following ' + nameOf(fo) + '  ·  drag: orbit  ·  scroll: zoom  ·  O: ' + (WW.freecam.rel() ? 'heading-relative' : 'world-fixed') + '  ·  F: director';
     const shot = WW.cam._shot();
     if (cur && cur.ship && shot && shot.user && shot.subj === cur.subj) { // the user jumped to a ship
-      const it = WW.camFinder && WW.camFinder.about(cur.subj);
-      return 'Following ' + nameOf(cur.subj) + '  \u00b7  ' + (it ? say(it) : cur.item.label);
+      const it = WW.camFinder && WW.camFinder.about(cur.subj), lab = shot.kind === 'brace' && shot.label ? shot.label : cur.item.label;
+      const tail = it && !it.vague && it.etaReal >= 3 && shot.kind !== 'brace' ? say(it) : lab;
+      return 'Following ' + (cur.subj.stats && tail ? tail : nameOf(cur.subj) + '  \u00b7  ' + tail);
     }
     const sto = WW.camStory.story();
     if (sto) { // the lead's own attack ahead (a wave-mate's only while the lead still carries its weapon)
@@ -219,7 +237,7 @@ window.WW = window.WW || {};
     for (const it of WW.camFinder.list()) {
       if (it.etaReal > 35 || !it.subj || it.subj.removed) continue;
       if (isPlane(it.subj)) { if (ok(it.subj)) add(prOf(it), 'chase', it.subj, { dur: dur(12, 15), target: it.target && it.target.stats ? it.target : null, item: it.kind }); }
-      else if (it.kind === 'torps') add(prOf(it), 'orbit', it.subj, { r: it.subj.stats.length * 1.5 + 20, dur: dur(12, 16), w: 0.05, hgt: 0.3, item: 'torps' });
+      else if (it.kind === 'torps' && !WW.camDirector) add(prOf(it), 'orbit', it.subj, { r: it.subj.stats.length * 1.5 + 20, dur: dur(12, 16), w: 0.05, hgt: 0.3, item: 'torps' }); // (camera_director.js braces the ship)
       else if (it.kind === 'danger') add(prOf(it), 'orbit', it.subj, { r: it.subj.stats.length * 1.4 + 18, dur: dur(12, 16), w: 0.045, item: 'danger' });
     }
   });
