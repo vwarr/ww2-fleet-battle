@@ -4,9 +4,10 @@
 //   ship    a surfaced ship's deck or superstructure under it: crash damage (Ship.takeDamage, kind 'crash') scaled by
 //           the plane's size, its speed, the fuel left in it and any bomb or torpedo still aboard (that goes off: cal
 //           'big'). ship_fires / damage treat a crash like a bomb hit (fires, a loaded flight deck). Burning wrecks
-//           hit ships in 1942 (only the uncontrolled ones: a controlled ditching, belly, never resolves on a ship): Smith at Santa Cruz (26 Oct, a Kate onto her forecastle, its torpedo exploded; she
+//           hit ships in 1942: Smith at Santa Cruz (26 Oct, a Kate onto her forecastle, its torpedo exploded; she
 //           steamed into South Dakota's wake to put the fire out), San Francisco off Guadalcanal (12 Nov, a Betty
-//           into the after control station), and Hornet's signal bridge (a Val, Santa Cruz).
+//           into the after control station), and Hornet's signal bridge (a Val, Santa Cruz). Only uncontrolled
+//           wrecks: a controlled ditching (belly) is flown beside a ship and never resolves on one.
 //   land    the island base: WW.landSites.impact(kind 'crash'): a runway hit craters it (the existing crater / repair
 //           path), facilities in reach take damage, parked planes in the blast are wrecked (land_ground.js groundHit).
 //           Elsewhere on land (an island hillside, the Normandy bluffs): a ground burst and a burning wreck that

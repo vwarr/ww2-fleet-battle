@@ -135,7 +135,7 @@ window.WW = window.WW || {};
   function flyDitch(p, dt) {
     const D = p.ditchTo;
     if (D.ship && D.ship.alive && !D.ship.sinking) { D.x = D.ship.x; D.z = D.ship.z; }
-    else if (D.ship) { const s = ditchShip(p); D.ship = s; if (s) { D.x = s.x; D.z = s.z; } }
+    else if (D.ship) { const s = ditchShip(p); D.ship = s; D.side = undefined; D.gate = false; if (s) { D.x = s.x; D.z = s.z; } }
     if (ditchFly(p, D, dt, cruise(p)) || (p.t - (D.t0 === undefined ? (D.t0 = p.t) : D.t0)) > 120) p.ditch();
   }
   // The ditching run beside a friendly ship D.ship (D.x / z: its position; no ship: the point itself), the way it was
