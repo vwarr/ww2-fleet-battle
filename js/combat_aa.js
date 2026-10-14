@@ -118,7 +118,7 @@ window.WW = window.WW || {};
       n++;
     }
     m.count = n;
-    if (n) { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
+    WW.instUsed(m, true);
     return n;
   };
   Ring.prototype.clear = function () { this.on.fill(0); this.head = 0; this.mesh.count = 0; };

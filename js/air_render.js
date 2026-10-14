@@ -122,7 +122,7 @@ window.WW = window.WW || {};
       b = bucketList[i];
       if (!b.im) continue;
       b.im.count = b.n;
-      if (b.n) b.im.instanceMatrix.needsUpdate = true;
+      WW.instUsed(b.im);
       if (b.im.parent !== WW.scene) WW.scene.add(b.im);
     }
   }

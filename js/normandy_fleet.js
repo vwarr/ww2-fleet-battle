@@ -358,7 +358,7 @@ window.WW = window.WW || {};
       if (o.rampDown) put('ramp', o, L / 2 + B * 0.45, 0, 0, B * 0.9, 0.04, B * 0.85); else put('ramp', o, L / 2, 0, 0, 0.05, H * 1.05, B * 0.95);
       if (o.men > 0 && o.type !== 'lct') put('ramp', o, 0, H, 0, L * 0.5, 0.1, B * 0.7);    // the men's helmets in the well
     }
-    for (const k in dbg) { dbg[k].count = nd[k]; dbg[k].instanceMatrix.needsUpdate = true; }
+    for (const k in dbg) { dbg[k].count = nd[k]; WW.instUsed(dbg[k]); }
   }
 
   function update(rdt) {
@@ -372,8 +372,8 @@ window.WW = window.WW || {};
     const t = WW.game ? WW.game.roundTime : 0, live = WW.game && WW.game.state === 'battle';
     out.length = 0; nMen[0] = nMen[1] = 0; nFalls = 0;
     if (live) for (const q of recs) if (step(q, t)) out.push(q.o);
-    men.forEach((m, k) => { m.count = nMen[k]; m.instanceMatrix.needsUpdate = true; });
-    falls.count = nFalls; falls.instanceMatrix.needsUpdate = true;
+    men.forEach((m, k) => { m.count = nMen[k]; WW.instUsed(m); });
+    falls.count = nFalls; WW.instUsed(falls);
     drawDebug();
   }
   WW.normandyFleet = { update, boats: () => out, ships: () => shipsOut, debugDraw: false, get recs() { return recs; } };

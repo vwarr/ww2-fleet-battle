@@ -19,7 +19,7 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
     : { channel: 'chrome', headless: false, args: flag('vsync') ? [] : ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); else if (/^(tris per|seed )/.test(m.text())) console.log(m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (GAME ? '&wing=' + arg('wing', 1) : '') + '&v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (GAME ? '&wing=' + arg('wing', 1) : '') + (flag('vsync') ? '' : '&nocap') + '&v=' + Date.now());
   await p.waitForTimeout(3000);
   if (GAME) {   // the real game: a carrier round, director camera; every STEP sim s, fps over SECS with the airborne count
     await p.evaluate(([OFF, SEED]) => { if (OFF && WW.planeRender) WW.planeRender.enabled = false; const hasCv = () => ['USN', 'IJN'].every(n => WW.world.ships.some(s => s.alive && s.nation === n && s.type === 'carrier' && !s.isBase));

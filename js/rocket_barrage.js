@@ -222,7 +222,7 @@ window.WW = window.WW || {};
       _e.set(0, -Math.atan2(dz, dx), Math.atan2(vy, vh), 'YXZ'); _q.setFromEuler(_e);
       if (n < rk.instanceMatrix.count) rk.setMatrixAt(n++, _m.compose(_p.set(x, y, z), _q, _s.set(Math.pow(k, 0.3), k, k)));
     }
-    rk.count = n; rk.instanceMatrix.needsUpdate = true;
+    rk.count = n; WW.instUsed(rk);
     pts.visible = S.live > 0;
     if (S.live > 0) smokeUpdate(dts);
   }

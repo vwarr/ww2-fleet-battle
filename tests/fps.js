@@ -10,13 +10,15 @@ require('fs').mkdirSync(require('path').join(__dirname, 'shots', 'rt'), { recurs
     await p.evaluate(([tod, wx, ff]) => { WW.dayNight.force = tod; WW.weather.force = wx; WW.game.startRound(); __sim.fastForward(ff); }, [process.env.TOD || null, process.env.WX || null, +(process.env.FF || 100)]);
     await p.waitForTimeout(4000);
   }
-  const fps = await p.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); (function f(){ n++; if (performance.now()-t0 < 10000) requestAnimationFrame(f); else res(n/((performance.now()-t0)/1000)); })(); }));
+  // rAF rate (the display's) and drawn frames (main.js frame pacing: WW.frames, at most 60 / s, 30 on an idle ready screen)
+  const meas = ms => p.evaluate(ms => new Promise(res => { let n = 0; const t0 = performance.now(), d0 = WW.frames ? WW.frames.drawn : 0; (function f(){ n++; if (performance.now()-t0 < ms) requestAnimationFrame(f); else { const s = (performance.now()-t0)/1000; res({ raf: n / s, drawn: WW.frames ? (WW.frames.drawn - d0) / s : n / s }); } })(); }), ms);
+  const fr = await meas(10000), fps = fr.drawn;
   const font = await p.evaluate(async () => { await document.fonts.load('16px "Cormorant Garamond"'); await document.fonts.load('16px Nunito'); return [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family).join(','); });
   await p.screenshot({ path: 'shots/realgpu.png' });
   // map view (the plot table, plot_table.js): the 3D render is skipped once the plot has faded in
   await p.evaluate(() => WW.cam.toggle()); await p.waitForTimeout(2000);
-  const mapFps = await p.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); (function f(){ n++; if (performance.now()-t0 < 6000) requestAnimationFrame(f); else res(n/((performance.now()-t0)/1000)); })(); }));
+  const mapFps = (await meas(6000)).drawn;
   await p.screenshot({ path: 'shots/realgpu_map.png' });
-  console.log('fps', fps.toFixed(1), 'map fps', mapFps.toFixed(1), 'daylight', await p.evaluate(() => WW.daylight), 'nightFx', JSON.stringify(await p.evaluate(() => WW.nightFx && WW.nightFx.stats())), 'font', font, 'errors', errs);
+  console.log('fps', fps.toFixed(1), '(rAF ' + fr.raf.toFixed(1) + ')', 'map fps', mapFps.toFixed(1), 'daylight', await p.evaluate(() => WW.daylight), 'nightFx', JSON.stringify(await p.evaluate(() => WW.nightFx && WW.nightFx.stats())), 'font', font, 'errors', errs);
   await b.close();
 })();
