@@ -269,7 +269,7 @@ window.WW = window.WW || {};
     var sf = B.doctrine.subLine && ec ? WW.clamp(0.55 * WW.dist(mg.x, mg.z, ec.x, ec.z), 160, 320) : 220;
     G.sub.members.forEach(function (q, i) { set(q, B.doctrine.subLine ? at(mg.x, mg.z, sf, (i - (nsub - 1) / 2) * 90) : at(mg.x, mg.z, 220, (i % 2 ? -1 : 1) * 100)); });
     // closing with no battle line, screen or flotilla (a carrier task force on its own): the carriers' escorts sortie
-    // toward the enemy as a surface group, so the fleets still meet; one per carrier stays while there is another to go
+    // toward the enemy as a surface group (two or more: a lone escort stays with her carrier), so the fleets still meet
     // (not after dark: a carrier's screen stays with her through the night, night_plan.js)
     if (!B.airWar && cv.length && !fitN(B, G.main) && !fitN(B, G.screen) && !fitN(B, G.flotilla) &&
       B.posture !== 'withdraw' && !(WW.nightPlan && WW.nightPlan.cvOpen(B))) sortie(B, G, cv.length);
@@ -296,7 +296,7 @@ window.WW = window.WW || {};
     return { x: best.x + Math.cos(h) * sp * dr, z: best.z + Math.sin(h) * sp * dr };
   }
   // The sortie: the escorts other than each carrier's guards (fleet_formation.js tagRing) steam for the enemy
-  // (sortieGoal).
+  // (sortieGoal), two or more together.
   function sortie(B, G, ncv) {
     var t = sortieGoal(B), go = [];
     G.carrier.members.forEach(function (q) {
@@ -304,9 +304,10 @@ window.WW = window.WW || {};
       if (q.type === 'carrier' || !o || o.role === 'withdraw' || o.guard) return;   // the guards are the ones that stay
       go.push(o);
     });
-    // (Fable F10 asked for pairs only; with no sortie a carrier task force never meets the enemy's ships, nothing
-    // breaks and the round runs to time (carrier_duel 6 / 8 to time): the fleets-met rule (fleet_cmd beaten, endgame)
-    // has to change first. So a lone non-guard escort still goes.)
+    // In pairs at least (Fable F10): one destroyer alone across the map into the enemy's screen and a carrier's AA
+    // was no sortie a 1942 admiral ordered; a last escort stays with her carrier (ai_charge.js meets what comes at it;
+    // fleet_cmd beaten() breaks off a bare side outgunned BARE_K to one, so the round still ends).
+    if (go.length < 2) return;
     go.forEach(function (o) {
       o.role = 'sortie'; o.sx = WW.clamp(t.x, 30, WW.cfg.MAP_W - 30); o.sz = WW.clamp(t.z, 30, WW.cfg.MAP_H - 30);
     });

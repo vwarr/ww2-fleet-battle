@@ -72,12 +72,14 @@ window.WW = window.WW || {};
   // a gun's range to its target: light guns reach the island where its pits and batteries stand, not at its centre (base_ai.js)
   const gunD = (ship, o, cal) => o.isBase && cal === 'small' && WW.baseAI && WW.baseAI.reach ? WW.baseAI.reach(ship, o) : WW.dist(ship.x, ship.z, o.x, o.z);
   const STICKY = 1.3; // switch targets only for a score this much better
+  const DWELL = 10;   // s: ... and not at all within this of taking the target (while it stays fresh and worth it)
   // The main battery of a battleship or cruiser does not waste shells on a PT boat beyond PT_CLOSE x its range (the
   // secondaries, the AA and the destroyers take them); a cruiser with no secondary battery still fires on one close in.
   const BIG_MAIN = { battleship: 1, cruiser: 1 }, PT_CLOSE = 0.45;
   // The air-war hold (fleet_cmd.js airWar): a gun ship takes no target beyond HOLD_REACH x its reach. A contact the
   // planes report far off is the carriers' business; the surface force keeps station with them until it closes.
   const GUNSHIP = { battleship: 1, cruiser: 1, destroyer: 1 }, HOLD_REACH = 1.5;
+  const seenHp = (n, o) => (WW.fleetCmd && WW.fleetCmd.seenHp ? WW.fleetCmd.seenHp(n, o) : o.hp / o.maxHp);
   function reach(st) { return st.guns[0] ? st.guns[0].range : st.torpedoes ? st.torpedoes.range : 60; }
   // c: the side's contact for o (position, quality); W: weight table row; R: the weapon's reach.
   // A destroyer goes for a carrier or battleship only as part of a flotilla attack (another own destroyer within
@@ -87,10 +89,24 @@ window.WW = window.WW || {};
     for (const o of WW.world.ships) if (o !== ship && o.alive && o.nation === ship.nation && o.type === 'destroyer' && WW.dist2(ship.x, ship.z, o.x, o.z) < PACK_R * PACK_R) return true;
     return false;
   }
+  // ... or alone at a carrier with no escort about her (Fable F7): no enemy gun ship on the plot within BARE_R of her
+  // (Hammann, Kagero: a lone destroyer's torpedoes for an unescorted carrier; a battleship's secondaries still need a flotilla)
+  const BARE_R = 150;
+  function bare(ship, o) {
+    if (o.type !== 'carrier' || !ship.stats.torpedoes || (WW.supply && !WW.supply.torpLeft(ship))) return false;
+    if (!WW.intel) return false;
+    const now = WW.time.now;
+    for (const c of WW.intel.enemyShips(ship.nation)) {
+      const u = c.unit;
+      if (!u || u === o || !u.alive || u.sinking || u.submerged || !GUNSHIP[u.type] || now - c.seenAt > 60) continue;
+      if (WW.dist2(c.x, c.z, o.x, o.z) < BARE_R * BARE_R) return false;
+    }
+    return true;
+  }
   function score(ship, o, c, W, R, risk) {
     let w = W[o.type]; if (!w) return 0;
     const crip = ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && cripReach(ship, o, c);
-    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship) && !crip &&
+    if (ship.type === 'destroyer' && (o.type === 'carrier' || o.type === 'battleship') && !packed(ship) && !crip && !bare(ship, o) &&
       !(WW.endgameAI && WW.endgameAI.isCripple(o) && WW.fleetCmd && (WW.fleetCmd.side(ship.nation) || {}).posture === 'pursue')) return 0; // a slowed cripple in a pursuit: alone too
     const d = WW.dist(ship.x, ship.z, c.x, c.z);
     if (GUNSHIP[ship.type] && d > R * HOLD_REACH && WW.fleetCmd && WW.fleetCmd.airWar(ship.nation)) return 0; // the air-war hold: no chase
@@ -98,7 +114,7 @@ window.WW = window.WW || {};
       * (0.85 + 0.15 * Math.abs(Math.sin(o.heading - Math.atan2(o.z - ship.z, o.x - ship.x))))   // aspect: broadside is easier
       * (c.quality === 'visual' || c.quality === 'sonar' ? 1 : 0.8);                               // spotted by a plane / scout
     const chase = unreachable(ship, c) ? 0.3 : 1;
-    const finish = chase + 0.8 * (1 - o.hp / o.maxHp) + (o.dmgCrit ? 0.1 : 0);   // low hp / the big fire (damage.js checkCritical;
+    const finish = chase + 0.8 * (1 - seenHp(ship.nation, o)) + (o.dmgCrit ? 0.1 : 0);   // the damage as the side has seen it (F5)   // low hp / the big fire (damage.js checkCritical;
     // not dmgSites.length: hit-site fires last a Math.random time, which broke seeded replays)
     const assign = WW.fleetCmd ? WW.fleetCmd.assignment(ship, o) : 1;
     const base = w * VALUE[o.type];
@@ -162,11 +178,16 @@ window.WW = window.WW || {};
       if (o === old) { oldS = s; oldF = true; }
       if (s > bestS) { bestS = s; best = o; }
     }
-    if (old && oldS > 0 && best !== old && bestS <= oldS * STICKY) { best = old; bestS = oldS; } // no target thrash
+    // a fire-control solution takes time to build: a target taken less than DWELL s ago is kept while it is fresh
+    // and still worth a shell, whatever else scores higher for a moment (Fable F3: A -> B -> A)
+    if (old && best !== old && oldF && !old.sinking && now - (a.tgtT || -1e9) < DWELL && W[old.type] > 0 && oldS > 0) { best = old; bestS = oldS; }
+    else if (old && oldS > 0 && best !== old && bestS <= oldS * STICKY) { best = old; bestS = oldS; } // no target thrash
     // the old target blinked out of sight (smoke, a squall, a lost plot for a moment): hold it TARGET_HOLD s rather
     // than swing to another and straight back (the guns hold fire on it meanwhile; the other mounts pick their own)
     else if (old && old.alive && !old.sinking && !oldF && oldC && now - oldC.seenAt <= TARGET_HOLD && !old.submerged) { best = old; bestS = a.targetScore || bestS; }
     if (!best && W.submarine > 0) best = fb;
+    const ch = a.charge && a.charge.foe; if (ch && ch.alive && !ch.sinking) best = ch;   // a charging destroyer's foe (ai_charge.js steer holds it)
+    if (best !== old) a.tgtT = now;
     a.targetScore = bestS;
     a.cv = cv; a.near = near; a.nearD = nearD;
     ship.target = best; a.any = any; a.sub = sub; a.subD = subD; a.threat = threat; a.threatD = threatD;

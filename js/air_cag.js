@@ -16,7 +16,7 @@ window.WW = window.WW || {};
   // its fuel (RT_R..RT_MAX), rather than circling the plotted point to search (Midway: Hornet's strike never found
   // Kido Butai; Enterprise's turned north on the destroyer Arashi's wake)
   const ARRIVE = 140, DETOUR_FAR = 120, VB_HOLD = 20, VT_HOLD = 15, SEARCH_R = 60, UNSEEN_T = 3, CV_NEAR = 250, RT_R = 120, RT_MAX = 320;
-  const ST = { redirects: 0, handovers: 0, detours: 0, saves: 0, syncHolds: 0, peels: 0 };
+  const ST = { redirects: 0, upgrades: 0, handovers: 0, detours: 0, saves: 0, syncHolds: 0, peels: 0 };
   const bomber = p => p.alive && (p.kind === 'dive' || p.kind === 'torpedo');
   const emit = (o) => { if (WW.emit) WW.emit('airOrder', o); };
   const sqNames = (w) => { const s = []; for (const p of w.members) if (p.squadron && s.indexOf(p.squadron.short) < 0) s.push(p.squadron.short); return s; };
@@ -61,6 +61,11 @@ window.WW = window.WW || {};
     }
     return best;
   }
+  const SMALL = { destroyer: 1, pt: 1 };
+  // the type the side believes ship u is (intel misId), else its own
+  function tyOfT(n, u) { const c = WW.intel && WW.intel.known ? WW.intel.known(n, u) : null; return c && WW.intel.typeOf ? WW.intel.typeOf(c) : u.type; }
+  // the wave's target is closing on one of its side's carriers (fleet_cmd defend list)
+  function defending(w, t) { const B = WW.fleetCmd && WW.fleetCmd.side(w.nation); return !!(B && B.defend && B.defend.some(q => q.enemy === t)); }
   // air_strikes.js tick() once the wave has left: CAG, redirect, timing state. Returns the target (may change).
   function waveTick(w) {
     const now = WW.time.now;
@@ -83,6 +88,20 @@ window.WW = window.WW || {};
       if (n && n !== t) {
         w.target = t = n; ST.redirects++;
         for (const p of w.members) if (p.alive && p.target) p.target = n;
+        emit({ carrier: w.carrier, squadron: w.cag && w.cag.squadron, order: 'redirect', plane: w.cag, leader: w.cag, target: n });
+      }
+    }
+    // Bigger game in sight (Fable F4): a strike sent at a destroyer or PT boat (often the screen, the first ship the
+    // scouts reported) that sights a carrier, battleship or cruiser within reach goes for that instead (Midway: the
+    // strike leaders passed over the screen for the carriers); not for a ship closing on our own carrier (self-defence)
+    // (the bombers already in their dive or torpedo run stay on it; the rest of the strike takes the big ship)
+    else if (t && seen && SMALL[tyOfT(w.nation, t)] && now - (w.upT || -99) > 3 && !defending(w, t)) {
+      w.upT = now;
+      const from = { x: w.x, z: w.z, nation: w.nation }, R = reach(w);
+      const n = WW.airOps ? carrierNear(from, R) || WW.airOps.pickTarget(from, { near: R, flight: flight(w), noSmall: true, noBase: true, big: !!(w.carrier && w.carrier.isBase) }) : null;
+      if (n && n !== t && !SMALL[tyOfT(w.nation, n)]) {
+        w.target = t = n; ST.redirects++; ST.upgrades++;
+        for (const p of w.members) if (p.alive && p.target && !p.phase) p.target = n;
         emit({ carrier: w.carrier, squadron: w.cag && w.cag.squadron, order: 'redirect', plane: w.cag, leader: w.cag, target: n });
       }
     }
@@ -274,5 +293,25 @@ window.WW = window.WW || {};
 
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
+  // The same for each bomber once the strike has split up for its attack (the wave's guide stops at the break-off,
+  // ~90-180 from the target, and the big ship behind the screen often comes into view only then): a dive bomber in
+  // the wheel or a torpedo plane setting up its anvil on a destroyer or PT boat takes a carrier, battleship or cruiser
+  // in sight within UP_R instead; one already in its dive or run stays on it (Fable F4).
+  const UP_R = 200;
+  function upgrade(pl, t) {
+    if (!t || pl.phase || !pl.ordnance || (pl.kind !== 'dive' && pl.kind !== 'torpedo') || t.isBase || !WW.airOps || !WW.intel) return null;
+    const now = WW.time.now; if (now - (pl.upT || -99) < 2) return null;
+    pl.upT = now;
+    if (!SMALL[tyOfT(pl.nation, t)] || defending(pl, t)) return null;
+    const n = WW.airOps.pickTarget(pl, { near: UP_R, flight: 99, noSmall: true, noBase: true, big: !!(pl.carrier && pl.carrier.isBase) });
+    if (!n || n === t || SMALL[tyOfT(pl.nation, n)]) return null;
+    pl.target = n; ST.upgrades++;
+    const w = pl.wave; if (w && w.target === t) w.target = n;
+    return n;
+  }
+  if (WW.Plane) {
+    const vt = WW.Plane.prototype.validTarget;
+    WW.Plane.prototype.validTarget = function () { const t = vt.call(this); return upgrade(this, t) || t; };
+  }
   WW.cag = { stats: ST, flight, waveTick, detour, retarget, diveOK, vtWait, escortPick, escort, cover, reach };
 })();

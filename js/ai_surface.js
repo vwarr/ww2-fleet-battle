@@ -85,14 +85,15 @@ window.WW = window.WW || {};
     const go = WW.fleetCmd ? WW.fleetCmd.order(ship) : null;
     const ds = a.dcSub && a.dcSub.alive && !a.dcSub.sinking && seen(ship, a.dcSub) && !subTooFar(go, a.dcSub) &&
       WW.dist(ship.x, ship.z, a.dcSub.x, a.dcSub.z) < SONAR ? a.dcSub : (a.dcSub = null);
-    if (st.depthCharges && (a.dcLeft > 0 || ds || (!subTooFar(go, a.subC) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || ((!t || t.type === 'submarine') && a.subD < SUB_FAR) || subNearAlly(ship, a))))) {
-      a.dcReload -= dt;
+    if (st.depthCharges && (a.dcLeft > 0 || ds || (!subTooFar(go, a.subC) && a.sub && a.sub.alive && a.subC && (a.subD < SUB_HUNT * (aswRole(ship) ? 2 : 1) || ((!t || t.type === 'submarine') && a.subD < SUB_FAR) || subNearAlly(ship, a)))) && !escLeash(ship, go, a)) {
+      a.dcReload -= dt; a.huntT = WW.time.now; if (a.hunt0 == null) a.hunt0 = WW.time.now;
       if (a.dcLeft > 0) { dcPattern(ship, a, dt); return; }
       const fresh = !!ds || seen(ship, a.sub), s = ds || (fresh ? a.sub : a.subC);
       if (!fresh && WW.dist(ship.x, ship.z, s.x, s.z) < 10) { a.datumDone = a.subC.seenAt; a.sub = a.subC = null; a.retargetT = 0; return; }
       dcApproach(ship, a, s, fresh);
       return;
     }
+    a.hunt0 = null;
     const o = WW.fleetCmd ? WW.fleetCmd.order(ship) : null, B = o ? WW.fleetCmd.side(ship.nation) : null;
     if (aaCover(ship, t, o, B)) { /* steaming to the raided carrier */ }
     else if (ringHold(o, B)) followStation(ship, o, B); // AA ring escort: holds its ring station and shoots from it
@@ -157,6 +158,21 @@ window.WW = window.WW || {};
   function subTooFar(o, c) {
     const cv = o && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking ? o.ringCv : null;
     return !!(cv && c && WW.dist2(cv.x, cv.z, c.x, c.z) > ESC_SUB * ESC_SUB);
+  }
+  // ... and the prosecution is short (Fable F20): an escort more than ESC_LEASH from its carrier, or ESC_HUNT_T s
+  // into a hunt with no sonar contact in hand, gives the datum up (it is reported; the carrier steams on and the
+  // escort goes back on station). A depth-charge stick already rolling is finished first.
+  const ESC_LEASH = 120, ESC_HUNT_T = 45;
+  function escLeash(ship, o, a) {
+    if (a.dcLeft > 0) return false;
+    const cv = o && o.role === 'escort' && o.ringCv && o.ringCv.alive && !o.ringCv.sinking ? o.ringCv : null;
+    if (!cv) return false;
+    const far = WW.dist2(ship.x, ship.z, cv.x, cv.z) > ESC_LEASH * ESC_LEASH;
+    const long = a.hunt0 != null && WW.time.now - a.hunt0 > ESC_HUNT_T && !(a.dcSub && a.dcSub.alive && seen(ship, a.dcSub));
+    if (!far && !long) return false;
+    if (a.subC) a.datumDone = a.subC.seenAt;   // this datum is done with (a fresh sighting near the carrier starts a new hunt)
+    a.sub = a.subC = null; a.dcSub = null; a.dcLock = false; a.hunt0 = null;
+    return true;
   }
   // Preferred gun range: doctrine rangeFrac of the main battery (destroyers: inside torpedo range). Pressing
   // closes in by the doctrine's close-quarters style (IJN closer), a withdrawing side opens out. Never inside
@@ -347,7 +363,7 @@ window.WW = window.WW || {};
     }
   }
   // Cripple withdrawal (replaces the core's h.withdraw for surface ships): below WW.fleetGroups.CRIP hp, head home
-  // (behind the own carrier, else the own map edge) at full speed, pushed away from every known enemy that could
+  // (over the own map edge, on the own carrier's line) at full speed, pushed away from every known enemy that could
   // shoot (contacts <= 45 s old within 1.2 x its gun range + 20), through the safest heading. Home first: a cripple
   // that only ran from the nearest enemy could end up deep on the enemy's side, cornering the enemy carrier.
   const SWEEP = 1.1;
@@ -364,7 +380,10 @@ window.WW = window.WW || {};
       ax += (ship.x - c.x) / d * w; az += (ship.z - c.z) / d * w; n++;
     }
     const W = WW.cfg.MAP_W, east = ship.nation !== 'USN', cv = a.cv && a.cv !== ship && a.cv.alive ? a.cv : null;
-    const hx = cv ? cv.x + (east ? 60 : -60) : east ? W - 60 : 60, hz = cv ? cv.z : WW.clamp(ship.z, 120, WW.cfg.MAP_H - 120);
+    // home is over the own edge (Fable F11: a cripple of a side still fighting was parked 60 u inside it for the rest
+    // of the round): past the carrier, on her line, and off the map (endgame.js escapes a withdrawing ship at EXIT),
+    // sent home damaged as the 1942 cripples were
+    const hx = east ? W + 40 : -40, hz = cv ? WW.clamp(cv.z, 120, WW.cfg.MAP_H - 120) : WW.clamp(ship.z, 120, WW.cfg.MAP_H - 120);
     const hd = WW.dist(ship.x, ship.z, hx, hz);
     if (hd > 30) { const k = n ? 0.7 : 1; ax += (hx - ship.x) / hd * k; az += (hz - ship.z) / hd * k; }
     const sh = n && WW.weather ? WW.weather.shelter(ship.x, ship.z, 160, 20) : null; // hide in a rain squall (weather.js)

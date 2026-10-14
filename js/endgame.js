@@ -64,6 +64,7 @@ window.WW = window.WW || {};
     if (!s.alive || s.sinking || s.nation !== t.nation || s.type !== 'destroyer' || s.rescue || s.escaped) return false;
     if (s.hp < WW.fleetGroups.CRIP * s.maxHp || (s.ai && (s.ai.dcLeft > 0 || s.ai.dcSub))) return false; // a cripple runs home
     if (WW.dist2(s.x, s.z, t.x, t.z) > Math.pow(t.kind === 'pilot' ? PILOT_R : RESCUE_R, 2)) return false;
+    if (bombersOver(s.nation, t.x, t.z)) return false;   // F8: no destroyer stops for survivors with dive / torpedo bombers overhead
     if (br) return true;   // broken: picking up survivors comes first
     var o = WW.fleetCmd && WW.fleetCmd.order(s), cv = o && o.guard && o.role === 'escort' && o.ringCv && o.ringCv.alive ? o.ringCv : null; // a carrier's guard (fleet_formation.js tagRing, ships2) picks up only near its carrier
     if (cv && WW.formation && WW.dist2(cv.x, cv.z, t.x, t.z) > WW.formation.GUARD_R * WW.formation.GUARD_R) return false;
@@ -78,6 +79,14 @@ window.WW = window.WW || {};
     var P = WW.world.planes;
     for (var i = 0; i < P.length; i++) { var p = P[i]; if (p.alive && p.nation !== n && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(p.x, p.z, t.x, t.z) < PILOT_AIR * PILOT_AIR) return false; }
     return true;
+  }
+  // an armed enemy dive or torpedo bomber within RESCUE_AIR of (x, z): in sight overhead (Hammann stopped alongside
+  // Yorktown and was torpedoed; a captain with bombers in the wheel got under way and came back after the raid)
+  var RESCUE_AIR = 150;
+  function bombersOver(n, x, z) {
+    var P = WW.world.planes;
+    for (var i = 0; i < P.length; i++) { var p = P[i]; if (p.alive && p.nation !== n && p.ordnance && (p.kind === 'dive' || p.kind === 'torpedo') && WW.dist2(p.x, p.z, x, z) < RESCUE_AIR * RESCUE_AIR) return true; }
+    return false;
   }
   function assign(now) {
     var ships = WW.world.ships;
@@ -332,7 +341,7 @@ window.WW = window.WW || {};
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
 
-  WW.endgame = {
+  WW.endgame = { bombersOver: bombersOver,
     update: update, stats: null, EXIT: EXIT,
     broken: broken, homeX: homeX, engaged: engaged,
     // round watch (main.js): the pursuit of broken side n is closing; when a submarines-only side last got nearer the

@@ -45,7 +45,8 @@ window.WW = window.WW || {};
   // best intel contact by value, damage, freshness, distance and the AA around it. opts.near: only within that radius.
   // opts.flight: the bombers that would go; more than SMALL_FLIGHT never go for a destroyer or PT boat while the
   // commander knows a carrier, battleship or cruiser afloat (fleet_cmd.js SMALL rule; Fable audit F4): a deck load that
-  // loses its target looks for a worthwhile ship, else flies home with its bombs.
+  // loses its target looks for a worthwhile ship, else flies home with its bombs. Any smaller flight (opts.near) passes
+  // over the screen while a big ship is in sight within reach; opts.noSmall: never a destroyer / PT boat (air_cag upgrade).
   const SMALL = { destroyer: 1, pt: 1 }, SMALL_FLIGHT = 6;
   // opts.noBase: a strike sent at ships does not settle for the island base when it loses them (a pursuit's bombs on
   // the airfield while the enemy's ships get away); a submarine is never a target for more than a division
@@ -73,7 +74,7 @@ window.WW = window.WW || {};
   function pickTarget(from, opts) {
     if (!WW.intel) return WW.shipAI && WW.shipAI.pickStrikeTarget ? WW.shipAI.pickStrikeTarget(from) : null;
     const nation = from.nation, now = WW.time.now, near = opts && opts.near, gun = from.kind === 'fighter';
-    const noSmall = near && opts.flight > SMALL_FLIGHT && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(nation);
+    let noSmall = near && (opts.noSmall || (opts.flight > SMALL_FLIGHT && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(nation)));
     if (!near && from.stats && WW.fleetCmd && WW.fleetCmd.strikeOrder) {
       const o = WW.fleetCmd.strikeOrder(from);
       if (o && o.target && o.target.alive && !o.target.submerged) return o.target;
@@ -82,6 +83,9 @@ window.WW = window.WW || {};
     const cs = WW.intel.enemyShips(nation, { fresh: near ? WW.intel.T.FRESH + 2 : 45 }), L = [];
     for (const c of cs) L.push(c);   // shared scratch array: copy before aaAround asks intel again
     const lim = near || (opts && opts.reach), big = opts && opts.big && bigIn(L, from, lim);
+    // any flight, a division or a lone bomber on its way home too: a destroyer or PT boat only when no carrier,
+    // battleship or cruiser is in sight within reach (the big ship behind the screen is the target)
+    if (near && !noSmall && !gun && bigIn(L, from, lim)) noSmall = true;
     let best = null, bs = -1e9;
     for (const c of L) {
       const o = c.unit;
@@ -93,7 +97,7 @@ window.WW = window.WW || {};
       if (noSmall && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type]) continue;
       if (near && opts.flight > SMALL_FLIGHT && o.type === 'submarine') continue;
       if (near && opts.noBase && o.isBase) continue;
-      const crip = 1 - o.hp / o.maxHp;
+      const crip = 1 - (WW.fleetCmd && WW.fleetCmd.seenHp ? WW.fleetCmd.seenHp(nation, o) : o.hp / o.maxHp);   // as last seen (F5)
       const s = (VALUE[WW.intel.typeOf ? WW.intel.typeOf(c) : o.type] || 0) + crip * (near ? 260 : 120) - (now - c.seenAt) * 2 - d * (near ? 1.5 : 1) - aaAround(nation, c.x, c.z, o) * 3;
       if (s > bs) { bs = s; best = o; }
     }
@@ -246,7 +250,7 @@ window.WW = window.WW || {};
   function homeward(pl) {
     if (!pl.ordnance || pl.oppDone || pl.search || pl.crippled || pl.phase || pl.hp < pl.maxHp * 0.5 || (pl.kind !== 'dive' && pl.kind !== 'torpedo')) return false;
     const c = pl.carrier; if (!c || c.isBase || !WW.intel) return false;
-    const t = pickTarget(pl, { near: OPP_R }); if (!t || !WW.intel.visible(pl.nation, t, 3)) return false;
+    const t = pickTarget(pl, { near: OPP_R, flight: 1 }); if (!t || !WW.intel.visible(pl.nation, t, 3)) return false;
     if (SMALL[t.type] && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(pl.nation)) {   // a small flight at most on a destroyer (F4)
       let k = 0; for (const q of WW.world.planes) if (q.alive && q.nation === pl.nation && q.target === t && q.ordnance && q.kind !== 'fighter') k++;
       if (k >= 3) return false;

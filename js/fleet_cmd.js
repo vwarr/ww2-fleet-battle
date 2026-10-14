@@ -86,13 +86,18 @@ window.WW = window.WW || {};
     if (WW.threat) WW.threat.build(B.nation);
     WW.fleetGroups.assign(B, ships);
     // ---- strength and the enemy picture ----
-    var own = 0, known = 0, cs = I ? I.enemyShips(B.nation) : [], ex = 0, ez = 0, ew = 0, dmin = 1e9;
+    var own = 0, known = 0, cs = I ? I.enemyShips(B.nation) : [], ex = 0, ez = 0, ew = 0, dmin = 1e9, nShip = 0;
     for (i = 0; i < ships.length; i++) { s = ships[i]; if (s.alive && s.nation === B.nation) own += pw(s, B.nation) * (0.3 + 0.7 * s.hp / s.maxHp); }
     for (i = 0; i < cs.length; i++) {
       c = cs[i]; var u = c.unit; if (!u || !u.alive) continue;
       var age = now - c.seenAt, w = Math.max(0.3, 1 - age / 90);
-      known += (u.isBase || u.isLand ? u.power : pw(u, B.nation)) * (0.3 + 0.7 * u.hp / u.maxHp) * w; // island_base.js: base.power; land units (Normandy)
-      ex += c.x * w; ez += c.z * w; ew += w;
+      // the enemy's island base is on the chart all round (island_base.js): no contact for the search, the centre of
+      // the enemy or the strength picture (Fable F18; the base is base_ai.js's objective). Land units (Normandy) count.
+      if (!u.isBase) {
+        nShip++;
+        known += (u.isLand ? u.power * (0.3 + 0.7 * u.hp / u.maxHp) : pw(u, B.nation) * (0.3 + 0.7 * knownHp(B, u))) * w; // land units: power; ships: the hp as last seen (F5)
+        ex += c.x * w; ez += c.z * w; ew += w;
+      }
       if (age <= ENGAGE_AGE) for (var j = 0; j < ships.length; j++) { s = ships[j]; if (s.alive && s.nation === B.nation && s.type !== 'submarine' && s.type !== 'pt') dmin = Math.min(dmin, WW.dist(s.x, s.z, c.x, c.z)); } // 'engage' on a current picture, not a stale report
     }
     B.strength.own = own; B.strength.known = known; B.strength.ratio = own / Math.max(known, 0.3 * own, 0.1);
@@ -122,7 +127,7 @@ window.WW = window.WW || {};
     if (R) low = R.ratioWithdraw(B, low, now);   // hysteresis (fleet_resolve.js)
     if (rt > 60 && B.brokenAt && !pursue) B.posture = 'withdraw';
     else if (pursue) B.posture = 'pursue';
-    else if (!cs.length) B.posture = 'search';
+    else if (!nShip) B.posture = 'search';
     // the strength picture alone turns a side away only once the fleets have met (main.js metT), as the outfought rule
     // (beaten) does, or when it has no fit gun ship to fight with: before that the admiral's picture of the enemy
     // surface force is a set of scout reports, and both navies' doctrine sought the decisive surface action (balance
@@ -141,7 +146,9 @@ window.WW = window.WW || {};
     if (WW.nightPlan) WW.nightPlan.tick(B, cs, now); // night orders: B.nightMode, the carriers' night station, flares (night_plan.js)
     // ---- axis of advance: toward the enemy's last-known centre, else the search point ----
     sectors(B, now);
-    var tgt = B.enemyCentre || B.searchPoint;
+    // (no enemy ship known: the enemy's island when the objective is to neutralize it (base_ai.js; the Midway plan steamed
+    // for the island while it searched for the carriers), else the search point)
+    var ob = B.objective, tgt = B.enemyCentre || (ob && ob.kind === 'neutralize' && ob.state !== 'neutralized' ? ob : null) || B.searchPoint;
     WW.fleetGroups.stations(B); // sets B.axis.x/z (main guide); uses last tick's axis heading
     B.axis.h = Math.atan2(tgt.z - B.axis.z, tgt.x - B.axis.x);
     WW.fleetGroups.stations(B);
@@ -287,7 +294,7 @@ window.WW = window.WW || {};
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i], u = c.unit;
         if (!u || !u.alive || now - c.seenAt > FRESH || (u.submerged && g !== 'screen')) continue;
-        var sc = (W[u.type] || 0) * VALUE[u.type] * (1.8 - u.hp / u.maxHp) / (1 + WW.dist(gd.x, gd.z, c.x, c.z) / 150) * (WW.admirals ? WW.admirals.targetK(u) : 1); // the enemy flagship: a modest bump
+        var sc = (W[u.type] || 0) * VALUE[u.type] * (1.8 - knownHp(B, u)) / (1 + WW.dist(gd.x, gd.z, c.x, c.z) / 150) * (WW.admirals ? WW.admirals.targetK(u) : 1); // the enemy flagship: a modest bump
         if (sc > as) { b = a; bs = as; a = u; as = sc; } else if (sc > bs) { b = u; bs = sc; }
       }
       if (g === 'carrier' && B.defend.length) { F.push(B.defend[0].enemy); continue; }
@@ -315,6 +322,8 @@ window.WW = window.WW || {};
     B.strikes.clear();
     var big = bigFoe(B);
     var cvs = B.groups.carrier.members, pur = B.posture === 'pursue', AGE = pur ? PURSUE_AGE : STRIKE_AGE, RANGE = pur ? PURSUE_STRIKE_R : STRIKE_R * (B.doctrine.strikeRange || 1); // strikeRange: the admiral (admirals.js)
+    // the pursuit goes for the screen only once no big ship is on the plot (Mikuma, not her destroyers: Fable F4)
+    if (pur && big) { big = false; for (var j = 0; j < cs.length && !big; j++) { var cj = cs[j], uj = cj.unit, tj = WW.intel.typeOf ? WW.intel.typeOf(cj) : uj && uj.type; if (uj && uj.alive && !uj.sinking && !uj.submerged && !uj.isBase && (tj === 'carrier' || tj === 'battleship' || tj === 'cruiser') && now - cj.seenAt <= AGE) big = true; } }
     for (var k = 0; k < cvs.length; k++) {
       var cv = cvs[k]; if (cv.type !== 'carrier' || wrecked(cv)) continue;
       var best = null, bc = null, bs = 0;
@@ -327,8 +336,8 @@ window.WW = window.WW || {};
         var dfd = B.defend.some(function (q) { return q.carrier === cv && q.enemy === u; }) ? 3 : 1; // self-defence first
         var sv = u.isBase ? (WW.baseAI ? WW.baseAI.strikeValue(B, cv) : 0) : STRIKE_V[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type] || 0; // the island base (base_ai.js)
         if (sv > WRECK_V && kw(B.nation, u)) sv = WRECK_V;
-        if (!sv || (big && dfd === 1 && !pur && !u.isBase && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type])) continue; // as reported (intel misId)
-        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * u.hp / u.maxHp) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? DIST_K * 3 : DIST_K)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
+        if (!sv || (big && dfd === 1 && !u.isBase && SMALL[WW.intel.typeOf ? WW.intel.typeOf(c) : u.type])) continue; // as reported (intel misId)
+        var sc = dfd * Math.max(sv, dfd > 1 ? 4 : 0) * (1.6 - 0.6 * (u.isBase ? u.hp / u.maxHp : knownHp(B, u))) * (1 - age / (AGE * 1.5)) / (1 + dd / (pur ? DIST_K * 3 : DIST_K)) / (1 + aa / 40); // pursuit: distance matters less (the far carrier before the near cripple)
         if (pur) sc *= runaway(B, u, c);
         if (WW.admirals) sc *= WW.admirals.targetK(u);
         if (sc > bs) { bs = sc; best = u; bc = c; }
@@ -410,6 +419,7 @@ window.WW = window.WW || {};
   WW.fleetCmd = {
     TICK: TICK, VALUE: VALUE, TUNE: TUNE, stats: stats, update: update, reset: reset,
     side: side, order: order, airGroup: airGroup,
+    seenHp: function (n, u) { var B = sides[n]; return B && u && !u.isBase && !u.isLand ? knownHp(B, u) : u ? u.hp / u.maxHp : 1; },   // an enemy ship's hp fraction as the side last saw it (F5)
     bigFoe: function (n) { var B = sides[n]; return !!B && bigFoe(B) && B.posture !== 'pursue'; },   // the SMALL rule's test (air_ops pickTarget near)
     doctrine: function (n) { var B = sides[n]; return B ? B.doctrine : null; },
     focusFor: function (ship) { var o = order(ship), B = sides[ship.nation]; return o && B ? B.focus[o.group] || [] : []; },
@@ -426,7 +436,7 @@ window.WW = window.WW || {};
       }
       var inc = B.incoming.get(target) || 0;
       if (ship.target === target) inc -= gunDps(ship.stats, WW.dist(ship.x, ship.z, target.x, target.z));
-      if (inc * TTK > target.hp * 1.1) return 0.6 * bf;
+      if (inc * TTK > knownHp(B, target) * target.maxHp * 1.1) return 0.6 * bf;   // the hp as last seen (F5)
       var F = this.focusFor(ship);
       return (F.indexOf(target) >= 0 ? 1.35 : 1) * bf;
     },

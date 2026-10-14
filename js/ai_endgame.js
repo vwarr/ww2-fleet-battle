@@ -122,6 +122,11 @@ window.WW = window.WW || {};
   function rescueSteer(ship, B) {
     const t = ship.rescue, d = WW.dist(ship.x, ship.z, t.x, t.z), want = Math.atan2(t.z - ship.z, t.x - ship.x);
     ship.escapeEdge = 0;
+    if (WW.endgame.bombersOver && WW.endgame.bombersOver(ship.nation, t.x, t.z)) {   // F8: bombers overhead: under way, circling the men in the water until the raid has passed
+      ship.throttle = 1;
+      ship.desiredHeading = d > t.r + 60 ? want : want + (ship.ai.orbitDir || 1) * 1.3;
+      return true;
+    }
     if (d > t.r + 35) {
       ship.throttle = 1;
       ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, B.doctrine.risk.destroyer || 0.45) : want;
