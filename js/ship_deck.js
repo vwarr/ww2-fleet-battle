@@ -72,7 +72,7 @@ window.WW = window.WW || {};
   // A bomb hit on a carrier (ship_fires.js hit, after the deck-load hazard; boom: the load that went up, else 0)
   function bombHit(cv, amount, x, z, boom) {
     if (!cv.alive || cv.isBase || !cv.hangar) return;
-    var dc = dcOf(cv), D = cv.deckOut, hits = (cv.deckHits || 0) + 1, size = amount / ((WW.BOMB && WW.BOMB.dmg) || 180);
+    var dc = dcOf(cv), D = cv.deckOut, hits = (cv.deckHits || 0) + 1, size = Math.min(1.4, amount / (((WW.BOMB && WW.BOMB.dmg) || 180) * 0.75));   // a Val's 250 kg = 1 (it holed Yorktown's and Enterprise's decks), an SBD's 1,000 lb ~1.33
     cv.deckHits = hits;
     if (D && D.perm) return;
     var p = boom ? 1 : Math.min(OUT_MAX, OUT_P0 * size * size + OUT_P1 * (hits - 1));

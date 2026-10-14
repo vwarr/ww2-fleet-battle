@@ -63,7 +63,7 @@ window.WW = window.WW || {};
     var v = Math.hypot(p.speed || 0, p.vy || 0), e = WW.clamp(v / 26, 0.25, 1.2);
     var f0 = p.pt ? p.pt.range / p.pt.speed * 6 : 0, fuel = f0 > 0 ? WW.clamp((p.fuel || 0) / f0, 0, 1) : 0.5;
     var air = CRASH * m * e * (0.7 + 0.3 * fuel) * (k || 1);
-    return p.ordnance && !p.wingless ? WW.BOMB.dmg * ORD_K + air * 0.25 : air;
+    return p.ordnance && !p.wingless ? WW.BOMB.dmg * ((p.pt && p.pt.bombK) || WW.BOMB.bombK || 0.5) * ORD_K + air * 0.25 : air;   // the plane's own bomb (bombK)
   }
 
   // Each step of a dying plane. onWater(p): the caller's splash (it removes the plane or starts a float). belly: a

@@ -176,7 +176,7 @@ window.WW = window.WW || {};
   // deck load and the deck out on top), BB ~14, CA ~6, DD ~1.6. landDmg: any bomb on a land target (the island base,
   // land sites: their balance was set for the old 180 a bomb).
   WW.BOMB = { dmg: 380, bombK: 0.5, landDmg: 180, vs: { battleship: 0.45, cruiser: 0.6 }, aim: { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2, ev: { carrier: 0.5, battleship: 0.5, cruiser: 2, destroyer: 7, pt: 4 } },
-    near: { r: 2.5, k: 0.25 } };
+    near: { r: 2.5, k: 0.14 } };   // k: x the bomb (0.25 at the old 180; at 380 a near miss stays shock and leaks)
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
   // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter.
   // Speeds follow docs/PLANE_REVIEW.md §3.3: planes fly on a clock ~1.15x the ship clock (real speed / carrier speed x 5.6
