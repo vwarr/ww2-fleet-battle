@@ -19,7 +19,7 @@ const spec = (sc, seed) => ({ seed, A: SC[sc].A, B: SC[sc].B, aNation: SC[sc].aN
 function install(o) {
   const R = window.__md = {};
   let S;
-  const fresh = () => { S = { leave: [], divert: 0, ditch: 0, shipHit: 0, shipDmg: 0, darkLand: 0, landed: 0, holdMax: 0, lt: [], qt: [] }; };
+  const fresh = () => { S = { leave: [], divert: 0, ditch: 0, shipHit: 0, shipDmg: 0, darkLand: 0, landed: 0, holdMax: 0, lt: [], qt: [], shot: 0 }; };
   fresh(); WW.on('roundStart', fresh);
   WW.on('planeCrash', e => {
     const p = e.plane;
@@ -44,6 +44,7 @@ function install(o) {
     return r0;
   };
   for (const k of ['touchdown', 'crash']) { const f0 = WW.landGround[k]; WW.landGround[k] = function (p) { if (p && p.lqT !== undefined) S.qt.push(WW.time.now - p.lqT); return f0.apply(this, arguments); }; }   // time from joining the landing queue to the wheels on
+  const SD = WW.Plane.prototype.shotDown; WW.Plane.prototype.shotDown = function () { const B = WW.islandBase && WW.islandBase.base; if (B && this.carrier === B && this.alive) S.shot++; return SD.apply(this, arguments); };
   const L = WW.landAir && WW.landAir.stats;
   let land0 = 0;
   WW.on('roundStart', () => { land0 = L ? L.landings : 0; });
@@ -53,7 +54,7 @@ function install(o) {
     if (L && L.landings > before) { S.landed += L.landings - before; S.lt.push(WW.game.roundTime); if (WW.daylight !== undefined && WW.daylight < 0.5) S.darkLand += L.landings - before; }
     return r;
   };
-  R.flush = () => { const out = Object.assign({}, S, { ditched: L ? L.ditched : 0, diverted: L ? L.diverted : 0, goRound: L ? L.goRound || 0 : 0, crossLand: L ? L.crossLand || 0 : 0, ai: WW.airImpact ? Object.assign({}, WW.airImpact.stats) : {} }); fresh(); return out; };
+  R.flush = () => { const B = WW.islandBase && WW.islandBase.base, out = Object.assign({}, S, { strand: B ? WW.world.planes.filter(q => q.alive && !q.removed && q.carrier === B && (q.state === 'landing' || q.state === 'return')).length : 0, ditched: L ? L.ditched : 0, diverted: L ? L.diverted : 0, goRound: L ? L.goRound || 0 : 0, crossLand: L ? L.crossLand || 0 : 0, ai: WW.airImpact ? Object.assign({}, WW.airImpact.stats) : {} }); fresh(); return out; };
 }
 
 (async () => {
@@ -75,6 +76,7 @@ function install(o) {
   for (const r of res) { lands += r.landed; gr += r.goRound; xl += r.crossLand; for (let i = 1; i < r.lt.length; i++) gaps.push(r.lt[i] - r.lt[i - 1]); }
   gaps.sort((a, b) => a - b);
   const qt = [].concat(...res.map(r => r.qt)).sort((a, b) => a - b);
+  console.log(`base planes shot down ${(res.reduce((a, r) => a + r.shot, 0) / res.length).toFixed(1)}/rd, still waiting / coming home at the round's end ${(res.reduce((a, r) => a + r.strand, 0) / res.length).toFixed(1)}/rd`);
   console.log(`queue to touchdown: median ${qt.length ? qt[qt.length >> 1].toFixed(1) : '-'} s, p75 ${qt.length ? qt[(qt.length * 3) >> 2].toFixed(1) : '-'} s (n ${qt.length})`);
   console.log(`landings ${(lands / res.length).toFixed(1)}/rd, gap between landings median ${gaps.length ? gaps[gaps.length >> 1].toFixed(1) : '-'} s, p25 ${gaps.length ? gaps[gaps.length >> 2].toFixed(1) : '-'} s; go-rounds ${(gr / res.length).toFixed(1)}/rd, cross-runway landings ${(xl / res.length).toFixed(1)}/rd`);
   for (const r of res) {
