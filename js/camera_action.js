@@ -82,10 +82,12 @@ window.WW = window.WW || {};
         P0: cur.P.clone(), L0: cur.L.clone() });
       handFrom(shot);
     } else if (ev.kind === 'torpedo') {
-      if (!ev.plane || !ev.plane.kind || !mineOrWing(ev, shot)) return; // torpedo bombers only (ships have no .kind)
+      const ship = ev.plane && ev.plane.stats && ev.plane === shot.subj && !shot.story ? ev.plane : null;   // camera4: the filmed ship's own spread (a destroyer charge)
+      if (!ship && (!ev.plane || !ev.plane.kind || !mineOrWing(ev, shot))) return; // torpedo bombers (ships have no .kind), or the filmed ship
       const h = p.h, f = V().set(Math.cos(h), 0, Math.sin(h));
       const off = V().copy(cur.P).sub(V().set(p.x, 0, p.z));   // start from where the camera is: no jump
-      Object.assign(shot, { stage: 'torp', proj: p, fwd: f, off, tship: shipOf(ev.plane.target), st: 0, dur: shot.t + TORP_MAX, // the impact ends it
+      const tg = ship ? (ship.ai && ship.ai.charge && ship.ai.charge.foe) || ship.target || shot.target : ev.plane.target;
+      Object.assign(shot, { stage: 'torp', proj: p, fwd: f, off, tship: shipOf(tg), st: 0, dur: shot.t + TORP_MAX, // the impact ends it
         kP: 4, kL: 5, side: shot.side || 1, aim: V().set(p.x, 0.3, p.z), L0: cur.L.clone() });
       handFrom(shot);
     }

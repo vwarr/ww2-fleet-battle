@@ -66,7 +66,7 @@ window.WW = window.WW || {};
     goal(shot, gP, gL, rdt) {
       if (!shot || shot.kind !== 'story') return false;
       const L = shot.subj;
-      if (!L || L.removed) { const c = WW.cam.current(); gP.copy(c.P); gL.copy(c.L); shot.t = shot.dur; return true; }
+      if (!L || L.removed) { const c = WW.cam.current(); gP.copy(c.P); gL.copy(c.L); if (!(shot.sk === 'fall' && WW.camDirector)) shot.t = shot.dur; return true; }   // (the fall: a beat on the splash, camera_story.js ends it)
       const ly = L.y || 0;
       shot.aim = shot.aim || V();
       switch (shot.sk) {
@@ -150,6 +150,11 @@ window.WW = window.WW || {};
         }
         case 'fall': { // hold the camera still and watch the plane go down
           if (!shot.fP) shot.fP = WW.cam.current().P.clone();
+          if (WW.camDirector) { // camera4: a fall that starts far off, or drifts away, is followed down (the camera keeps ~45 u off, over the water)
+            const d = shot.fP.distanceTo(_t.set(L.x, ly, L.z));
+            if (d > 60) shot.fP.lerp(_t, (1 - 45 / d) * (1 - Math.exp(-rdt * 1.5)));
+            shot.fP.y = Math.max(shot.fP.y, 4);
+          }
           gP.copy(shot.fP);
           gL.set(L.x, Math.max(0.5, ly), L.z);
           shot.aim.copy(gL);

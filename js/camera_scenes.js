@@ -191,5 +191,5 @@ window.WW = window.WW || {};
     const c = openness(s.x, s.z, sides[0], r) >= openness(s.x, s.z, sides[1], r) ? sides[0] : sides[1];
     return c - Math.sign(w) * sweep / 2;
   }
-  WW.camScenes = { start, goal, orbitArc, bigNow, attackers, stats: ST, _hits: hits, _strad: strad };
+  WW.camScenes = { start, goal, orbitArc, bigNow, attackers, firedBy: s => fired.get(s) || null, recentHits: (s, win) => recent(hits, s, win), stats: ST, _hits: hits, _strad: strad };
 })(window.WW);

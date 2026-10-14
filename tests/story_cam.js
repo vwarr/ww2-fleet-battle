@@ -127,7 +127,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
   console.log('[death] leader', dz);
   if (dz) {
     for (let i = 0; i < 5; i++) { await p.evaluate(() => { __render = false; __step(17); }); if (i === 1 || i === 3) await snap('death_' + (await shotTag())); }
-    await p.evaluate(() => { __render = false; __step(120); });
+    await p.evaluate(() => { __render = false; __step(480); });   // (camera4: the fall is held to the water, up to 14 s, before the hand-off or the end)
     await snap('after_handoff_' + (await shotTag()));
     const r = await p.evaluate(() => ({ log: WW.camStory.log.map(e => e.fall ? 'FALL' : e.handoff ? 'HANDOFF ' + e.handoff : e.start ? 'START' : e.end ? 'END' : e.sk), lead: WW.camStory.lead() && WW.camStory.lead() !== __dead, active: WW.camStory.active() }));
     console.log('  ', r.log.join(' > '), '| new leader:', r.lead, '| active:', r.active);

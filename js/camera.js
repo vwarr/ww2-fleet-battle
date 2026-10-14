@@ -133,6 +133,8 @@ window.WW = window.WW || {};
     const sc = WW.camStory && WW.camStory.pick(); // story mode (camera_story.js) owns the cuts while it runs
     if (sc) return startShot(sc);
     if (shot && shot.finale && shot.finale.s) return coda(shot.finale);
+    const ac = WW.camDirector && !(WW.camNormandy && WW.camNormandy.on()) && WW.camDirector.arcPick(); // a ship arc's next shot, or the establishing shot after an arc (camera_director.js)
+    if (ac) { if (ac.kind === 'wide') lastWide = shotCount; return startShot(ac); }
     shotCount++;
     let best = null;
     const opening = shotCount === 1 && WW.game && WW.game.state === 'battle';
@@ -433,6 +435,7 @@ window.WW = window.WW || {};
     recut(c) {
       if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
       if (shot && (shot.user || shot.pr >= 99 || shot.stage || locked())) return false;
+      if (WW.camDirector && !(WW.camNormandy && WW.camNormandy.on()) && WW.camDirector.arcBusy()) return false; // an arc in progress: committed (camera_director.js)
       if (WW.camStory && WW.camStory.active() && !WW.camStory.yieldTo(c)) return false;
       c.recut = true; startShot(c);
       return true;
@@ -454,6 +457,7 @@ window.WW = window.WW || {};
       if (shot && ((shot.user && !shot.fkey) || shot.pr >= 99 || shot.subj === c.subj)) return false;
       if (shot && shot.t < 5 && c.pr < 11) return false;                      // a cut into a fresh shot: only for the biggest kind
       if (shot && WW.camLock && !WW.camLock.allows(shot, c.pr)) return false;
+      if (!c.nd && WW.camDirector && !WW.camDirector.arcAllows(c)) return false; // an arc in progress: only a carrier struck, a CV / BB blowing up or going down
       if (WW.camStory && WW.camStory.active() && WW.camStory.interrupted) WW.camStory.interrupted(c);
       startShot(c);
       return true;
