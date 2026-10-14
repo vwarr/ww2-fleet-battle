@@ -87,3 +87,72 @@ The new core:
 - **The torpedo hand-off** frames the wake running into the target hull and lets go once a miss is certain.
 
 Camera4 results: see the end of this file.
+
+## Course correction: arcs (user, 2026-10-13)
+The first build (forecast-driven cuts) raised ship-impact coverage (58 -> 69% on the same rounds) but doubled the
+recuts and made a highlight reel: it hopped to every forecast impact and yielded stories before their dives (dive_film
+0%). The user asked for "a movie scene ... little pieces of story in everything", Midway-style runs where the followed
+plane sometimes dies and is followed to the water, and carriers weighted above everything. So the director's main mode
+is now the ARC (js/camera_director.js "arcs"):
+- Air arcs = camera_story.js stories, started by promise when a strike's run-in is 8-45 s out (not at the launch), with
+  a 10-20 s rest between arcs; committed: the director never cuts into one (no score yields, no switching between
+  strikes); only a carrier struck, or a carrier / battleship blowing up or going down, interrupts (`arcAllows`), and
+  the camera then comes back. The protagonist is chosen by drama, never by survival; shot down, it is followed to the
+  water (FALL_MAX 14 s, a far fall is tracked) plus a beat, then a wingman still committed to the attack within 90 u
+  takes the story on, or the arc ends (`protagonistDown`). After the attack the arc closes ~9 s into the way home.
+- Ship arcs: a destroyer charge (ai_charge.js) or torpedo run, a gun duel with hits coming, a ship under air attack
+  (the target's point of view). Each has a small shot menu; the ship's own torpedo spread hands off to the wake.
+- The forecast (`events()`: { t, kind, subject, target, x, z, weight }, the ONE event interface) now only TIMES THE
+  CLIMAX inside an arc: an impact due on the arc's target in 1.5-6 s gets a brace insert (a story insert, or the ship
+  arc's next shot), never inside an attack being filmed.
+- Class weighting: CV 3 >> BB 1.8 > CA 1.3 > DD 0.9 > PT / sub 0.5 (base 1.3). A carrier about to be struck (an impact
+  forecast within 15 s, or two attackers committed) supersedes any arc not already about her (`carrierCall`).
+- Between arcs: a short wide establishing shot, then filler under the old hysteresis (MIN_T 4 s, +3 to cut early).
+- F: the best arc now (fPick: a running arc is adopted and named; else the best ship arc or air story by promise).
+Every arc is logged on WW.cam.arcs ({ id, kind, who, t0, t1, outcome, interrupted }), so any director can be measured
+the same way.
+
+## Results (camera_audit.js, standard + carrier_duel seeds 1-5, 600 sim s; raw_beforeZ vs raw_afterV)
+BE is judged 4 frames after the impact (a cut made on the event counts) and 1 s before; plane kills count only inside a
+raid or the running arc (far dogfight kills are reported apart). beforeZ = main's director (9 rounds: carrier_duel/4
+timed out loading under the machine's load).
+
+| metric | before | after |
+|---|---|---|
+| BE (ship hits, sinkings, magazines, deck fires, raid / arc kills) in frame | 33% of 496 | **42%** of 450 |
+| ... framed 1 s before too | 27% | **35%** |
+| ship impacts only (bomb, torpedo, heavy shell, sunk, magazine, deck) | 54% | 55% |
+| raid / arc plane kills | 17% | **32%** |
+| CV-BE (a carrier hit / deck / magazine / sinking in frame) | 76% of 34 (pre 56%) | **79%** of 34 (pre **65%**) |
+| arc completeness (camera time in arcs filmed setup -> outcome, no cut away) | n/a (no arcs) | 52% (69% of the time in arcs; 113 arcs: 78 complete, 7 protagonistDown, 24 superseded by a carrier strike, 2 cut away) |
+| BE inside arcs (the arc's own impacts / kills) | n/a | 57% of 241 |
+| early cuts (recuts) per min | 1.57 | 1.51 |
+| cuts per min / shot p50 | 5.5 / 11.1 s | 6.6 / 9.4 s |
+| M2 attack continuity (drops held to the result) | 98% | 60% (hits: 89% -> 90%) |
+| M3 oracle top-1 / M5 dead air | 53% / 5% | 39% / 11% |
+| M6 run / dive with the target in frame | 83% / 74% | 61% / 55% |
+| snap frames | 0 | 0 |
+
+Reading it: the camera now stays with a story and is on the carriers' and the arcs' climaxes more often, before they
+happen. The oracle metrics (M3, M5) fall by construction: they reward hopping to the momentary best action, which the
+user rejected. M2 falls mostly because a torpedo plainly missing on a long run (> 6 real s left) is let go after a short
+look instead of 30-45 s down an empty wake; hits filmed to the result are unchanged (90%). Plain ship-impact coverage is
+flat: committing to arcs trades some unrelated impacts for whole stories. Cuts per minute rose with the story's
+in-arc shot changes (6-14 s shots); recuts did not.
+
+Sheets looked at (tests/shots/camera_audit/sheets/): before_* (the torpedo wake on empty sea); after6_* and after7_*
+(forecast braces: a carrier torpedoed and sinking, framed broadside with the wakes coming in, then the profile); arc2_*
+and afterV_*: a VT-6 run where Lt. Cmdr. Flatley is shot down in the run, followed down, "Ens. Vejtasa takes the lead",
+the drop and the battleship under flak; an Akagi Kate strike whose leader falls over the island, the story handed to a
+dive bomber of the wave who pushes over and hits Enterprise's deck, then is himself shot down and followed down; a
+VT-6 run to the drop, the wake and the hit on a destroyer; a destroyer (Hibiki) under fire on a torpedo run.
+Known blemishes: over-the-shoulder run shots often hold the target small at the top edge; the deck (aa) shot cannot see
+a bomb hit on its own ship; a fall over the island frames the beach more than the plane.
+
+## Gates
+determinism --cross 1,2 200: PASS (render / browser / node identical). sim_behaviour 6 seeds: PASS 350 FAIL 3
+(pt_pen_med, ftr_leash, crip_away; node mode loads no camera code, so not this branch). dive_film: 100% (3/3) PASS
+(main's director on the same machine: 0/2 FAIL). action_cam: errors 0, max view rotation 1.0 rad/s. story_cam: all
+PASS (the death test now waits for the fall to the water). fps.js: 120 fps (vsync cap, as before). Normandy: out of
+scope (user); camera_normandy*.js untouched, its interrupts bypass the arc gate (c.nd), camera_score.js's tick still runs
+there.
