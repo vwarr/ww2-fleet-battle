@@ -437,6 +437,29 @@ window.WW = window.WW || {};
       if (shot && !shot.interrupt) shot.dur = Math.min(shot.dur, shot.t + 0.4);   // a wide establishing shot next (pickShot)
     }
   }
+  // the climax inside an arc: an impact due on the arc's target in 1.5-6 s while the camera is elsewhere in the arc (not
+  // in a hand-off, not in an attack's release window, not already braced): cut to the brace, inside the arc
+  function climax(shot) {
+    if (!shot || shot.stage || shot.kind === 'brace' || shot.t < 1.5 || shot.interrupt) return null;
+    const L = WW.camLock && WW.camLock.state(shot); if (L) return null;   // an attack being filmed (the run, the dive, a salvo in the air): it shows its own result
+    const sp = shot.plane || shot.subj; if (sp && sp.pt && sp.alive && sp.ordnance && (sp.phase === 'run' || sp.phase === 'roll' || sp.phase === 'dive')) return null;
+    let T = null, own = null;
+    if (sa) { T = [sa.subj, sa.target]; }
+    else {
+      const st = storyNow(); if (!st || !st.begun || !shot.story) return null;
+      const P = st.lead; if (!P) return null;
+      const tg = P.diveTgt || P.target || (P.wave && P.wave.target); if (!isShip(tg)) return null;
+      T = [tg]; own = P;
+      if (P.alive && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;   // the protagonist's own attack: its chase and hand-off show the hit
+    }
+    for (const v of events()) {
+      if (T.indexOf(v.target) < 0 || v.t < 1.5 || v.t > 6) continue;
+      if (own && v.subject && v.subject.pt && own.wave && v.subject.wave !== own.wave && v.weight < 10) continue;   // a story: its own wave's hits (or any big one)
+      const e = v._f;
+      return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) };
+    }
+    return null;
+  }
   // a carrier about to be struck supersedes any other arc (the raid on her, picked early: the raid inbound, the flak,
   // the run, the hit); never one whose own climax is a carrier struck, never the last seconds of an attack
   function carrierCall(shot) {
@@ -475,7 +498,16 @@ window.WW = window.WW || {};
         if (b && b.promise >= 10) { WW.camStory.supersede(); if (startShipArc(b)) { ST.cuts++; const k = 'arc:' + b.kind; ST.byKind[k] = (ST.byKind[k] || 0) + 1; log.push({ at: wall(), from: 'story/' + ph, to: k + ' ' + b.promise.toFixed(1) }); } return; }
       }
     }
-    if (arcBusy()) return;                                              // an arc in progress: committed (no hopping)
+    if (arcBusy()) {                                                    // an arc in progress: committed (no hopping); the forecast only times its climax
+      if (shot && !(shot.user && !shot.fkey)) {
+        const c = climax(shot);
+        if (c) {
+          if (sa) { c.arc = sa.rec.id; if (sa.user) Object.assign(c, { user: true, fkey: true }); sa.last = 'brace'; if (WW.cam.take(c, { steal: false, arc: true, keepUser: !!sa.user })) { ST.climax = (ST.climax || 0) + 1; } }
+          else if (WW.camStory.insert && WW.camStory.insert(c)) ST.climax = (ST.climax || 0) + 1;
+        }
+      }
+      return;
+    }
     if (!shot || (shot.user && !shot.fkey) || shot.pr >= 99 || shot.finale || shot.stage) return;
     const L = WW.camLock && WW.camLock.state(shot);
     if (L && L.release) return;                                        // the final seconds of an attack: never

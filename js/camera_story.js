@@ -202,9 +202,10 @@ window.WW = window.WW || {};
     home: [['high', 1], ['side', 2], ['chase', 2]],
     rescue: [['side', 3], ['chase', 2], ['high', 1]]      // a Catalina down on the water among the survivors
   };
+  const RUN_MENU = [['chase', 5], ['ots', 2], ['water', 2]];   // camera4: on the run the chase (the plane and the ship ahead in frame) leads
   function choose(phase, L) {
     const opts = [];
-    for (const [sk, w] of MENU[phase] || MENU.transit) {
+    for (const [sk, w] of (WW.camDirector && phase === 'attack' && L.kind === 'torpedo' && L.phase === 'run' ? RUN_MENU : MENU[phase] || MENU.transit)) {
       if (sk === 'ots' && phase === 'bandits') { if (L.kind === 'fighter' && ok(L.foe)) opts.push(['afots', w]); continue; }
       if (WW.storyShots.valid(sk, L, S.group)) opts.push([sk, w]);
     }
@@ -269,6 +270,11 @@ window.WW = window.WW || {};
       S.lead = n; S.group = groupOf(n).concat(S.group.filter(m => ok(m) && groupOf(n).indexOf(m) < 0)); ST.handoffs++;
       log.push({ handoff: n.kind + ' ' + (rank(n) || ''), at: now });
       S.title = [(rank(n) || 'The wingman') + ' takes the lead', n.squadron ? n.squadron.short : '']; S.titleUntil = now + CAPS;
+    }
+    if (S.insert) { // camera_director.js: the climax inside the arc (the story's target braced for its wave's hit), then the story goes on
+      const c = S.insert; S.insert = null; S.last = 'insert'; S.shots++;
+      log.push({ sk: 'insert', kind: c.kind, phase: S.phase, at: now, dur: +(c.dur || 0).toFixed(1), hard: false });
+      return Object.assign(c, { story: true, insert: true });
     }
     if (S.cutaway && now - S.cutaway.at < 8 && S.cutaway.s && !S.cutaway.s.removed && phaseOf(S.lead) !== 'attack') { // a ship going down elsewhere
       const s = S.cutaway.s; S.cutaway = null; S.lastCutaway = now; ST.cutaways++;
@@ -453,6 +459,7 @@ window.WW = window.WW || {};
     // camera.js recut(): a bigger action elsewhere takes the camera; an automatic story ends for it (the user's does not)
     // camera_director.js: a carrier about to be struck takes the camera (the story is closed, not resumed); F adopts the
     // automatic story as the user's
+    insert(c) { if (!S || !S.begun || S.insert) return false; S.insert = c; const sh = WW.cam._shot(); if (sh && sh.story && !sh.stage) sh.dur = Math.min(sh.dur, sh.t); return true; },
     supersede() { if (S) { log.push({ superseded: true, at: wall() }); end(true, 'superseded'); } },
     adopt() { if (S && S.begun) { S.user = true; if (S.arc) S.arc.user = true; return true; } return false; },
     yieldTo(c) { if (!S) return true; if (S.user) return false; log.push({ yield: c.kind + ' ' + (c.pr || 0).toFixed(1), phase: S.phase, at: wall() }); ST.yielded = (ST.yielded || 0) + 1; end(true); return true; },

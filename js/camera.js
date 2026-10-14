@@ -446,8 +446,9 @@ window.WW = window.WW || {};
       if (!camera || cam.mode !== 'director' || forced || !(WW.game && WW.game.state === 'battle') || (WW.freecam && WW.freecam.active())) return false;
       const u = !!(opts && opts.user);
       if (!u && shot && ((shot.user && !shot.fkey) || shot.pr >= 99 || (shot.stage && !(opts && opts.steal)))) return false; // steal: the arbiter leaves a long torpedo run
+      const keepUser = !!(opts && opts.keepUser);
       if (WW.camStory && WW.camStory.active() && !u && !WW.camStory.yieldTo(c)) return false;
-      const sh = Object.assign({}, c, { recut: true, story: false, user: u, fkey: u, hard: false });
+      const sh = Object.assign({}, c, { recut: true, story: false, user: u || keepUser, fkey: u || keepUser, hard: false });
       delete sh.score; startShot(sh);
       return true;
     },
