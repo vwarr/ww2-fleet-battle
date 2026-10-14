@@ -35,7 +35,13 @@ async function check(p, label) {
     let diff = null;
     for (let i = 0; i < Math.max(mine.length, theirs.length); i++) if (key(mine[i]) !== key(theirs[i])) { diff = { i, page: mine[i], worker: theirs[i] }; break; }
     const kinds = {}; for (const e of mine) kinds[e.k] = (kinds[e.k] || 0) + 1;
-    return { label, n, sim: +WW.game.roundTime.toFixed(1), checks: L.checks, diverged: L.diverged, mismatch: L.mismatch, events: mine.length, worker: theirs.length, diff, kinds, ahead: +((L.wn - n) * __sim.LIVE_STEP).toFixed(1), errs: L.errs.slice(0, 3), boot: Math.round(L.bootMs), wet: wetSame + '/' + wetP.length };
+    let where = null;
+    if (L.diverged && L.wdetail) for (const c of WW.laLog.checks) {
+      const w = L.wdetail.get(c.n); if (!w || !c.d) continue;
+      const d = []; for (let i = 0; i < Math.max(w.length, c.d.length); i++) if (w[i] !== c.d[i]) d.push('page ' + c.d[i] + ' | worker ' + w[i]);
+      if (d.length) { where = c.n + ': ' + d.slice(0, 6).join('\n      '); break; }
+    }
+    return { where, label, n, sim: +WW.game.roundTime.toFixed(1), checks: L.checks, diverged: L.diverged, mismatch: L.mismatch, events: mine.length, worker: theirs.length, diff, kinds, ahead: +((L.wn - n) * __sim.LIVE_STEP).toFixed(1), errs: L.errs.slice(0, 3), boot: Math.round(L.bootMs), wet: wetSame + '/' + wetP.length };
   }, label);
 }
 
@@ -46,7 +52,7 @@ async function check(p, label) {
     const spec = A.specOf(sc, sd);
     const p = await b.newPage({ viewport: { width: 640, height: 360 } });
     const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-    await p.addInitScript(A.INIT(sd * 31 + 7));
+    await p.addInitScript((process.env.LA_DBG ? 'window.__laDbg = true;' : '') + A.INIT(sd * 31 + 7));   // LA_DBG=1: on a divergence, the entities that differ
     await p.goto(BASE + 'index.html?auto&cam=lookahead');
     await p.waitForTimeout(1500);
     await p.evaluate(([install, cfg]) => {
@@ -66,6 +72,7 @@ async function check(p, label) {
       console.log(`${bad ? 'FAIL' : 'ok  '} ${r.label}: ${r.sim} sim s (${r.n} steps), ${r.checks} checkpoints equal${r.diverged ? ', DIVERGED at ' + JSON.stringify(r.mismatch) : ''}, ` +
         `${r.events} events (worker ${r.worker}, wreck landings same ${r.wet})${r.diff ? ' FIRST DIFF #' + r.diff.i + ' page ' + JSON.stringify(r.diff.page) + ' worker ' + JSON.stringify(r.diff.worker) : ' identical'}, worker ${r.ahead} s ahead, boot ${r.boot} ms ${JSON.stringify(r.kinds)}${r.errs.length ? ' worker errors: ' + r.errs.join(' | ') : ''}`);
     }
+    for (const r of [r1, r2]) if (r.where) console.log('    first difference at step ' + r.where);
     if (errs.length) { fail++; console.log('  page errors: ' + errs.slice(0, 5).join(' | ')); }
     await p.close();
   }

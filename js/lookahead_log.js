@@ -91,7 +91,8 @@ window.WW = window.WW || {};
   // (debug, L.dbg: the hashed values per entity, to find where two copies part)
   L.detail = function () {
     const f = v => (typeof v === 'number' ? v.toFixed(5) : String(v));
-    return WW.world.ships.map(s => 's' + s.id + ' ' + [s.x, s.z, s.heading, s.hp, s.speed].map(f).join(',')).concat(WW.world.planes.filter(p => p.alive).map(p => 'p' + p.lid + ' ' + p.kind + ' ' + p.state + ' ' + [p.x, p.y, p.z, p.hp, p.heading].map(f).join(',')));
+    const ac = WW.aces ? ['aces ' + Object.keys(WW.aces.rosters).map(n => n + ':' + WW.aces.rosters[n].map(r => r.idle.map(pl => pl.id + '/' + pl.kills).join('.')).join('|')).join(' ')] : [];
+    return ac.concat(WW.world.ships.map(s => 's' + s.id + ' ' + [s.x, s.z, s.heading, s.hp, s.speed].map(f).join(','))).concat(WW.world.planes.filter(p => p.alive).map(p => 'p' + p.lid + ' ' + p.kind + ' ' + p.state + ' ' + [p.x, p.y, p.z, p.hp, p.heading].map(f).join(',')));
   };
   const prev = WW.afterStep;
   WW.afterStep = function (n) { if (prev) prev(n); try { L.step(n); } catch (e) { console.error('laLog', e); } };

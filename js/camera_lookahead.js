@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   const isShip = s => s && s.stats && !s.isLand && !s.isBase && !s.removed;
   const CLASS = { carrier: 3, battleship: 1.8, cruiser: 1.3, destroyer: 0.9, submarine: 0.5, pt: 0.5 };
   const cls = s => (s && s.type ? CLASS[s.type] || 1 : 1);
-  const BASE = { torp: 8.4, bomb: 8.3, dive: 7.9, shellbig: 7.0, shellmed: 6.2 };
+  const BASE = { torp: 8.4, bomb: 8.3, dive: 7.9, shellbig: 7.0, shellmed: 6.2, sink: 8.8, mag: 9.2 };
   const LEAD_AIR = [10, 34, 48], LEAD_SHIP = [5, 16, 24];   // real s before the climax an arc opens: [latest, wanted, earliest]
   const TAIL = 12, TICK = 0.25, EV_MAX = 40;                // real s an arc runs past its climax (for planning); sim s of impacts events() lists
   const ST = { plans: 0, air: 0, ship: 0, cv: 0, doomed: 0, superseded: 0, hints: 0, rejected: 0, byKind: {} };
@@ -49,6 +49,7 @@ window.WW = window.WW || {};
       let kind = null, tgt = null;
       if (e.k === 'imp' && e.hit) { kind = e.w === 'torpedo' ? 'torp' : 'bomb'; tgt = e.hit; }
       else if (e.k === 'sh') { kind = e.cal === 'big' ? 'shellbig' : 'shellmed'; tgt = e.hit; }
+      else if (e.k === 'sunk' || e.k === 'mag') { kind = e.k === 'sunk' ? 'sink' : 'mag'; tgt = e.s; }   // (known ahead: the camera is on her when she goes)
       if (!kind) continue;
       const dt = WW.lookahead.dt(e); if (dt < 0 || dt > EV_MAX) continue;
       const s = WW.lookahead.obj(tgt); if (!isShip(s) || (!s.alive && !s.sinking)) continue;
@@ -75,6 +76,19 @@ window.WW = window.WW || {};
     return (evCache = out);
   }
 
+  // camera_story.js pick(): inside an air arc, an impact due on the story's target in 0.8-8 real s from ANOTHER plane of
+  // the wave (or a ship), while the protagonist is not in its own run / dive: the brace on the target, timed by the log
+  function storyBrace(st) {
+    if (!active() || !st || !st.lead) return null;
+    const P = st.lead, T = (isShip(st.laTarget) && st.laTarget) || P.diveTgt || P.target || (P.wave && P.wave.target);   // (the planned arc's target: a plane past its drop may have dropped its own)
+    if (!isShip(T) || (!T.alive && !T.sinking)) return null;
+    if (ok(P) && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;
+    const e = evs().find(v => v.s === T); if (!e || e.etaReal < 0.8 || e.etaReal > 8) return null;
+    if (e.src && e.src.obj === P && ok(P) && P.ordnance) return null;   // (its own bomb / torpedo already away: the target, braced)
+    ST.storyBraces = (ST.storyBraces || 0) + 1;
+    return { kind: 'brace', subj: T, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(e.lastReal + 2.6, 4, 12), why: e.kind, label: D() && D().labelOf ? D().labelOf(e) : '' };
+  }
+
   // ---------- plan(): the arcs the future holds ----------
   // { kind: 'strike' | 'torpRun' | 'duel' | 'raid', subj, target, wave, climax (sim s), value, members, hits, sinks }
   let plCache = null, plAt = -1, wk = 0;
@@ -97,8 +111,10 @@ window.WW = window.WW || {};
     }
     // strikes: the planes now in the air whose attack (a drop or a run begun) on a ship lies ahead, by wave and target
     for (const [id, f] of fate) {
-      const tg = f.dropTg || f.attTg || f.hitTg; if (!tg || tg[0] !== 's') continue;
       const p = WW.lookahead.obj(id); if (!ok(p) || !p.pt) continue;
+      // (a strike cut to pieces before it can drop is a story too: its wave's target)
+      const tg = f.dropTg || f.attTg || f.hitTg || (f.down !== undefined && p.ordnance && p.wave && isShip(p.wave.target) ? 's' + p.wave.target.id : null);
+      if (!tg || tg[0] !== 's') continue;
       const T = WW.lookahead.obj(tg); if (!isShip(T) || !T.alive || T.nation === p.nation) continue;
       const key = (p.wave ? 'w' + waveKey(p.wave) : 'p' + id) + '>' + tg;
       let it = strikes.get(key);
@@ -106,14 +122,14 @@ window.WW = window.WW || {};
       it.members.push({ p, f, id });
       if (f.hit !== undefined && f.hitTg === tg) { it.hits++; it.hitT = Math.min(it.hitT, f.hit); }
       if (f.drop !== undefined) it.dropT = Math.min(it.dropT, f.drop);
-      if (f.down !== undefined && (f.drop === undefined || f.down < f.drop)) it.downs++;
+      if (f.down !== undefined && (f.drop === undefined || f.down < f.drop)) { it.downs++; it.downT = Math.min(it.downT || 1e9, f.down); }
     }
     for (const it of strikes.values()) {
       const T = it.target, tid = 's' + T.id, sk = sunk.get(tid);
-      it.climax = it.hitT < 1e9 ? it.hitT : it.dropT < 1e9 ? it.dropT + 3 : Math.min(...it.members.map(m => m.f.att !== undefined ? m.f.att + 8 : 1e9));
+      it.climax = it.hitT < 1e9 ? it.hitT : it.dropT < 1e9 ? it.dropT + 3 : Math.min(it.downT || 1e9, ...it.members.map(m => m.f.att !== undefined ? m.f.att + 8 : 1e9));
       if (!(it.climax < 1e8)) continue;
       it.sinks = sk !== undefined && sk >= it.climax - 1 && sk < it.climax + 60;
-      it.value = cls(T) * (1 + 0.9 * Math.min(4, it.hits) + (it.sinks ? 2.5 : 0) + (mag.has(tid) && it.sinks ? 1 : 0)) + 0.25 * Math.min(4, it.downs) + (it.hits ? 0 : -0.6);
+      it.value = cls(T) * (it.hits ? 1 + 0.9 * Math.min(4, it.hits) + (it.sinks ? 2.5 : 0) + (mag.has(tid) && it.sinks ? 1 : 0) : 0.35) + 0.3 * Math.min(5, it.downs);
       items.push(it);
     }
     // ship arcs: a torpedo spread that hits (or a charge), a gun duel that scores
@@ -177,6 +193,16 @@ window.WW = window.WW || {};
   // ---------- the arbiter ----------
   let tk = 0, cur = null, rest = 0;
   const D = () => WW.camDirector, S = () => WW.camStory;
+  const SUPER = 1.6, MINV = 0.6;
+  // the arc the planner started is still running
+  const mineRunning = () => !!(cur && cur.arc && !cur.arc.t1);
+  // a planned arc is open or opens within 12 real s: camera4's own arc pickers stand down (else they fill in)
+  function owns() {
+    if (!active()) return false;
+    if (mineRunning()) return true;
+    const P = plan();
+    return P.some(it => it.value >= MINV && it.openR <= 12 && it.lateR > 0);
+  }
   function arcRunning() { return !!(D() && D().arcBusy()); }
   function runningAbout(it) {
     const d = D(); if (!d || !d.arcBusy()) return false;
@@ -189,7 +215,7 @@ window.WW = window.WW || {};
     if (it.kind === 'strike') {
       const pr = protagonist(it); if (!pr) { ST.rejected++; return false; }
       const mission = 'strike';
-      okd = S() && S().plan ? S().plan({ lead: pr.p, mission, item: { la: true } }, { doom: pr.doom, loss: pr.loss, value: it.value, climaxR: it.climaxR, target: it.target.type }) : false;
+      okd = S() && S().plan ? S().plan({ lead: pr.p, mission, item: { la: true }, target: it.target }, { doom: pr.doom, loss: pr.loss, value: it.value, climaxR: it.climaxR, target: it.target.type }) : false;
       if (okd) { ST.air++; if (pr.doom) ST.doomed++; }
     } else {
       const b = { kind: it.kind === 'cvraid' ? 'raid' : it.kind, subj: it.kind === 'cvraid' ? it.target : it.subj, target: it.kind === 'cvraid' ? null : it.target, promise: 8 + it.value, struck: it.cv };
@@ -200,7 +226,7 @@ window.WW = window.WW || {};
     ST.plans++; if (it.cv) ST.cv++;
     const k = it.kind + ':' + (it.target ? it.target.type : '');
     ST.byKind[k] = (ST.byKind[k] || 0) + 1;
-    cur = { it, at: wall(), endR: wall() + Math.max(8, it.endR) };
+    const A = D().arcs; cur = { it, at: wall(), climaxAt: wall() + it.climaxR, endAt: wall() + Math.max(8, it.endR), arc: A[A.length - 1] || null };
     log.push({ at: wall(), why, kind: it.kind, tgt: it.target ? it.target.type : '', climaxR: +it.climaxR.toFixed(1), value: +it.value.toFixed(2), hits: it.hits }); if (log.length > 200) log.shift();
     return true;
   }
@@ -218,24 +244,41 @@ window.WW = window.WW || {};
     const L = shot && WW.camLock && WW.camLock.state(shot);
     const busy = arcRunning();
     // a carrier strike whose window is open supersedes an arc not about her (a clean cut, from the raid inbound)
-    const cv = P.find(it => it.cv && it.openR <= 0 && it.lateR > 0 && !runningAbout(it));
+    // (the biggest carrier arc open now, unless a bigger one opens before it would be over)
+    const cvs = P.filter(it => it.cv && it.openR <= 0 && it.lateR > 0 && !runningAbout(it));
+    const cv = cvs.find(it => !P.some(o => o !== it && o.cv && o.value > it.value * 1.5 && o.openR > 0 && o.earlyR < it.endR && o.lateR > 0));
     if (cv && busy) {
       if (cur && cur.it.cv && cur.it.target === cv.target) return;
       if (shot && (shot.stage || (L && L.release))) return;                 // never the last seconds of an attack
       const mine = cur && cur.it;
       if (mine && mine.cv && mine.value >= cv.value) return;
-      if (mine && mine.climaxR > 0 && mine.climaxR < 6 && !mine.cv) return; // the running arc's own climax is seconds away: let it land
+      const left = cur ? cur.climaxAt - wall() : 1e9;
+      if (mineRunning() && left > -2 && left < 10 && left < cv.climaxR - 2 && cur.it.value >= cv.value * 0.6) return; // the running arc's own climax lands first and soon (and is worth it): let it land
+      if (mineRunning() && left > -2 && left < 4) return;
       if (st && S().supersede) S().supersede();
       const target = cv.kind === 'strike' && protagonist(cv) ? cv : cvRaid(cv);
       if (startItem(target, 'cv-supersede')) ST.superseded++;
       return;
     }
+    // a running arc camera4's pickers started (no plan opened then): a planned arc worth more takes over in its quiet part
+    if (busy && !mineRunning() && shot && !shot.stage && !(L && L.release)) {
+      const ph = st && st.begun ? (S()._dbg() || {}).phase : 'ship';
+      const quiet = ph === 'transit' || ph === 'form' || ph === 'home' || ph === 'launch' || ph === 'after' || ph === 'ship';
+      const b = P.find(it => it.openR <= 0 && it.lateR > 0 && it.value >= SUPER && !runningAbout(it));
+      if (b && quiet) {
+        if (st && S().supersede) S().supersede(); else if (D().endShipArc) D().endShipArc('superseded');
+        if (startItem(b, 'take-over')) ST.superseded++;
+        return;
+      }
+    }
+    // a planned ship arc is over a beat after its climax (no minutes of orbiting the aftermath)
+    if (busy && mineRunning() && cur.it.kind !== 'strike' && wall() > cur.endAt && shot && !shot.stage && !(L && L.release) && D().endShipArc) { D().endShipArc('complete'); return; }
     if (busy) return;
     if (st && !st.begun) return;                                             // a planned story waiting for the running shot to end
     if (shot && (shot.stage || (L && L.release) || shot.pr >= 99 || shot.finale)) return;
     if (shot && shot.t < 2.5 && !(cv)) return;
     // the best arc whose window is open now, and that ends before a bigger arc must start
-    const open = P.filter(it => it.openR <= 0 && it.lateR > 0);
+    const open = P.filter(it => it.openR <= 0 && it.lateR > 0 && it.value >= MINV);
     for (const it of open) {
       const clash = P.find(o => o !== it && o.value > it.value * 1.2 && o.earlyR < it.endR && o.lateR > 0 && o.openR > 0 && (o.cv || o.value > it.value * 2));
       if (clash) continue;                                                   // a bigger arc opens before this one would end: wait for it
@@ -250,8 +293,8 @@ window.WW = window.WW || {};
   WW.on('roundStart', () => { cur = null; tk = 0; evCache = plCache = null; evAt = plAt = -1; });
 
   WW.camLook = {
-    active, events: evs, forecastFor: s => evs().find(e => e.s === s) || null, plan, protagonist, successorHint, stats: ST, log,
+    active, storyBrace, events: evs, forecastFor: s => evs().find(e => e.s === s) || null, plan, protagonist, successorHint, stats: ST, log,
     // camera_director.js / camera_story.js: the look-ahead chooses the arcs (their own pickers stand down)
-    owns: () => active()
+    owns
   };
 })(window.WW);

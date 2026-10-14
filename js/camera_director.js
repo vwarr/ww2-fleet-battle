@@ -134,6 +134,8 @@ window.WW = window.WW || {};
     if (k === 'torp') return 'Torpedoes running at ' + s + sink;
     if (k === 'bomb') return 'Bombs falling on ' + s + sink;
     if (k === 'dive') return (e.src && e.src.obj ? sqOf(e.src.obj) : 'Dive bombers') + ' diving on ' + s + sink;
+    if (k === 'sink') return s.replace(/^the /, 'The ') + ' is going down';
+    if (k === 'mag') return s.replace(/^the /, 'The ') + ': the magazine';
     return (k === 'shellbig' ? 'Heavy shells' : 'Shells') + ' inbound on ' + s + (e.src && e.src.obj ? ' from ' + nameOf(e.src.obj) : '') + sink;
   }
   // ---------- the event source: ONE interface ----------
@@ -444,7 +446,8 @@ window.WW = window.WW || {};
   // the climax inside an arc: an impact due on the arc's target in 1.5-6 s while the camera is elsewhere in the arc (not
   // in a hand-off, not in an attack's release window, not already braced): cut to the brace, inside the arc
   function climax(shot) {
-    if (!shot || shot.stage || shot.kind === 'brace' || shot.t < 1.5 || shot.interrupt) return null;
+    const look = !!(WW.camLook && WW.camLook.active());   // camera5: the impact times are known, not guessed: cut in sooner, from further out
+    if (!shot || shot.stage || shot.kind === 'brace' || shot.t < (look ? 0.8 : 1.5) || shot.interrupt) return null;
     const L = WW.camLock && WW.camLock.state(shot); if (L) return null;   // an attack being filmed (the run, the dive, a salvo in the air): it shows its own result
     const sp = shot.plane || shot.subj; if (sp && sp.pt && sp.alive && sp.ordnance && (sp.phase === 'run' || sp.phase === 'roll' || sp.phase === 'dive')) return null;
     let T = null, own = null;
@@ -457,7 +460,7 @@ window.WW = window.WW || {};
       if (P.alive && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;   // the protagonist's own attack: its chase and hand-off show the hit
     }
     for (const v of events()) {
-      if (T.indexOf(v.target) < 0 || v.t < 1.5 || v.t > 6) continue;
+      if (T.indexOf(v.target) < 0 || v.t < 1.5 || v.t > (look ? 7 : 6)) continue;
       if (own && v.subject && v.subject.pt && own.wave && v.subject.wave !== own.wave && v.weight < 10) continue;   // a story: its own wave's hits (or any big one)
       const e = v._f;
       return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) };
@@ -578,6 +581,7 @@ window.WW = window.WW || {};
     if (bp < 0 && ap < 0) return null;
     return bp >= ap ? { ship: b, label: arcLabel(b), subj: b.subj } : { air: a, label: WW.camStory.titleOf(a.lead, a.mission).filter(Boolean).join(' · '), subj: a.lead };
   }
+  function endShipArc(outcome) { if (sa && !sa.user) { closeShipArc(outcome || 'superseded'); if (outcome === 'complete') wideNext = true; const sh = WW.cam._shot(); if (sh && !sh.stage) sh.dur = Math.min(sh.dur, sh.t); } }
   function adoptShip() { if (!sa) return false; sa.user = true; sa.rec.user = true; const sh = WW.cam._shot(); if (sh && sh.arc === sa.rec.id) Object.assign(sh, { user: true, fkey: true }); return true; }
   const userArc = () => (sa && sa.user ? sa.subj : null);
   function endUserArc() { if (sa && sa.user) closeShipArc('cutAway'); }
@@ -591,6 +595,6 @@ window.WW = window.WW || {};
     return b ? Object.assign(b, { label: describe(b) }) : null;
   }
 
-  WW.camDirector = { fPick, adoptShip, userArc, endUserArc, events, arcs, arcBusy, arcAbout, arcAllows, arcPick, shipArcs, startShipArc, arcOpen, arcClose, arcLabel, cls, forecast, forecastFor, torpEta, frameCheck, sight, start, goal, clearSight, bestNow, describe, about, worth, stats: ST, log, MIN_T, BIG };
+  WW.camDirector = { fPick, adoptShip, endShipArc, labelOf, userArc, endUserArc, events, arcs, arcBusy, arcAbout, arcAllows, arcPick, shipArcs, startShipArc, arcOpen, arcClose, arcLabel, cls, forecast, forecastFor, torpEta, frameCheck, sight, start, goal, clearSight, bestNow, describe, about, worth, stats: ST, log, MIN_T, BIG };
   if (WW.cam) { WW.cam.frameCheck = frameCheck; WW.cam.arcs = arcs; }
 })(window.WW);

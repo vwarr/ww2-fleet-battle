@@ -39,6 +39,8 @@ const SCEN = {
   night_cv: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'], tod: 'night' },   // night_plan.js: a carrier-only night
   night_bl: { A: ['battleship', 'battleship', 'cruiser', 'cruiser'], B: ['battleship', 'battleship', 'cruiser', 'cruiser'], tod: 'night' },
   dusk: { random: true, tod: 120 },
+  carrier_duel_dusk: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'], tod: 120 },
+  midway_dusk: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN', tod: 120 },
   odd: { odd: true }
 };
 function specOf(name, seed) {
@@ -569,7 +571,7 @@ async function survey(b, spec, dir) {
   const t0 = Date.now();
   let t = 0;
   while (true) { await p.evaluate(WAIT); t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
-  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null, la: WW.lookahead && WW.lookahead.on ? { checks: WW.lookahead.checks, diverged: WW.lookahead.diverged, mismatch: WW.lookahead.mismatch, steps: WW.lookahead.stepsRun, bootMs: WW.lookahead.bootMs, errs: WW.lookahead.errs.slice(0, 5) } : null }; });
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null, la: WW.lookahead && WW.lookahead.on ? { checks: WW.lookahead.checks, diverged: WW.lookahead.diverged, mismatch: WW.lookahead.mismatch, steps: WW.lookahead.stepsRun, bootMs: WW.lookahead.bootMs, errs: WW.lookahead.errs.slice(0, 5) } : null, look: WW.camLook && WW.camLook.active ? { stats: WW.camLook.stats, log: WW.camLook.log } : null }; });
   R.errs = errs.slice(0, 5);
   fs.writeFileSync(path.join(dir, `${spec.name}_${spec.seed}.json`), JSON.stringify(R));
   const M = analyse(R);

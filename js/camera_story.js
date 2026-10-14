@@ -152,7 +152,7 @@ window.WW = window.WW || {};
     lastSq = p.squadron || null; ST.stories++;
     if (WW.camDirector) S.arc = WW.camDirector.arcOpen('air:' + arc.mission, p, { user: !!user });   // the arc log (camera_director.js)
     log.push({ start: true, lead: p.kind + ' ' + (p.squadron ? p.squadron.short : ''), mission: arc.mission, at: wall() });
-    S.begun = false; S.item = arc.item || null; S.imminent = !!arc.item;
+    S.begun = false; S.item = arc.item || null; S.imminent = !!arc.item; S.laTarget = arc.target || null;   // (camera5: the planned arc's target)
     if (user) WW.cam.cut(); // the director's own pick waits for the current shot to end (never cuts an action shot)
     return true;
   }
@@ -276,6 +276,10 @@ window.WW = window.WW || {};
       const c = S.insert; S.insert = null; S.last = 'insert'; S.shots++;
       log.push({ sk: 'insert', kind: c.kind, phase: S.phase, at: now, dur: +(c.dur || 0).toFixed(1), hard: false });
       return Object.assign(c, { story: true, insert: true });
+    }
+    if (WW.camLook && WW.camLook.storyBrace) { // camera5: the wave's hit on the target, known ahead: braced for it
+      const b = WW.camLook.storyBrace(S);
+      if (b && S.last !== 'insert') { S.last = 'insert'; S.shots++; log.push({ sk: 'insert', kind: 'brace', phase: S.phase, at: now, dur: +b.dur.toFixed(1), hard: false }); return Object.assign(b, { story: true, insert: true }); }
     }
     if (S.cutaway && now - S.cutaway.at < 8 && S.cutaway.s && !S.cutaway.s.removed && phaseOf(S.lead) !== 'attack') { // a ship going down elsewhere
       const s = S.cutaway.s; S.cutaway = null; S.lastCutaway = now; ST.cutaways++;
@@ -459,7 +463,7 @@ window.WW = window.WW || {};
     // camera_lookahead.js: a story chosen by its known outcome (meta: the plan, logged on the arc); not the user's, it cuts in
     // as the running shot allows (an imminent story)
     plan(arc, meta) { if (S && S.begun) return false; start(arc, false); if (S && S.arc && meta) S.arc.plan = meta; return !!S; },
-    story() { return S ? { lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
+    story() { return S ? { laTarget: S.laTarget, lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
     interrupted(c) { if (S) { S.lastCutaway = wall(); S.cutaway = null; log.push({ interrupt: c.kind, at: wall() }); } }, // camera.js interrupt(): the story resumes after it
     // camera.js recut(): a bigger action elsewhere takes the camera; an automatic story ends for it (the user's does not)
     // camera_director.js: a carrier about to be struck takes the camera (the story is closed, not resumed); F adopts the
