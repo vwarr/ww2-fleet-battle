@@ -212,7 +212,8 @@ compared apart: its last seconds are partly visual).
 | dead air | 7% | 7% |
 | protagonist falls filmed / held to the water | 19 / 19 | **58 / 52** |
 | arcs ending with the protagonist down | 19 of 340 | **56** of 350 |
-(Raw: scratchpad raw_m3_f / raw_m4_l.) Earlier rounds of the same comparison (before the last tuning) gave the same
+(Summaries and the judged contact sheets, named by director (m2_* / m3_f_* forecast vs m2_l_* / m4_l_* look-ahead,
+v3_l_* the third VQA round): tests/shots/camera_audit/camera5/ and briefs/camera5_sheets/.) Earlier rounds of the same comparison (before the last tuning) gave the same
 picture: the look-ahead ahead on in-arc coverage, recuts and the protagonist's death, level on carriers. Its weak spot:
 more impacts hidden behind a hull (36 vs 13).
 

@@ -16,7 +16,8 @@ window.WW = window.WW || {};
   const MODE = m ? m[1] : 'lookahead';   // (camera5: the look-ahead director won the comparison, docs/camera_review.md)
   const AHEAD = 90, HORIZON = 75, PACE = 60;   // sim s the worker runs ahead; sim s the director may look; steps between pace messages
   const LA = WW.lookahead = {
-    mode: MODE, on: MODE === 'lookahead' && !WW.simOnly && typeof Worker !== 'undefined',
+    // (off: sim-only pages, no Worker, a file:// page (no worker from file://), Normandy (out of scope: the forecast films it))
+    mode: MODE, on: MODE === 'lookahead' && !WW.simOnly && typeof Worker !== 'undefined' && !(typeof location !== 'undefined' && location.protocol === 'file:') && !/[?&]scn=normandy\b/.test(q),
     ready: false, failed: false, diverged: false, gen: 0, wn: 0, wstate: '', ev: [], checks: 0, mismatch: null, errs: [],
     AHEAD, HORIZON, bootMs: 0, stepsRun: 0
   };
@@ -36,7 +37,7 @@ window.WW = window.WW || {};
     worker.postMessage({ cmd: 'init', scripts, dbg: !!L.dbg });
   }
   function onMsg(d) {
-    if (d.m === 'ready') { LA.ready = !!d.ok; LA.bootMs = d.ms; if (!d.ok) LA.failed = true; return; }
+    if (d.m === 'ready') { LA.ready = !!d.ok; LA.bootMs = d.ms; if (!d.ok) LA.failed = true; else pace(); return; }
     if (d.m === 'err') { LA.errs.push(d.msg); if (LA.errs.length > 20) LA.errs.shift(); console.error('lookahead worker: ' + d.msg); return; }
     if (d.m === 'eval') { const f = evals.get(d.id); evals.delete(d.id); if (f) f(d.v); return; }
     if (d.m === 'log' && d.gen === LA.gen) {
@@ -52,10 +53,12 @@ window.WW = window.WW || {};
     if (mine.get(n) === theirs.get(n)) LA.checks++;
     else if (!LA.diverged) { LA.diverged = true; LA.mismatch = { n, page: mine.get(n), worker: theirs.get(n) }; }
   }
-  function pace() { if (worker && LA.ready !== false) worker.postMessage({ cmd: 'pace', gen: LA.gen, n: liveN(), ahead: Math.round(AHEAD / h()) }); }
+  function pace() { if (worker && !LA.failed) worker.postMessage({ cmd: 'pace', gen: LA.gen, n: liveN(), ahead: Math.round(AHEAD / h()) }); }
   WW.on('roundStart', () => {
     if (!LA.on) return;
+    if (WW.scn && WW.scn().id && WW.scn().id !== 'pacific') { LA.gen++; LA.ev = []; LA.wn = 0; return; }   // (another scenario chosen at run time: no copy)
     if (!worker) start();
+    if (!worker) return;   // (the worker could not start: the forecast director films the round)
     LA.gen++; LA.ev = []; LA.wn = 0; LA.wstate = ''; LA.diverged = false; LA.mismatch = null; LA.checks = 0; mine = new Map(); theirs = new Map();
     L.on = true;
     worker.postMessage({ cmd: 'round', gen: LA.gen, rec: WW.game.rec });
