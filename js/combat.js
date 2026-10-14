@@ -84,6 +84,8 @@ window.WW = window.WW || {};
     M.torp = new THREE.MeshBasicMaterial({ color: 0x2a2f33 });
     M.bomb = new THREE.MeshBasicMaterial({ color: 0x353b2e });
     M.dc = new THREE.MeshBasicMaterial({ color: 0x222222 });
+    // a falling bomb or aerial torpedo: the planes' toon material (baked vertex paint; combat_weapons.js ordGeo / airLook)
+    if (WW.models && WW.models._mat) M.ord = WW.models._mat(0xffffff);
     tmpV = new THREE.Vector3();
   }
 

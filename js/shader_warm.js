@@ -72,7 +72,8 @@ window.WW = window.WW || {};
       try { if (M.buildFlyingBoat) { var fb = M.buildFlyingBoat(n); fb.group.updateMatrixWorld(true); fb.group.traverse(native); } } catch (e) { /* none */ }
       try { if (M.buildScout) { var sc = M.buildScout(n); sc.group.updateMatrixWorld(true); sc.group.traverse(native); } } catch (e) { /* none */ }
     });
-    // materials put on pooled meshes as they are fired (combat.js shells, torpedoes, bombs, tracers; combat_aa.js rounds)
+    // materials put on pooled meshes as they are fired (combat.js shells, torpedoes, bombs, tracers; combat_aa.js rounds;
+    // M.ord: the toon material of a falling bomb / aerial torpedo, drawn as a plain, non-instanced mesh)
     var box = new THREE.BoxGeometry(1, 1, 1);
     var bag = function (o) { for (var k in o) { var m = o[k]; if (m && m.isMaterial) { var p = new THREE.Mesh(box, m); proxies.push(p); addProxy(p, fresh); } } };
     var ci = WW.combat && WW.combat._i; if (ci) { if (ci.buildShared) ci.buildShared(); bag(ci.M); }
