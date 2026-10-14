@@ -16,6 +16,11 @@ window.WW = window.WW || {};
   const sqName = p => (p && p.squadron ? p.squadron.short : null);
   const who = p => (WW.squadrons ? WW.squadrons.rank(p) : null);
   const KIND = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
+  const tk = t => (t && t.isBase ? 'airfield' : (t && KIND[t.type]) || 'ship');           // a target's kind: a ship type or the island's airfield
+  const aTk = t => (t && t.isBase ? 'the airfield' : 'a ' + tk(t));
+  // a level bomber (land_air.js: pl.level, or a torpedo plane sent against the island with bombs): never a dive or torpedo attack
+  const level = p => !!(p && (p.level || (p.kind === 'torpedo' && p.target && p.target.isBase)));
+  const bombers = f => (level(f) ? 'level bombers' : f.kind === 'torpedo' ? 'torpedo bombers' : 'dive bombers');
 
   function note(m) { m.at = wall(); m.sim = WW.time.now; moments.push(m); if (moments.length > 24) moments.shift(); }
   WW.on('airOrder', e => { if (e && (e.order === 'strikeAway' || e.order === 'scramble' || e.order === 'redirect' || e.order === 'cag')) note(Object.assign({}, e)); });
@@ -39,13 +44,13 @@ window.WW = window.WW || {};
   const waveOf = m => (m.leader && m.leader.wave) || (m.plane && m.plane.wave) || null;
   function awayLine(m) {
     const w = waveOf(m), t = (w && w.target) || m.target, c = m.carrier;
-    return [c.nation === 'USN' ? 'Strike away: ' + m.squadrons.join(', ') : 'Strike away from ' + (c.name || 'the carrier'), (c.nation === 'USN' ? '' : m.squadrons.length + ' units, ') + (t ? 'against a ' + (KIND[t.type] || 'ship') : '')];
+    return [c.nation === 'USN' ? 'Strike away: ' + m.squadrons.join(', ') : 'Strike away from ' + (c.name || 'the carrier'), (c.nation === 'USN' ? '' : m.squadrons.length + ' units, ') + (t ? 'against ' + aTk(t) : '')];
   }
   function lineFor(s) {
     const now = WW.time.now, fresh = moments.filter(m => now - m.sim < KEEP);   // fresh in sim time too
     const isP = s.pt && s.kind && s.alive && s.squadron, k0 = isP && (s.t0id || (s.t0id = Math.random()));
-    if (isP && s.kind === 'torpedo' && s.phase === 'run' && !said.has('run' + k0)) { said.add('run' + k0); return [sqName(s) + ' begins its run', who(s) || '']; }
-    if (isP && s.kind === 'dive' && (s.phase === 'roll' || s.phase === 'dive') && !said.has('dive' + k0)) { said.add('dive' + k0); return [sqName(s) + ' pushes over', who(s) || '']; }
+    if (isP && s.kind === 'torpedo' && s.phase === 'run' && s.ordnance && !level(s) && !said.has('run' + k0)) { said.add('run' + k0); return [sqName(s) + ' begins its run', who(s) || '']; }
+    if (isP && s.kind === 'dive' && !s.level && (s.phase === 'roll' || s.phase === 'dive') && !said.has('dive' + k0)) { said.add('dive' + k0); return [sqName(s) + ' pushes over', who(s) || '']; }
     const isPlane = s.pt && s.kind, cv = isPlane ? s.carrier : s.type === 'carrier' ? s : null;
     // events first: they are rarer
     for (let i = fresh.length - 1; i >= 0; i--) {
@@ -60,7 +65,7 @@ window.WW = window.WW || {};
       else if (m.order === 'scramble' && m.raid && cv === m.carrier && (s === cv || (isPlane && s.kind === 'fighter' && !s.target)))
         line = ['CAP vectored to raid', vector(m.carrier, m.raid) + (cv.name ? ' · ' + cv.name : '')];
       else if (m.order === 'redirect' && isPlane && s.wave && s.wave.carrier === m.carrier && m.target)
-        line = [(sqName(m.leader) || 'Strike') + ' redirected', 'new target: ' + (KIND[m.target.type] || 'ship')];
+        line = [(sqName(m.leader) || 'Strike') + ' redirected', 'new target: ' + tk(m.target)];
       else if (m.order === 'cag' && m.plane === s)
         line = [(who(s) || 'Next leader') + ' takes the lead', sqName(s) || ''];
       if (line) { said.add(key); return line; }
@@ -70,9 +75,9 @@ window.WW = window.WW || {};
     if (!isPlane || !s.alive || !s.squadron) return null;
     // the plane's own state
     const sq = sqName(s), key = s.t0id || (s.t0id = Math.random());
-    if (s.wave && s.wave.cag === s && s.state === 'transit' && s.sk === 'form' && !said.has('lead' + key)) { said.add('lead' + key); return [(who(s) || 'The CAG') + ' leads ' + sq + ' in', s.wave.target ? 'target: ' + (KIND[s.wave.target.type] || 'ship') : '']; }
+    if (s.wave && s.wave.cag === s && s.state === 'transit' && s.sk === 'form' && !said.has('lead' + key)) { said.add('lead' + key); return [(who(s) || 'The CAG') + ' leads ' + sq + ' in', s.wave.target ? 'target: ' + tk(s.wave.target) : '']; }
     if (s.kind === 'fighter' && !s.target && s.state === 'attack' && s.foe && (s.foe.kind === 'torpedo' || s.foe.kind === 'dive') && !said.has('cap' + key)) {
-      said.add('cap' + key); return [sq + ' CAP engages ' + (s.foe.kind === 'torpedo' ? 'torpedo bombers' : 'dive bombers'), who(s) || ''];
+      said.add('cap' + key); return [sq + ' CAP engages ' + bombers(s.foe), who(s) || ''];
     }
     return null;
   }
@@ -121,7 +126,12 @@ window.WW = window.WW || {};
       }
     } else if (e.kind === 'bomb') {
       if (t) outcome('Direct hit', (t.name || 'the ' + (KIND[t.type] || 'ship')) + (sq ? ' · ' + sq : ''));
-      else { let near = false; for (const o of WW.world.ships) if (o.alive && WW.dist2(o.x, o.z, e.x, e.z) < (o.stats.length * 0.5 + 8) ** 2) { near = true; break; } outcome(near ? 'Near miss' : 'Bomb misses wide', sq || ''); }
+      else {
+        let near = false; for (const o of WW.world.ships) if (o.alive && WW.dist2(o.x, o.z, e.x, e.z) < (o.stats.length * 0.5 + 8) ** 2) { near = true; break; }
+        const B = WW.islandBase && WW.islandBase.base, ashore = !near && WW.terrain && WW.terrain.depthAt(e.x, e.z) <= 0;   // on land: the island base's field
+        if (ashore && B && WW.dist2(B.x, B.z, e.x, e.z) < 180 * 180) outcome('Bombs on the airfield', (B.name && B.name !== 'the island' ? B.name : '') + (sq ? (B.name && B.name !== 'the island' ? ' · ' : '') + sq : ''));
+        else outcome(near ? 'Near miss' : ashore ? 'Bombs ashore' : 'Bomb misses wide', sq || '');
+      }
     }
   });
   const runs = new WeakMap(); // the filmed torpedo bomber's last phase: a run that ends with the torpedo still aboard was aborted

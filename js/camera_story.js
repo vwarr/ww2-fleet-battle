@@ -126,8 +126,18 @@ window.WW = window.WW || {};
     const sq = p.squadron ? p.squadron.short : null, who = rank(p);
     const main = [sq, who].filter(Boolean).join(' · ') || 'Strike leader';
     let sub = '';
-    if (mission === 'strike' && p.kind === 'fighter') sub = 'escort' + (p.wave && p.wave.target && KIND[p.wave.target.type] ? ' for a strike on a ' + KIND[p.wave.target.type] : '');
-    else if (mission === 'strike') { const t = p.target || (p.wave && p.wave.target); sub = (p.wave && p.wave.cag === p ? 'leads the strike' : 'strike') + (t && KIND[t.type] ? ' on a ' + KIND[t.type] : ''); }
+    // the real target (a ship's type or the island's airfield) and weapon: a level bomber (land_air.js: pl.level, or a
+    // torpedo plane sent against the island with bombs) says so; a fighter strafing small craft is not an escort
+    const on = t => (!t ? '' : t.isBase ? ' on the airfield' : KIND[t.type] ? ' on a ' + KIND[t.type] : '');
+    if (p.kind === 'fighter' && p.strafe && p.state !== 'return' && p.state !== 'landing' && mission !== 'ace') sub = 'strafing ' + (KIND[p.strafe.type] ? 'a ' + KIND[p.strafe.type] : 'small craft');
+    else if (mission === 'strafe') sub = p.state === 'return' || p.state === 'landing' ? 'heading home' : '';
+    else if (mission === 'strike' && p.kind === 'fighter') { const o = on(p.wave && p.wave.target); sub = 'escort' + (o ? ' for a strike' + o : ''); }
+    else if (mission === 'strike') {
+      const home = p.state === 'return' || p.state === 'landing', t = p.target || (p.wave && p.wave.target), cag = p.wave && p.wave.cag === p;
+      const lv = !home && p.ordnance && (p.level || (p.kind === 'torpedo' && t && t.isBase));
+      if (lv) sub = (cag ? 'leads the level-bombing strike' : 'level bombing') + (t ? (t.isBase ? ' the airfield' : KIND[t.type] ? ' a ' + KIND[t.type] : '') : '');
+      else sub = (cag ? 'leads the strike' : 'strike') + on(t) + (home ? ' · heading home' : '');
+    }
     else if (mission === 'cap') sub = 'CAP' + (p.carrier && p.carrier.name ? ' over ' + p.carrier.name : '');
     else if (mission === 'dumbo') return ['Dumbo inbound', 'PBY Catalina · ' + (p.task ? p.task.n + (p.task.kind === 'pilot' ? ' aircrew' : ' survivors') + ' in the water' : 'air-sea rescue')];
     else if (mission === 'snooper') return p.nation === 'IJN' ? ['Mavis shadowing the fleet', 'H6K flying boat · reporting our position'] : ['Catalina shadowing the enemy', 'PBY patrol · contact report'];

@@ -30,12 +30,14 @@ window.WW = window.WW || {};
   function filmShip(s, secs) {
     WW.cam.film({ kind: 'orbit', subj: s, r: s.stats.length * 1.5 + 22, dur: WW.clamp(secs, 10, 40), w: 0.05, hgt: 0.3, user: true });
   }
+  // the story mission for a plane: a fighter strafing small craft, on CAP (no target) or escorting; else a strike
+  const missionOf = s => (s.kind === 'fighter' ? (s.strafe ? 'strafe' : !s.target ? 'cap' : 'strike') : 'strike');
   // jump to a finder item (or { subj, label }): a plane gets a story, a ship an orbit
   function jump(it) {
     director(); ST.jumps++;
     const s = it.subj;
     if (isPlane(s)) {
-      WW.camStory.begin({ lead: s, mission: s.kind === 'fighter' && !s.target ? 'cap' : 'strike', item: it.eta !== undefined ? it : null });
+      WW.camStory.begin({ lead: s, mission: missionOf(s), item: it.eta !== undefined ? it : null });
       cur = { item: it, subj: s, ship: false, at: wall() };
     } else {
       if (WW.camStory.active()) WW.camStory.stop();
@@ -145,7 +147,7 @@ window.WW = window.WW || {};
       L = WW.world.planes.filter(p => ok(p) && p.kind === 'fighter' && p.state === 'attack' && ok(p.foe))
         .map(p => ({ subj: p, label: nameOf(p) + ' in a dogfight' + (p.foe.kind !== 'fighter' ? ' with ' + (p.foe.squadron ? p.foe.squadron.short : 'bombers') : ''), etaReal: 0, eta: 0 }));
     } else if (which === 'danger') L = WW.camFinder.upcoming(['torps', 'danger']);
-    else L = WW.camFinder.upcoming(['strike', 'push', 'anvil', 'run', 'bandits', 'torps']);
+    else L = WW.camFinder.upcoming(['strike', 'push', 'anvil', 'run', 'level', 'bandits', 'torps']);
     // one entry per strike wave (its earliest moment: the wave's strike / push / anvil items are one attack), per fighter element and per ship
     const seen = new Set();
     L = L.filter(i => { if (!i.subj || i.subj.removed) return false; const k = i.subj.wave || i.subj.element || i.subj; if (seen.has(k)) return false; seen.add(k); return true; });
@@ -217,5 +219,5 @@ window.WW = window.WW || {};
   });
   WW.on('roundStart', () => { cur = null; fired.clear(); hit.clear(); });
   WW.on('setupStart', () => { cur = null; });
-  WW.camFollow = { f, cycle, jump, following, handBack, labelText, stats: ST };
+  WW.camFollow = { f, cycle, jump, following, handBack, labelText, stats: ST, _mission: missionOf };
 })(window.WW);
