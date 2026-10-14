@@ -173,16 +173,17 @@ window.WW = window.WW || {};
     }
     for (const s of WW.world.ships) if (s.alive && burning(s) && s.type !== 'pt') add(7.5, 'orbit', s, { r: s.stats.length * 1.4 + 16, dur: dur(12, 16), w: 0.045 });
   }
-  // No flying after dusk: air stories end, and none start (camera_story.js).
+  // No flying after dusk: the director's own air stories end, and none start (camera_story.js). The user's story (key F,
+  // a click on a plane still up at last light) runs on until its plane lands or falls; F itself (camera_follow.js)
+  // goes to the night gun action when no plane is up, so it is not gated here.
   function wrapStory() {
     const S = WW.camStory;
     if (!S || S.pick.night) return;
     const dark = () => WW.dayNight && !WW.dayNight.canFly();
+    const user = () => { const st = S.story && S.story(); return !!(st && st.user); };
     const pick = S.pick;
-    S.pick = function () { if (dark()) { if (S.active && S.active()) S.stop(); return null; } return pick.apply(this, arguments); };
+    S.pick = function () { if (dark() && !user()) { if (S.active && S.active()) S.stop(); return null; } return pick.apply(this, arguments); };
     S.pick.night = true;
-    if (S.toggle) { const tg = S.toggle; S.toggle = function () { if (dark() && !(S.active && S.active())) return 'Follow: no flight ops in the dark'; return tg.apply(this, arguments); }; }
-    if (S.follow) { const fo = S.follow; S.follow = function () { if (dark()) return false; return fo.apply(this, arguments); }; }
   }
   // a big flash that lights the scene at night (fx_critical.js: a magazine, a hangar going up)
   function flash(x, y, z, i, life, dist) { if (n > 0.2) addFlash(x, y, z, i, life, dist); }

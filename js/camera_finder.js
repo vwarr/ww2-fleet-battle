@@ -6,6 +6,8 @@
 //            or diving (eta to the release from the height and the sink rate);
 //   anvil    torpedo bombers setting up the anvil (vague: the set-up takes 10-150 s of real time, no honest number);
 //   run      a torpedo bomber on its run (eta to the drop from the distance to its drop range);
+//   level    a level bomber on its bombing run (a B-17, a Betty level variant, a carrier torpedo plane sent against the
+//            island with bombs: land_air.js), eta to the release; vague while it climbs to its height;
 //   bandits  fighters closing on bombers (vague: the escort decides whether they ever get there);
 //   torps    torpedoes in the water running at a ship (eta = track distance / torpedo speed);
 //   danger   a ship burning / flooding / just hit by a magazine or deck explosion (ship_fires.js, feature-detected).
@@ -20,7 +22,10 @@ window.WW = window.WW || {};
   const ok = p => p && !p.removed && p.alive;
   const KIND0 = { carrier: 'carrier', battleship: 'battleship', cruiser: 'cruiser', destroyer: 'destroyer', submarine: 'submarine', pt: 'PT boat' };
   const kindOf = t => (t && (KIND0[t.type] || (t.isBase ? 'airfield' : null))) || 'target';
-  const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
+  const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4, base: 1 };
+  // the plane's real weapon: a level bomber (land_air.js: pl.level, or a torpedo plane sent against the island, which
+  // carries bombs and level-bombs whatever its sk / phase say) is never labelled a dive or torpedo attack
+  const level = p => !!(p.level || (p.kind === 'torpedo' && p.target && p.target.isBase));
   const sq = p => (p && p.squadron ? p.squadron.short : p && p.nation === 'IJN' ? 'IJN strike' : 'Strike');
   let cache = [], cacheAt = -1e9, cacheSim = -1e9, rate = 0.5, rW = null, rS = 0, latched = [];
 
@@ -69,7 +74,7 @@ window.WW = window.WW || {};
       const eta = Math.max(0, d - ARRIVE) / v + (w.go ? 0 : 15);
       // a wave with torpedo planes attacks 4-48 real s after it arrives (the anvil set-up): no honest number; dive bombers
       // push over within a few seconds of the push-over point
-      const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance), vague = !w.go || vt;
+      const vt = w.members.some(m => ok(m) && m.kind === 'torpedo' && m.ordnance && !level(m)), vague = !w.go || vt;
       add('strike', lead, t, eta + (vt ? 10 : 1), (1.2 + 0.25 * Math.min(6, n) + (vt ? 0.4 : 0)) * (VALUE[t.type] || 1),
         sq(lead) + (vague && w.go ? ' strike closing on the ' : ' strike reaches the ') + kindOf(t), vague);
     }
@@ -77,7 +82,16 @@ window.WW = window.WW || {};
       if (!ok(p) || !p.pt) continue;
       const t = p.target;
       // dive bombers running in to the push-over point (a number), circling to push over (no number), or diving
-      if (p.kind === 'dive' && p.ordnance && t && t.alive && p.state === 'attack' && !p.phase && p.wing === 0) {
+      if (level(p)) {
+        if (p.ordnance && t && t.alive && p.lvPh !== 'away' && !p.wing) {
+          const A = t.isBase && p.aimF ? p.aimF : t, d = WW.dist(p.x, p.z, A.x, A.z);
+          if (p.state === 'attack' || d < 400) {
+            const rel = (p.speed || 20) * 0.75 * Math.sqrt(2 * Math.max(4, p.y) / 9.8), climb = !!p.lvC;
+            add('level', p, t, Math.max(0, d - rel) / Math.max(8, p.speed || 20) + (climb ? 20 : 0), 1.5 * (VALUE[t.type] || 1),
+              sq(p) + (climb ? ' climbs to bomb the ' : ' bombing run on the ') + kindOf(t), climb);
+          }
+        }
+      } else if (p.kind === 'dive' && p.ordnance && t && t.alive && p.state === 'attack' && !p.phase && p.wing === 0) {
         const R = wheelR(p.pt), dh = WW.dist(p.x, p.z, t.x, t.z), out = dh > R + 16;
         add('push', p, t, out ? (dh - R) / Math.max(8, p.speed || 20) + 1 : 2.5, 2.6 * (VALUE[t.type] || 1),
           sq(p) + (out ? ' pushes over on the ' : ' circling to push over on the ') + kindOf(t), !out);
