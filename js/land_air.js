@@ -17,9 +17,11 @@
 //    cleared to land in turn when the field is recovering (the next as the one ahead passes the outer marker), or in a
 //    landing slot between take-offs while it launches, the emergencies first (land_flow.js); final down the centreline
 //    into the wind, touchdown. Main runway closed: an emergency landing on the cross
-//    runway if it is open (the plane is towed off), else the plane holds for HOLD_MAX s (HOLD_BIG for the land bombers,
-//    which had the fuel to wait out the runway repairs; a neutralized base: LEAVE_T s) and then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room nearby;
-//    every other type (B-17, B-26, Betty, ...) ditches beside the nearest friendly ship, where it can be rescued.
+//    runway if it is open (the plane is towed off), else the plane holds for the repair (burning HOLD_BURN) until its own
+//    bingo (bingoOut: its fuel and reserve just cover the way out; a neutralized base: LEAVE_T s, 6 s more per place in the stack), so a stack leaves one
+//    by one; then a carrier-capable type (VAR carrier) diverts to a friendly carrier with deck room in its reach, and
+//    every other type (B-17, B-26, Betty, ...) ditches abeam of a friendly ship, ahead of her (air_flight.js ditchFly).
+//    Darkness does not shut the field: Midway lit its strip with flare pots and recovered at night.
 //  - Level bombing (pl.level): B-17 / Betty level variants, and carrier torpedo planes sent against the island (Kates
 //    carried bombs at Midway): a land bomber first climbs to its bombing height (circling out of the target's reach
 //    if it is close), then straight and level, a stick released on the throw point; dropBomb's scatter grows with
@@ -29,7 +31,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  const HOLD_MAX = 70, HOLD_BIG = 150, LEAVE_T = 12, RUN_R = 260, STRIKE_R = 560, DIVERT_R = 420;
+  const HOLD_BURN = 0.35, BINGO_M = 4, LEAVE_T = 12, RUN_R = 260, STRIKE_R = 560;   // hold burn per s (lean, throttled back), bingo margin (fuel s)
   // variant: kind, model key, flight stats over the nation's kind, level bombing { alt, ship: alt on a ship, bombs } (WW.altOf
   // of the historical height: B-17 7,000 m as at Midway; Betty 6,500 m over an island, 5,800 m on ships), gear height, parking class, carrier-capable
   const VAR = {
@@ -233,7 +235,8 @@ window.WW = window.WW || {};
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
       p.rwPh = 'circuit'; p.cleared = false; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
-      if (p.holdT > (b.neutralized ? LEAVE_T : bg ? HOLD_BIG : HOLD_MAX)) { p.leaving = true; return; }
+      p.fuel -= dt * HOLD_BURN;   // throttled back in the hold: the repair is waited out while the tanks allow
+      if (b.neutralized ? (p.nzT = (p.nzT || 0) + dt) > LEAVE_T + 6 * i : (p.boT = (p.boT || 0) - dt) <= 0 && (p.boT = 1, bingoOut(p))) { p.leaving = true; return; }
       LH.orbit(p, b, i, dt);
       return;
     }
@@ -284,8 +287,8 @@ window.WW = window.WW || {};
   }
   function rollout(p, dt) { return G().inbound(p, dt); }
 
-  // Leaving a closed field: a carrier-capable plane diverts to the nearest friendly carrier with deck room within
-  // DIVERT_R; any other type (land bombers can never land on a deck) flies to the nearest friendly ship and ditches
+  // Leaving a closed field: a carrier-capable plane diverts to the nearest friendly carrier with deck room within its
+  // fuel's reach; any other type (land bombers can never land on a deck) flies to the nearest friendly ship and ditches
   // beside it (endgame.js / air_flyingboats.js send a rescue); with no friendly ship, it ditches off the reef.
   function deckRoom(cv) {
     let cap = cv.wingN || 0, n = 0; const P = cv.stats.planes || {};   // the carrier's own air group (air_boss.js), else the ship stats
@@ -295,16 +298,27 @@ window.WW = window.WW || {};
     for (const q of WW.world.planes) if (q.alive && q.carrier === cv) n++;
     return cap + 2 - n;
   }
+  // where a plane leaving the field would go: a friendly carrier with deck room it has the fuel to reach (carrier types),
+  // else the friendly ship to ditch beside (air_flight.js ditchShip: a destroyer first); d: the way there
+  function outlet(p) {
+    const F = WW.airFlight, f = p.fuel + F.reserve(p);
+    let cv = null, cd = 1e9;
+    if (!p.variant || VAR[p.variant].carrier) for (const s of WW.world.ships) {
+      if (!s.alive || s.sinking || s.nation !== p.nation || s.type !== 'carrier' || !s.hangar || s.deckOut) continue;   // (not a holed deck, ship_deck.js)
+      const d = WW.dist(p.x, p.z, s.x, s.z);
+      if (d < cd && d / F.cruise(p) * F.CRUISE_BURN * 1.1 < f && deckRoom(s) > 0) { cd = d; cv = s; }
+    }
+    if (cv) return { cv, d: cd };
+    const ship = F.ditchShip(p);
+    return { ship, d: ship ? WW.dist(p.x, p.z, ship.x, ship.z) : 0 };
+  }
+  // bingo in the hold: each plane by its own tanks (the fuel and its reserve just cover the way to its outlet, at
+  // cruise, plus BINGO_M), so a stack over a shut field breaks up one by one, never all together
+  function bingoOut(p) { const F = WW.airFlight; return p.fuel + F.reserve(p) < outlet(p).d / F.cruise(p) * F.CRUISE_BURN * 1.1 + BINGO_M; }
   function leave(p, b, dt) {
     if (!p.leaveT) {
       p.leaveT = WW.time.now;
-      let cv = null, cd = DIVERT_R, ship = null, sd = 1e9;
-      for (const s of WW.world.ships) {
-        if (!s.alive || s.sinking || s.nation !== p.nation) continue;
-        const d = WW.dist(p.x, p.z, s.x, s.z);
-        if ((!p.variant || VAR[p.variant].carrier) && s.type === 'carrier' && s.hangar && !s.deckOut && d < cd && deckRoom(s) > 0) { cd = d; cv = s; }   // (not a holed deck, ship_deck.js)
-        if (s.type !== 'submarine' && d < sd) { sd = d; ship = s; }
-      }
+      const o = outlet(p), cv = o.cv, ship = o.ship;
       const i = b.ai.lq.indexOf(p); if (i >= 0) b.ai.lq.splice(i, 1);
       if (cv) { // the carrier's air boss takes it (air_deck.js): it lands, rearms and joins the carrier's group
         if (p.slot) { p.slot.state = 'away'; p.slot.plane = null; }
@@ -316,15 +330,11 @@ window.WW = window.WW || {};
     }
     const D = p.ditchTo;
     if (D.ship && D.ship.alive && !D.ship.sinking) { D.x = D.ship.x; D.z = D.ship.z; }
-    else if (D.ship) { // the ship it was making for has gone: the next nearest friendly ship, else its last position
-      let best = null, bd = 1e9;
-      for (const s of WW.world.ships) if (s.alive && !s.sinking && s.nation === p.nation && s.type !== 'submarine') { const d = WW.dist(p.x, p.z, s.x, s.z); if (d < bd) { bd = d; best = s; } }
-      if (best) { D.ship = best; D.x = best.x; D.z = best.z; } else { D.ship = null; if (D.x === undefined) { D.x = p.x; D.z = p.z; } }
+    else if (D.ship) { // the ship it was making for has gone: the next one (air_flight.js ditchShip), else its last position
+      const s = WW.airFlight.ditchShip(p); D.ship = s; D.side = undefined; D.gate = false; if (s) { D.x = s.x; D.z = s.z; }
     }
-    const tx = D.x, tz = D.z;
-    const d = WW.dist(p.x, p.z, tx, tz), off = D.ship ? 22 : 0;
-    p.fly(tx, tz, d > 60 ? 18 : 6, dt, p.pt.speed * 0.75);
-    if ((d < off + 8 && WW.terrain.depthAt(p.x, p.z) > 1.5) || WW.time.now - p.leaveT > 150) { ST.ditched++; p.ditch(); }
+    // the ditching run abeam of her, along her course (air_flight.js ditchFly), over water deep enough
+    if ((WW.airFlight.ditchFly(p, D, dt, p.pt.speed * 0.75) && WW.terrain.depthAt(p.x, p.z) > 1.5) || WW.time.now - p.leaveT > 150) { ST.ditched++; p.ditch(); }
   }
 
   // ---------- level bombing, and strikes on the base aimed at its facilities ----------

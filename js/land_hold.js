@@ -13,7 +13,7 @@
 //    (land_flow.js) it goes straight in; else it makes for the fix and joins the queue there.
 //  - Holding: a slow orbit round the fix (a holder far from it, sent back from the circuit or the fix moved, flies
 //    round the island to it along the FIX_R circle, as home, not across the field), stacked HOLD_DY apart by its place in the queue, until cleared (land_air.js
-//    landing); with no runway open it holds there (land_air.js HOLD_MAX / HOLD_BIG), then diverts or ditches.
+//    landing); with no runway open it holds there until its own bingo (land_air.js bingoOut), then diverts or ditches.
 //  - A raid over the field (enemy planes within RAID_R of it): the bombers are kept off until it has passed (at Midway
 //    the returning planes were held clear while the Japanese raid was on); an approach not yet past the outer marker is
 //    sent back to the fix. After RAID_MAX s of holding under a raid they come in anyway (an emergency at once).
