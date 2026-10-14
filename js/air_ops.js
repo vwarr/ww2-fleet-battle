@@ -65,6 +65,11 @@ window.WW = window.WW || {};
     for (const c of L) { const o = c.unit; if (o && o.alive && !o.submerged && !o.sinking && !o.isBase && BIG[tyOf(c)] && !(lim && WW.dist(from.x, from.z, c.x, c.z) > lim)) return true; }
     return false;
   }
+  // a big enemy ship on side from.nation's plot (any contact up to the plot's TTL) within lim of from
+  function bigKnownIn(from, lim) {
+    for (const c of WW.intel.enemyShips(from.nation, { fresh: WW.intel.T.SHIP_TTL })) { const o = c.unit; if (o && o.alive && !o.submerged && !o.sinking && !o.isBase && BIG[tyOf(c)] && WW.dist(from.x, from.z, c.x, c.z) <= lim) return true; }
+    return false;
+  }
   // No bomber is ever sent at a PT boat (as the side believes the contact's type; the pilot who finds a PT there instead
   // looks again, aircraft.js validTarget): her ~1 m draught let an aerial torpedo run under, level bombers never went
   // for one and dive-bombing a 40 kn boat that turns inside her length was rare and wasteful. Only fighters (and a dive
@@ -74,7 +79,10 @@ window.WW = window.WW || {};
   function pickTarget(from, opts) {
     if (!WW.intel) return WW.shipAI && WW.shipAI.pickStrikeTarget ? WW.shipAI.pickStrikeTarget(from) : null;
     const nation = from.nation, now = WW.time.now, near = opts && opts.near, gun = from.kind === 'fighter';
-    let noSmall = near && (opts.noSmall || (opts.flight > SMALL_FLIGHT && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(nation)));
+    // a deck load passes over the screen only while the big ship the commander believes afloat is known within its reach
+    // (any contact, not only one in sight): one out of reach leaves the screen and the cruisers in reach as the secondary
+    // target (1942 doctrine), not a flight home with the bombs
+    let noSmall = near && (opts.noSmall || (opts.flight > SMALL_FLIGHT && WW.fleetCmd && WW.fleetCmd.bigFoe && WW.fleetCmd.bigFoe(nation) && bigKnownIn(from, near)));
     if (!near && from.stats && WW.fleetCmd && WW.fleetCmd.strikeOrder) {
       const o = WW.fleetCmd.strikeOrder(from);
       if (o && o.target && o.target.alive && !o.target.submerged) return o.target;

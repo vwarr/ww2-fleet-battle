@@ -24,7 +24,7 @@ window.WW = window.WW || {};
   function senior(w) {
     let best = null, bs = -1;
     for (const p of w.members) {
-      if (!bomber(p) || !p.ordnance) continue;
+      if (!bomber(p) || !p.ordnance || p.opp) continue;   // (one gone for a target of opportunity has left the strike)
       const s = (p.wing === 0 ? 4 : 0) + (p.kind === 'dive' ? 2 : 1) + (p.pilot && p.squadron && p.squadron.leader === p.pilot ? 8 : 0);
       if (s > bs) { bs = s; best = p; }
     }
@@ -43,14 +43,14 @@ window.WW = window.WW || {};
   function reach(w) {
     let R = RT_MAX;
     const c = w.carrier;
-    for (const p of w.members) if (bomber(p) && p.ordnance && p.state !== 'return') {
+    for (const p of w.members) if (bomber(p) && p.ordnance && p.state !== 'return' && !p.opp) {
       const home = c ? WW.dist(w.x, w.z, c.x, c.z) / p.pt.speed : 0;
       R = Math.min(R, (p.fuel - home - 25) * p.pt.speed * 0.5);
     }
     return WW.clamp(R, RT_R, RT_MAX);
   }
   // the bombers of a wave still armed (air_ops pickTarget opts.flight: the SMALL rule)
-  function flight(w) { let k = 0; for (const p of w.members) if (p.alive && p.ordnance && p.kind !== 'fighter') k++; return k; }
+  function flight(w) { let k = 0; for (const p of w.members) if (p.alive && p.ordnance && p.kind !== 'fighter' && !p.opp) k++; return k; }
   // the nearest freshly seen enemy carrier within R (CV_NEAR) of a strike, or null
   function carrierNear(from, R) {
     if (!WW.intel) return null;
@@ -69,7 +69,7 @@ window.WW = window.WW || {};
   // air_strikes.js tick() once the wave has left: CAG, redirect, timing state. Returns the target (may change).
   function waveTick(w) {
     const now = WW.time.now;
-    if (!w.cag || !w.cag.alive || !w.cag.ordnance) {
+    if (!w.cag || !w.cag.alive || !w.cag.ordnance || w.cag.opp) {
       const old = w.cag; w.cag = senior(w);
       if (w.cag && old) { ST.handovers++; emit({ carrier: w.carrier, squadron: w.cag.squadron, order: 'cag', plane: w.cag, leader: w.cag, target: w.target }); }
     }
