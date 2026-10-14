@@ -53,7 +53,8 @@ Not a problem: the Normandy modules in a Pacific round (and the reverse) cost 0.
    - The threshold has 3 ms of slack, so a 60 cap on a 120 Hz display draws on every other vsync instead of alternating 8 ms and 16 ms frames.
    - `WW.frames = {drawn, skipped}` counts both.
    - `?nocap` turns the cap off. `tests/air_stress.js` uses it in its uncapped (`--disable-frame-rate-limit`) mode.
-   - Tests are unaffected: they drive `__sim.fastForward`, and determinism / trace_dump stub rAF.
+   - A test that infers frame cost by counting rAF callbacks in visible Chrome now needs `?nocap` or `WW.frames.drawn`. `base_fps.js` and `air_stress.js` now pass `&nocap`; `fps.js` reports the drawn rate. After the change, fps.js measured the map view at 55.2 drawn fps (119.9 before). That is probably the plot fade-in or GPU noise, but it has not been checked.
+   - Sim tests are unaffected: they drive `__sim.fastForward`, and determinism / trace_dump stub rAF.
 2. **Hidden tab** (checked): browsers stop rAF on a hidden tab, and audio.js mutes on `visibilitychange`. No `setInterval` keeps running (the only timers are a one-shot in audio.js and one in ui.js). Nothing to add.
 3. **Pause**: the game has none (the speed buttons are 1× / 2× / 4×). The idle throttle covers the ready screen.
 4. **Instanced uploads**: `WW.instUsed(im, color)` / `WW.attrUsed(attr, floats)` in core.js, used at every site listed in row 7 of the table. Only visual modules were touched.

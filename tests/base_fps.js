@@ -8,7 +8,7 @@ const SEED = +(process.argv[2] || 3);
   const b = await chromium.launch({ channel: 'chrome', headless: false });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&nocap&v=' + Date.now());
   await p.waitForTimeout(6000);
   const info = await p.evaluate(seed => {
     WW.terrain.generate(seed); WW.seedRandom(seed); WW.game.baseChoice = 'USN'; WW.game.mode = 'auto'; WW.game.startRound({ keepMap: true }); WW.game.baseChoice = null;
