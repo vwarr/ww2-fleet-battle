@@ -1,18 +1,19 @@
-// lookahead.js (camera5, page side): WW.lookahead, the director's view of the round's FUTURE. With ?cam=lookahead (the
-// default once camera5 is merged: see docs/camera_review.md) a Web Worker (lookahead_worker.js) runs a second copy of the
+// lookahead.js (camera5, page side): WW.lookahead, the director's view of the round's FUTURE. By default (?cam=forecast:
+// camera4's director instead; docs/camera_review.md) a Web Worker (lookahead_worker.js) runs a second copy of the
 // displayed round AHEAD sim s ahead of the screen, from the round record main.js captures at roundStart (round_rec.js) and
 // in the same fixed live steps, and sends back its event log (lookahead_log.js): every drop, impact, hit, sinking,
 // magazine, plane shot down and where its wreck lands, attack runs beginning, strikes leaving. The director reads it
 // through future(): only what is at most HORIZON sim s ahead (so what it sees does not depend on how far the worker has
 // got). Checkpoint hashes compare the two copies every lookahead_log CHECK steps; a mismatch (something touched the
 // displayed round: the B-29 egg) turns the look-ahead off for the rest of the round and the director falls back on the
-// live forecast. Nothing here writes the sim. ?cam=forecast: camera4's forecast director, no worker.
+// live forecast (also when a test's fastForward or the B-29 egg rewrites the round: desync()). Nothing here writes the
+// sim. ?cam=forecast: camera4's forecast director, no worker.
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   const q = typeof location !== 'undefined' ? location.search : '';
   const m = /[?&]cam=(\w+)/.exec(q);
-  const MODE = m ? m[1] : 'forecast';
+  const MODE = m ? m[1] : 'lookahead';   // (camera5: the look-ahead director won the comparison, docs/camera_review.md)
   const AHEAD = 90, HORIZON = 75, PACE = 60;   // sim s the worker runs ahead; sim s the director may look; steps between pace messages
   const LA = WW.lookahead = {
     mode: MODE, on: MODE === 'lookahead' && !WW.simOnly && typeof Worker !== 'undefined',
@@ -42,6 +43,7 @@ window.WW = window.WW || {};
       for (const e of d.ev) LA.ev.push(e);
       LA.stepsRun += Math.max(0, d.n - LA.wn);
       LA.wn = d.n; LA.wstate = d.state;
+      LA.busyMs = d.busyMs; LA.busySimS = d.busySteps * h();   // the worker's own cost, whole session
       for (const c of d.checks) { theirs.set(c.n, c.h); if (c.d) (LA.wdetail = LA.wdetail || new Map()).set(c.n, c.d); compare(c.n); }
     }
   }
@@ -107,5 +109,8 @@ window.WW = window.WW || {};
   // (debug, laLog.dbg: evaluate an expression in the worker)
   const evals = new Map(); let evalId = 0;
   LA.evalWorker = expr => new Promise(r => { const id = ++evalId; evals.set(id, r); worker.postMessage({ cmd: 'eval', id, expr }); });
+  // something rewrote the displayed round outside its live steps (a test's fastForward, the B-29 egg): the copy no longer
+  // holds; the director goes back to the live forecast until the next round
+  LA.desync = function (why) { if (LA.on && !LA.diverged && WW.game && WW.game.state === 'battle') { LA.diverged = true; LA.mismatch = { why, n: liveN() }; } };
   LA.stop = function () { if (worker) { worker.terminate(); worker = null; } LA.on = false; };
 })(window.WW);

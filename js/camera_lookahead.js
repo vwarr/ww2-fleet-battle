@@ -85,6 +85,9 @@ window.WW = window.WW || {};
     if (ok(P) && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;
     const e = evs().find(v => v.s === T); if (!e || e.etaReal < 0.8 || e.etaReal > 10) return null;
     if (e.src && e.src.obj === P && ok(P) && P.ordnance) return null;   // (its own bomb / torpedo already away: the target, braced)
+    // past its own attack, the story waits only for its own wave's hits (another strike's are another story)
+    const past = !ok(P) || !P.ordnance, so = e.src && e.src.obj;
+    if (past && so && so !== P && (!so.pt || !P.wave || so.wave !== P.wave)) return null;
     ST.storyBraces = (ST.storyBraces || 0) + 1;
     return { kind: 'brace', subj: T, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(e.lastReal + 2.6, 4, 12), why: e.kind, label: D() && D().labelOf ? D().labelOf(e) : '' };
   }
@@ -181,8 +184,8 @@ window.WW = window.WW || {};
     return pick ? { p: pick.p, doom, loss } : null;
   }
   // camera_story.js successor(): of the wingmen able to take the story on, the one that will hit
-  function successorHint(cands) {
-    if (!active() || !cands || cands.length < 2) return null;
+  function successorHint(cands, any) {   // any: one candidate is enough (the wave-wide hand-on)
+    if (!active() || !cands || cands.length < (any ? 1 : 2)) return null;
     const F = WW.lookahead.future(0), hit = new Set();
     for (const e of F) if (e.k === 'imp' && e.hit && !e.dud && e.src && e.src[0] === 'p') hit.add(e.src);
     const h = cands.find(c => hit.has(WW.lookahead.idOf(c)));
@@ -191,7 +194,7 @@ window.WW = window.WW || {};
   }
 
   // ---------- the arbiter ----------
-  let tk = 0, cur = null, rest = 0;
+  let tk = 0, cur = null, rest = 0, ban = new WeakMap();
   const D = () => WW.camDirector, S = () => WW.camStory;
   const SUPER = 1.6, MINV = 0.6;
   // the arc the planner started is still running
@@ -212,6 +215,8 @@ window.WW = window.WW || {};
   }
   function startItem(it, why) {
     let okd = false;
+    // after last light the director tells no air stories (night_fx.js): the strike is filmed from its target (her raid)
+    if (it.kind === 'strike' && WW.dayNight && WW.dayNight.canFly && !WW.dayNight.canFly()) it = cvRaid(it);
     if (it.kind === 'strike') {
       const pr = protagonist(it); if (!pr) { ST.rejected++; return false; }
       const mission = 'strike';
@@ -231,7 +236,7 @@ window.WW = window.WW || {};
     return true;
   }
   // the carrier arc for a carrier struck by something no air arc can carry (a ship's torpedo, no attacker left): her raid
-  function cvRaid(it) { return { kind: 'cvraid', target: it.target, subj: it.target, climax: it.climax, climaxR: it.climaxR, value: it.value, endR: it.endR, cv: true, hits: it.hits }; }
+  function cvRaid(it) { return { kind: 'cvraid', strike: it, target: it.target, subj: it.target, climax: it.climax, climaxR: it.climaxR, value: it.value, endR: it.endR, cv: !!(it.target && it.target.type === 'carrier'), hits: it.hits }; }
   // every frame: the running shot of an arc is not cut in the last seconds before a known impact on the arc's target
   // (it is held through the impact and a beat), when it shows the target
   function hold() {
@@ -257,7 +262,10 @@ window.WW = window.WW || {};
     if (shot && shot.user && !shot.fkey) return;
     const st = S() && S().story();
     if ((st && st.user) || (D().userArc && D().userArc())) return;
-    const P = plan(); if (!P.length) return;
+    // a planned story that never got the camera (night_fx.js refused it, the lead lost before its first shot): that strike
+    // rests 30 s (no re-planning it every tick)
+    if (cur && cur.arc && cur.arc.t1 && cur.arc.never && !cur.banned) { cur.banned = true; ban.set(cur.it.wave || cur.it.target, wall() + 30); ST.never = (ST.never || 0) + 1; }
+    const P = plan().filter(it => !((ban.get(it.wave || it.target) || 0) > wall())); if (!P.length) return;
     const L = shot && WW.camLock && WW.camLock.state(shot);
     const busy = arcRunning();
     // a carrier strike whose window is open supersedes an arc not about her (a clean cut, from the raid inbound)
@@ -307,7 +315,7 @@ window.WW = window.WW || {};
     if (late) startItem(late.kind === 'strike' && protagonist(late) ? late : cvRaid(late), 'cv-late');
   }
   if (WW.cam && WW.cam.update) { const u = WW.cam.update; WW.cam.update = function (rdt) { try { tick(rdt || 0); } catch (e) { console.error('camLook', e); } return u.apply(this, arguments); }; }
-  WW.on('roundStart', () => { cur = null; tk = 0; evCache = plCache = null; evAt = plAt = -1; });
+  WW.on('roundStart', () => { cur = null; tk = 0; ban = new WeakMap(); evCache = plCache = null; evAt = plAt = -1; });
 
   WW.camLook = {
     active, storyBrace, events: evs, forecastFor: s => evs().find(e => e.s === s) || null, plan, protagonist, successorHint, stats: ST, log,

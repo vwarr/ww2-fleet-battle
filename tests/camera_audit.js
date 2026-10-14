@@ -556,7 +556,7 @@ async function openRound(b, spec) {
   const p = await b.newPage({ viewport: { width: 960, height: 540 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.addInitScript(INIT(spec.seed * 31 + 7));
-  await p.goto(BASE_URL + 'index.html?auto' + (CAM ? '&cam=' + CAM : ''));
+  await p.goto(BASE_URL + 'index.html?auto' + (CAM ? '&cam=' + CAM : ''), { timeout: 240000 });
   await p.waitForTimeout(1500);
   const comp = await p.evaluate(([install, cfg]) => {
     const pr = WW.post.render.bind(WW.post); WW.post.render = (a, b) => { if (!window.__render) return; const mr = Math.random; Math.random = window.__prng2; try { pr(a, b); } finally { Math.random = mr; } };

@@ -23,11 +23,15 @@ const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'no
     window.__rafT = { ms: 0, n: 0, on: false };
     window.requestAnimationFrame = cb => raf(t => { const s = performance.now(); cb(t); if (window.__rafT.on) { window.__rafT.ms += performance.now() - s; window.__rafT.n++; } });
   });
-  const q = MODE === 'normandy' ? 'scn=normandy' : MODE === 'setup' ? '' : 'auto';
+  // --cam lookahead: the look-ahead worker runs (js/lookahead.js); the fast-forward then uses the live fixed step
+  // (__sim.stepFixed), so the worker's copy stays the same round, and the worker's own cost is reported at the end
+  const CAM = opt('cam', '');
+  const q = (MODE === 'normandy' ? 'scn=normandy' : MODE === 'setup' ? '' : 'auto') + (CAM ? '&cam=' + CAM : '');
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?' + q + '&v=' + Date.now(), { timeout: 240000 });
   await p.waitForTimeout(4000);
   const info = await p.evaluate(([MODE, SEED, FF]) => {
     const G = WW.game;
+    const ffw = x => (WW.lookahead && WW.lookahead.on ? __sim.stepFixed(Math.round(x / __sim.LIVE_STEP)) : __sim.fastForward(x));
     const seeded = sd => { if (WW.aces) WW.aces.reset(); WW.terrain.generate(sd); WW.seedRandom(sd); G.seed = sd; WW.time.now = 0; G.composition = null; G.mode = 'auto'; G.startRound({ keepMap: true }); };
     const airborne = () => WW.world.planes.filter(q => q.alive && !q.removed && q.y > 3).length;
     let seed = SEED;
@@ -35,9 +39,9 @@ const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'no
     if (MODE === 'busy') {
       const hasCv = () => ['USN', 'IJN'].every(n => WW.world.ships.some(s => s.alive && s.nation === n && s.type === 'carrier' && !s.isBase));
       for (let k = 0; k < 40; k++) { seeded(SEED + k); if (hasCv()) { seed = SEED + k; break; } }
-      __sim.fastForward(FF);
-      for (let t = FF; t < FF + 300 && airborne() < 30 && G.state === 'battle'; t += 30) __sim.fastForward(30);
-    } else { seeded(SEED); __sim.fastForward(FF); }
+      ffw(FF);
+      for (let t = FF; t < FF + 300 && airborne() < 30 && G.state === 'battle'; t += 30) ffw(30);
+    } else { seeded(SEED); ffw(FF); }
     return { seed, t: G.roundTime, state: G.state, ships: WW.world.ships.filter(s => s.alive).length, planes: WW.world.planes.filter(q => !q.removed).length, airborne: airborne() };
   }, [MODE, SEED, FF]);
   await p.waitForTimeout(1500); // the JIT and the GPU settle on the new scene
@@ -97,6 +101,7 @@ const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'no
     console.log('  total', rows.out.reduce((a, r) => a + r.kb, 0).toFixed(0), 'KB/s in', rows.calls, 'calls');
   }
   if (opt('json')) require('fs').writeFileSync(opt('json'), JSON.stringify({ info, r, self: [...self], files: [...files] }));
+  if (CAM) console.log('look-ahead worker:', JSON.stringify(await p.evaluate(() => { const L = WW.lookahead; return L ? { on: L.on, ready: L.ready, diverged: L.diverged, checks: L.checks, ahead: +((L.wn - WW.game.stepN) * __sim.LIVE_STEP).toFixed(1), busyMs: L.busyMs, simS: L.busySimS, msPerSimS: L.busySimS ? +(L.busyMs / L.busySimS).toFixed(2) : null, steady: L.steady } : null; })));
   console.log('errors', errs.slice(0, 5));
   await b.close();
 })();

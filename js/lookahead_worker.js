@@ -69,7 +69,8 @@
   g.addEventListener('error', e => post({ m: 'err', msg: 'worker: ' + (e && e.message) }));
 
   // ---------- the round ----------
-  let booted = false, gen = -1, target = 0, sentEv = 0, sentCk = 0, running = false, queue = [];
+  let booted = false, gen = -1, target = 0, sentEv = 0, sentCk = 0, running = false;
+  const busy = { ms: 0, steps: 0 };
   const SLICE = 10;   // ms of stepping per turn of the worker's event loop (messages are read between turns)
   function boot(scripts) {
     const t0 = performance.now();
@@ -92,7 +93,7 @@
   function flush() {
     const L = g.WW.laLog, G = g.WW.game;
     if (L.ev.length > sentEv || L.checks.length > sentCk || true) {
-      post({ m: 'log', gen, n: G.stepN || 0, t: g.WW.time.now, state: G.state, ev: L.ev.slice(sentEv), checks: L.checks.slice(sentCk) });
+      post({ m: 'log', gen, n: G.stepN || 0, t: g.WW.time.now, state: G.state, ev: L.ev.slice(sentEv), checks: L.checks.slice(sentCk), busyMs: busy.ms, busySteps: busy.steps });
       sentEv = L.ev.length; sentCk = L.checks.length;
     }
   }
@@ -101,8 +102,9 @@
     if (!booted || gen < 0) return;
     const G = g.WW.game;
     if (G.state !== 'battle' || (G.stepN || 0) >= target) { flush(); return; }
-    const t0 = performance.now();
+    const t0 = performance.now(), n0 = G.stepN || 0;
     while (G.state === 'battle' && (G.stepN || 0) < target && performance.now() - t0 < SLICE) g.__sim.stepFixed(1);
+    busy.ms += performance.now() - t0; busy.steps += (G.stepN || 0) - n0;   // (the worker's cost: lookahead.js reports it)
     flush();
     kick();
   }

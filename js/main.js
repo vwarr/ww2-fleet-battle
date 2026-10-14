@@ -444,6 +444,7 @@ window.WW = window.WW || {};
   // onStep: optional test hook, called after every sim step of fastForward
   function fastForward(seconds, onStep) {
     let left = seconds;
+    if (WW.lookahead && WW.lookahead.desync && seconds > 0) WW.lookahead.desync('fastForward');   // (0.05 s steps: not the live round the worker copies)
     call('shipSwell', 'unpose');
     call('dmgVis', 'unpose');
     while (left > 1e-9) { const d = Math.min(STEP, left); step(d); left -= d; if (onStep) onStep(d); }
