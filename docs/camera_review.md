@@ -153,6 +153,8 @@ a bomb hit on its own ship; a fall over the island frames the beach more than th
 determinism --cross 1,2 200: PASS (render / browser / node identical). sim_behaviour 6 seeds: PASS 350 FAIL 3
 (pt_pen_med, ftr_leash, crip_away; node mode loads no camera code, so not this branch). dive_film: 100% (3/3) PASS
 (main's director on the same machine: 0/2 FAIL). action_cam: errors 0, max view rotation 1.0 rad/s. story_cam: all
-PASS (the death test now waits for the fall to the water). fps.js: 120 fps (vsync cap, as before). Normandy: out of
+PASS (the death test now waits for the fall to the water). Its informational lead check: 0/7 first releases had the camera
+on them >= 10 s before (the arc picks one strike, often not the first to release); min hull clearance -6.4 in one
+frame (a deck / hold shot). fps.js: 120 fps (vsync cap, as before). Normandy: out of
 scope (user); camera_normandy*.js untouched, its interrupts bypass the arc gate (c.nd), camera_score.js's tick still runs
 there.
