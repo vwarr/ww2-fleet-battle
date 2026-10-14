@@ -22,7 +22,7 @@ window.WW = window.WW || {};
   function surrender(w) {
     const I = WW.infantry; if (!I) return;
     let by = null;
-    for (const q of I.squads) if (q.alive && q.kind !== 'tank' && TAKERS[q.state] && Math.hypot(q.x - w.x, q.z - w.z) < TAKE_R) { by = q; break; }
+    for (const q of I.squads) if (q.alive && q.kind !== 'tank' && TAKERS[q.state] && Math.hypot(q.x - w.x, q.z - w.z) < TAKE_R && (!by || /Tank|vehicles/.test(by.unit))) by = q;   // infantry before tank crews and drivers
     if (!by) return;
     const crew = w.elements.reduce((a, e) => a + (e.dormant ? 0 : e.crew0 || 0), 0);
     const n = Math.max(MIN, Math.min(MAX, Math.round(crew * SURR_K)));

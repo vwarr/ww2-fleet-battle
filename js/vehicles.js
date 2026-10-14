@@ -35,7 +35,7 @@ window.WW = window.WW || {};
     dukw105: { name: 'DUKW (105 mm howitzer)', hp: 16, value: 1.2, len: 1.0, armK: 1, mgK: 0.5, drown: 0.9, v: 0.6 }
   };
   const JAM_DX = 1.15, JAM_DZ = 1.25, JAM_ROWS = 6, JAM_WIN = 14, RESLOT = 4, EXIT_GAP = 2.5, OFF_U = 45, DOZER_DROWN = 0.35;
-  const MORTAR_TICK = 0.5, MORTAR_P = 0.004, MORTAR_DMG = 12, HOW_RELOAD = 14, HOW_R = 280, LANE_R = 70, ID0 = 40000;
+  const MORTAR_TICK = 0.5, MORTAR_P = 0.0025, MORTAR_DMG = 12, HOW_RELOAD = 14, HOW_R = 280, LANE_R = 70, ID0 = 40000;
   const on = () => WW.isScn('normandy');
   const T = () => WW.normandyTerrain, E = () => WW.beachEng;
   const rt = () => (WW.game ? WW.game.roundTime : 0);

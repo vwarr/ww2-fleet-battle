@@ -2,7 +2,8 @@
 // it is the Normandy scenario's updateGame (main.js calls it instead of the Pacific ending rules).
 //  - a draw is open once every strongpoint that guards it is silenced (coast_defence_data.js draw); 'drawOpened'
 //  - victory (the beachhead): at least DRAWS_WIN of the five draws open and at least TOP_WIN men alive on the bluff
-//    tops (infantry.js onTop); reason 'beachhead'
+//    tops (infantry.js onTop), and at least EXITS_WIN draw open for vehicles (its block blown) for EXIT_T s (the first
+//    traffic up it); reason 'beachhead'
 //  - defeat: the clock runs out (ROUND_TIMEOUT, ~1000 s: the afternoon of D-Day), reason 'time'; or the waves are spent
 //    (every craft of the schedule launched and none afloat) with fewer than HELD men alive ashore, reason 'repulsed'
 //    (Bradley's thought of diverting the follow-up waves to Utah and Gold, at about 09:00)
@@ -11,7 +12,7 @@
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
-  const DRAWS_WIN = 3, TOP_WIN = 500, HELD = 150;
+  const DRAWS_WIN = 3, TOP_WIN = 500, HELD = 150, EXITS_WIN = 1, EXIT_T = 45;
   const N = WW.scenarios.normandy;
   let open = {}, beachheadT = null, stats = null;
   const draws = () => WW.normandyData.DRAWS;
@@ -32,7 +33,10 @@ window.WW = window.WW || {};
     if (game.state !== 'battle') return false;   // the victory banner and the next round: main.js
     game.roundTime += dt;
     const nd = drawCheck(game), top = WW.infantry ? WW.infantry.stats.onTop : 0;
-    if (nd >= DRAWS_WIN && top >= TOP_WIN) { beachheadT = game.roundTime; game.endRound('USN', 'beachhead', 'GER'); return true; }
+    // the beachhead is won when the beach can be supplied: an exit open for vehicles too (beach_engineers.js; E-1, about
+    // midday on the day: until then everything that landed stayed on the sand)
+    const ex = WW.beachEng ? WW.beachEng.openExits().filter(b => game.roundTime - b.openT >= EXIT_T).length : 1;   // the first traffic up it
+    if (nd >= DRAWS_WIN && top >= TOP_WIN && ex >= EXITS_WIN) { beachheadT = game.roundTime; game.endRound('USN', 'beachhead', 'GER'); return true; }
     const L = WW.landingCraft;
     const spent = L && L.planAll.length && L.craft.length >= L.planAll.length && !L.live.length;
     if (spent && menAshore() < HELD) { game.endRound('GER', 'repulsed', 'USN'); return true; }
