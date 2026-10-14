@@ -159,7 +159,7 @@ window.WW = window.WW || {};
       if (WW.gunners && WW.gunners.boat) WW.gunners.boat(this, dt);   // the waist / tail guns at a fighter on its tail (air_gunners.js)
       this.trail(dt, false);
       this.integrate(dt, true);
-      if (!free && this.y < 5) { this.y = 5; this.vy = Math.max(0, this.vy); }
+      if (!free) { const fl = Math.max(5, this.floorAt(this.x, this.z) + 1.5); if (this.y < fl) { this.y = fl; this.vy = Math.max(0, this.vy); } }   // never into an island (a big hull and span)
     }
     // ---- shared flight: off the map to its own edge ----
     goHome(dt) {
