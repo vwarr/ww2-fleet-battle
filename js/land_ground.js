@@ -221,7 +221,7 @@ window.WW = window.WW || {};
   function wreckAtStop(p, b) {
     var q = b.layout.toL(p.x, p.z), r = rad(p.variant), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + r && Math.abs(q.u) < 48;
     rw = rw || b.layout.crossD(q.u, q.v) < WW.airfieldLayout.RUN_HALF_W + r;
-    var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, t: WW.time.now, runway: rw, crash: true };
+    var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, k: p.kind, t: WW.time.now, runway: rw, crash: true };   // k: a guest carrier plane's kind (variant null, land_flow.js field)
     var on = null; for (var i = 0; b.wrecks && i < b.wrecks.length && !on; i++) if (Math.hypot(b.wrecks[i].x - w.x, b.wrecks[i].z - w.z) < b.wrecks[i].r + w.r) on = b.wrecks[i];
     if (on) { on.runway = on.runway || rw; on.crash = true; w = on; }   // fetched up on another wreck: one heap to clear
     else (b.wrecks = b.wrecks || []).push(w);
@@ -357,7 +357,7 @@ window.WW = window.WW || {};
   function hulk(b, w) {
     var L = b.layout, q = L.toL(w.x, w.z), AL = WW.airfieldLayout, sv = q.v >= 0 ? 1 : -1, v = w.runway ? sv * (AL.RUN_HALF_W + w.r + 3) : q.v;
     if (AL.onNetwork(L, q.u, v, w.r) || L.crossD(q.u, v) < AL.RUN_HALF_W + w.r) return;
-    var p = L.toW(q.u, v); (b.hulks = b.hulks || []).push({ x: p.x, z: p.z, h: w.h + 0.4, r: w.r, v: w.v, t: WW.time.now });
+    var p = L.toW(q.u, v); (b.hulks = b.hulks || []).push({ x: p.x, z: p.z, h: w.h + 0.4, r: w.r, v: w.v, k: w.k, t: WW.time.now });
   }
   // A neutralized base: the planes on the ground stay where they stand (parked in place); nothing moves again.
   function freeze(b) {
@@ -390,7 +390,7 @@ window.WW = window.WW || {};
   // b.wrecks, an obstruction until the crash crew clears it); its spot is free for a reserve plane
   function wreckGround(p, b) {
     var q = b.layout.toL(p.x, p.z), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + rad(p.variant) && Math.abs(q.u) < 48;
-    (b.wrecks = b.wrecks || []).push({ x: p.x, z: p.z, h: p.heading, r: rad(p.variant), v: p.variant, t: WW.time.now, runway: rw });
+    (b.wrecks = b.wrecks || []).push({ x: p.x, z: p.z, h: p.heading, r: rad(p.variant), v: p.variant, k: p.kind, t: WW.time.now, runway: rw });
     var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
     var hq = b.ops.holdQ.indexOf(p); if (hq >= 0) b.ops.holdQ.splice(hq, 1);
     if (b.ops.occ === p) b.ops.occ = null;
@@ -436,7 +436,7 @@ window.WW = window.WW || {};
     var rw = (Math.abs(q.v) < AL.RUN_HALF_W + r && Math.abs(q.u) < 48) || L.crossD(q.u, q.v) < AL.RUN_HALF_W + r;
     if (!rw && !AL.onNetwork(L, q.u, q.v, r)) return null;   // on the grass, among the revetments: in no one's way
     for (i = 0; b.wrecks && i < b.wrecks.length; i++) { var o = b.wrecks[i]; if (Math.hypot(o.x - p.x, o.z - p.z) < o.r + r) { o.runway = o.runway || rw; return o; } }   // on another wreck: one heap to clear
-    var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, t: WW.time.now, runway: rw, fell: true };
+    var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, k: p.kind, t: WW.time.now, runway: rw, fell: true };
     (b.wrecks = b.wrecks || []).push(w); obsT = -1;
     WW.emit('baseEvent', { kind: 'fallWreck', base: b, nation: b.nation, x: w.x, z: w.z, wreck: w, runway: rw });
     return w;
