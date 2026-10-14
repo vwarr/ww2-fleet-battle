@@ -222,13 +222,14 @@ window.WW = window.WW || {};
 
   // ---------- bombers: jettison and go home ----------
   // Every step for an armed dive / torpedo bomber in transit or attack (aircraft.js update). Deterministic: < 35% hp,
-  // or a fighter on its tail for 3 s while below 55% hp with no friendly fighter within 45.
+  // or a fighter on its tail for 3 s while below 55% hp with no friendly fighter within 45 (a torpedo plane in its anvil
+  // set-up, committed: < 20%, or chased below 35%).
   function bomber(pl, dt) {
     if (!pl.ordnance || pl.phase || (pl.state !== 'transit' && pl.state !== 'attack')) return;
-    const s = pl.df, hpf = pl.hp / pl.maxHp;
+    const s = pl.df, hpf = pl.hp / pl.maxHp, set = pl.kind === 'torpedo' && pl.sk === 'anvil';
     pl.chasedT = s && s.from && s.from.alive ? (pl.chasedT || 0) + dt : 0;
-    let go = hpf < 0.35;
-    if (!go && pl.chasedT > 3 && hpf < 0.55) {
+    let go = hpf < (set ? 0.2 : 0.35);
+    if (!go && pl.chasedT > 3 && hpf < (set ? 0.35 : 0.55)) {
       go = true;
       for (const q of WW.world.planes) if (q.alive && q.kind === 'fighter' && q.nation === pl.nation && WW.dist(q.x, q.z, pl.x, pl.z) < 45) { go = false; break; }
     }

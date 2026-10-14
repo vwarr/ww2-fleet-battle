@@ -24,12 +24,14 @@ const JSON_OUT = arg('--json', null);
 function install() {
   const R = window.__ta = {};
   let S = null;
-  const fresh = () => { S = { m: new Map(), done: [], drops: [], proj: new Map(), pt: { torpAt: 0, bombAt: 0, sent: new Set(), torpHitPT: 0, torpUnderPT: 0, strafeRuns: 0, strafeOrders: 0 }, sfPh: new WeakMap(), jet: new WeakSet(), lost: { torpedo: 0, dive: 0, fighter: 0 } }; };
+  const fresh = () => { S = { m: new Map(), done: [], drops: [], proj: new Map(), pt: { torpAt: 0, bombAt: 0, sent: new Set(), torpHitPT: 0, torpUnderPT: 0, strafeRuns: 0, strafeOrders: 0 }, sfPh: new WeakMap(), jet: new WeakSet(), why: new WeakMap(), lost: { torpedo: 0, dive: 0, fighter: 0 } }; };
   fresh(); WW.on('roundStart', fresh);
   const now = () => WW.game.roundTime;
   const isPT = u => u && u.type === 'pt';
   WW.on('airOrder', e => {
     if (e && e.order === 'jettison' && e.plane) S.jet.add(e.plane);
+    if (e && e.order === 'breakOff' && e.wave) for (const q of e.wave.members) if (!S.why.has(q)) S.why.set(q, 'strike broke off');   // air_staff.js breakOff
+    if (e && e.order === 'ditchBy' && e.plane) S.why.set(e.plane, 'carrier gone');
     if (e && e.order === 'strafe' && isPT(e.target)) S.pt.strafeOrders++;
   });
   WW.on('planeKill', e => { const v = e && e.victim; if (v && S.lost[v.kind] !== undefined && !(v.carrier && v.carrier.isBase)) S.lost[v.kind]++; });
@@ -74,18 +76,21 @@ function install() {
     for (const p of WW.world.planes) {
       if (p.alive && p.ordnance && (p.kind === 'torpedo' || p.kind === 'dive' || p.level) && isPT(p.target)) S.pt.sent.add(p);
       if (p.alive && p.strafe && isPT(p.strafe) && p.sf) { const ph = S.sfPh.get(p); if (p.sf.ph === 'run' && ph !== 'run') S.pt.strafeRuns++; S.sfPh.set(p, p.sf.ph); }
-      if (p.kind !== 'torpedo' || (p.carrier && p.carrier.isBase)) continue;
+      if (p.kind !== 'torpedo' || (p.carrier && p.carrier.isBase)) continue;   // (a Kate level-bombing the island is skipped below)
       let E = S.m.get(p);
-      if (!E && p.alive && p.ordnance && p.target && (p.sk === 'anvil' || p.phase === 'run' || Math.hypot(p.target.x - p.x, p.target.z - p.z) < 170) && p.state !== 'return') {
+      if (!E && p.alive && p.ordnance && p.target && !p.level && !p.target.isBase && (p.sk === 'anvil' || p.phase === 'run' || Math.hypot(p.target.x - p.x, p.target.z - p.z) < 170) && p.state !== 'return') {
         E = { tA: t, tR: null, end: null, f: 0, fl: 0, sc: 0, n: p.nation, tgt: p.target.type, runs: 0, wasRun: false, T: p.target }; S.m.set(p, E);
       }
       if (!E || E.end) continue;
+      if (p.level) { S.m.delete(p); continue; }   // redirected to the island: a level bomber now (land_air.js)
       if (p.phase === 'run' && !E.wasRun) E.runs++;
       E.wasRun = p.phase === 'run';
       if (p.prs !== undefined) E.pr = p.prs;
       E.ph = p.phase || p.sk || p.state;
+      if (p.alive && E.hp0 === undefined) E.hp0 = p.hp / p.maxHp;   // hp on arrival in the target area
+      if (p.alive) E.hp = p.hp / p.maxHp;
       if (!p.alive || p.removed || p.state === 'ditch' || p.deathMode) { E.end = 'shot down'; E.tEnd = t; continue; }   // a drop ends the record first (weaponDropped)
-      if (!p.ordnance) { E.end = S.jet.has(p) ? 'jettison' : 'crippled'; E.tEnd = t; continue; }   // crippled (aircraft.js damage) or jettisoned (air_ops.js bomber)
+      if (!p.ordnance) { E.end = S.jet.has(p) ? 'jettison' : 'crippled'; E.tEnd = t; E.why = S.jet.has(p) ? 'air_ops jettison' : S.why.get(p) || (p.runAbort ? 'hit on the run' : p.crippled ? 'badly hit' : 'other'); continue; }   // crippled (aircraft.js damage) or jettisoned (air_ops.js bomber)
       if (p.state === 'landing' || p.state === 'rollout' || p.deckPh) { E.end = 'landed armed'; E.tEnd = t; continue; }
       if (p.state === 'return') { const tg = p.target; E.end = S.jet.has(p) ? 'jettison' : !tg || !tg.alive || tg.sinking ? 'target gone' : p.fuel < 30 ? 'bingo' : 'home armed'; E.tEnd = t; }
     }
@@ -124,6 +129,16 @@ function report(rounds) {
   console.log('sortie ends: ' + Object.entries(ends).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', '));
   const ph = {}; for (const e of so) if (e.end !== 'drop') { const k = e.end + ' in ' + e.ph; ph[k] = (ph[k] || 0) + 1; }
   console.log('not released, by end and phase: ' + Object.entries(ph).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', '));
+  for (const L of ['light', 'medium', 'heavy']) {   // per level: how the sorties that kept their torpedo ended, and hp (arrival -> end)
+    const A = so.filter(e => e.lvl === L && e.end !== 'drop'); if (!A.length) continue;
+    const q = {}; for (const e of A) { const k = e.end + ' in ' + e.ph; q[k] = (q[k] || 0) + 1; }
+    const C = A.filter(e => e.end === 'crippled' || e.end === 'jettison');
+    const W = {}; for (const e of C) W[e.why] = (W[e.why] || 0) + 1;
+    { const B = so.filter(e => e.lvl === L && e.pr !== undefined).map(e => e.pr); console.log(`  ${L} pressure read going in (air_intercept.js) p10/p50/p90 ${qs(B, 0.1)} / ${qs(B, 0.5)} / ${qs(B, 0.9)}`); }
+    const RE = A.filter(e => e.end === 'round end'); if (RE.length) console.log(`  ${L} round end: ${RE.length}, time in the target area p50 ${qs(RE.map(e => e.tEnd - e.tA), 0.5)} s`);
+    if (C.length) console.log(`  ${L} torpedo lost without a drop, why: ` + Object.entries(W).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', '));
+    console.log(`  ${L}: ` + Object.entries(q).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ') + (C.length ? `; crippled/jettison hp on arrival p50 ${qs(C.map(e => e.hp0 || 0), 0.5)}, at the end p10/p50/p90 ${qs(C.map(e => e.hp || 0), 0.1)} / ${qs(C.map(e => e.hp || 0), 0.5)} / ${qs(C.map(e => e.hp || 0), 0.9)}` : ''));
+  }
   console.log(`runs started per sortie (1 = no come-round): mean ${(so.reduce((s, e) => s + e.runs, 0) / (so.length || 1)).toFixed(2)}`);
   const Dd = dr.filter(d => d.res !== 'open');
   console.log('\nrelease range (u / m)   drops  hit   | target combing/turning: drops hit | steady: drops hit');
