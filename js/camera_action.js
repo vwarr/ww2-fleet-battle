@@ -155,7 +155,9 @@ window.WW = window.WW || {};
       const e = s && s.alive ? WW.camDirector.torpEta(p, s) : -1, hits = e >= 0;
       // (and a run that is still far from the hull after 14 s: the shot has shown the wake; the director braces the ship later)
       shot.missT = hits && !(shot.st > 14 && (WW.camFinder ? WW.camFinder.realS(e) : e) > 4) ? 0 : (shot.missT || 0) + rdt;
-      if (shot.missT > 1.2) { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; shot.proj = null; shot.from = shot.aim.clone(); shot.fromObj = null; shot.aim.set(p.x + f.x * 6, 0.5, p.z + f.z * 6); return hold(shot, gP, gL); }
+      // (a miss whose run ends within ~6 real s is ridden out: the miss is the result, "missed astern"; only a long empty run is let go)
+      const left = Math.max(0, ((p.range || 100) - (p.run || 0)) / (p.sp || 14)), leftR = WW.camFinder ? WW.camFinder.realS(left) : left;
+      if (shot.missT > 1.2 && (leftR > 6 || hits)) { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; shot.proj = null; shot.from = shot.aim.clone(); shot.fromObj = null; shot.aim.set(p.x + f.x * 6, 0.5, p.z + f.z * 6); return hold(shot, gP, gL); }
     }
     let far = ease(WW.clamp((shot.st - 6) / 8, 0, 1)), back = 13 + 9 * far, hgt = 5.5 + 5 * far, look = 10;
     if (s) {

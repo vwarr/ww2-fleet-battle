@@ -413,7 +413,8 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     const s0 = shotAt(Math.max(d.w - 0.5, before.length ? before[0].w : d.w)), s1 = shotAt(d.w + 0.2), s2 = shotAt(endW);
     const same = (a, b) => a && b && a.sid === b.sid;
     const stayed = (sh) => sh && (same(sh, s0) || (sh.subj && (sh.subj.id === d.p.id || (d.t && sh.subj.id === d.t.id))) || (sh.plane && sh.plane.id === d.p.id));
-    const okDrop = d.on && stayed(s1), okEnd = stayed(s2) && (!d.imp || d.imp.on);
+    // (camera4: from the target's point of view counts too: a shot braced on the drop's target through the release)
+    const okDrop = (d.on || !!(s1 && s1.subj && d.t && s1.subj.id === d.t.id)) && stayed(s1), okEnd = stayed(s2) && (!d.imp || d.imp.on);
     if (d.imp && d.imp.hit) { M.att.hits = (M.att.hits || 0) + 1; if (okDrop && okEnd) M.att.hitsHeld = (M.att.hitsHeld || 0) + 1; }
     if (okDrop && okEnd) M.att.held++;
     else if (!okDrop) M.att.cutBefore++; else M.att.cutAfter++;
