@@ -66,8 +66,8 @@ window.WW = window.WW || {};
       if (kind === 'torpedo') {
         if (fx.torpedoHit) fx.torpedoHit(px, pz, -sn * side, c * side, clamp(L / 16, 0.9, 1.6) * (amount > 300 ? 1.15 : 1)); // underwater flash, column, slick
         else { fx.splash(px, pz, 3.5); fx.explosion(px, 0.8, pz, 1.4); }
-      } else if (kind === 'dc') {
-        // the depth charge already threw its water column
+      } else if (kind === 'dc' || kind === 'near') {
+        // the depth charge / the near miss already threw its water column
       } else if (under) {
         fx.splash(px, pz, 1.5);
       } else if (kind === 'bomb') {
@@ -81,7 +81,7 @@ window.WW = window.WW || {};
         if (cal === 'big') fx.smoke(px, py + 0.6, pz, true, 1.4); // debris puff
       }
     }
-    if (cal === 'mg' || kind === 'dc' || amount <= 0) return; // no persistent site
+    if (cal === 'mg' || kind === 'dc' || kind === 'near' || amount <= 0) return; // no persistent site
     // fire duration (sim seconds) scales with damage and ship weight
     var dur = clamp(amount * 0.32 * H.heavy, 4, 60);
     var ignite = kind === 'torpedo' ? 0 : kind === 'bomb' ? 1 : cal === 'small' ? 0.4 : 0.9;

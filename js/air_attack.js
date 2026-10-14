@@ -96,7 +96,7 @@ window.WW = window.WW || {};
     const ang = pl.pt.ang || 1.2;
     const vy0 = Math.min(pl.V * Math.sin(pl.gam), -Math.sin(ang) * pl.V), rel = pl.relAlt || 18;
     const tb = (vy0 + Math.sqrt(vy0 * vy0 + 2 * G * rel)) / G, tt = Math.max(0, pl.y - rel) / -vy0 + tb;
-    pl.aimX = t.x + Math.cos(t.heading) * t.speed * tt; pl.aimZ = t.z + Math.sin(t.heading) * t.speed * tt;
+    pl.aimX = t.x + Math.cos(t.heading) * t.speed * tt + (pl.aimE ? pl.aimE.x : 0); pl.aimZ = t.z + Math.sin(t.heading) * t.speed * tt + (pl.aimE ? pl.aimE.z : 0);   // + his error (diveErr)
     pl.aimY = 0.5 * G * tb * tb;
   }
   function wheelR(pt) { return (pt.push || 60) / Math.tan(pt.ang || 1.2) + WHEEL_W; }
@@ -129,7 +129,7 @@ window.WW = window.WW || {};
       pl.relAlt = pl.floor + pullLoss(pl.V, Math.min(pl.gam, gw), Q);
       if (pl.y + pl.vy * dt <= pl.relAlt) { // release on the dive line: the bomb keeps the plane's velocity
         pl.dropV = { x: Math.cos(pl.heading) * pl.speed, y: pl.vy, z: Math.sin(pl.heading) * pl.speed };
-        WW.combat.dropBomb(pl, t); pl.dropped(); pl.dropV = null;
+        WW.combat.dropBomb(pl, t); pl.dropped(); pl.dropV = null; pl.aimE = null;
         if (ST.pushT.length < 400) ST.pushT.push(+(now - pl.rollT).toFixed(2));
         startPull(pl);
       }
@@ -150,6 +150,7 @@ window.WW = window.WW || {};
       pl.phase = 'roll'; pl.phaseT = 0; pl.rollT = now; pl.diveTgt = t; pl.push = false; pl.gam = Math.atan2(pl.vy, Math.max(1, pl.speed)); pl.V = Math.max(DIVE_V0, Math.hypot(pl.vy, pl.speed));
       pl.floor = Math.max(topNear(t, 40), 4, ground(t.x, t.z), groundAhead(pl, 6)) + CLEAR + (1 - pr) * 4; // cautious: release higher
       pl.relAlt = pl.floor + 8; ST.dives++;
+      pl.aimE = WW.combat.diveErr ? WW.combat.diveErr(pl) : null;   // where he will put it (combat_weapons.js): the dive line runs at that point
       return;
     }
     if (dh < R + 20 && (ok || dh < R - 12)) { pl.orbit(t.x, t.z, R + 6, alt + (pl.fi || 0) % 4 * 1.2, dt); } // waiting: hold just outside the push-over point

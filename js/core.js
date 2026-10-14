@@ -167,8 +167,12 @@ window.WW = window.WW || {};
   // aim: dive-bombing aim error at release, Gaussian (combat_weapons.js diveAim): sigma across the dive line = k x the
   // slant range at release (the pilot's sighting and release error, ~35 m at the game's release height), along the
   // ground track / sin(dive angle) (a shallower dive stretches it along the track), x (1 + flakK x the AA dps of the
-  // target's side's ships within flakR, capped at flakMax): a dense AA screen spoils the aim (its main effect in 1942).
-  WW.BOMB = { dmg: 180, vs: { battleship: 0.35, cruiser: 0.7 }, aim: { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2 } };
+  // target's side's ships within flakR, capped at flakMax): a dense AA screen spoils the aim (its main effect in 1942);
+  // + ev[type] x the target's way on (u, her evasion under the bomb: Midway's carriers dodged most, a destroyer more).
+  // near: a bomb that bursts in the water within near.r of a hull (close aboard) hurts her: near.k x the bomb's damage
+  // (falling off to the edge: splinters, sprung plates, the mining effect: combat_weapons.js updateBomb).
+  WW.BOMB = { dmg: 180, vs: { battleship: 0.35, cruiser: 0.7 }, aim: { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2, ev: { carrier: 0.5, battleship: 0.5, cruiser: 2, destroyer: 7, pt: 4 } },
+    near: { r: 2.5, k: 0.25 } };
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
   // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter.
   // Speeds follow docs/PLANE_REVIEW.md §3.3: planes fly on a clock ~1.15x the ship clock (real speed / carrier speed x 5.6

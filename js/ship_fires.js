@@ -27,7 +27,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var FIRE_P = { bomb: 0.35, torpedo: 0.1, torpCv: 0.3, big: 0.15, med: 0.08 }, FIRE_MAX = 8, FIRE_DPS = 3, AVGAS_K = 2.5;
+  var FIRE_P = { bomb: 0.35, near: 0.06, torpedo: 0.1, torpCv: 0.3, big: 0.15, med: 0.08 }, FIRE_MAX = 8, FIRE_DPS = 3, AVGAS_K = 2.5;
   var OUT_P = 0.035, SPREAD_P = 0.012, CHAIN_P = 0.012, CHAIN_DMG = 380;
   var DECK_MIN = 2, DECK_P0 = 0.25, DECK_P1 = 0.08, DECK_BOOM = 25, DECK_BOOM_MAX = 400, HANGAR_K = 0.4;
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
