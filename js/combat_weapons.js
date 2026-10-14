@@ -32,7 +32,7 @@ window.WW = window.WW || {};
       p.fall = !!(drop && drop.y > 0);
       if (p.fall) {
         p.y = drop.y; p.vy = Math.min(0, drop.vy || 0); p.vh = drop.v || p.sp;
-        if (p.mesh) p.mesh.scale.set(0.65, 0.45, 0.45);   // in the air at the airframe's scale (~5.5 m, the payload under the belly)
+        airLook(p, owner);
         I.place(p, x, p.y, z); I.orient(p, Math.cos(p.h) * p.vh, p.vy - 1, Math.sin(p.h) * p.vh);   // nose a little down
       } else {
         I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
@@ -44,13 +44,46 @@ window.WW = window.WW || {};
     } catch (e) { return null; }
   }
 
+  // In the air the torpedo is drawn as the plane's own payload (models_planes.js ordnance: the Mk 13 / Type 91 body,
+  // nose and fins, its material, at the airframe's scale); at water entry it goes back to the underwater run mesh.
+  // Visual only: the projectile keeps one mesh slot, its geometry and material swapped (combat.js acquire restores them).
+  function airLook(p, owner) {
+    var pm = owner && owner.payload;
+    if (!p.mesh || !pm || !pm.geometry || typeof THREE === 'undefined') { if (p.mesh) p.mesh.scale.set(0.65, 0.45, 0.45); return; }
+    var k = owner.group && owner.group.scale ? owner.group.scale.x : 1;
+    p.mesh.geometry = pm.geometry; p.mesh.material = I.M.ord || pm.material; p.mesh.scale.set(k, k, k);
+  }
+  // A falling bomb's shape (visual): models_planes.js ordnance() lofted and baked once per size, ogive nose, body
+  // tapering to a box-finned tail, nose +x (I.orient points it along its velocity): the SBD's 1,000 lb AN-M65, the
+  // Val's 250 kg, a level bomber's 500 lb class (bombK < 0.75); olive drab for the USN, dark grey for the IJN.
+  // At the carrier planes' scale (aircraft.js PLANE_SCALE), as it hung under the belly.
+  var ORD = {};
+  function ordGeo(key, len, r, hex) {
+    if (ORD[key] !== undefined) return ORD[key];
+    ORD[key] = null;
+    var kit = WW.models && WW.models._planeKit;
+    try { if (kit && typeof THREE !== 'undefined') { kit.init(); var g = new THREE.Group(); kit.ordnance(g, false, len, r, hex); ORD[key] = kit.bake(g); } } catch (e) { ORD[key] = null; }
+    return ORD[key];
+  }
+  function bombLook(p, bk, nation) {
+    if (!p.mesh || WW.simOnly || !I.M.ord) return;
+    var J = nation === 'IJN', hex = J ? 0x585e66 : 0x5c6040;
+    var geo = bk >= 0.9 ? ordGeo('l' + J, 0.43, 0.058, hex) : bk >= 0.75 ? ordGeo('m' + J, 0.46, 0.04, hex) : ordGeo('s' + J, 0.36, 0.042, hex);
+    if (!geo) return;
+    var k = (WW.cfg && WW.cfg.PLANE_SCALE) || 0.82;
+    p.mesh.geometry = geo; p.mesh.material = I.M.ord; p.mesh.scale.set(k, k, k);
+  }
+  function waterLook(p) {
+    if (!p.mesh) return;
+    p.mesh.geometry = I.G.torp; p.mesh.material = I.M.torp; p.mesh.scale.set(1, 1, 1);
+  }
   function updateTorp(p, dt) {
     var c = Math.cos(p.h), s = Math.sin(p.h);
     if (p.fall) { // in the air under the plane's line: no hits; it enters the water with a splash and runs from there
       p.vy -= TORP_G * dt; p.y += p.vy * dt; p.x += c * p.vh * dt; p.z += s * p.vh * dt;
       if (p.y > 0) { I.place(p, p.x, p.y, p.z); I.orient(p, c * p.vh, p.vy - 1, s * p.vh); return; }
       p.fall = false;
-      if (p.mesh) p.mesh.scale.set(1, 1, 1);
+      waterLook(p);
       I.place(p, p.x, -0.2, p.z); I.orient(p, c, 0, s);
       I.fx('splash', p.x, p.z, 0.9);
       return;
@@ -172,6 +205,7 @@ window.WW = window.WW || {};
       p.nation = plane.nation; p.target = target || null;
       var BK = plane.level && plane.level.bombK || (plane.pt && plane.pt.bombK) || (WW.BOMB && WW.BOMB.bombK) || 1;   // the bomb it carries (core.js WW.BOMB)
       p.dmg = ((WW.BOMB && WW.BOMB.dmg) || 180) * BK * I.rr(0.85, 1.15); p.bk = BK;
+      bombLook(p, BK, plane.nation);
       I.place(p, p.x, p.y, p.z); I.orient(p, vx, vy0, vz);
       I.stat('bombsDropped');
       if (WW.emit) WW.emit('weaponDropped', { kind: 'bomb', proj: p, plane: plane, target: target || null }); // camera hand-off hook
