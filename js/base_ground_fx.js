@@ -97,7 +97,7 @@ window.WW = window.WW || {};
       if (s.state === 'wreck') burnAt(s.x, s.z, now - (s.wreckT || now), 90);   // a plane caught on the ground burns a long while
       seen.add(s);
     }
-    const all = (base.wrecks || []).concat(base.hulks || []);   // wrecks where they fell; crash hulks bulldozed onto the grass
+    const all = (base.wrecks || []).filter(w => !w.fell).concat(base.hulks || []);   // wrecks where they fell (a shot-down plane's own airframe is drawn: fell); crash hulks bulldozed onto the grass
     for (const w of all) {
       let m = wrecks.get(w);
       if (!m) { m = model(w.v); wrecks.set(w, m); }

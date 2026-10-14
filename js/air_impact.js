@@ -9,7 +9,9 @@
 //           into the after control station), and Hornet's signal bridge (a Val, Santa Cruz). Only uncontrolled
 //           wrecks: a controlled ditching (belly) is flown beside a ship and never resolves on one.
 //   land    the island base: WW.landSites.impact(kind 'crash'): a runway hit craters it (the existing crater / repair
-//           path), facilities in reach take damage, parked planes in the blast are wrecked (land_ground.js groundHit).
+//           path), facilities in reach take damage, parked planes in the blast are wrecked (land_ground.js groundHit),
+//           planes on the ground its wings reach are wrecked, and on the taxiways / runway it is an obstruction (the
+//           field's b.wrecks, land_ground.js fallWreck) until the crash crew clears it; its airframe stays till then.
 //           Elsewhere on land (an island hillside, the Normandy bluffs): a ground burst and a burning wreck that
 //           smoulders on the ground for a while. A controlled ditching over land is a belly landing: a wreck, no burst.
 //   water   the caller's own splash (air_deaths.js: each mode's splash size).
@@ -124,6 +126,9 @@ window.WW = window.WW || {};
       fx.smoke(p.x, g + 0.8, p.z, true, 1.3 * FXK);
     }
     startWreck(p, g, belly);
+    if (site && b && WW.landGround && WW.landGround.fallWreck) {   // the planes it falls on, and on the taxiways / runway an obstruction (land_ground.js)
+      var gl1 = WW.landGround.stats.groundLost; p.baseWreck = WW.landGround.fallWreck(b, p); stats.parked += WW.landGround.stats.groundLost - gl1;
+    }
   }
 
   // A wreck on the ground: the airframe stays where it hit, nose down (a belly landing sits level), burning and
@@ -148,7 +153,7 @@ window.WW = window.WW || {};
         fx.smoke(p.x, p.y + 0.6, p.z, true, (burning ? 1.1 : 0.7) * FXK);
       }
     }
-    if (p.wkT >= p.wkLife) p.remove();
+    if (p.baseWreck ? p.baseWreck.cleared : p.wkT >= p.wkLife) p.remove();   // an obstruction on the field: until the crash crew clears it
   }
 
   WW.airImpact = { hit: hit, ground: ground, deckY: deckY, shipUnder: shipUnder, damage: damage, wreck: wreck, stats: stats,

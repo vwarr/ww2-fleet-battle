@@ -226,7 +226,7 @@ window.WW = window.WW || {};
   }
   // the cross runway into the wind (null: shut)
   function crossR(b) {
-    const r = b.runways[1], wh = WW.wind ? WW.wind.a + Math.PI : b.heading; if (!r || r.closed || b.neutralized) return null;
+    const r = b.runways[1], wh = WW.wind ? WW.wind.a + Math.PI : b.heading; if (!r || r.closed || b.neutralized || G().crossFouled(b)) return null;   // (a wreck on it: shut too)
     const h = Math.cos(WW.angleDiff(r.h, wh)) >= 0 ? r.h : r.h + Math.PI;
     return { h, x: r.x - Math.cos(h) * r.len * 0.36, z: r.z - Math.sin(h) * r.len * 0.36, main: false };
   }
