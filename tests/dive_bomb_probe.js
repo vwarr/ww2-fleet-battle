@@ -7,6 +7,8 @@
 //                  flew into (air_intercept.js pressure at the release: light < 0.2 <= medium < 0.5 <= heavy) and by
 //                  target (carrier undefended / defended: other ships' AA within 60, destroyer, other)
 //   near misses    ship damage from bomb near misses (shipHit kind 'near') per round
+//   lethality      bomb and torpedo hits taken by each ship sunk, by type (a ship with neither is not counted), and
+//                  the round winners
 // Usage: node tests/dive_bomb_probe.js [--seeds N=8] [--seed0 S=1] [--only standard,carrier_duel,midway,cvpt,odd] [--workers K]
 'use strict';
 const HL = require('./headless');
@@ -19,7 +21,7 @@ const NEAR = 2.5;
 function install(NEAR) {
   const R = window.__db = {};
   let S;
-  const fresh = () => { S = { proj: new Map(), done: [], near: 0, nearN: 0 }; };
+  const fresh = () => { S = { proj: new Map(), done: [], near: 0, nearN: 0, hits: new Map(), sunk: [] }; };
   fresh(); WW.on('roundStart', fresh);
   const deg = (ax, ay, az, bx, by, bz) => { const d = (ax * bx + ay * by + az * bz) / ((Math.hypot(ax, ay, az) * Math.hypot(bx, by, bz)) || 1); return Math.acos(Math.max(-1, Math.min(1, d))) * 57.3; };
   WW.on('weaponDropped', e => {
@@ -31,7 +33,12 @@ function install(NEAR) {
     const V = p.dropV;
     S.proj.set(b, { t, type: t.type, def: esc > 3, lvl: pr < 0.2 ? 'light' : pr < 0.5 ? 'medium' : 'heavy', ang: deg(b.vx, b.vy, b.vz, V.x, V.y, V.z), y: b.y, res: null, d: null });
   });
-  WW.on('shipHit', e => { if (e && e.kind === 'near') { S.near += e.amount || 0; S.nearN++; } });
+  WW.on('shipHit', e => {
+    if (!e || !e.ship) return;
+    if (e.kind === 'near') { S.near += e.amount || 0; S.nearN++; }
+    if ((e.kind === 'bomb' || e.kind === 'torpedo') && e.ship.alive && e.ship.hp + (e.amount || 0) > 0) { const h = S.hits.get(e.ship) || { bomb: 0, torpedo: 0 }; h[e.kind]++; S.hits.set(e.ship, h); }
+  });
+  WW.on('shipSunk', e => { const s = e && (e.ship || e); const h = s && S.hits.get(s); if (h && s.type) S.sunk.push({ type: s.type, bomb: h.bomb, torpedo: h.torpedo }); });
   WW.on('weaponImpact', e => {
     if (!e || e.kind !== 'bomb') return;
     const D = S.proj.get(e.proj); if (!D) return;
@@ -43,7 +50,7 @@ function install(NEAR) {
     D.d = Math.hypot(Math.max(0, al), Math.max(0, ac)); D.res = D.d <= NEAR ? 'near' : 'miss';
     S.done.push(D);
   });
-  R.flush = () => { const o = { drops: S.done, near: S.near, nearN: S.nearN }; fresh(); return o; };
+  R.flush = () => { const o = { drops: S.done, near: S.near, nearN: S.nearN, sunk: S.sunk, winner: WW.game.winner || null }; fresh(); return o; };
 }
 
 function report(rounds) {
@@ -64,6 +71,13 @@ function report(rounds) {
   row('carrier, defended', A.filter(d => d.type === 'carrier' && d.def));
   for (const ty of ['battleship', 'cruiser', 'destroyer']) row(ty, A.filter(d => d.type === ty));
   const nn = rounds.reduce((s, r) => s + r.nearN, 0), nd = rounds.reduce((s, r) => s + r.near, 0);
+  const K = [].concat(...rounds.map(r => r.sunk || [])), ty = {};
+  for (const k of K) (ty[k.type] = ty[k.type] || []).push(k);
+  console.log('hits taken by the ships sunk (mean bombs / torpedoes; by those sunk by one weapon alone): ' + Object.entries(ty).map(([t, a]) => {
+    const m = (x, f) => x.length ? (x.reduce((s, k) => s + k[f], 0) / x.length).toFixed(1) : '-', B = a.filter(k => !k.torpedo), T = a.filter(k => !k.bomb);
+    return `${t} ${a.length}: ${m(a, 'bomb')} / ${m(a, 'torpedo')} (bombs only ${B.length}: ${m(B, 'bomb')}; torpedoes only ${T.length}: ${m(T, 'torpedo')})`; }).join('; '));
+  const wn = {}; for (const r of rounds) wn[r.winner || 'none'] = (wn[r.winner || 'none'] || 0) + 1;
+  console.log('winners: ' + Object.entries(wn).map(([k, v]) => `${k} ${v}`).join(', '));
   console.log(`near-miss damage: ${nn} near misses that hurt, ${(nd / rounds.length).toFixed(0)} hp per round`);
 }
 

@@ -150,7 +150,8 @@ window.WW = window.WW || {};
       var p = I.acquire('bomb', I.G.bomb, I.M.bomb);
       p.x = plane.x; p.y = y; p.z = plane.z; p.vx = vx; p.vy = vy0; p.vz = vz;
       p.nation = plane.nation; p.target = target || null;
-      p.dmg = ((WW.BOMB && WW.BOMB.dmg) || 180) * I.rr(0.85, 1.15);
+      var BK = plane.level && plane.level.bombK || (plane.pt && plane.pt.bombK) || (WW.BOMB && WW.BOMB.bombK) || 1;   // the bomb it carries (core.js WW.BOMB)
+      p.dmg = ((WW.BOMB && WW.BOMB.dmg) || 180) * BK * I.rr(0.85, 1.15); p.bk = BK;
       I.place(p, p.x, p.y, p.z); I.orient(p, vx, vy0, vz);
       I.stat('bombsDropped');
       if (WW.emit) WW.emit('weaponDropped', { kind: 'bomb', proj: p, plane: plane, target: target || null }); // camera hand-off hook
@@ -160,6 +161,7 @@ window.WW = window.WW || {};
 
   // A bomb bursting in the water close aboard (WW.BOMB.near): the nearest enemy hull within r takes near.k of its
   // damage, falling off to the edge (kind 'near': splinters, sprung plates, a little flooding: ship_speed.js / ship_fires.js)
+  function landK(p) { var B = WW.BOMB; return B && B.landDmg ? B.landDmg / (B.dmg * (p.bk || 1)) : 1; }   // a land target: the old 180 a bomb
   function nearMiss(p) {
     var N = WW.BOMB && WW.BOMB.near, list = (WW.world && WW.world.ships) || [];
     if (!N) return;
@@ -183,9 +185,9 @@ window.WW = window.WW || {};
     var hit = I.findHit(p.nation, p.x, p.z, 0.6, false, tgt);
     if (hit) {
       var vs = WW.BOMB && WW.BOMB.vs && WW.BOMB.vs[hit.type];   // deck armour (core.js WW.BOMB.vs)
-      I.damage(hit, p.dmg * (vs === undefined ? 1 : vs), p.x, p.z, 'bomb', undefined, p);
+      I.damage(hit, p.dmg * (vs === undefined ? 1 : vs) * (hit.isLand || hit.isBase ? landK(p) : 1), p.x, p.z, 'bomb', undefined, p);
       if (!WW.damage || hit.isLand) { I.fx('explosion', p.x, 1.5, p.z, 2.2); I.fx('sparks', p.x, 1.5, p.z); }
-    } else if (WW.landSites && WW.landSites.impact(p.nation, p.x, p.z, p.dmg, 'bomb')) {
+    } else if (WW.landSites && WW.landSites.impact(p.nation, p.x, p.z, p.dmg * landK(p), 'bomb')) {
       I.fx('explosion', p.x, 1, p.z, 2); I.fx('smoke', p.x, 1.4, p.z, true, 2.2);   // on a land target (land_sites.js: the island base, ...)
     } else if (I.depthAt(p.x, p.z) <= 0) {
       I.fx('explosion', p.x, 0.6, p.z, 1.2); I.fx('smoke', p.x, 1, p.z, true, 1.5);

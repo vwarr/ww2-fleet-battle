@@ -112,7 +112,7 @@ window.WW = window.WW || {};
   // (Yorktown dead in the water after 2 at Midway, Hornet after 2-3, Shoho 7 with 13 bombs), a battleship 5-7 (Prince
   // of Wales 6, Yamato 10+), a cruiser 2-3 (Northampton and Chicago: 2), a destroyer 1 (often broken in two), a
   // submarine 1. Before (balance pass, Oct 2026) every type took the bare warhead: a carrier needed ~8 hits.
-  WW.TORPEDO = { dmg: 220, speed: 14, vs: { carrier: 1.7, battleship: 1.3, cruiser: 1.5, destroyer: 2.2, submarine: 2.5 } };
+  WW.TORPEDO = { dmg: 220, speed: 14, vs: { carrier: 2.3, battleship: 1.8, cruiser: 2.1, destroyer: 2.8, submarine: 2.5 } };   // raw hits to sink (x HP_SCALE): CV ~3.5, BB ~6, CA ~2.8, DD 1 (Oct 2026 lethality pass)
   // Torpedoes per nation and launcher (ship = destroyer / cruiser tubes): rangeK x the type's torpedo range, speed,
   // dud (share of hits that do not go off, rolled with WW.rand at launch), sight (x intel R.TORP: how close a ship
   // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;
@@ -171,7 +171,11 @@ window.WW = window.WW || {};
   // + ev[type] x the target's way on (u, her evasion under the bomb: Midway's carriers dodged most, a destroyer more).
   // near: a bomb that bursts in the water within near.r of a hull (close aboard) hurts her: near.k x the bomb's damage
   // (falling off to the edge: splinters, sprung plates, the mining effect: combat_weapons.js updateBomb).
-  WW.BOMB = { dmg: 180, vs: { battleship: 0.35, cruiser: 0.7 }, aim: { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2, ev: { carrier: 0.5, battleship: 0.5, cruiser: 2, destroyer: 7, pt: 4 } },
+  // dmg: a 1,000 lb bomb (the SBD's); a plane's bomb x its bombK (PLANE_NATION / land_air.js level: the Val's 250 kg SAP
+  // 0.75, a 500 lb GP 0.5 = any plane without one); raw hits to sink (x HP_SCALE) with a 1,000 lb bomb: CV ~5 (fires, the
+  // deck load and the deck out on top), BB ~14, CA ~6, DD ~1.6. landDmg: any bomb on a land target (the island base,
+  // land sites: their balance was set for the old 180 a bomb).
+  WW.BOMB = { dmg: 380, bombK: 0.5, landDmg: 180, vs: { battleship: 0.45, cruiser: 0.6 }, aim: { k: 0.25, flakK: 0.035, flakR: 60, flakMax: 2, ev: { carrier: 0.5, battleship: 0.5, cruiser: 2, destroyer: 7, pt: 4 } },
     near: { r: 2.5, k: 0.25 } };
   WW.DEPTH_CHARGE = { dmg: 120, radius: 6 };
   // range sets the fuel budget (aircraft.js: fuel = range / speed * 6 s of transit + attack): enough to cross the map and loiter.
@@ -194,9 +198,9 @@ window.WW = window.WW || {};
   // TBD-1 Devastator slow (110 kt cruise), B5N2 Kate faster; A6M2 faster and nimbler than the F4F-4 Wildcat.
   WW.PLANE_NATION = {
     IJN: { fighter: { hp: 11, speed: 42, cruise: 33, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' },
-           dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.8 } },
+           dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23, bombK: 0.75 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.8 } },
     USN: { fighter: { hp: 28, speed: 39, cruise: 30, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' },
-           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.2, brake: 23 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
+           dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.2, brake: 23, bombK: 1 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
   };
   const _ptCache = {};
   WW.planeType = function (kind, nation) { // merged per-nation stats (cached; falls back to WW.PLANE_TYPES[kind])
