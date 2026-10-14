@@ -141,6 +141,71 @@ function install(cfg) {
     const s = WW.cam._shot();
     d.imp = { w: wall(), sim: WW.time.now, hit: !!e.ship, dud: !!e.dud, s: ref(e.ship), shot: shotNow(), on: !!(s && (s.stage || s.tship)) || inFrame(e.x, 1, e.z, 250) };
   });
+  // ---- BE (camera4): the BIG EVENTS, was the impact in the frame and unoccluded? A ship hit by a bomb, a torpedo or a
+  // heavy shell (one per ship per 2 s: a salvo is one event), a sinking, a magazine / deck explosion, a plane shot down
+  // within 400 u of a ship. Judged on the camera of the frame (in the safe frame |x| < 0.9, |y| < 0.85, nearer than
+  // 420 u, no land or other hull on the sight line), and on the camera 1 s earlier (framed BEFORE the impact: anticipated).
+  const ring = [], BE = A.be = [], beLast = new Map(), deadSeen = new WeakSet(), _m4 = new THREE.Matrix4(), _bv = new THREE.Vector3();
+  const fcSeen = new Map(); let fcN = 0;   // camera_director.js: the last wall time each ship was in the forecast (was the event predicted?)
+  function beFrame(c) {
+    if (WW.camDirector && ++fcN % 5 === 0) for (const e of WW.camDirector.forecast()) { const o = fcSeen.get(e.s), w = wall(); fcSeen.set(e.s, { w, first: o && w - o.w < 3 ? o.first : w, pr: Math.max(o && w - o.w < 3 ? o.pr : 0, +e.pr.toFixed(1)) }); } const m = ring.length >= 90 ? ring.shift() : { m: new THREE.Matrix4(), p: new THREE.Vector3() }; m.w = wall(); m.m.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse); m.p.copy(c.position); ring.push(m); }
+  function beSee(fr, x, y, z, own) {
+    if (!fr) return 'none';
+    const P = fr.p, d = Math.hypot(P.x - x, P.y - y, P.z - z);
+    _bv.set(x, y, z).applyMatrix4(fr.m);
+    if (!(_bv.z < 1) || Math.abs(_bv.x) > 0.9 || Math.abs(_bv.y) > 0.85) return 'off';
+    if (d > 420) return 'far';
+    for (let i = 1; i < 8; i++) { const f = i / 8, lx = WW.lerp(P.x, x, f), lz = WW.lerp(P.z, z, f), ly = WW.lerp(P.y, y, f); if (-WW.terrain.depthAt(lx, lz) > ly) return 'land'; }
+    const dx = x - P.x, dz = z - P.z, L2 = dx * dx + dz * dz || 1;
+    for (const o of WW.world.ships) {
+      if (o === own || o.removed || o.submerged) continue;
+      const t = ((o.x - P.x) * dx + (o.z - P.z) * dz) / L2; if (t <= 0.04 || t >= 0.96) continue;
+      if (Math.hypot(o.x - (P.x + dx * t), o.z - (P.z + dz * t)) < o.stats.length * 0.35 && WW.lerp(P.y, y, t) < 7) return 'hull';
+    }
+    return 'ok';
+  }
+  function beAt(w) { let b = null; for (const r of ring) if (r.w <= w) b = r; return b || ring[0]; }
+  // judged on the frame 4 frames (0.13 s) after the event (the impact's flash and column last longer than that: a cut made
+  // on the event itself, which shows after its cross-fade frame, counts) and on the frame 1 s before the event
+  const bePend = [];
+  const arcAb = o => (WW.camDirector && WW.camDirector.arcAbout ? !!WW.camDirector.arcAbout(o) : null);   // the event belongs to the running arc (any director exposing arcAbout)
+  function bigEvent(k, x, y, z, own, extra) {
+    if (G.state !== 'battle' || !ring.length) return;
+    extra = Object.assign({ arcIn: own ? arcAb(own) : null }, extra || {});
+    bePend.push({ k, x, y, z, own, extra, w: wall(), n: 0 });
+  }
+  function beResolve() {
+    if (!bePend.length) return;
+    const now = ring[ring.length - 1], s = WW.cam._shot();
+    for (const P of bePend) P.n++;
+    for (const P of bePend.filter(P => P.n >= 4)) beJudge(P.k, P.x, P.y, P.z, P.own, P.extra, now, beAt(P.w - 1), s, P.w);
+    for (let i = bePend.length - 1; i >= 0; i--) if (bePend[i].n >= 4) bePend.splice(i, 1);
+  }
+  function beJudge(k, x, y, z, own, extra, now, pre, s, w0) {
+    BE.push(Object.assign({ k, w: w0, x: Math.round(x), z: Math.round(z), now: beSee(now, x, y, z, own), pre: beSee(pre, x, y, z, own), shot: s ? (s.story ? 'story/' + s.sk : s.kind) + (s.stage ? ':' + s.stage : '') : '-', fc: own && fcSeen.has(own) ? +(wall() - fcSeen.get(own).w).toFixed(1) : null, fcPr: own && fcSeen.has(own) ? fcSeen.get(own).pr : null, fcLead: own && fcSeen.has(own) ? +(wall() - fcSeen.get(own).first).toFixed(1) : null, sPr: s && s.pr !== undefined ? +(+s.pr).toFixed(1) : null, sT: s ? +s.t.toFixed(1) : null, lock: s && WW.camLock ? (WW.camLock.state(s) || {}).why || '' : '' }, extra || {}));
+  }
+  WW.on('shipHit', e => {
+    const s = e && e.ship; if (!s || !s.stats || s.isLand || s.isBase) return;
+    const k = e.kind === 'bomb' ? 'bomb' : e.kind === 'torpedo' ? 'torpedo' : e.kind === 'shell' && e.cal === 'big' ? 'shell' : null; if (!k) return;
+    const key = s.id + k, t = wall(); if (t - (beLast.get(key) || -9) < 2) return; beLast.set(key, t);
+    bigEvent(k, e.x !== undefined ? e.x : s.x, 2, e.z !== undefined ? e.z : s.z, s, { c: s.type });
+  });
+  WW.on('shipSunk', s => { if (s && s.stats && !s.isLand) bigEvent('sunk', s.x, 2, s.z, s, { c: s.type }); });
+  WW.on('magazine', e => { if (e && e.ship) bigEvent('magazine', e.ship.x, 4, e.ship.z, e.ship, { c: e.ship.type }); });
+  WW.on('deckHit', e => { if (e && e.ship) bigEvent('deck', e.x !== undefined ? e.x : e.ship.x, 3, e.z !== undefined ? e.z : e.ship.z, e.ship, { c: e.ship.type }); });
+  // a plane shot down (AA or fighters): a BIG event when it belongs to an arc or a raid (a bomber / torpedo plane within
+  // 400 u of the ship or base it attacks, or a plane of the running arc); any other kill near ships is 'killFar' (a
+  // dogfight away from the action), reported apart from the BE headline
+  function beKills() {
+    for (const p of WW.world.planes) {
+      if (p.alive || p.state !== 'falling' || deadSeen.has(p)) continue;
+      deadSeen.add(p);
+      let near = false; for (const s of WW.world.ships) if (!s.removed && WW.dist2(s.x, s.z, p.x, p.z) < 400 * 400) { near = true; break; }
+      const T = p.diveTgt || p.target, raid = p.kind !== 'fighter' && T && (T.stats || T.isBase) && WW.dist2(T.x, T.z, p.x, p.z) < 400 * 400, inArc = arcAb(p);
+      if (raid || inArc) bigEvent('kill', p.x, p.y, p.z, null, { c: p.kind, arcIn: inArc });
+      else if (near) bigEvent('killFar', p.x, p.y, p.z, null, { c: p.kind, arcIn: inArc });
+    }
+  }
   const uc = WW.ui.caption;
   WW.ui.caption = function (a, b, secs, small) { A.caps.push({ w: wall(), sim: WW.time.now, t: (a || '') + (b ? ' | ' + b : ''), small: !!small, shot: shotNow() }); return uc.apply(this, arguments); };
 
@@ -194,13 +259,15 @@ function install(cfg) {
     return inFrame(a.x, a.y, a.z, a.kind === 'bombard' || a.kind === 'raid' || a.kind === 'alarm' ? 320 : 240);
   }
   // ---- per frame: shots, hand-off stages, smoothness ----
-  let frames = 0, lastDir = null, maxRot = 0, snaps = 0, cur = null, grace = 0;
+  let frames = 0, lastDir = null, maxRot = 0, snaps = 0, cur = null, grace = 0, prevShot = null;
   const origAR = WW.cam.afterRender;
   WW.cam.afterRender = function () {
     origAR.call(this);
     frames++;
     const now = wall(), s = WW.cam._shot(), c = WW.camera;
     if (s && !s.__sid) {
+      if (prevShot && prevShot.t < prevShot.dur - 0.3 && G.state === 'battle') A.early = (A.early || 0) + 1;
+      prevShot = s;
       s.__sid = ++sid; const dbg = WW.camStory._dbg && WW.camStory._dbg();
       cur = { sid: s.__sid, w0: now, sim0: WW.time.now, kind: s.kind, sk: s.sk || '', pr: s.pr !== undefined ? +s.pr.toFixed(1) : null, story: !!s.story, phase: dbg ? dbg.phase : '', subj: ref(s.subj), plane: ref(s.plane),
         alarm: !!s.alarm, cutaway: !!s.cutaway, hard: !!s.hard, stages: [], loaFlips: 0, cls: '' };
@@ -213,6 +280,7 @@ function install(cfg) {
     _f.set(0, 0, -1).applyQuaternion(c.quaternion);
     if (lastDir) { const ang = Math.acos(Math.min(1, lastDir.dot(_f))) * 30; if (ang > maxRot) maxRot = ang; if (ang > 1.2) snaps++; }
     lastDir = (lastDir || new THREE.Vector3()).copy(_f);
+    beFrame(c); beResolve(); beKills();
     if (frames % 30 === 0) sample(now, s);
   };
   // ---- per second ----
@@ -345,7 +413,9 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     const s0 = shotAt(Math.max(d.w - 0.5, before.length ? before[0].w : d.w)), s1 = shotAt(d.w + 0.2), s2 = shotAt(endW);
     const same = (a, b) => a && b && a.sid === b.sid;
     const stayed = (sh) => sh && (same(sh, s0) || (sh.subj && (sh.subj.id === d.p.id || (d.t && sh.subj.id === d.t.id))) || (sh.plane && sh.plane.id === d.p.id));
-    const okDrop = d.on && stayed(s1), okEnd = stayed(s2) && (!d.imp || d.imp.on);
+    // (camera4: from the target's point of view counts too: a shot braced on the drop's target through the release)
+    const okDrop = (d.on || !!(s1 && s1.subj && d.t && s1.subj.id === d.t.id)) && stayed(s1), okEnd = stayed(s2) && (!d.imp || d.imp.on);
+    if (d.imp && d.imp.hit) { M.att.hits = (M.att.hits || 0) + 1; if (okDrop && okEnd) M.att.hitsHeld = (M.att.hitsHeld || 0) + 1; }
     if (okDrop && okEnd) M.att.held++;
     else if (!okDrop) M.att.cutBefore++; else M.att.cutAfter++;
     if (!(okDrop && okEnd)) M.att.cases.push({ w: Math.round(d.w), kind: d.kind, p: d.p, t: d.t, why: !okDrop ? 'cut before the release' : 'cut before the result', hit: d.imp ? d.imp.hit : null, shots: [s0, s1, s2].map(s => s ? s.sid + ':' + (s.story ? 'story/' + s.sk : s.kind) + (s.subj ? '@' + s.subj.id : '') + (s.plane ? '+' + s.plane.id : '') : '-') });
@@ -375,6 +445,24 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     for (const it of r.finder) if (it.eta >= 3 && it.eta <= 60 && it.s && it.kind !== 'danger' && !it.v) judge(it, r.w, M.fin); // (a vague item shows no number)
   }
   // big events on camera
+  M.be = { n: 0, ok: 0, pre: 0, byKind: {}, why: {}, arcN: 0, arcOk: 0, cvN: 0, cvOk: 0, cvPre: 0, farN: 0, farOk: 0 };   // BE: the big events' impacts in frame and clear
+  for (const e of R.be || []) {
+    if (e.k === 'killFar') { M.be.farN++; if (e.now === 'ok') M.be.farOk++; continue; }   // a dogfight away from the action: apart
+    if (e.arcIn) { M.be.arcN++; if (e.now === 'ok') M.be.arcOk++; }
+    if (e.c === 'carrier' && e.k !== 'kill') { M.be.cvN++; if (e.now === 'ok') { M.be.cvOk++; if (e.pre === 'ok') M.be.cvPre++; } }
+    const k = M.be.byKind[e.k] = M.be.byKind[e.k] || { n: 0, ok: 0, pre: 0 }; M.be.n++; k.n++; if (e.now === 'ok') { M.be.ok++; k.ok++; if (e.pre === 'ok') { M.be.pre++; k.pre++; } } else M.be.why[e.now] = (M.be.why[e.now] || 0) + 1; }
+  // ARCS (any director logging WW.cam.arcs): completeness = the share of the battle's camera time inside arcs filmed from
+  // setup to outcome without a cut away (outcome complete or protagonistDown); early cuts per minute (recuts)
+  M.arc = { secs: 0, done: 0, n: 0, byOut: {}, byKind: {}, logged: !!R.arcs };
+  const tEnd = R.rec.length ? R.rec[R.rec.length - 1].w : 0;
+  for (const a of R.arcs || []) {
+    if (a.never) continue;
+    const d = Math.max(0, (a.t1 || tEnd) - a.t0); M.arc.n++; M.arc.secs += d;
+    if (a.outcome === 'complete' || a.outcome === 'protagonistDown') M.arc.done += d;
+    M.arc.byOut[a.outcome || 'open'] = (M.arc.byOut[a.outcome || 'open'] || 0) + 1;
+    const k = a.kind.replace(/^air:/, 'air:'); M.arc.byKind[k] = (M.arc.byKind[k] || 0) + 1;
+  }
+  M.early = R.early || 0;
   for (const e of R.ev) { const on = e.on || e.on2, key = e.k === 'sunk' ? 'sunk:' + (e.s ? e.s.c : '?') : e.k; M.ev.n++; if (on) M.ev.on++; const k = M.ev.byKind[key] = M.ev.byKind[key] || { n: 0, on: 0 }; k.n++; if (on) k.on++; }
   return M;
 }
@@ -388,12 +476,21 @@ function merge(all) { // sum the per-round metrics
     for (const k of ['n', 'kept', 'happened', 'vis', 'visKept']) T.prom[k] += M.prom[k] || 0;
     for (const k in M.prom.byKind) { const a = T.prom.byKind[k] = T.prom.byKind[k] || { n: 0, kept: 0, happened: 0 }; for (const f in a) a[f] += M.prom.byKind[k][f] || 0; }
     for (const k of ['n', 'kept', 'happened']) T.fin[k] += M.fin[k] || 0;
-    for (const k of ['filmed', 'held', 'cutBefore', 'cutAfter']) T.att[k] += M.att[k];
+    for (const k of ['filmed', 'held', 'cutBefore', 'cutAfter', 'hits', 'hitsHeld']) T.att[k] = (T.att[k] || 0) + (M.att[k] || 0);
     for (const k in T.q) if (k !== 'rotMax' && k !== 'att' && k !== 'flipsBy' && k !== 'snapsBy') T.q[k] += M.q[k]; T.q.rotMax.push(...M.q.rotMax);
     for (const k in M.q.snapsBy || {}) T.q.snapsBy[k] = (T.q.snapsBy[k] || 0) + M.q.snapsBy[k];
     for (const k in M.q.att) { const a = T.q.att[k] = T.q.att[k] || { n: 0, tIn: 0 }; a.n += M.q.att[k].n; a.tIn += M.q.att[k].tIn; }
     for (const k in M.q.flipsBy) { const a = T.q.flipsBy[k] = T.q.flipsBy[k] || { n: 0, f: 0 }; a.n += M.q.flipsBy[k].n; a.f += M.q.flipsBy[k].f; }
     T.ev.n += M.ev.n; T.ev.on += M.ev.on;
+    T.be = T.be || { n: 0, ok: 0, pre: 0, byKind: {}, why: {}, arcN: 0, arcOk: 0, cvN: 0, cvOk: 0, cvPre: 0, farN: 0, farOk: 0 };
+    for (const f of ['n', 'ok', 'pre', 'arcN', 'arcOk', 'cvN', 'cvOk', 'cvPre', 'farN', 'farOk']) T.be[f] += M.be[f];
+    T.arc = T.arc || { secs: 0, done: 0, n: 0, byOut: {}, byKind: {}, logged: false };
+    T.arc.secs += M.arc.secs; T.arc.done += M.arc.done; T.arc.n += M.arc.n; T.arc.logged = T.arc.logged || M.arc.logged;
+    for (const k in M.arc.byOut) T.arc.byOut[k] = (T.arc.byOut[k] || 0) + M.arc.byOut[k];
+    for (const k in M.arc.byKind) T.arc.byKind[k] = (T.arc.byKind[k] || 0) + M.arc.byKind[k];
+    T.early = (T.early || 0) + M.early;
+    for (const k in M.be.byKind) { const a = T.be.byKind[k] = T.be.byKind[k] || { n: 0, ok: 0, pre: 0 }; for (const f of ['n', 'ok', 'pre']) a[f] += M.be.byKind[k][f]; }
+    for (const k in M.be.why) T.be.why[k] = (T.be.why[k] || 0) + M.be.why[k];
     for (const k in M.ev.byKind) { const a = T.ev.byKind[k] = T.ev.byKind[k] || { n: 0, on: 0 }; a.n += M.ev.byKind[k].n; a.on += M.ev.byKind[k].on; }
   }
   return T;
@@ -403,7 +500,7 @@ function report(T, title) {
   L.push(`## ${title}: ${T.secs} camera seconds, ${T.cuts} shots`);
   L.push(`M1 promise kept (label ETA within +-5 s): ${pct(T.prom.kept, T.prom.n)} of ${T.prom.n} label-seconds (happened at all within ETA+60 s: ${pct(T.prom.happened, T.prom.n)}); by kind ` +
     Object.keys(T.prom.byKind).map(k => `${k} ${pct(T.prom.byKind[k].kept, T.prom.byKind[k].n)}/${T.prom.byKind[k].n}`).join(', ') + `; all finder items 3-60 s: ${pct(T.fin.kept, T.fin.n)} of ${T.fin.n}`);
-  L.push(`M2 attack continuity: ${pct(T.att.held, T.att.filmed)} of ${T.att.filmed} filmed drops held run-in -> release -> result (+2 s); cut before the release ${T.att.cutBefore}, after it ${T.att.cutAfter}. Sim: ${T.anvils} anvils, ${T.runs} runs, ${T.aborts} aborted runs, ${T.drops} plane drops, ${T.hitsOf} hits`);
+  L.push(`M2 attack continuity: ${pct(T.att.held, T.att.filmed)} of ${T.att.filmed} filmed drops held run-in -> release -> result (+2 s); of the drops that HIT ${pct(T.att.hitsHeld || 0, T.att.hits || 0)} of ${T.att.hits || 0}; cut before the release ${T.att.cutBefore}, after it ${T.att.cutAfter}. Sim: ${T.anvils} anvils, ${T.runs} runs, ${T.aborts} aborted runs, ${T.drops} plane drops, ${T.hitsOf} hits`);
   L.push(`M3 best-action coverage: top-1 ${pct(T.on1, T.act)}, top-3 ${pct(T.on3, T.act)} of ${T.act} seconds with an action going on`);
   const tot = T.secs || 1;
   L.push(`M4 variety: screen time ` + Object.keys(T.cls).sort((a, b) => T.cls[b] - T.cls[a]).map(k => `${k} ${pct(T.cls[k], tot)}`).join(', ') + `; shot length p10/p50/p90 ${q(T.lens, 0.1)}/${med(T.lens)}/${q(T.lens, 0.9)} s; ${(60 * T.cuts / tot).toFixed(1)} cuts/min`);
@@ -411,6 +508,12 @@ function report(T, title) {
   const att = Object.keys(T.q.att).map(k => `${k} ${pct(T.q.att[k].tIn, T.q.att[k].n)}/${T.q.att[k].n}`).join(', ');
   const fl = Object.keys(T.q.flipsBy).filter(k => T.q.flipsBy[k].f).sort((a, b) => T.q.flipsBy[b].f - T.q.flipsBy[a].f).map(k => `${k} ${T.q.flipsBy[k].f}/${T.q.flipsBy[k].n}`).join(', ');
   L.push(`M6 angle: subject in frame ${pct(T.q.sIn, T.q.s)}, target in frame ${pct(T.q.tIn, T.q.t)} (of ${T.q.t} s with a target); IN THE ATTACK (subject + target in frame): ${att}; occluded ${pct(T.q.occ, T.q.s)} (land ${T.q.land}, hull ${T.q.hull}, sea ${T.q.sea}), into the sun ${pct(T.q.sunIn, T.q.sunN)}, line-of-action: cuts that flip sides ${T.q.cutFlips} (${pct(T.q.cutFlips, T.q.shots)} of shots), in-shot crossings in ${pct(T.q.flips, T.q.shots)} of shots (${fl}), snap frames (>1.2 rad/s, cuts excluded) ${(60 * T.q.snaps / tot).toFixed(1)}/min (${Object.keys(T.q.snapsBy).sort((a, b) => T.q.snapsBy[b] - T.q.snapsBy[a]).slice(0, 8).map(k => k + ' ' + T.q.snapsBy[k]).join(', ')}), view rate p90 ${q(T.q.rotMax, 0.9)} rad/s`);
+  const be = T.be || { n: 0, ok: 0, pre: 0, byKind: {}, why: {} }, ar = T.arc || { secs: 0, done: 0, n: 0, byOut: {}, byKind: {} };
+  L.push(`ARCS: completeness ${ar.logged ? pct(ar.done, tot) : 'n/a (no arc log)'} of the camera time in arcs filmed setup -> outcome without a cut away (${ar.logged ? pct(ar.secs, tot) : '-'} in arcs at all; ${ar.n} arcs: ` +
+    Object.keys(ar.byOut).map(k => `${k} ${ar.byOut[k]}`).join(', ') + `; ` + Object.keys(ar.byKind).map(k => `${k} ${ar.byKind[k]}`).join(', ') + `); early cuts (recuts) ${(60 * (T.early || 0) / tot).toFixed(2)}/min (${T.early || 0})`);
+  L.push(`BE in arcs (the arc's own impacts / kills in frame): ${be.arcN ? pct(be.arcOk, be.arcN) + ' of ' + be.arcN : 'n/a'}; CV-BE (carrier hit, deck, magazine, sinking in frame): ${pct(be.cvOk, be.cvN)} of ${be.cvN} (framed 1 s before too ${pct(be.cvPre, be.cvN)}); far dogfight kills (not in BE): ${be.farOk}/${be.farN}`);
+  L.push(`BE big-event coverage (impact in the safe frame, < 420 u, unoccluded): ${pct(be.ok, be.n)} of ${be.n}; framed 1 s before AND at the impact ${pct(be.pre, be.n)}; by kind ` +
+    Object.keys(be.byKind).map(k => `${k} ${be.byKind[k].ok}/${be.byKind[k].n} (pre ${be.byKind[k].pre})`).join(', ') + `; misses: ` + Object.keys(be.why).map(k => `${k} ${be.why[k]}`).join(', '));
   L.push(`Big events on camera: ${pct(T.ev.on, T.ev.n)} of ${T.ev.n}: ` + Object.keys(T.ev.byKind).map(k => `${k} ${T.ev.byKind[k].on}/${T.ev.byKind[k].n}`).join(', '));
   return L.join('\n');
 }
@@ -462,11 +565,11 @@ async function survey(b, spec, dir) {
   const t0 = Date.now();
   let t = 0;
   while (true) { t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
-  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null }; });
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null }; });
   R.errs = errs.slice(0, 5);
   fs.writeFileSync(path.join(dir, `${spec.name}_${spec.seed}.json`), JSON.stringify(R));
   const M = analyse(R);
-  console.log(`${spec.name}/${spec.seed} (${spec.odd || ''}${R.tod}): sim ${t < 0 ? 'round over' : t.toFixed(0) + ' s'}, ${R.rec.length} s filmed, ${R.shots.length} shots, drops ${R.drops.length}, M1 ${pct(M.prom.kept, M.prom.n)}/${M.prom.n} M2 ${M.att.held}/${M.att.filmed} M3 ${pct(M.on1, M.act)} M5 ${pct(M.dead, M.secs)} recuts ${R.score ? R.score.stats.recuts : '-'} yields ${R.story ? R.story.yielded || 0 : '-'} [${((Date.now() - t0) / 1000).toFixed(0)}s]` + (errs.length ? ' ERRORS ' + errs.slice(0, 2).join(' | ') : ''));
+  console.log(`${spec.name}/${spec.seed} (${spec.odd || ''}${R.tod}): sim ${t < 0 ? 'round over' : t.toFixed(0) + ' s'}, ${R.rec.length} s filmed, ${R.shots.length} shots, drops ${R.drops.length}, M1 ${pct(M.prom.kept, M.prom.n)}/${M.prom.n} M2 ${M.att.held}/${M.att.filmed} M3 ${pct(M.on1, M.act)} M5 ${pct(M.dead, M.secs)} BE ${M.be.ok}/${M.be.n} recuts ${R.dir ? R.dir.stats.cuts : R.score ? R.score.stats.recuts : "-"} yields ${R.story ? R.story.yielded || 0 : '-'} [${((Date.now() - t0) / 1000).toFixed(0)}s]` + (errs.length ? ' ERRORS ' + errs.slice(0, 2).join(' | ') : ''));
   await p.close();
 }
 // --sheet SCEN:SEED:from:to[:every]: replay the round, render frames in the wall-time window, montage them
@@ -476,8 +579,9 @@ async function sheet(b, specTxt) {
   const { p } = await openRound(b, spec);
   const f0 = Math.round(+from * 30);
   await p.evaluate(n => { let left = n; while (left > 0 && WW.game.state === 'battle') { const k = Math.min(300, left); __step(k); left -= k; } }, f0);
-  const frames = [];
+  const frames = [], FKEY = +arg('--fkey', 0); let fDone = !FKEY;   // --fkey W: press F (camera_follow.js f()) at wall W of the window
   for (let w = +from; w <= +to; w += EV) {
+    if (!fDone && w >= FKEY) { fDone = true; console.log('  F at ' + w + ': ' + await p.evaluate(() => WW.camFollow.f())); }
     const info = await p.evaluate(([k]) => { __render = false; if (k > 1) __step(k - 1); __render = true; __step(1); const fd = document.getElementById('fade'); if (fd) fd.style.opacity = '0';
       const s = WW.cam._shot(), d = WW.camStory._dbg() || {}, lab = WW.camFollow.labelText(), cap = document.querySelector('.caption.on'), top = (window.__audit.rec.slice(-1)[0] || {}).top || [];
       return { w: Math.round(performance.now() / 1000), shot: s ? (s.story ? 'story/' + s.sk + '/' + (d.phase || '') : s.kind) + (s.stage ? ':' + s.stage : '') : '-', label: lab.replace(/Following /, ''), cap: cap ? cap.textContent.trim().slice(0, 60) : '', top: top[0] ? top[0].kind + ' ' + top[0].score + (top[0].on ? ' ON' : ' off') : '' }; }, [Math.round(EV * 30)]);

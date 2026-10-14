@@ -17,10 +17,14 @@ window.WW = window.WW || {};
   const subjectOf = shot => (shot.plane || shot.subj);
   // what the shot is committed to right now: null, or { why, release } (release: never pre-empt)
   function state(shot) {
-    if (!shot || shot.user || shot.pr >= 99) return null;      // the user's and the tests' shots are their own business
+    if (!shot || (shot.user && !shot.fkey) || shot.pr >= 99) return null; // the user's and the tests' shots are their own business (F's pick, fkey, keeps the lock)
     if (shot.stage === 'hold') return shot.st < (shot.hold || 0) ? { why: 'hold', release: true } : null; // the beat on the result, then free
     if (shot.stage) return { why: shot.stage, release: true }; // a bomb / torpedo hand-off in flight
     if (shot.nd) return WW.camNormandy ? WW.camNormandy.lock(shot) : null; // Normandy's shots: a ramp held until the men are off (camera_normandy.js)
+    if (shot.kind === 'brace' && shot.ev) { // camera_director.js: a ship braced for an impact, held to it and its beat
+      if (shot.doneAt === undefined) return { why: 'impact', release: shot.ev.etaReal < 1.5 };
+      return shot.t < shot.doneAt + 1.5 ? { why: 'beat', release: true } : null;
+    }
     const s = subjectOf(shot);
     if (!s || s.diorama) return null;
     if (s.pt && s.kind) {

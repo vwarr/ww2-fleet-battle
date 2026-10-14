@@ -76,6 +76,7 @@ window.WW = window.WW || {};
     return prOf(it) > worth(shot, C) + (shot.t < MIN_T ? BONUS[0] : bonus(shot));
   }
   function tick(rdt) {
+    if (WW.camDirector && !(WW.camNormandy && WW.camNormandy.on())) return;   // the Pacific: camera_director.js's arbiter cuts (this tick stays Normandy's)
     if ((tickT -= rdt) > 0 || !(WW.game && WW.game.state === 'battle') || WW.cam.mode !== 'director' || (WW.freecam && WW.freecam.active())) return;
     tickT = 1;
     const shot = WW.cam._shot();

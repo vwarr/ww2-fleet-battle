@@ -12,8 +12,8 @@
 // Visual only: Math.random and the wall clock, never WW.rand; reads the sim, never writes it.
 window.WW = window.WW || {};
 (function (WW) {
-  const MIN_T = 60, MAX_T = 180, GAP = [120, 220];       // story length (real s) and the rest between stories
-  const CUT = [6, 12], CUTAWAY = 5, CUTAWAY_GAP = 35, FALL = 4.5, CAPS = 12;
+  const MIN_T = 60, MAX_T = 180, GAP0 = [120, 220], GAP = [10, 20];   // story length (real s) and the rest between stories (camera4: arcs are the director's main mode, a short rest; GAP0 without camera_director.js)
+  const CUT = [6, 12], CUTAWAY = 5, CUTAWAY_GAP = 35, FALL = 4.5, FALL_MAX = 14, CAPS = 12;   // FALL_MAX: the protagonist shot down is followed to the water (or the deck, the island) and a beat
   const wall = () => performance.now() / 1000;
   const dur = (a, b) => a + (b - a) * Math.random();     // camera: Math.random, never WW.rand (seeded rounds)
   const ok = p => p && !p.removed && p.alive;
@@ -90,7 +90,7 @@ window.WW = window.WW || {};
       const lead = leadOfWave(w);
       if (!lead) continue;
       const forming = !w.go || w.members.some(m => ok(m) && m.state === 'takeoff');
-      add(lead, forming ? 9 : w.dT > 200 ? 7 : 4, 'strike');
+      add(lead, WW.camDirector ? (forming ? 6 : 5) : forming ? 9 : w.dT > 200 ? 7 : 4, 'strike');   // (camera4: a strike's arc opens on its run-in, 8-45 s out, through the finder above; not minutes before at the launch)
     }
     const now = WW.time.now;
     scrambles = scrambles.filter(e => now - e.sim < 40);
@@ -150,17 +150,23 @@ window.WW = window.WW || {};
     S = { lead: p, group: groupOf(p), mission: arc.mission, nation: p.nation, t0: wall(), user: !!user, shots: 0,
       last: '', phase: '', fall: null, ending: 0, cutaway: null, lastCutaway: -1e9, title: titleOf(p, arc.mission), title0: titleOf(p, arc.mission), titleUntil: wall() + CAPS };
     lastSq = p.squadron || null; ST.stories++;
+    if (WW.camDirector) S.arc = WW.camDirector.arcOpen('air:' + arc.mission, p, { user: !!user });   // the arc log (camera_director.js)
     log.push({ start: true, lead: p.kind + ' ' + (p.squadron ? p.squadron.short : ''), mission: arc.mission, at: wall() });
     S.begun = false; S.item = arc.item || null; S.imminent = !!arc.item;
     if (user) WW.cam.cut(); // the director's own pick waits for the current shot to end (never cuts an action shot)
     return true;
   }
-  function end(quiet) {
+  // outcome (the arc log): 'complete' (the story told to its end), 'protagonistDown' (it ended with the protagonist
+  // shot down and no wingman to take it on), 'cutAway' (ended early: the user, another story, the round), 'superseded'
+  function end(quiet, outcome) {
     if (!S) return;
+    if (S.arc && WW.camDirector) WW.camDirector.arcClose(S.arc, S.begun ? outcome || 'cutAway' : 'cutAway');
+    if (S.arc && !S.begun) S.arc.never = true;   // (a story that never got the camera)
     const short = S.user || S.imminent;
     if (S.mission === 'strike' && S.begun) { ST.strikeStories++; if (S.waveDove) { ST.diveStories++; if ((S.diveSeen || 0) >= DIVE_SEEN) ST.diveFilmed++; else log.push({ miss: 'dive seen ' + (S.diveSeen || 0).toFixed(1) + ' s, cut ' + (S.dive ? (S.dive.shown ? 'shown' : 'pending') : 'none') + ', lead ' + S.lead.kind, at: wall() }); } }
     S = null; ST.ended++; lastEnd = wall();
-    nextAt = wall() + (short ? dur(40, 60) : dur(GAP[0], GAP[1]));
+    const G = WW.camDirector ? GAP : GAP0;
+    nextAt = wall() + (short ? (WW.camDirector ? dur(8, 14) : dur(40, 60)) : dur(G[0], G[1]));
     log.push({ end: true, at: wall() });
     if (!quiet && WW.cam) WW.cam.cut();
   }
@@ -196,9 +202,10 @@ window.WW = window.WW || {};
     home: [['high', 1], ['side', 2], ['chase', 2]],
     rescue: [['side', 3], ['chase', 2], ['high', 1]]      // a Catalina down on the water among the survivors
   };
+  const RUN_MENU = [['chase', 5], ['ots', 2], ['water', 2]];   // camera4: on the run the chase (the plane and the ship ahead in frame) leads
   function choose(phase, L) {
     const opts = [];
-    for (const [sk, w] of MENU[phase] || MENU.transit) {
+    for (const [sk, w] of (WW.camDirector && phase === 'attack' && L.kind === 'torpedo' && L.phase === 'run' ? RUN_MENU : MENU[phase] || MENU.transit)) {
       if (sk === 'ots' && phase === 'bandits') { if (L.kind === 'fighter' && ok(L.foe)) opts.push(['afots', w]); continue; }
       if (WW.storyShots.valid(sk, L, S.group)) opts.push([sk, w]);
     }
@@ -223,9 +230,17 @@ window.WW = window.WW || {};
     const live = s => s && s.alive && !s.removed && !s.submerged && WW.world.ships.indexOf(s) >= 0 ? s : null; // a ship, not the island base or a flying boat's home
     return live(p.target) || live(p.wave && p.wave.target) || live(p.carrier) || null;
   }
-  function successor() {
+  // camera4 (strict, a strike with the director): only a wingman still committed to the attack and close to where the
+  // protagonist fell (it carries the story to the drop); else the arc ends with its protagonist
+  function successor(strict) {
     const live = S.group.filter(m => airborne(m));
     const old = S.lead;
+    if (strict && WW.camDirector && S.mission === 'strike') {
+      const c = live.concat(old.wave ? old.wave.members.filter(m => airborne(m) && live.indexOf(m) < 0) : [])
+        .filter(m => m !== old && m.ordnance && (m.phase === 'run' || m.phase === 'roll' || m.phase === 'dive' || m.sk === 'anvil' || m.state === 'attack') && Math.hypot(m.x - old.x, m.z - old.z) < 90);
+      c.sort((a, b) => Math.hypot(a.x - old.x, a.z - old.z) - Math.hypot(b.x - old.x, b.z - old.z));
+      return c[0] || null;
+    }
     let n = old.element && old.element.members.find(m => m !== old && airborne(m));
     if (!n) n = live[0];
     if (!n && old.wave) n = old.wave.members.find(m => airborne(m) && m.kind === old.kind) || (airborne(old.wave.cag) ? old.wave.cag : null);
@@ -239,20 +254,27 @@ window.WW = window.WW || {};
     const now = wall();
     if (S.ending) { // the closing high shot, unless a big ship / base event is on (the director has better to show)
       if (S.ending === 1 && !(WW.camScenes && WW.camScenes.bigNow() >= 8)) { S.ending = 2; const L = S.lead, c = mk('high', L, 7, false); if (L.removed) c.subj = { x: L.x, y: L.y, z: L.z, heading: L.heading, nation: L.nation }; return c; }
-      end(true); return null;
+      end(true, S.downed ? 'protagonistDown' : 'complete'); return null;
     }
-    if (S.fall && !S.fall.shown && S.lead && !S.lead.removed && now - S.fall.at < FALL) { // watch the leader go down
+    const FM = WW.camDirector ? FALL_MAX : FALL;
+    if (S.fall && !S.fall.shown && S.lead && !S.lead.removed && now - S.fall.at < FM) { // watch the leader go down (camera4: to the water, held by tick())
       S.fall.shown = true; S.last = 'fall';
-      log.push({ sk: 'fall', kind: 'story', phase: 'down', at: now, dur: FALL, hard: false });
-      return { kind: 'story', sk: 'fall', subj: S.lead, dur: FALL - (now - S.fall.at) + 0.5, story: true, kP: 1.5, kL: 4 };
+      log.push({ sk: 'fall', kind: 'story', phase: 'down', at: now, dur: FM, hard: false });
+      return { kind: 'story', sk: 'fall', subj: S.lead, dur: FM - (now - S.fall.at) + 0.5, story: true, kP: 1.5, kL: 4 };
     }
     if (S.fall) { // after the fall: the wingman / next leader takes the story on
       S.fall = null;
-      const n = successor();
-      if (!n) { S.ending = 1; return pick(); }
+      const n = successor(true);
+      if (!n) { S.downed = true; S.ending = 1; return pick(); }
+      S.downed = false;
       S.lead = n; S.group = groupOf(n).concat(S.group.filter(m => ok(m) && groupOf(n).indexOf(m) < 0)); ST.handoffs++;
       log.push({ handoff: n.kind + ' ' + (rank(n) || ''), at: now });
       S.title = [(rank(n) || 'The wingman') + ' takes the lead', n.squadron ? n.squadron.short : '']; S.titleUntil = now + CAPS;
+    }
+    if (S.insert) { // camera_director.js: the climax inside the arc (the story's target braced for its wave's hit), then the story goes on
+      const c = S.insert; S.insert = null; S.last = 'insert'; S.shots++;
+      log.push({ sk: 'insert', kind: c.kind, phase: S.phase, at: now, dur: +(c.dur || 0).toFixed(1), hard: false });
+      return Object.assign(c, { story: true, insert: true });
     }
     if (S.cutaway && now - S.cutaway.at < 8 && S.cutaway.s && !S.cutaway.s.removed && phaseOf(S.lead) !== 'attack') { // a ship going down elsewhere
       const s = S.cutaway.s; S.cutaway = null; S.lastCutaway = now; ST.cutaways++;
@@ -270,7 +292,11 @@ window.WW = window.WW || {};
     const L = S.lead;
     if (!ok(L)) { S.ending = 1; return pick(); }
     S.phase = phaseOf(L);
+    if (S.phase === 'attack') S.hadAttack = true;
+    if (S.phase === 'home' && S.homeAt === undefined) S.homeAt = now;
     const age = now - S.t0;
+    // (camera4: an arc told to its climax closes soon after: a shot or two of the way home, not the whole flight back)
+    if (WW.camDirector && S.hadAttack && (S.phase === 'home' || S.phase === 'after') && now - (S.homeAt !== undefined ? S.homeAt : S.afterAt || (S.afterAt = now)) > 9) { S.ending = 1; return pick(); }
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
     // a long, empty transit: every other shot cuts to the ships it is about (the target, else the carrier it guards)
     // at toy's-eye level, so the story's minutes over open sea also show the ships big
@@ -286,7 +312,7 @@ window.WW = window.WW || {};
     const sk = S.user && !S.shots && WW.storyShots.valid('chase', L, S.group) ? 'chase' // the user asked: open close on the subject
       : !S.shots && S.mission === 'strike' && (S.phase === 'form' || S.phase === 'transit') && WW.storyShots.valid('side', L, S.group) ? 'side' // open on the formation, side on: its size and stack
       : choose(S.phase, L);
-    const d = S.phase === 'attack' && sk !== 'high' ? dur(10, 14) : dur(CUT[0], CUT[1]);
+    const d = S.phase === 'attack' && sk !== 'high' ? dur(10, 14) : WW.camDirector ? dur(CUT[0] + 2, CUT[1] + 2) : dur(CUT[0], CUT[1]);
     // hard cuts inside a scene; a soft cross-fade into the story, out of a cutaway and on a new phase
     const hard = (S.user && !S.shots) || (S.shots > 0 && S.last !== 'cutaway' && S.prevPhase === S.phase && Math.random() < 0.5); // a key press answers at once
     S.prevPhase = S.phase;
@@ -316,21 +342,20 @@ window.WW = window.WW || {};
       const a = bestArc();
       // an imminent attack may start after a short rest (if it beats what the director films now: camera_score.js); anything
       // else waits for the long one
-      if (a && (a.item ? now - lastEnd >= 40 && (!WW.camScore || WW.camScore.beats(a.item)) : now >= nextAt && a.score >= 7)) start(a, false);
+      const rest = WW.camDirector ? 12 : 40, busy = WW.camDirector && WW.camDirector.arcBusy();
+      if (a && !busy && (a.item ? now - lastEnd >= rest && (WW.camDirector || !WW.camScore || WW.camScore.beats(a.item)) : now >= nextAt && a.score >= 7)) start(a, false);
       return;
     }
     const shot = WW.cam._shot(), locked = !!(WW.cam.locked && WW.cam.locked()); // the attack lock: no cut of any kind
     if (!S.begun) { // waiting for the director's current shot to end; an imminent attack cuts in (not into an action / test / locked shot)
-      if (!S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b && (!WW.camScore || WW.camScore.beats(b))) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
+      if (!WW.camDirector && !S.imminent && !S.user && now - lastEnd >= 40 && (checkT -= rdt) <= 0) { checkT = 1; const b = bestImminent(); if (b && (!WW.camScore || WW.camScore.beats(b))) start({ lead: b.subj, mission: b.subj.kind === 'fighter' ? 'cap' : 'strike', item: b }, false); }
       if (S.imminent && shot && !shot.stage && !locked && shot.t > (shot.story ? 1.5 : 4) && !(shot.pr >= 99)) shot.dur = Math.min(shot.dur, shot.t);
       return;
     }
-    // an automatic story not locked in an attack gives way to a bigger action elsewhere (a sinking, a bombardment, hits in
-    // a gun duel, a dive or a run under way) on the director's one scale (camera_score.js yields(): the story's own worth
-    // plus hysteresis against the best other candidate); the story ends and the director cuts to it. A quiet phase (transit
-    // / form / home) also yields to a big ship / base event the old way (bigNow); the unlocked attack phase (the anvil
-    // set-up: 10-150 real s of circling; the wheel) yields through the score, not through the phase name
-    if (!S.user && !locked && now - S.t0 > 15 && shot && shot.story && !shot.stage && (S.ydT = (S.ydT || 0) - rdt) <= 0) {
+    // an automatic story gives way to a bigger action elsewhere through the director's arbiter (camera_director.js: the
+    // story's worth counts its whole wave's attacks; a forecast impact elsewhere wins on the one ladder with hysteresis);
+    // without the director, the old way: camera_score.js yields() and the quiet-phase bigNow()
+    if (!WW.camDirector && !S.user && !locked && now - S.t0 > 15 && shot && shot.story && !shot.stage && (S.ydT = (S.ydT || 0) - rdt) <= 0) {
       S.ydT = 1;
       const quiet = S.phase === 'transit' || S.phase === 'form' || S.phase === 'home';
       const big = quiet && WW.camScenes && WW.camScenes.bigNow() >= 8;
@@ -361,8 +386,13 @@ window.WW = window.WW || {};
       S.fall = { at: now, shown: false };
       log.push({ fall: S.lead.kind, at: now });
       if (shot && shot.story && !shot.stage && shot.subj === S.lead && shot.kind === 'story' && shot.sk !== 'high') {
-        shot.sk = 'fall'; shot.fP = null; shot.dur = shot.t + FALL; S.fall.shown = true;
+        shot.sk = 'fall'; shot.fP = null; shot.dur = shot.t + (WW.camDirector ? FALL_MAX : FALL); S.fall.shown = true;
       } else if (shot && !shot.stage && !locked) shot.dur = Math.min(shot.dur, shot.t); // cut to a fall shot now
+    }
+    // the fall shot: held until the plane is in the water (or wrecked on a deck, the island), then a 2 s beat
+    if (WW.camDirector && shot && shot.story && shot.sk === 'fall' && shot.wetT === undefined) {
+      const L = shot.subj;
+      if (!L || L.removed || (L.y || 0) <= 0.8 || (L.state !== 'falling' && !L.deathMode && !L.alive)) { shot.wetT = shot.t; shot.dur = Math.min(shot.dur, shot.t + 2.2); }
     }
     // a new phase (the push-over, the run, bandits, leaving the deck): cut early to a shot that suits it (never out of a locked attack)
     if (shot && shot.story && !shot.stage && !locked && !S.fall && !shot.cutaway && ok(S.lead) && shot.t > 2.5) {
@@ -370,7 +400,7 @@ window.WW = window.WW || {};
       if (ph !== S.phase && (ph === 'attack' || ph === 'bandits' || ph === 'after' || S.phase === 'launch')) shot.dur = Math.min(shot.dur, shot.t);
     }
     // an automatic story gives way to a better attack about to happen elsewhere (a CAP circle must not hide a strike)
-    if (!S.user && shot && shot.story && !shot.stage && !locked && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 8 && (S.swT = (S.swT || 0) - rdt) <= 0) {
+    if (!WW.camDirector && !S.user && shot && shot.story && !shot.stage && !locked && !S.fall && !S.ending && S.phase !== 'attack' && now - S.t0 > 8 && (S.swT = (S.swT || 0) - rdt) <= 0) {
       S.swT = 2;
       const mine = WW.camFinder && WW.camFinder.about(S.lead), my = mine && mine.etaReal >= 0 && mine.etaReal < 60 ? imm(mine) : 0;
       const b = my && now - S.t0 < 20 ? null : bestImminent(p => p === S.lead || S.group.indexOf(p) >= 0 || (p.wave && p.wave === S.lead.wave)); // its own attack coming: 20 s
@@ -390,8 +420,8 @@ window.WW = window.WW || {};
     init() {
       WW.on('roundStart', () => { S = null; nextAt = wall() + dur(30, 60); lastEnd = -1e9; scrambles = []; });
       WW.on('setupStart', () => { S = null; });
-      WW.on('victory', () => { if (S) end(false); });
-      WW.on('shipSunk', s => { if (S && s && !s.removed && wall() - S.lastCutaway > CUTAWAY_GAP) S.cutaway = { s, at: wall() }; });
+      WW.on('victory', () => { if (S) end(false, 'complete'); });
+      WW.on('shipSunk', s => { if (S && s && !s.removed && wall() - S.lastCutaway > CUTAWAY_GAP && (!WW.camDirector || s.type === 'carrier' || s.type === 'battleship')) S.cutaway = { s, at: wall() }; });   // (camera4: only a carrier or a battleship going down cuts away from an arc)
       WW.on('airOrder', e => { if (e && e.order === 'scramble' && e.carrier) scrambles.push({ carrier: e.carrier, sim: WW.time.now }); });
       if (WW.cam && WW.cam.update) {
         const u = WW.cam.update;
@@ -427,6 +457,11 @@ window.WW = window.WW || {};
     story() { return S ? { lead: S.lead, user: S.user, item: S.item, begun: S.begun, title: S.title0, mission: S.mission } : null; },
     interrupted(c) { if (S) { S.lastCutaway = wall(); S.cutaway = null; log.push({ interrupt: c.kind, at: wall() }); } }, // camera.js interrupt(): the story resumes after it
     // camera.js recut(): a bigger action elsewhere takes the camera; an automatic story ends for it (the user's does not)
+    // camera_director.js: a carrier about to be struck takes the camera (the story is closed, not resumed); F adopts the
+    // automatic story as the user's
+    insert(c) { if (!S || !S.begun || S.insert) return false; S.insert = c; const sh = WW.cam._shot(); if (sh && sh.story && !sh.stage) sh.dur = Math.min(sh.dur, sh.t); return true; },
+    supersede() { if (S) { log.push({ superseded: true, at: wall() }); end(true, 'superseded'); } },
+    adopt() { if (S && S.begun) { S.user = true; if (S.arc) S.arc.user = true; return true; } return false; },
     yieldTo(c) { if (!S) return true; if (S.user) return false; log.push({ yield: c.kind + ' ' + (c.pr || 0).toFixed(1), phase: S.phase, at: wall() }); ST.yielded = (ST.yielded || 0) + 1; end(true); return true; },
     titleOf, anyArc,
     lead() { return S && S.lead; },
