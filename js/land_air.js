@@ -36,10 +36,10 @@ window.WW = window.WW || {};
     f4f:  { kind: 'fighter', model: null, sq: 'VMF-221', cls: 'S', carrier: true },
     sbd:  { kind: 'dive', model: null, sq: 'VMSB-241', cls: 'S', carrier: true },
     b26:  { kind: 'torpedo', model: 'b26', sq: '69th BS', st: { hp: 46, speed: 30, turn: 0.85, climb: 4, range: 1300 }, gear: 1.0, cls: 'M' },
-    b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: WW.altOf(7000), bombs: 3 }, cls: 'L' },
+    b17:  { kind: 'dive', model: 'b17', sq: '431st BS', st: { hp: 80, speed: 24, turn: 0.55, climb: 3, range: 1500 }, gear: 1.25, level: { alt: WW.altOf(7000), bombs: 3, bombK: 0.5 }, cls: 'L' },
     a6m:  { kind: 'fighter', model: null, sq: 'Tainan Kokutai', cls: 'S', carrier: true },
     g4m:  { kind: 'torpedo', model: 'g4m', sq: 'Misawa Kokutai', st: { hp: 34, speed: 30, turn: 0.85, climb: 4, range: 1500 }, gear: 1.0, cls: 'L' },
-    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: WW.altOf(6500), ship: WW.altOf(5800), bombs: 2 }, cls: 'L' }
+    g4mL: { kind: 'dive', model: 'g4mL', sq: 'Chitose Kokutai', st: { hp: 34, speed: 29, turn: 0.8, climb: 3.6, range: 1500 }, gear: 1.0, level: { alt: WW.altOf(6500), ship: WW.altOf(5800), bombs: 2, bombK: 0.6 }, cls: 'L' }
   };
   for (const k in VAR) if (VAR[k].gear) VAR[k].gear *= WW.cfg.PLANE_K || 1;   // gear heights above were measured at the 1.7 plane scale
   const KATE = { alt: 40, bombs: 1 };

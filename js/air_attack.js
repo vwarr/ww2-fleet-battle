@@ -35,14 +35,14 @@ window.WW = window.WW || {};
   // set-up cut to SETUP_MAX..SETUP_MIN s (SETUP_CAP s unopposed: no orbiting); at PR_HEAVY (+ PR_VET x press: veterans hold their set-up under more fire)
   // straight in. A hasty drop is PR_LONG x pressure further out (up to ~1,250 m), much wider (PR_ERR x pressure as the
   // harried error, air_intercept.js HARRY.torp: about +-0.2 rad typical) and taken off a worse bearing (OFF_HASTY):
-  // calibrated so straight-in drops hit ~10-15% (the Midway TBDs none; the IJN's rushed drops at Santa Cruz did poorly
+  // calibrated so straight-in drops hit ~8-12% (the Midway TBDs none; the IJN's rushed drops at Santa Cruz did poorly
   // against a turning Enterprise) while a good anvil drop keeps ~30-40%. A long drop is also combed (ships_ai.js COMB_R).
-  const PR_LIGHT = 0.2, PR_ONE = 0.35, PR_HEAVY = 0.5, PR_VET = 0.15, PR_LONG = 30, PR_ERR = 3, SETUP_MAX = 40, SETUP_MIN = 10, SETUP_CAP = 60, LOST_T = 30;
+  const PR_LIGHT = 0.2, PR_ONE = 0.35, PR_HEAVY = 0.5, PR_VET = 0.15, PR_LONG = 30, PR_ERR = 4.5, SETUP_MAX = 40, SETUP_MIN = 10, SETUP_CAP = 60, LOST_T = 30;
   const OFF = [0.35, 2.8], OFF_HASTY = [0, 3.2], EXT_R = 50, Y_HASTY = 4.5;
   // OFF: the bearing off the target's bow a drop is taken from (a hasty one from anywhere); EXT_R: the run-in a hasty
   // attack needs past its drop range; Y_HASTY: a hurried drop from ~60 m (3: ~30 m, air_strikes.js altitude rule)
   let grps = new Map();
-  const ST = { dives: 0, runs: 0, flips: 0, rebal: 0, pushT: [], straight: 0, cut: 0, single: 0, lost: 0 };
+  const ST = { dives: 0, runs: 0, pass: 0, flips: 0, rebal: 0, pushT: [], straight: 0, cut: 0, single: 0, lost: 0 };
 
   // ---------- doctrine: how hard this plane presses its attack (0 cautious .. 1 veterans) ----------
   function press(pl) {
@@ -96,7 +96,7 @@ window.WW = window.WW || {};
     const ang = pl.pt.ang || 1.2;
     const vy0 = Math.min(pl.V * Math.sin(pl.gam), -Math.sin(ang) * pl.V), rel = pl.relAlt || 18;
     const tb = (vy0 + Math.sqrt(vy0 * vy0 + 2 * G * rel)) / G, tt = Math.max(0, pl.y - rel) / -vy0 + tb;
-    pl.aimX = t.x + Math.cos(t.heading) * t.speed * tt; pl.aimZ = t.z + Math.sin(t.heading) * t.speed * tt;
+    pl.aimX = t.x + Math.cos(t.heading) * t.speed * tt + (pl.aimE ? pl.aimE.x : 0); pl.aimZ = t.z + Math.sin(t.heading) * t.speed * tt + (pl.aimE ? pl.aimE.z : 0);   // + his error (diveErr)
     pl.aimY = 0.5 * G * tb * tb;
   }
   function wheelR(pt) { return (pt.push || 60) / Math.tan(pt.ang || 1.2) + WHEEL_W; }
@@ -129,7 +129,7 @@ window.WW = window.WW || {};
       pl.relAlt = pl.floor + pullLoss(pl.V, Math.min(pl.gam, gw), Q);
       if (pl.y + pl.vy * dt <= pl.relAlt) { // release on the dive line: the bomb keeps the plane's velocity
         pl.dropV = { x: Math.cos(pl.heading) * pl.speed, y: pl.vy, z: Math.sin(pl.heading) * pl.speed };
-        WW.combat.dropBomb(pl, t); pl.dropped(); pl.dropV = null;
+        WW.combat.dropBomb(pl, t); pl.dropped(); pl.dropV = null; pl.aimE = null;
         if (ST.pushT.length < 400) ST.pushT.push(+(now - pl.rollT).toFixed(2));
         startPull(pl);
       }
@@ -150,6 +150,7 @@ window.WW = window.WW || {};
       pl.phase = 'roll'; pl.phaseT = 0; pl.rollT = now; pl.diveTgt = t; pl.push = false; pl.gam = Math.atan2(pl.vy, Math.max(1, pl.speed)); pl.V = Math.max(DIVE_V0, Math.hypot(pl.vy, pl.speed));
       pl.floor = Math.max(topNear(t, 40), 4, ground(t.x, t.z), groundAhead(pl, 6)) + CLEAR + (1 - pr) * 4; // cautious: release higher
       pl.relAlt = pl.floor + 8; ST.dives++;
+      pl.aimE = WW.combat.diveErr ? WW.combat.diveErr(pl) : null;   // where he will put it (combat_weapons.js): the dive line runs at that point
       return;
     }
     if (dh < R + 20 && (ok || dh < R - 12)) { pl.orbit(t.x, t.z, R + 6, alt + (pl.fi || 0) % 4 * 1.2, dt); } // waiting: hold just outside the push-over point
@@ -214,7 +215,7 @@ window.WW = window.WW || {};
   const room = (pl, dh, P) => dh > hastyR(pl, P) + EXT_R;
   const facing = (pl, t, k) => Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < k;
   function goIn(pl, t, P, g, now) {
-    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp;
+    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp; pl.runAbort = false;
     pl.dropR = hastyR(pl, P); ST.runs++;
     g.goT = now; g.hastyT = now;   // the squadron turns in with it
   }
@@ -233,7 +234,9 @@ window.WW = window.WW || {};
       pl.state = 'transit';
       const P = dh < SET_R + 120 ? prOf(pl, t) : 0, hot = P >= heavyAt(pl) || now - (g.hastyT || -99) < 10 || now - (pl.lostT || -99) < LOST_T;
       if (hot && dh < HOT_R && !room(pl, dh, P)) pl.ext = true;   // too close (just past the ship): open out low, then in
-      if (pl.ext && dh < hastyR(pl, P) + EXT_R + 30) { pl.fly(2 * pl.x - t.x, 2 * pl.z - t.z, 8, dt, pl.pt.speed); return; }
+      // a teardrop come-round, low: out on a leg ~35 deg off the line from the ship, then hard round and in again (not
+      // a run straight away from her, which reads as a break-off)
+      if (pl.ext && dh < hastyR(pl, P) + EXT_R + 30) { const b = Math.atan2(pl.z - t.z, pl.x - t.x) + (pl.side || 1) * 0.6; pl.fly(t.x + Math.cos(b) * (dh + 60), t.z + Math.sin(b) * (dh + 60), 8, dt, pl.pt.speed); return; }
       pl.ext = false;
       pl.fly(t.x, t.z, dh > SET_R + 80 && P < PR_LIGHT ? (pl.pt.alt || 30) : hot ? 6 : 14, dt, pl.pt.speed);   // under fire: down low early
       if (hot && dh < HOT_R && facing(pl, t, 0.8)) { pl.prs = P; pl.prsMax = P; goIn(pl, t, P, g, now); ST.straight++; return; }
@@ -292,24 +295,30 @@ window.WW = window.WW || {};
     }
     // Turn in once pointing at the target (or after 3 s), so nobody starts the run with a 180-degree turn.
     if (go && ((ds < 30 && Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < 1) || now - g.goT > 6)) {
-      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
+      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.runAbort = false; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
     }
   }
   // Hit on the run (P8c): aircraft.js damage() lets a bomber jettison and turn for home only before its attack, but a
   // torpedo plane hit on its low, steady run was often done for: VT-8 lost all 15 at Midway, VT-3 and VT-6 most of
   // theirs, and many that released were holed. Each hit taken on the run may end it: the chance grows with the damage
-  // (how far below RUN_HP the plane is, and how big this hit was, x RUN_K / RUN_HIT, to RUN_MAX); RUN_DOWN of those go into the sea
-  // (engine, controls, the pilot), the rest jettison the torpedo and break away. One WW.rand draw per hit.
-  const RUN_HP = 1, RUN_K = 5, RUN_HIT = 10, RUN_MAX = 0.9, RUN_DOWN = 0.5;   // calibrated: ~35-55% of a heavily opposed attack releases (VT-3 / VT-6 / VT-8)
+  // (how far below RUN_HP the plane is, and how big this hit was, x RUN_K / RUN_HIT), x how hot the pilot read the area
+  // going in (prsMax past RUN_P0, over RUN_PW, squared, RUN_PK; the top of it with a fighter on him: fighters on his tail and a wall of flak finish a holed plane; the odd
+  // gunner's hits on a lightly defended ship do not stop it: the Kates at Pearl Harbor pressed on through holed wings),
+  // to RUN_MAX; RUN_DOWN of those go into the sea (engine, controls, the pilot), the rest jettison the torpedo and break
+  // away. One WW.rand draw per hit that counts.
+  const RUN_HP = 1, RUN_K = 5, RUN_HIT = 10, RUN_MAX = 0.9, RUN_DOWN = 0.6, RUN_P0 = 0.1, RUN_PW = 0.3, RUN_PK = [0.1, 1.5];   // calibrated: ~45-55% of a heavily opposed attack releases (VT-3 / VT-6 / VT-8)
   function hitOnRun(pl) {
     const h0 = pl.runHp === undefined ? pl.hp : pl.runHp;
     pl.runHp = pl.hp;
-    if (pl.hp >= h0 || pl.hp >= pl.maxHp * RUN_HP) return false;
-    const f = pl.hp / pl.maxHp, pb = Math.min(RUN_MAX, (RUN_HP - f) * RUN_K + (h0 - pl.hp) / pl.maxHp * RUN_HIT), r = WW.rand();
+    if (pl.hp >= h0) return false;
+    let pk = WW.clamp((Math.max(pl.prsMax || 0, pl.hasty || 0) - RUN_P0) / RUN_PW, RUN_PK[0], RUN_PK[1]);
+    if (pk < RUN_PK[1]) for (const q of WW.world.planes) if (q.alive && q.foe === pl && q.kind === 'fighter' && WW.dist2(q.x, q.z, pl.x, pl.z) < 80 * 80) { pk = RUN_PK[1]; break; }   // a fighter on him
+    const pb = Math.min(RUN_MAX, pk * pk * ((RUN_HP - pl.hp / pl.maxHp) * RUN_K + (h0 - pl.hp) / pl.maxHp * RUN_HIT));
+    const r = WW.rand();
     if (r >= pb) return false;   // presses on
     if (r < pb * RUN_DOWN) { ST.runDown = (ST.runDown || 0) + 1; pl.shotDown(); return true; }
     ST.runAbort = (ST.runAbort || 0) + 1;
-    pl.crippled = true; pl.dropped(); if (WW.fx) WW.fx.splash(pl.x, pl.z, 0.8);
+    pl.crippled = true; pl.runAbort = true; pl.dropped(); if (WW.fx) WW.fx.splash(pl.x, pl.z, 0.8);
     pl.phase = null; pl.sk = null; pl.state = 'return'; pl.foe = null;
     return true;
   }
@@ -348,6 +357,7 @@ window.WW = window.WW || {};
     }
     // Released, or not lined up by 30 inside the drop range (or the ship combed the run, bow- or stern-on): pop up over
     // the ship; the latter keeps its torpedo and comes round again.
+    if (!drop && dh < dropR - (hy ? 45 : 30)) ST.pass++;   // not lined up: a pass, the torpedo kept for another run
     if (drop || dh < dropR - (hy ? 45 : 30)) { pl.outTgt = t; pl.phase = 'out'; pl.phaseT = drop ? 4 : 3; pl.passed = false; pl.lastD = dh; pl.floor = Math.max(topNear(t, 30), 2, groundAhead(pl, 8)) + CLEAR; }
   }
   // After release: pop up and fly over the target ship, then climb away and head home.
@@ -368,7 +378,7 @@ window.WW = window.WW || {};
     else if (pl.ordnance && t) { pl.sk = 'anvil'; pl.av = freeAV(pl, t); pl.anT = WW.time.now; pl.prsT = WW.time.now; } else { pl.state = 'return'; pl.sk = null; }
   }
 
-  function reset() { grps = new Map(); ST.dives = ST.runs = ST.flips = ST.rebal = ST.offMap = ST.straight = ST.cut = ST.single = ST.lost = ST.runDown = ST.runAbort = 0; ST.pushT = []; }
+  function reset() { grps = new Map(); ST.dives = ST.runs = ST.flips = ST.rebal = ST.offMap = ST.straight = ST.cut = ST.single = ST.lost = ST.runDown = ST.runAbort = ST.pass = 0; ST.pushT = []; }
   WW.on('roundStart', reset);
   WW.on('setupStart', reset);
   Object.assign(S, { dive, torp, TOP, press, wheelR, attackStats: ST, SET_R });

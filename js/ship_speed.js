@@ -13,7 +13,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var HP_HI = 0.7, HP_LO = 0.15, HP_LO_K = 0.5;  // hp share -> speed factor
-  var FLOOD = 0.12, FLOOD_MAX = 0.45;           // per torpedo hit (was 0.08 / 0.3: a hit now visibly slows a big ship)
+  var FLOOD = 0.12, FLOOD_MAX = 0.45, NEAR_FLOOD = 0.2;           // per torpedo hit (was 0.08 / 0.3: a hit now visibly slows a big ship)
   var CRIT = 0.12, CRIT_TORP = 0.25, CRIT_AFT = 0.45, ENGINE_K = 0.5, CRIT_T = [25, 60], CRIT_PERM = 0.5;
   var MIN_K = 0.15;
   var stats = { crits: 0, permanent: 0, floods: 0 };
@@ -30,6 +30,7 @@ window.WW = window.WW || {};
     if (!ship.alive || ship.hp <= 0 || !(amount > 0)) return;
     var dc = dcOf(ship);
     if (kind === 'torpedo' && ship.type !== 'submarine') { ship.flood = Math.min(FLOOD_MAX, (ship.flood || 0) + FLOOD / dc); stats.floods++; }
+    else if (kind === 'near' && ship.type !== 'submarine') ship.flood = Math.min(FLOOD_MAX, (ship.flood || 0) + FLOOD * NEAR_FLOOD / dc);   // a bomb close aboard: sprung plates
     var heavy = kind === 'torpedo' || kind === 'bomb' || cal === 'big';
     var cp = CRIT;
     if (kind === 'torpedo') { // aft third of the hull: the shafts and the rudder

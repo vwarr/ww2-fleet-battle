@@ -73,8 +73,9 @@ window.WW = window.WW || {};
         if (Math.random() < 0.5) WW.fx.smoke(this.x, this.y, this.z, true, 0.35 * FXK);
       }
       if (this.hp <= 0) { this.shotDown(); return; }
-      // Badly hit: jettison the payload and turn for home (not mid-dive / mid-run).
-      if (!this.crippled && this.hp < this.maxHp * 0.35 && (this.state === 'transit' || this.state === 'attack') && !this.phase) {
+      // Badly hit: jettison the payload and turn for home (not mid-dive / mid-run; a torpedo plane setting up its attack
+      // presses on unless it can barely fly).
+      if (!this.crippled && this.hp < this.maxHp * (this.kind === 'torpedo' && this.sk === 'anvil' ? 0.2 : 0.35) && (this.state === 'transit' || this.state === 'attack') && !this.phase) {
         this.crippled = true;
         if (WW.airDeaths && WW.airDeaths.onCrippled(this)) return;
         if (this.ordnance) { this.dropped(); WW.fx.splash(this.x, this.z, 0.8 * FXK); }
