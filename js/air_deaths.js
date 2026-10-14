@@ -21,7 +21,15 @@ window.WW = window.WW || {};
   var DECK_Y = 0.75 * PK;                // fuselage above the flight deck (aircraft.js)
   function deckHalf(c) { var k = c && c.model && c.model.deckDims; return k ? k.halfW : 2.5 * (WW.cfg.DECK_K || 1.8) / 1.8; } // flight-deck half width
   var v3 = null, P = function () { return WW.airProps; };
-  var count = { spin: 0, wing: 0, comet: 0, crash: 0, ditch: 0, abandon: 0, slide: 0, burst: 0, chutes: 0, shipHits: 0 };
+  var count = { spin: 0, wing: 0, comet: 0, crash: 0, ditch: 0, abandon: 0, slide: 0, burst: 0, chutes: 0, shipHits: 0,
+    jibaku: { IJN: 0, USN: 0 }, stricken: 0, strickenHits: 0, strickenOut: 0 };
+  // Jibaku (the deliberate crash, mode 'crash'): IJN aircrew only, a plane already doomed (shot down: burning or mortally
+  // hit) with an enemy ship close ahead (JIB_R) and the height and speed to reach her: JIB of them, JIB_CRIP of the
+  // crippled. Rare: Santa Cruz, 26 Oct 1942 (a Val into Hornet's island, a Kate into her forward elevator, a Kate onto
+  // Smith's forecastle); a burning Betty into San Francisco, 12 Nov 1942. A stricken USN dive or torpedo bomber on its
+  // attack releases instead (stricken): in the dive, on the torpedo run near its drop range, or close in with the
+  // target ahead, it lets go at once, wide (the harried error of a holed airframe, air_intercept.js), then goes down.
+  var JIB = 0.08, JIB_CRIP = 0.2, JIB_R = 60, JIB_V = 15;
   var I = function () { return WW.airImpact; };
 
   function deckY(s) {
@@ -58,8 +66,8 @@ window.WW = window.WW || {};
   function pick(p) {
     if (p._force) { var f = p._force; p._force = null; return f; }
     var wings = !!(p.model && p.model.wingL && p.model.wingR), by = cause(p);
-    var tgt = p.y > 6 ? shipAhead(p, 60) : null;
-    if (tgt && WW.rand() < (p.crippled ? 0.22 : 0.08)) { p.crashTgt = tgt; return 'crash'; }
+    var tgt = p.nation === 'IJN' && p.y > 6 && p.speed > JIB_V ? shipAhead(p, JIB_R) : null;
+    if (tgt && WW.rand() < (p.crippled ? JIB_CRIP : JIB)) { p.crashTgt = tgt; count.jibaku[p.nation]++; return 'crash'; }
     var w = { spin: 0.25, wing: wings ? 0.25 : 0, comet: 0.3, ditch: p.y < 10 ? 0.35 : 0.04 };
     if (by === 'aa') { w.comet += 0.25; w.wing *= 0.6; } else if (by === 'gun') { w.wing *= 1.4; w.ditch *= 1.3; }
     var tot = 0, k; for (k in w) tot += w[k];
@@ -72,8 +80,38 @@ window.WW = window.WW || {};
   function startDitch(p) {
     p.deathMode = 'ditch'; p.state = 'ditch'; if (p.hp <= 0) p.hp = p.maxHp * 0.45; p.crew = true; p.roll = 0; // shot down: grey smoke, no flames
   }
+  // A stricken USN bomber on (or close to) its attack: the bomb or torpedo goes now, wide. Sim: one stable point (the
+  // shoot-down); the torpedo's line draws WW.rand as air_attack.js torp does. Returns true if it released.
+  var STR_R = 70, STR_A = 0.6, TORP_Y = 8, TORP_RANGE = 140;
+  function stricken(p) {
+    if (p.nation !== 'USN' || !p.ordnance || p.level || (p.kind !== 'dive' && p.kind !== 'torpedo')) return false;
+    var t = p.diveTgt || p.target;
+    if (!t || !t.alive || t.sinking || t.submerged || t.isBase || !t.stats) return false;
+    var dh = WW.dist(p.x, p.z, t.x, t.z), ahead = Math.abs(WW.angleDiff(p.heading, Math.atan2(t.z - p.z, t.x - p.x))) < STR_A;
+    var c = Math.cos(p.heading), s = Math.sin(p.heading), w = null;
+    if (p.kind === 'dive') {
+      var diving = p.phase === 'roll' || p.phase === 'dive';
+      if (!diving && !(p.state === 'attack' && ahead && dh < STR_R)) return false;
+      if (diving) p.dropV = { x: c * p.speed, y: p.vy, z: s * p.speed };   // off the dive line
+      p.aimE = null;                                                        // no settled aim: the error is rolled now, at its widest
+      w = WW.combat.dropBomb(p, t); p.dropV = null;
+    } else {
+      if (!(ahead && p.y < TORP_Y && (p.phase === 'run' ? dh < (p.dropR || 100) + 40 : p.state === 'attack' && dh < STR_R + 40))) return false;
+      var hz = WW.intercept && WW.intercept.harried ? WW.intercept.harried(p) : 1, k = WW.intercept ? WW.intercept.HARRY.torp : 0.16;
+      w = WW.combat.fireTorpedo(p, p.x + c, p.z + s, p.heading + (WW.rand() + WW.rand() - 1) * 1.7 * k * Math.max(hz, 0.6), p.nation, TORP_RANGE);
+    }
+    if (!w) return false;
+    w.stricken = true; p.dropped(); count.stricken++;
+    return true;
+  }
+  WW.on('weaponImpact', function (e) {
+    var w = e && e.proj; if (!w || !w.stricken) return;
+    w.stricken = false; if (e.ship && !e.dud) count.strickenHits++; else count.strickenOut++;
+  });
+  WW.on('roundStart', function () { count.jibaku.IJN = count.jibaku.USN = 0; count.stricken = count.strickenHits = count.strickenOut = 0; });
   function onShotDown(p) {
     try {
+      stricken(p);
       var fx = WW.fx, mode = pick(p); p.deathMode = mode; p.dT = 0; count[mode === 'bail' ? 'spin' : mode]++;
       if (mode === 'bail') { p.deathMode = 'spin'; bail(p, rr(0.3, 0.8)); return; }
       if (mode === 'spin') { if (R() < 0.4 && p.y > 10) bail(p, rr(0.4, 1.2)); return; }

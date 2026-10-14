@@ -6,7 +6,8 @@
 //           'big'). ship_fires / damage treat a crash like a bomb hit (fires, a loaded flight deck). Burning wrecks
 //           hit ships in 1942: Smith at Santa Cruz (26 Oct, a Kate onto her forecastle, its torpedo exploded; she
 //           steamed into South Dakota's wake to put the fire out), San Francisco off Guadalcanal (12 Nov, a Betty
-//           into the after control station), and Hornet's signal bridge (a Val, Santa Cruz).
+//           into the after control station), and Hornet's signal bridge (a Val, Santa Cruz). Only uncontrolled
+//           wrecks: a controlled ditching (belly) is flown beside a ship and never resolves on one.
 //   land    the island base: WW.landSites.impact(kind 'crash'): a runway hit craters it (the existing crater / repair
 //           path), facilities in reach take damage, parked planes in the blast are wrecked (land_ground.js groundHit).
 //           Elsewhere on land (an island hillside, the Normandy bluffs): a ground burst and a burning wreck that
@@ -70,7 +71,7 @@ window.WW = window.WW || {};
   // controlled ditching (gentle contact on land). Returns true when the wreck met a surface (it is then resolved).
   function hit(p, onWater, belly) {
     var lo = reach(p), y = p.y - lo;
-    var sh = shipUnder(p.x, p.z, y);
+    var sh = belly ? null : shipUnder(p.x, p.z, y);   // a controlled ditching is flown beside a ship, never into her
     if (sh) { onShip(p, sh); return true; }
     var g = ground(p.x, p.z);
     if (y > g) return false;

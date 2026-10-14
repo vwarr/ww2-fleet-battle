@@ -1,5 +1,6 @@
 // Island base screenshots (render mode, software GL) -> tests/shots/base/*.png
 //   field          the airfield: runways, taxiways, dispersal rows of revetments, parked planes
+//   wide140 / wide200  high and wide over the island at 140 / 200 s: the sky over the field (circuit, CAP)
 //   revetments     a row close up: planes in their revetments with their ground crews
 //   taxi_queue     a launch: planes on the taxiway in line, one holding short, one on the runway
 //   scramble       a raid detected: fighters warming up and rolling out, the crews backing off
@@ -54,6 +55,10 @@ const SHOTS = [
     const u = its.reduce((a, d) => a + d.u, 0) / its.length, v = its.reduce((a, d) => a + d.v, 0) / its.length, k = 45 / Math.hypot(u, v);
     const t = L.toW(u, v), c = L.toW(u * (1 - k) * 0.5, v * (1 - k) * 0.5); return [c.x, 55, c.z, t.x, 0, t.z]; }],
   ['field', () => { const L = B.layout, c = L.toW(0, 0), e = L.toW(-30, 95); return [e.x, 85, e.z, c.x, 0, c.z]; }],
+  // wide over the island at 140 / 200 s of the round: the circuit (planes called in from their marshal points far out,
+  // the CAP out on the threat bearing) should leave the sky over the field mostly empty outside a raid
+  ['wide140', () => { __until(() => WW.game.roundTime >= 140, 400); const L = B.layout, c = L.toW(0, 0), e = L.toW(-220, 260); return [e.x, 230, e.z, c.x, 0, c.z]; }],
+  ['wide200', () => { __until(() => WW.game.roundTime >= 200, 400); const L = B.layout, c = L.toW(0, 0), e = L.toW(-220, 260); return [e.x, 230, e.z, c.x, 0, c.z]; }],
   ['crossing', () => { // low over the runway crossing (the cross runway meets the main one near its west end, u -36)
     const L = B.layout, c = L.toW(-36, 0), e = L.toW(-8, 26); return [e.x, 11, e.z, c.x, 0, c.z]; }],
   ['crossing_top', () => { // straight down onto the crossing: edges, markings, taxiway joins

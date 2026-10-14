@@ -135,11 +135,29 @@ window.WW = window.WW || {};
   function flyDitch(p, dt) {
     const D = p.ditchTo;
     if (D.ship && D.ship.alive && !D.ship.sinking) { D.x = D.ship.x; D.z = D.ship.z; }
-    else if (D.ship) { const s = ditchShip(p); D.ship = s; if (s) { D.x = s.x; D.z = s.z; } }
-    const off = D.ship ? 16 : 0, b = D.ship ? D.ship.heading + Math.PI / 2 : 0;   // abeam of the ship, clear of its bow
-    const tx = D.x + Math.cos(b) * off, tz = D.z + Math.sin(b) * off, d = WW.dist(p.x, p.z, tx, tz);
-    p.fly(tx, tz, d > 80 ? 18 : 5, dt, cruise(p) * (d > 80 ? 1 : 0.8));
-    if (d < 12 || (p.t - (D.t0 === undefined ? (D.t0 = p.t) : D.t0)) > 120) p.ditch();
+    else if (D.ship) { const s = ditchShip(p); D.ship = s; D.side = undefined; D.gate = false; if (s) { D.x = s.x; D.z = s.z; } }
+    if (ditchFly(p, D, dt, cruise(p)) || (p.t - (D.t0 === undefined ? (D.t0 = p.t) : D.t0)) > 120) p.ditch();
+  }
+  // The ditching run beside a friendly ship D.ship (D.x / z: its position; no ship: the point itself), the way it was
+  // done near a destroyer: in along her course on the beam the plane comes from, DITCH_ABEAM u out, through a gate
+  // DITCH_GATE astern of the touchdown point, which lies DITCH_AHEAD ahead of her bow (she steams up to the raft), so
+  // the glide runs parallel to her and never across her. Returns true at the touchdown point (the caller ditches).
+  const DITCH_ABEAM = 38, DITCH_AHEAD = 22, DITCH_GATE = 45;
+  function ditchFly(p, D, dt, spd) {
+    const s = D.ship;
+    if (!s) { const d = WW.dist(p.x, p.z, D.x, D.z); p.fly(D.x, D.z, d > 80 ? 18 : 5, dt, spd * (d > 80 ? 1 : 0.8)); return d < 12; }
+    const c = Math.cos(s.heading), sn = Math.sin(s.heading);
+    if (D.side === undefined) D.side = -(p.x - s.x) * sn + (p.z - s.z) * c >= 0 ? 1 : -1;   // the beam it comes in on
+    const ah = (s.stats ? s.stats.length / 2 : 10) + DITCH_AHEAD;
+    const tx = s.x + c * ah - sn * D.side * DITCH_ABEAM, tz = s.z + sn * ah + c * D.side * DITCH_ABEAM;
+    if (!D.gate) {
+      const gx = tx - c * DITCH_GATE, gz = tz - sn * DITCH_GATE, d = WW.dist(p.x, p.z, gx, gz);
+      p.fly(gx, gz, d > 80 ? 18 : 6, dt, spd * (d > 80 ? 1 : 0.8));
+      if (d < 14) D.gate = true;
+      return false;
+    }
+    p.fly(tx, tz, 4, dt, spd * 0.75);
+    return (p.x - tx) * c + (p.z - tz) * sn > -6;   // at (or past) the touchdown point
   }
   // a damaged plane on its way home: find it a wingman (a friendly plane going home nearby, not already escorting)
   function pair(p) {
@@ -192,5 +210,5 @@ window.WW = window.WW || {};
   function addField(fn) { fields.push(fn); }
   function reset() { for (const k in ST) ST[k] = 0; }
   WW.on('roundStart', reset);
-  WW.airFlight = { climbV, orphan, nearestDeck, divertTo, addField, home, ditchShip, cruise, bingo, climbing, opp, stats: ST };
+  WW.airFlight = { climbV, orphan, nearestDeck, divertTo, addField, home, ditchShip, ditchFly, reserve, cruise, CRUISE_BURN, bingo, climbing, opp, stats: ST };
 })();
