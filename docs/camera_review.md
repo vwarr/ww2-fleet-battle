@@ -158,3 +158,90 @@ on them >= 10 s before (the arc picks one strike, often not the first to release
 frame (a deck / hold shot). fps.js: 120 fps (vsync cap, as before). Normandy: out of
 scope (user); camera_normandy*.js untouched, its interrupts bypass the arc gate (c.nd), camera_score.js's tick still runs
 there.
+
+# camera5: the look-ahead director (2026-10-14)
+
+User (2026-10-13): the sim is deterministic, so precompute the best camera; "work on it afterwards, and compare. If one
+seems to clearly pull ahead in cinematography, work on tuning that further". Brief: briefs/camera5_lookahead.md.
+
+## How it works
+- **Fixed live step** (main.js): the live game steps the sim in fixed 1/120 sim s steps (an accumulator over real time x
+  scale x 0.5 x warp; whole steps, the remainder carried; a frame within a quarter step of a whole number takes it, so
+  frame jitter never makes 0 / 2 step stutter; a frame whose steps pass 30 ms of wall time leaves the rest, backlog
+  capped at 0.5 sim s). At 1x and 60 fps it is one step a frame, as before. Game speed measured in the full frame loop
+  against main: 0.500 sim s per real s at 60, 30, 120 and 144 Hz on both, 0.466 on both with stutter (the 0.1 s rdt cap
+  per frame, unchanged). The tests' fastForward keeps its 0.05 s steps.
+- **Round record** (round_rec.js): what a round starts from, captured in startRound (the generator's state before the
+  modules clear, since damage.js rolls the wind there; then the map, the clock, the composition and setup choices, the
+  forced time of day / weather, the aces' rosters, the admirals' preview). startRound({ replay }) starts the same round.
+- **Look-ahead worker** (lookahead_worker.js, lookahead.js, lookahead_log.js): a Web Worker loads the game's scripts in
+  sim-only mode and replays the round 90 sim s ahead of the screen. Its event log (drops, impacts, hits, heavy shells
+  landing on ships, sinkings, magazines, planes shot down and where the wreck lands, attack runs, strikes leaving) goes to
+  the page; the director sees 75 sim s of it. Checkpoint hashes every 600 steps compare the copies; a mismatch, a test's
+  fastForward or the B-29 egg switch the look-ahead off for the round (the forecast director takes over).
+- **The director** (camera_lookahead.js, on camera4's arcs): events() lists the known future impacts (exact times and
+  points, and whether the ship goes down after); the arcs are planned by known outcome (a strike's attack on a ship with
+  its hits and losses, a ship's torpedo spread that hits, a gun duel that scores, a carrier struck), worth the class at
+  stake x what happens; an air arc opens ~34 real s before its climax, a ship arc ~16 s; never one that would still run
+  when a bigger arc (a carrier strike) must open; a carrier strike supersedes a running arc not about her, unless that
+  arc's own climax lands first and is worth it. The protagonist is drawn at the wave's real loss rate: with that
+  probability one that is shot down before its drop (followed to the water), else one that hits. After its fall a wingman
+  that WILL hit carries the story (or one of the wave, wherever it is). Story braces come only after the protagonist's own
+  attack (or its fall); a carrier struck is braced from any source. An arc ends on its outcome (no flight home, no
+  closing high shot over empty sea). A torpedo known to miss lets its wake go when another hit on the target is due; the
+  beat after a result turns to a hit landing inside it; the deck AA camera looks down at its own ship's known hit. After
+  dark strikes are filmed from the target (night_fx.js refuses air stories). `?cam=forecast`: camera4, no worker.
+
+## Determinism found on the way
+tests/lookahead_trace.js (render mode, time scales 1 / 4 / 2 / 0.5, the director running, then a second round carried
+over) found a sim leak: air_aces.js returned a pilot to the roster when a bailed-out cripple's floating wreck sank, a
+Math.random lifetime, so later strikes' pilots (and their ace skill) varied run to run. Fixed: the pilot is lost with the
+plane. After the fix: 32 / 32 rounds (16 seeds of standard, carrier_duel, midway, carrier_duel_dusk x 600 s, plus 300 s
+carried-over rounds) give identical checkpoints and identical event logs (where a falling wreck meets the sea is
+compared apart: its last seconds are partly visual).
+
+## Comparison (camera_audit.js, 24 rounds per director: standard, carrier_duel, midway, dusk, carrier_duel_dusk, midway_dusk x seeds 1-4, 600 sim s, same sim)
+| metric | forecast (camera4) | look-ahead |
+|---|---|---|
+| arc completeness / time in arcs | 45% / 58% | 45% / 55% |
+| BE inside arcs (the arc's own impacts and kills) | 63% of 519 | **68%** of 471 |
+| BE all (framed 1 s before too) | 48% (44%) | **50%** (45%) |
+| CV hits in frame (1 s before too) | 91% (84%) of 82 | 91% (82%) of 82 |
+| M2 attack continuity (hits held) | 80% (100% of 13) | 79% (92% of 12) |
+| recuts / cuts per min | 1.88 / 6.7 | **1.73** / 6.7 |
+| dead air | 7% | 7% |
+| protagonist falls filmed / held to the water | 19 / 19 | **58 / 52** |
+| arcs ending with the protagonist down | 19 of 340 | **56** of 350 |
+(Raw: scratchpad raw_m3_f / raw_m4_l.) Earlier rounds of the same comparison (before the last tuning) gave the same
+picture: the look-ahead ahead on in-arc coverage, recuts and the protagonist's death, level on carriers. Its weak spot:
+more impacts hidden behind a hull (36 vs 13).
+
+## Blind sheets (judged by a separate agent that did not know which director was which)
+Round 1 (midway/4 a VMSB-241 dive on Kaga, midway/3 a 69th BS run shot down over the carrier, standard/1 a VT-6 run on a
+battleship): the look-ahead won all three (one clearly: the B-26 ridden through the flak, past the carrier, shot down and
+followed into the water, against a fixed brace on a carrier nothing hit). "The director that follows a protagonist wins
+every time." Shared weakness: empty "home" shots after the climax (fixed since in the look-ahead).
+Round 2 (final code; carrier_duel/1 a VB-6 dive on the carrier, carrier_duel/1 a Misawa torpedo run whose protagonist
+is shot down, carrier_duel/2 an Akagi strike on Enterprise): the look-ahead won two clearly (the VB-6 ride with bandits
+beside the formation, over the shoulder into the dive with the carrier growing in frame, the bomb burst and the burning
+carrier, against drifting over open sea then detached braces; a torpedo run and its straddle in frame against dead air
+and cross-cutting), the forecast one (its dive centred over the carrier and the hit close, against the look-ahead's
+torpedo run with the burning carrier pushed to the frame edge, half behind an escort). Overall 5 of 6 to the look-ahead.
+Left for later: the run shot's framing when an escort is between the plane and the carrier (the "hull" misses above),
+stretches where the protagonist is a speck near the island.
+
+## Decision
+The look-ahead director is the default: it wins the blind story judgement and is ahead or level on every coverage
+metric but time in arcs, and it is the one that films the user's Midway arc (the protagonist chosen without regard to
+survival, at the real loss rate, followed to the water).
+
+## Cost
+perf_probe busy (seed 1, 77 planes airborne): 58.7 fps with the worker vs 58.9 without (60 cap); the page's sim + visual
+JS the same (1.56 vs 1.50 ms / frame); the worker runs the sim-only copy at ~42 ms of one other core per sim second in a
+busy battle, i.e. ~21 ms per real second at 1x (about 2% of a core), and a burst at round start (90 sim s ahead: ~1-4 s
+of one core). Boot ~0.5 s.
+
+## Gates
+determinism --cross 1,2 200 PASS; sim_behaviour 6 seeds PASS 352 FAIL 0; dive_film 100% PASS; action_cam errors 0, max
+view rotation 0.65 rad/s; story_cam: all PASS but "relative orbit / zoom", which fails on main too (a sim-state-dependent
+test: the subject's turn); min hull clearance now measures a deck camera by its height over its own deck.
