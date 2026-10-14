@@ -67,7 +67,7 @@ window.WW = window.WW || {};
     };
     var native = function (o) { if (o.material && (o.isMesh || o.isSprite || o.isLine || o.isPoints)) { o.visible = true; proxies.push(o); addProxy(o, fresh); } };
     var kinds = Object.keys(WW.PLANE_TYPES || {}).concat(Object.keys(M.LAND_PLANES || {}));
-    ['USN', 'IJN'].forEach(function (n) {
+    Object.keys(WW.NATIONS || {}).forEach(function (n) {   // every side's planes (Normandy's GER included)
       kinds.forEach(function (k) { try { var pm = M.buildPlane && M.buildPlane(k, n); if (pm) pm.group.traverse(inst); } catch (e) { /* a type that nation lacks */ } });
       try { if (M.buildFlyingBoat) { var fb = M.buildFlyingBoat(n); fb.group.updateMatrixWorld(true); fb.group.traverse(native); } } catch (e) { /* none */ }
       try { if (M.buildScout) { var sc = M.buildScout(n); sc.group.updateMatrixWorld(true); sc.group.traverse(native); } } catch (e) { /* none */ }
