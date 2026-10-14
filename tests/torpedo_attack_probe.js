@@ -44,7 +44,8 @@ function install() {
     const E = S.m.get(p); if (E && !E.tR) { E.tR = now(); E.end = 'drop'; }
     if (!t || !t.alive) return;
     const D = { t: now(), range: Math.hypot(t.x - p.x, t.z - p.z), off: Math.abs(WW.angleDiff(t.heading, Math.atan2(p.z - t.z, p.x - t.x))), tgt: t, type: t.type, h0: t.heading,
-      spdK: t.stats && t.stats.speed ? (t.speed || 0) / t.stats.speed : 0, comb0: !!(t.ai && (t.ai.combUntil || 0) > WW.time.now), opp: E ? E.lvl : null, res: null, n: p.nation, pr: E ? E.pr : null, hasty: !!p.hasty };
+      spdK: t.stats && t.stats.speed ? (t.speed || 0) / t.stats.speed : 0, comb0: !!(t.ai && (t.ai.combUntil || 0) > WW.time.now), opp: E ? E.lvl : null, res: null, n: p.nation, pr: E ? E.pr : null, hasty: !!p.hasty,
+      ang: Math.abs(WW.angleDiff(p.heading, e.proj.h)) * 180 / Math.PI, gap: Math.hypot(e.proj.x - p.x, e.proj.z - p.z) };   // the torpedo's run vs the plane's heading at release (deg), and how far from the plane it starts
     S.proj.set(e.proj, D); S.drops.push(D);
   });
   WW.on('torpedoUnder', e => { if (e && isPT(e.ship)) S.pt.torpUnderPT++; });
@@ -115,6 +116,7 @@ function report(rounds) {
   const isHit = d => d.res === 'hit' || d.res === 'other';   // a torpedo meant for the carrier that hits her escort is a hit
   const out = { levels: {}, range: {}, manoeuvre: {}, pt: PT, lost, n: rounds.length };
   console.log(`(hits on a ship other than the one aimed at: ${dr.filter(d => d.res === 'other').length} of ${dr.filter(isHit).length})`);
+  { const G = dr.map(d => d.ang || 0), Gh = dr.filter(d => d.hasty).map(d => d.ang || 0), Ga = dr.filter(d => !d.hasty).map(d => d.ang || 0); console.log(`torpedo run vs plane heading at release (deg) p50/p90/max: all ${qs(G, 0.5)} / ${qs(G, 0.9)} / ${qs(G, 1)}; straight-in ${qs(Gh, 0.5)} / ${qs(Gh, 0.9)}; anvil ${qs(Ga, 0.5)} / ${qs(Ga, 0.9)}; start offset from the plane p50 ${qs(dr.map(d => d.gap || 0), 0.5)} u`); }
   console.log(`\n${rounds.length} rounds, ${so.length} carrier torpedo sorties reached the target area, ${dr.length} aerial torpedoes released at a ship`);
   console.log('opposition  sorties  released  shot down  jettison  other  t(arrive->drop) p50/p90  hit rate (n)');
   for (const L of ['light', 'medium', 'heavy', 'all']) {

@@ -210,12 +210,17 @@ window.WW = window.WW || {};
   // strike's torpedo planes leave the formation that far out when it is hot (air_strikes.js formation, vtBreak)
   const HOT_R = SET_R + 130;
   S.vtBreak = (pl, w) => (w.target && w.dT < HOT_R + 60 && prOf(pl, w.target) >= heavyAt(pl) ? HOT_R + 10 - SET_R : 40);
+  // The pilot's error on the run, rolled as he turns in (like the dive bomber's diveErr): a unit draw that runErrA
+  // scales by how harried he is and how hasty the run, the angle he holds off the true lead. He aims the aircraft and
+  // the torpedo leaves along his heading, so a harried or hurried drop goes wide without leaving the airframe's line.
+  const runErr = () => WW.rand() + WW.rand() - 1;
+  const runErrA = (pl, hz) => (hz > 0 && pl.runE ? pl.runE * 1.7 * WW.intercept.HARRY.torp * hz : 0);
   const hastyR = (pl, P) => WW.lerp(DROP_FAR, DROP_NEAR, press(pl)) + PR_LONG * P;
   // room to get down and lined up before the drop point (too close, just past the ship after a pass: open out first)
   const room = (pl, dh, P) => dh > hastyR(pl, P) + EXT_R;
   const facing = (pl, t, k) => Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < k;
   function goIn(pl, t, P, g, now) {
-    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp; pl.runAbort = false;
+    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp; pl.runAbort = false; pl.runE = runErr();
     pl.dropR = hastyR(pl, P); ST.runs++;
     g.goT = now; g.hastyT = now;   // the squadron turns in with it
   }
@@ -295,7 +300,7 @@ window.WW = window.WW || {};
     }
     // Turn in once pointing at the target (or after 3 s), so nobody starts the run with a 180-degree turn.
     if (go && ((ds < 30 && Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < 1) || now - g.goT > 6)) {
-      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.runAbort = false; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
+      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.runAbort = false; pl.runE = runErr(); pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
     }
   }
   // Hit on the run (P8c): aircraft.js damage() lets a bomber jettison and turn for home only before its attack, but a
@@ -326,7 +331,10 @@ window.WW = window.WW || {};
     pl.state = 'attack';
     if (hitOnRun(pl)) return;
     const tv = WW.torpSpec ? WW.torpSpec(pl.nation, 'air').speed : WW.TORPEDO.speed;
-    const tt = dh / tv;
+    // the torpedo falls ~1-1.5 s carrying the plane's way before it runs (combat_weapons.js fireTorpedo): the drop and
+    // pass ranges and the lead are reckoned from where it enters the water (dw)
+    const ft = WW.combat.torpFall ? WW.combat.torpFall(pl.y - 0.25) : 0, dw = dh - pl.speed * ft;
+    const tt = Math.max(0, dw) / tv + ft;
     let px = t.x + Math.cos(t.heading) * t.speed * tt, pz = t.z + Math.sin(t.heading) * t.speed * tt;
     // the ship turned and put us on its other bow: swing out to keep our own bow (the anvil holds whichever way it turns;
     // a straight-in run takes the bow it gets)
@@ -336,7 +344,9 @@ window.WW = window.WW || {};
     // the aim point stays on the map (a target near the edge); a plane that has run off the map breaks off and sets up again
     px = WW.clamp(px, 10, WW.cfg.MAP_W - 10); pz = WW.clamp(pz, 10, WW.cfg.MAP_H - 10);
     if (pl.x < -30 || pl.z < -30 || pl.x > WW.cfg.MAP_W + 30 || pl.z > WW.cfg.MAP_H + 30) { pl.phase = null; pl.sk = null; ST.offMap = (ST.offMap || 0) + 1; return; }
-    const d = pl.turnTo(Math.atan2(pz - pl.z, px - pl.x), dt, 1.0), alt = overLand(pl, 5, 1.8); // wave height, hop any land
+    // he points the aircraft at the lead, off by his error (runErr) as harried / hasty as he is now
+    const hy = pl.hasty || 0, hz = Math.max(WW.intercept && WW.intercept.harryK ? WW.intercept.harryK(pl) : 0, PR_ERR * hy);
+    const d = pl.turnTo(Math.atan2(pz - pl.z, px - pl.x) + runErrA(pl, hz), dt, 1.0), alt = overLand(pl, 5, 1.8); // wave height, hop any land
     pl.speedTo(pl.pt.speed * (pl.pt.runK || 0.8), dt);    // slowed for the drop (Mk 13 / Type 91 limits)
     pl.vy += WW.clamp(WW.clamp((alt - pl.y) * 2.5, pl.hasty ? -12 : -7, 9) - pl.vy, -14 * dt, 14 * dt);   // straight in from height: a steeper let-down
     const c = Math.cos(pl.heading), s = Math.sin(pl.heading), dropR = pl.dropR || DROP_FAR;
@@ -345,20 +355,20 @@ window.WW = window.WW || {};
       if (pl.sprayT <= 0 && WW.fx) { pl.sprayT = 0.1; WW.fx.wake(pl.x - c * 1.2, pl.z - s * 1.2, pl.heading, 0.55); }
     }
     const off = Math.abs(WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)));   // where we are off the ship's bow
-    const hy = pl.hasty || 0, OK = hy ? OFF_HASTY : OFF;   // a hasty run takes a rougher line, any bearing and a higher drop
-    const drop = dh < dropR && pl.y < (hy ? Y_HASTY : 3) && Math.abs(d) < (hy ? 0.5 : 0.3) && off > OK[0] && off < OK[1] && wet(pl.x + c, pl.z + s, WW.lerp(pl.x, px, 0.8), WW.lerp(pl.z, pz, 0.8));
+    const OK = hy ? OFF_HASTY : OFF;   // a hasty run takes a rougher line, any bearing and a higher drop
+    const drop = dw < dropR && pl.y < (hy ? Y_HASTY : 3) && Math.abs(d) < (hy ? 0.5 : 0.3) && off > OK[0] && off < OK[1] && wet(pl.x + c, pl.z + s, WW.lerp(pl.x, px, 0.8), WW.lerp(pl.z, pz, 0.8));
     if (drop) {
-      // harried: thrown off its line (air_intercept.js); a hasty drop under fire is wider
-      const hz = Math.max(WW.intercept && WW.intercept.harried ? WW.intercept.harried(pl) : 0, PR_ERR * hy);
-      WW.combat.fireTorpedo(pl, pl.x + c, pl.z + s, pl.heading + (hz > 0 ? (WW.rand() + WW.rand() - 1) * 1.7 * WW.intercept.HARRY.torp * hz : 0), pl.nation, TORP_RANGE);
+      // it falls from under the belly along the plane's heading (combat_weapons.js fireTorpedo drop): the error is in
+      // where he pointed the aircraft (runErr), harried (air_intercept.js, its release count) or hasty
+      if (WW.intercept && WW.intercept.harried) WW.intercept.harried(pl);
+      WW.combat.fireTorpedo(pl, pl.x, pl.z, pl.heading, pl.nation, TORP_RANGE, { y: pl.y - 0.25, v: pl.speed, vy: pl.vy });
       const w = pl.wave; if (w) { if (w.bowT !== t) { w.bowT = t; w.bow = {}; } const sd = WW.angleDiff(t.heading, Math.atan2(pl.z - t.z, pl.x - t.x)) < 0 ? -1 : 1; w.bow[sd] = (w.bow[sd] || 0) + 1; }
-      if (WW.fx) WW.fx.splash(pl.x + c * 3, pl.z + s * 3, 0.9);
       pl.dropped();
     }
     // Released, or not lined up by 30 inside the drop range (or the ship combed the run, bow- or stern-on): pop up over
     // the ship; the latter keeps its torpedo and comes round again.
-    if (!drop && dh < dropR - (hy ? 45 : 30)) ST.pass++;   // not lined up: a pass, the torpedo kept for another run
-    if (drop || dh < dropR - (hy ? 45 : 30)) { pl.outTgt = t; pl.phase = 'out'; pl.phaseT = drop ? 4 : 3; pl.passed = false; pl.lastD = dh; pl.floor = Math.max(topNear(t, 30), 2, groundAhead(pl, 8)) + CLEAR; }
+    if (!drop && dw < dropR - (hy ? 45 : 30)) ST.pass++;   // not lined up: a pass, the torpedo kept for another run
+    if (drop || dw < dropR - (hy ? 45 : 30)) { pl.outTgt = t; pl.phase = 'out'; pl.phaseT = drop ? 4 : 3; pl.passed = false; pl.lastD = dh; pl.floor = Math.max(topNear(t, 30), 2, groundAhead(pl, 8)) + CLEAR; }
   }
   // After release: pop up and fly over the target ship, then climb away and head home.
   function popUp(pl, t, dt) {
