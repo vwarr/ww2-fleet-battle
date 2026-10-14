@@ -177,6 +177,12 @@ window.WW = window.WW || {};
       R.setRenderTarget(prevRT);
       if (R.shadowMap) R.shadowMap.needsUpdate = true;
     }
+    // the link checks three skipped (checkShaderErrors off while they were made): a broken shader still says so
+    var gl = R.getContext();
+    for (var m = 0; m < b.made.length; m++) {
+      var pr = b.made[m];
+      if (pr.program && !gl.getProgramParameter(pr.program, gl.LINK_STATUS)) console.error('THREE.WebGLProgram (shaderWarm): ' + pr.name + ' did not link: ' + gl.getProgramInfoLog(pr.program));
+    }
     var ms = performance.now() - t0;
     stats.ms += ms; stats.programs += R.info.programs.length - p0;
     if (stats.log.length < 40) stats.log.push(['B', Math.round(t0), Math.round(ms), all.length, R.info.programs.length - p0, Math.round(t0 - b.t)]);
