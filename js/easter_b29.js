@@ -56,6 +56,7 @@ window.WW = window.WW || {};
   function fire() {
     if (!ready()) return;
     used = true;
+    if (WW.lookahead && WW.lookahead.desync) WW.lookahead.desync('b29');   // the egg rewrites the round: the look-ahead copy no longer holds
     try { start(); } catch (err) { console.error('easter_b29', err); stop(); }
   }
   function start() {

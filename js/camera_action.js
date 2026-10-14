@@ -157,7 +157,8 @@ window.WW = window.WW || {};
       shot.missT = hits && !(shot.st > 14 && (WW.camFinder ? WW.camFinder.realS(e) : e) > 4) ? 0 : (shot.missT || 0) + rdt;
       // (a miss whose run ends within ~6 real s is ridden out: the miss is the result, "missed astern"; only a long empty run is let go)
       const left = Math.max(0, ((p.range || 100) - (p.run || 0)) / (p.sp || 14)), leftR = WW.camFinder ? WW.camFinder.realS(left) : left;
-      if (shot.missT > 1.2 && (leftR > 6 || hits)) { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; shot.proj = null; shot.from = shot.aim.clone(); shot.fromObj = null; shot.aim.set(p.x + f.x * 6, 0.5, p.z + f.z * 6); return hold(shot, gP, gL); }
+      // (camera5: or a miss known ahead, with another hit on the target due)
+      if ((shot.missT > 1.2 && (leftR > 6 || hits)) || (WW.camLook && WW.camLook.handoffLetGo(shot))) { shot.stage = 'hold'; shot.st = 0; shot.hold = HOLD_MISS; shot.proj = null; shot.from = shot.aim.clone(); shot.fromObj = null; shot.aim.set(p.x + f.x * 6, 0.5, p.z + f.z * 6); return hold(shot, gP, gL); }
     }
     let far = ease(WW.clamp((shot.st - 6) / 8, 0, 1)), back = 13 + 9 * far, hgt = 5.5 + 5 * far, look = 10;
     if (s) {
@@ -181,6 +182,9 @@ window.WW = window.WW || {};
   }
   function hold(shot, gP, gL) {
     if (shot.lastP) gP.copy(shot.lastP); else gP.copy(WW.cam.current().P);
+    // (camera5: another hit on the same ship, known to land inside the beat: the beat turns to it and lasts through it)
+    const ha = WW.camLook && !shot.toLA ? WW.camLook.holdAim(shot) : null;
+    if (ha) { shot.toLA = true; shot.from = shot.from || shot.aim.clone(); shot.fromObj = null; shot.to = V().set(ha.x, ha.y, ha.z); shot.hold = Math.max(shot.hold || 0, (shot.st || 0) + ha.eta + 1.5); }
     if (shot.from && !shot.fromObj) { // the hold eases its aim onto the explosion
       shot.to = shot.to || shot.aim.clone(); shot.aim.copy(shot.to); settle(shot, 0.5);
     }

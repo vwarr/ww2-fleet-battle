@@ -128,12 +128,14 @@ window.WW = window.WW || {};
     out.sort((a, b) => b.pr - a.pr);
     return (fc = out);
   }
-  const forecastFor = s => forecast().find(e => e.s === s) || null;
+  const forecastFor = s => (WW.camLook && WW.camLook.active() ? WW.camLook.forecastFor(s) : forecast().find(e => e.s === s) || null);
   function labelOf(e) {
     const k = e.kind, s = nameOf(e.s), sink = e.kill ? ' · she may not survive it' : '';
     if (k === 'torp') return 'Torpedoes running at ' + s + sink;
     if (k === 'bomb') return 'Bombs falling on ' + s + sink;
     if (k === 'dive') return (e.src && e.src.obj ? sqOf(e.src.obj) : 'Dive bombers') + ' diving on ' + s + sink;
+    if (k === 'sink') return s.replace(/^the /, 'The ') + ' is going down';
+    if (k === 'mag') return s.replace(/^the /, 'The ') + ': the magazine';
     return (k === 'shellbig' ? 'Heavy shells' : 'Shells') + ' inbound on ' + s + (e.src && e.src.obj ? ' from ' + nameOf(e.src.obj) : '') + sink;
   }
   // ---------- the event source: ONE interface ----------
@@ -143,6 +145,8 @@ window.WW = window.WW || {};
   // The arc picker, the arcs' climaxes and the brace candidates read ONLY this list, so another source (a look-ahead
   // sim's event log) can replace forecast() behind it.
   function events() {
+    if (WW.camLook && WW.camLook.active()) return WW.camLook.events().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
+      x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));   // camera5: the look-ahead's known future (camera_lookahead.js)
     return forecast().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
       x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));
   }
@@ -442,7 +446,8 @@ window.WW = window.WW || {};
   // the climax inside an arc: an impact due on the arc's target in 1.5-6 s while the camera is elsewhere in the arc (not
   // in a hand-off, not in an attack's release window, not already braced): cut to the brace, inside the arc
   function climax(shot) {
-    if (!shot || shot.stage || shot.kind === 'brace' || shot.t < 1.5 || shot.interrupt) return null;
+    const look = !!(WW.camLook && WW.camLook.active());   // camera5: the impact times are known, not guessed: cut in sooner, from further out
+    if (!shot || shot.stage || shot.kind === 'brace' || shot.t < (look ? 0.8 : 1.5) || shot.interrupt) return null;
     const L = WW.camLock && WW.camLock.state(shot); if (L) return null;   // an attack being filmed (the run, the dive, a salvo in the air): it shows its own result
     const sp = shot.plane || shot.subj; if (sp && sp.pt && sp.alive && sp.ordnance && (sp.phase === 'run' || sp.phase === 'roll' || sp.phase === 'dive')) return null;
     let T = null, own = null;
@@ -455,7 +460,7 @@ window.WW = window.WW || {};
       if (P.alive && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;   // the protagonist's own attack: its chase and hand-off show the hit
     }
     for (const v of events()) {
-      if (T.indexOf(v.target) < 0 || v.t < 1.5 || v.t > 6) continue;
+      if (T.indexOf(v.target) < 0 || v.t < 1.5 || v.t > (look ? 7 : 6)) continue;
       if (own && v.subject && v.subject.pt && own.wave && v.subject.wave !== own.wave && v.weight < 10) continue;   // a story: its own wave's hits (or any big one)
       const e = v._f;
       return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) };
@@ -484,7 +489,8 @@ window.WW = window.WW || {};
     if (sa) tickShipArc(shot);
     const st = storyNow();
     // a carrier about to be struck: break into whatever arc runs (a clean cut; the old arc is closed, not resumed)
-    const cv = (!(st && st.user) && !(sa && sa.user) && !(shot && shot.user && !shot.fkey)) ? carrierCall(shot) : null;
+    const look = !!(WW.camLook && WW.camLook.owns());   // camera5: the look-ahead director picks the arcs (camera_lookahead.js)
+    const cv = (!look && !(st && st.user) && !(sa && sa.user) && !(shot && shot.user && !shot.fkey)) ? carrierCall(shot) : null;
     if (cv && (arcBusy() || !(shot && shot.subj === cv.subj))) {
       if (st && WW.camStory.supersede) WW.camStory.supersede();
       if (startShipArc(cv)) { ST.cuts++; ST.byKind['arc:cv'] = (ST.byKind['arc:cv'] || 0) + 1; log.push({ at: wall(), from: st ? 'story' : shot ? shot.kind : '-', to: 'arc:raid cv' }); }
@@ -493,7 +499,7 @@ window.WW = window.WW || {};
     // an air story still in its quiet setup (forming up, the long transit, home) gives way to a ship arc with a big ship at
     // stake (a battleship / carrier torpedo charge, a duel on a battleship): the story is closed; its strike comes back as
     // an arc of its own when its run-in begins
-    if (st && st.begun && !st.user && !sa && shot && shot.story && !shot.stage && shot.t > 3) {
+    if (!look && st && st.begun && !st.user && !sa && shot && shot.story && !shot.stage && shot.t > 3) {
       const ph = (WW.camStory._dbg() || {}).phase;
       if (ph === 'transit' || ph === 'form' || ph === 'home' || ph === 'launch') {
         const b = shipArcs()[0];
@@ -515,7 +521,7 @@ window.WW = window.WW || {};
     if (L && L.release) return;                                        // the final seconds of an attack: never
     if (st && (st.user || !st.begun)) return;                           // a story waiting for this shot to end
     // between arcs: start the best ship arc (an air story starts from camera_story.js's own tick)
-    if (shot.t > 2.5 && !L && !shot.interrupt) {
+    if (!look && shot.t > 2.5 && !L && !shot.interrupt) {
       const b = shipArcs()[0];
       if (b && b.promise >= ARC_MIN && startShipArc(b)) { ST.cuts++; const k = 'arc:' + b.kind; ST.byKind[k] = (ST.byKind[k] || 0) + 1; log.push({ at: wall(), from: shot.kind, to: k + ' ' + b.promise.toFixed(1) }); return; }
     }
@@ -537,7 +543,12 @@ window.WW = window.WW || {};
   // camera.js pickShot(): the next shot of the ship arc; else, right after an arc, a short wide establishing shot
   function arcPick() {
     if (sa) { const c = arcShot(); if (c) return c; closeShipArc('complete'); }
-    if (wideNext) { wideNext = false; return { kind: 'wide', dur: 6 + Math.random() * 2, pr: 2 }; }
+    if (wideNext) {
+      wideNext = false;
+      // (camera5: a carrier hit known to land within 9 s: no establishing shot first, the brace on her)
+      if (WW.camLook && WW.camLook.active()) for (const v of events()) if (v.target && v.target.type === 'carrier' && v.t > 1.5 && v.t < 9) { const e = v._f; return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) }; }
+      return { kind: 'wide', dur: 6 + Math.random() * 2, pr: 2 };
+    }
     return null;
   }
 
@@ -575,6 +586,7 @@ window.WW = window.WW || {};
     if (bp < 0 && ap < 0) return null;
     return bp >= ap ? { ship: b, label: arcLabel(b), subj: b.subj } : { air: a, label: WW.camStory.titleOf(a.lead, a.mission).filter(Boolean).join(' · '), subj: a.lead };
   }
+  function endShipArc(outcome) { if (sa && !sa.user) { closeShipArc(outcome || 'superseded'); if (outcome === 'complete') wideNext = true; const sh = WW.cam._shot(); if (sh && !sh.stage) sh.dur = Math.min(sh.dur, sh.t); } }
   function adoptShip() { if (!sa) return false; sa.user = true; sa.rec.user = true; const sh = WW.cam._shot(); if (sh && sh.arc === sa.rec.id) Object.assign(sh, { user: true, fkey: true }); return true; }
   const userArc = () => (sa && sa.user ? sa.subj : null);
   function endUserArc() { if (sa && sa.user) closeShipArc('cutAway'); }
@@ -588,6 +600,6 @@ window.WW = window.WW || {};
     return b ? Object.assign(b, { label: describe(b) }) : null;
   }
 
-  WW.camDirector = { fPick, adoptShip, userArc, endUserArc, events, arcs, arcBusy, arcAbout, arcAllows, arcPick, shipArcs, startShipArc, arcOpen, arcClose, arcLabel, cls, forecast, forecastFor, torpEta, frameCheck, sight, start, goal, clearSight, bestNow, describe, about, worth, stats: ST, log, MIN_T, BIG };
+  WW.camDirector = { fPick, adoptShip, endShipArc, labelOf, userArc, endUserArc, events, arcs, arcBusy, arcAbout, arcAllows, arcPick, shipArcs, startShipArc, arcOpen, arcClose, arcLabel, cls, forecast, forecastFor, torpEta, frameCheck, sight, start, goal, clearSight, bestNow, describe, about, worth, stats: ST, log, MIN_T, BIG };
   if (WW.cam) { WW.cam.frameCheck = frameCheck; WW.cam.arcs = arcs; }
 })(window.WW);

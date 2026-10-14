@@ -21,6 +21,7 @@ This document tells you how the code is organized. Read it before you change a m
 ```
 vendor/three.min.js     Three.js r149 (UMD build, global THREE)
 js/core.js              WW.cfg, data tables, helpers, event bus
+js/round_rec.js         WW.roundRec: what a round starts from (the look-ahead copy replays it)
 js/scenario.js          WW.scenarios, WW.scn(), WW.sides(), WW.perSide(), WW.sideSpec(): the battle type (Pacific | Normandy, ?scn=)
 js/normandy.js          the Normandy scenario's hooks: forces, commanders, the round's ending (docs/NORMANDY_PLAN.md)
 js/daylight.js          WW.dayNight, WW.daylight: the round's clock (day / dusk / night), no flying after dusk, night landings
@@ -130,6 +131,7 @@ js/camera_scenes.js     WW.camScenes: ship / base action shots (gun duel, sinkin
 js/camera_action.js     WW.camAction: bomb / torpedo hand-offs, over-the-shoulder shot, slow motion
 js/camera_story_shots.js WW.storyShots: story-mode shot goals (chase, wingman, over-the-shoulder, side, water, high, deck, fall)
 js/camera_story.js      WW.camStory: story mode: follow one squadron / division through its mission
+js/camera_lookahead.js  WW.camLook: the look-ahead director: arcs chosen by their known outcome (the default)
 js/camera_finder.js     WW.camFinder: imminent-action finder (attacks about to happen, by eta and drama)
 js/camera_follow.js     WW.camFollow: keys F / Tab / 8 / 9, the follow label, finder candidates for the director
 js/camera_score.js      WW.camScore: one director score (the drama ladder), re-evaluation of the running shot with hysteresis
@@ -150,6 +152,9 @@ js/war_diary.js         WW.diary: the war diary (clock times, sightings, key eve
 js/plot_table.js        WW.plot: plot table in map view (2D canvas chart; whose plot: key G; danger layer: key X)
 js/plot_tokens.js       WW.plotTokens: the plot's live layer (toy tokens, contacts, pencil, notes, strike tracks)
 js/aar_card.js          WW.aar: the after-action report card
+js/lookahead_log.js     WW.laLog: the round's event log and checkpoint hashes (page and worker)
+js/lookahead.js         WW.lookahead: the page side of the look-ahead worker
+js/lookahead_worker.js  the look-ahead Web Worker: a copy of the round 90 sim s ahead (not in index.html)
 js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 ```
 
@@ -166,7 +171,8 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 
 - `WW.time.now` and `WW.time.dt` are simulation time in seconds.
 - `main.js` multiplies real time by `WW.time.scale` (the 1×, 2× and 4× buttons) and by `BASE_SPEED = 0.5`. Thus, at 1×, the battle moves at half speed.
-- Each simulation step is 0.05 s or less. At high speed, `main.js` does more steps in one frame.
+- The live game steps the simulation in FIXED steps of `LIVE_STEP = 1/120` sim s (camera5): an accumulator takes the frame's sim time (real time × scale × `BASE_SPEED` × warp) in whole steps and carries the remainder, so the round is the same steps in the same order whatever the frame rate, the time scale or the slow motion. At 1× and 60 fps that is one step a frame, as before; game speed is unchanged (0.5 sim s per real s at 60, 30, 120 and 144 Hz; a frame's real time is still capped at 0.1 s). A frame within a quarter step of a whole number of steps takes that number (no 0 / 2 step stutter from frame jitter). When one frame's steps cost more than 30 ms of wall time the rest waits (backlog capped at 0.5 sim s): the battle runs slower than asked, never differently. `game.stepN` counts the round's live steps; `WW.afterStep(n)` is called after each.
+- The tests' `__sim.fastForward` keeps its steps of 0.05 s or less (their baselines); `__sim.stepFixed(n)` runs n live steps.
 - The camera, the cross-fades, the captions, the clouds and the water animation use real time. They do not slow down.
 - `WW.time.warp` (normally 1) also multiplies the simulation time. The director camera sets it to approximately 0.5 for approximately 1.5 s when it films a kill or a direct bomb or torpedo hit, and holds it while a filmed dive lasts (`camAction.slowmo(until, max)`, camera_story.js; at most one time in 20 s, never in free camera or map view). `fastForward` ignores it.
 
@@ -465,6 +471,10 @@ Each animation frame (`main.js`, `frame`):
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
 
+## The look-ahead copy (camera5)
+
+`startRound()` records what the round starts from (`game.rec`, `round_rec.js`: the generator's state before the modules clear (the wind is rolled there), the map seed, the clock, the composition, the setup choices, the forced time of day / weather, and module state that carries over between rounds: the aces' rosters, the admirals' preview). `startRound({ replay: rec })` starts the very same round in another page. `lookahead_worker.js` does that in a Web Worker (the game's own scripts, sim-only, under a small browser stub like tests/node_env.js) and steps it in the live step `AHEAD` (90) sim s ahead of the screen; `lookahead_log.js` records the events both copies share (drops, impacts, hits, heavy shells landing, sinkings, magazines, planes shot down and where their wrecks land, attack runs, strikes leaving; planes named by a per-round ordinal `lid`) and hashes the state every 600 steps. `lookahead.js` (page side) compares the hashes and hands the director the log up to `HORIZON` (75) sim s ahead; a mismatch, a test's `fastForward` or the B-29 egg turn it off for the rest of the round. `?cam=forecast` runs no worker; neither does a `file://` page (a browser starts no worker from `file://`), Normandy (out of scope) or any non-Pacific scenario: the forecast director films those. `tests/lookahead_trace.js` checks the copy is the displayed round (render mode, changing time scales, rounds carried over).
+
 ## Sim-only mode
 
 `index.html?sim` sets `WW.simOnly` (and `WW.cfg.SIM_ONLY`) in `core.js`, before any module initializes. The page runs the full simulation and renders nothing. The headless sim tests use it; players never see it.
@@ -473,7 +483,7 @@ Each animation frame (`main.js`, `frame`):
 - Skipped: the renderer, `post`, `sky`, `water`, `cam` (director, story and action shots, captions), `freecam`, `ui`, `audio`, `crew` (with `crewOps`, `crewProps`), `lifeboats`, `dmgVis` and `baseFx` (the airfield models, craters, fires, parked planes) (no `init`, no `update`; their event listeners return at once). Every `WW.fx` function is a no-op and `fx.update` is not called. `WW.airFx` and `WW.airProps` are `null` (their callers check). `terrain.generate` builds only the depth grid (no floor mesh, baked AO, palms, huts or water depth texture). `damage.update` (fire and smoke emission), `Ship.effects` (wakes, funnel smoke), the plane gun tracers (`aircraft.js`, `air_tracers.js`) and the flak and light-AA tracer visuals (`combat_aa.js`) are skipped.
 - Kept, because the sim reads them: the ship and plane models (THREE geometry and Object3D graphs, built on the CPU). `Ship` measures its hull with `Box3.setFromObject`; `Ship.syncGroup` poses the group, and the sim reads turret muzzles (`combat.muzzlePos`), the carrier deck (`aircraft.js deckInfo`, `air_deaths.js deckY`), turret positions (`damage.js disableTurret`) and the parked planes on deck (`air_deck.js`) from it, after an explicit `updateMatrixWorld` / `getWorldPosition`. Sim code never relies on the matrices a render would update. The scene must exist: `air_deck.js` adds parked planes to it, and `damage.js` hit sites use the ship group's local matrix as its world matrix. `damage.hit` still runs (turret knock-out, torpedo list, the critical fire flag); only its visuals are skipped, so `ship.dmgSites` do not decay in this mode (nothing in the sim reads them).
 - The sim is bit-identical to normal mode: visual code never calls `WW.rand`, and nothing the sim reads depends on a render. `node tests/determinism.js --cross 1,2,3 300` compares the traces of a rendered page, a sim-only page and the node runner; keep it passing when you add visual code that sim code calls (guard the visual work with `WW.simOnly`, never the sim work).
-- Math.random never feeds the sim. Visual code may draw Math.random in sim-only mode too (air_deaths.js: how a shot-down plane falls, its spin, roll, bail-out and how long a wreck floats), so sim code must not read a dead plane's position, nor count wrecks still in `WW.world.planes`: check `alive` on every plane reference that can outlive a step (a cached list, a foe, a mate). A leak shows only when a fresh process (another Math.random sequence) replays the seed: `determinism.js` runs in one process and rarely catches it; `tests/determinism_proc.js` runs every seed in fresh processes and after other rounds in the same worker, and prints the first divergent time and entity. Found and fixed this way: `air_cover.js` raidOn (a raider shot down inside the 0.5 s trouble cache), `air_dogfight.js` jink (a mate shot down inside the 0.3 s pick) and elementMates (a dead division leader), `air_search.js` (the search direction counted wrecks).
+- Math.random never feeds the sim. Visual code may draw Math.random in sim-only mode too (air_deaths.js: how a shot-down plane falls, its spin, roll, bail-out and how long a wreck floats), so sim code must not read a dead plane's position, nor count wrecks still in `WW.world.planes`: check `alive` on every plane reference that can outlive a step (a cached list, a foe, a mate). A leak shows only when a fresh process (another Math.random sequence) replays the seed: `determinism.js` runs in one process and rarely catches it; `tests/determinism_proc.js` runs every seed in fresh processes and after other rounds in the same worker, and prints the first divergent time and entity. `tests/lookahead_trace.js` catches the same kind of leak (the worker's Math.random differs from the page's): it found `air_aces.js` returning a pilot to the roster when a bailed-out cripple's floating wreck sank (a Math.random lifetime), so later strikes' pilots and ace skill varied; the pilot is now lost when the plane is. Found and fixed this way: `air_cover.js` raidOn (a raider shot down inside the 0.5 s trouble cache), `air_dogfight.js` jink (a mate shot down inside the 0.3 s pick) and elementMates (a dead division leader), `air_search.js` (the search direction counted wrecks).
 - Chrome for sim-only tests runs with `--disable-gpu` (no WebGL is created). A page boots in about 0.25 s instead of about 8 s, and a round takes about 40% less time (seed 1, 300 sim s: 1.7 s instead of 2.7 s).
 
 ### Running the tests
