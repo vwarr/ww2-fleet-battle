@@ -56,6 +56,16 @@ const SHOTS = [
     const L = B.layout, c = L.toW(-36, 0), e = L.toW(-36, -6); return [e.x, 40, e.z, c.x, 0, c.z]; }],
   ['crossing_low', () => { // across the crossing from the far side, low: the joint and the cross runway's dashes stopping
     const L = B.layout, c = L.toW(-36, 0), e = L.toW(-52, -14); return [e.x, 4, e.z, c.x, 0, c.z]; }],
+  // a plane on the paving, low from the side (are the wheels, a hung bomb or the prop disc in the runway?): a carrier
+  // type and a land bomber (B-26 / B-17 / Betty) on the take-off roll at speed, lifting off, and rolling out on the cross
+  // runway (the main one cratered closed)
+  ['roll_carrier', () => __onPave(false, p => p.rwPh === 'roll' && p.speed > 15)],
+  ['roll_bomber', () => __onPave(true, p => p.rwPh === 'roll' && p.speed > 15)],
+  ['liftoff_carrier', () => __onPave(false, p => p.rwPh === 'climb' && p.y - B.site.padH < 1.4)],
+  ['liftoff_bomber', () => __onPave(true, p => p.rwPh === 'climb' && p.y - B.site.padH < 1.6)],
+  ['cross_rollout', () => { const rw = B.runways[0], en = WW.enemyOf(B.nation);
+    for (const k of [-14, -2, 9, 20]) WW.islandBase.impact(en, rw.x + rw.c * k, rw.z + rw.s * k, 180, 'bomb');
+    return __onPave(null, p => p.state === 'rollout' && p.rwPh !== 'taxiIn' && B.layout.crossD(B.layout.toL(p.x, p.z).u, B.layout.toL(p.x, p.z).v) < 4, 600); }],
   ['revetments', () => {
     const r = B.layout.rows.find(r => r.spots.length >= 3) || B.layout.rows[0], sp = r.spots[Math.floor(r.spots.length / 2)];
     const L = B.layout, q = L.toW(sp.u - 14, sp.laneV - r.side * 9), t = L.toW(sp.u, sp.v);
@@ -159,6 +169,12 @@ const SHOTS = [
       return p; };
     // sim time with the base's visual life stepped along (as frames would): the camera parked over the base
     window.__ff = secs => { for (let t = 0; t < secs - 1e-6; t += 0.1) { __sim.fastForward(0.1); if (window.B) { WW.camera.position.set(B.x, 40, B.z); WW.baseFx.update(0.1); } } };
+    const HEAVY = ['b26', 'b17', 'g4m', 'g4mL'];
+    window.__onPave = (heavy, f, secs) => { // the first of the base's planes (heavy: a land bomber; null: any) for which f holds, from its side
+      const P = () => WW.world.planes.find(p => p.carrier === B && p.alive && (heavy === null || HEAVY.includes(p.variant) === heavy) && f(p));
+      if (!__until(() => P(), secs || 500)) return null;
+      const p = P(), d = HEAVY.includes(p.variant) ? 13 : 7, c = Math.cos(p.heading), s = Math.sin(p.heading), y0 = B.site.padH;
+      return [p.x - s * d + c * d * 0.25, y0 + 0.7, p.z + c * d + s * d * 0.25, p.x, p.y, p.z]; };
     window.__until = (f, secs) => { for (let i = 0; i < secs * 10 && WW.game.state === 'battle'; i++) { if (f()) return true; __ff(0.1); } return !!f(); };
   }, [SEED, OWNER, CAMP, HOUR]);
   const done = [];
