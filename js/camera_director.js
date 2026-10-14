@@ -347,14 +347,15 @@ window.WW = window.WW || {};
       const fromS = ev.filter(v => v.subject === s), onS = ev.filter(v => v.target === s);
       // a destroyer charge (ai_charge.js) or a torpedo run: a torpedo-armed ship closing on its target, tubes loaded
       const ch = s.ai && s.ai.charge, t = ch && ch.foe && ch.foe.alive ? ch.foe : s.target, tp = s.stats.torpedoes;
-      if (tp && tp.count && s.type !== 'carrier' && isShip(t) && t.alive) {
+      const rested = now - (arcRest.get(s) || -1e9) > 60;   // a ship whose arc just ended waits a minute (no 12 s arcs over and over)
+      if (tp && tp.count && rested && s.type !== 'carrier' && s.type !== 'submarine' && isShip(t) && t.alive) {
         const d = WW.dist(s.x, s.z, t.x, t.z), R = tp.range || 100;
         if ((ch || d < R * 1.5) && (!(s.ai && s.ai.torpReload > 0) || fromS.some(v => v.kind === 'torp')))
           out.push({ kind: ch ? 'charge' : 'torpRun', subj: s, target: t, promise: (ch ? 9.5 : 8.5) + (cls(t) - 1) * 1.6 + (fromS.length ? 0.8 : 0) });
       }
       // a gun duel with hits coming or scored: a big ship firing on a ship
       const fr = WW.camScenes && WW.camScenes.firedBy ? WW.camScenes.firedBy(s) : null;
-      if (fr && now - fr.at < 6 && (s.type === 'battleship' || s.type === 'cruiser') && isShip(fr.target) && fr.target.alive) {
+      if (fr && rested && now - fr.at < 6 && (s.type === 'battleship' || s.type === 'cruiser') && isShip(fr.target) && fr.target.alive) {
         const n = fromS.filter(v => v.target === fr.target).length + (WW.camScenes.recentHits ? WW.camScenes.recentHits(fr.target, 12) : 0);
         if (n) out.push({ kind: 'duel', subj: s, target: fr.target, promise: 7.5 + (cls(fr.target) - 1) * 1.6 + (cls(s) - 1) * 0.5 + Math.min(1.5, n * 0.5) + (1 - fr.target.hp / fr.target.maxHp) });
       }
@@ -415,7 +416,8 @@ window.WW = window.WW || {};
     if (!WW.cam.take(c, user ? { user: true } : { steal: true, arc: true })) { closeShipArc('cutAway'); return false; }
     return true;
   }
-  function closeShipArc(outcome) { if (!sa) return; arcClose(sa.rec, outcome); sa = null; }
+  const arcRest = new Map();
+  function closeShipArc(outcome) { if (!sa) return; arcClose(sa.rec, outcome); arcRest.set(sa.subj, wall()); sa = null; }
   function tickShipArc(shot) {
     const s = sa.subj, t = sa.target, now = wall();
     if (shot && shot.arc !== sa.rec.id && !shot.interrupt && !shot.stage && (shot.story || shot.user || shot.pr >= 99)) { closeShipArc('cutAway'); return; }   // someone else took the camera (a story, a test)
@@ -530,7 +532,7 @@ window.WW = window.WW || {};
     log.push({ at: wall(), from, to: k + ' ' + b.pr.toFixed(1) }); if (log.length > 100) log.shift();
   }
   if (WW.cam && WW.cam.update) { const u = WW.cam.update; WW.cam.update = function (rdt) { try { tick(rdt || 0); } catch (e) { console.error('camDirector', e); } return u.apply(this, arguments); }; }
-  WW.on('roundStart', () => { tk = 0; fc = []; fcAt = -1e9; if (sa) closeShipArc('cutAway'); wideNext = false; arcs.length = 0; });
+  WW.on('roundStart', () => { tk = 0; fc = []; fcAt = -1e9; if (sa) closeShipArc('cutAway'); wideNext = false; arcs.length = 0; arcRest.clear(); });
   WW.on('setupStart', () => { if (sa) closeShipArc('cutAway'); });
   // camera.js pickShot(): the next shot of the ship arc; else, right after an arc, a short wide establishing shot
   function arcPick() {
