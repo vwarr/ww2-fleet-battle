@@ -44,6 +44,7 @@ const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'no
     } else { seeded(SEED); ffw(FF); }
     return { seed, t: G.roundTime, state: G.state, ships: WW.world.ships.filter(s => s.alive).length, planes: WW.world.planes.filter(q => !q.removed).length, airborne: airborne() };
   }, [MODE, SEED, FF]);
+  if (args.includes('--stopworker')) await p.evaluate(() => WW.lookahead && WW.lookahead.stop());   // the same scene without the worker (its main-thread cost)
   await p.waitForTimeout(1500); // the JIT and the GPU settle on the new scene
   const cdp = await p.context().newCDPSession(p);
   await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 250 });

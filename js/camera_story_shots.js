@@ -93,7 +93,10 @@ window.WW = window.WW || {};
           gP.set(L.x - _f.x * 15 * FK + _r.x * shot.side * 4 * FK, ly + 5.5 * FK, L.z - _f.z * 15 * FK + _r.z * shot.side * 4 * FK);
           const d = Math.min(_t.length(), 160);
           gL.set(L.x + _f.x * d, Math.max(1.5, ly * (1 - d / 160)), L.z + _f.z * d);
-          shot.aim.set(L.x, ly, L.z);
+          // (camera5: the target nearer than ~170 u: the composed point moves toward it, so the ship is not a speck at the top
+          // edge but shares the frame with the plane)
+          const wT = T ? WW.clamp(1.2 - _t.length() / 140, 0, 0.45) : 0;
+          shot.aim.set(L.x + (tp.x - L.x) * wT, ly + (2 - ly) * wT, L.z + (tp.z - L.z) * wT);
           break;
         }
         case 'side': {
@@ -151,12 +154,15 @@ window.WW = window.WW || {};
         case 'fall': { // hold the camera still and watch the plane go down
           if (!shot.fP) shot.fP = WW.cam.current().P.clone();
           if (WW.camDirector) { // camera4: a fall that starts far off, or drifts away, is followed down (the camera keeps ~45 u off, over the water)
-            const d = shot.fP.distanceTo(_t.set(L.x, ly, L.z));
-            if (d > 60) shot.fP.lerp(_t, (1 - 45 / d) * (1 - Math.exp(-rdt * 1.5)));
-            shot.fP.y = Math.max(shot.fP.y, 4);
+            // (camera5: over the island the camera closes in and stays above the ground, aiming a little above the plane:
+            // the wreck fills the frame, not the beach)
+            const land = Math.max(0, -WW.terrain.depthAt(L.x, L.z)), keep = land > 0.5 ? 28 : 45, d = shot.fP.distanceTo(_t.set(L.x, ly, L.z));
+            if (d > keep + 15) shot.fP.lerp(_t, (1 - keep / d) * (1 - Math.exp(-rdt * 1.5)));
+            shot.fP.y = Math.max(shot.fP.y, 4, Math.max(0, -WW.terrain.depthAt(shot.fP.x, shot.fP.z)) + 6, land + 6);
+            shot.overLand = land > 0.5;
           }
           gP.copy(shot.fP);
-          gL.set(L.x, Math.max(0.5, ly), L.z);
+          gL.set(L.x, Math.max(0.5, ly) + (shot.overLand ? 1.5 : 0), L.z);
           shot.aim.copy(gL);
           shot.kP = 1.5; shot.kL = 4;
           break;

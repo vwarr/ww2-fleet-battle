@@ -274,7 +274,7 @@ window.WW = window.WW || {};
     if (S.fall) { // after the fall: the wingman / next leader takes the story on
       S.fall = null;
       const n = successor(true);
-      if (!n) { S.downed = true; S.ending = 1; return pick(); }
+      if (!n) { S.downed = true; S.ending = WW.camLook && WW.camLook.active() ? 2 : 1; return pick(); }   // (camera5: no closing high shot over empty sea)
       S.downed = false;
       S.lead = n; S.group = groupOf(n).concat(S.group.filter(m => ok(m) && groupOf(n).indexOf(m) < 0)); ST.handoffs++;
       log.push({ handoff: n.kind + ' ' + (rank(n) || ''), at: now });
@@ -301,14 +301,14 @@ window.WW = window.WW || {};
     const L = S.lead;
     if (!ok(L)) { S.ending = 1; return pick(); }
     S.phase = phaseOf(L);
-    if (S.phase === 'attack') S.hadAttack = true;
+    if (S.phase === 'attack' || (S.mission === 'strike' && L.kind !== 'fighter' && !L.ordnance)) S.hadAttack = true;   // (its weapon gone: the attack happened, filmed or not)
     if (S.phase === 'home' && S.homeAt === undefined) S.homeAt = now;
     const age = now - S.t0;
     // (camera4: an arc told to its climax closes soon after: a shot or two of the way home, not the whole flight back)
     // (camera5, the look-ahead: nothing more is coming on the target: the arc ends on its outcome, no flight home and no
     // closing high shot; the director's establishing shot or the next arc follows)
     const look = !!(WW.camLook && WW.camLook.active());
-    if (WW.camDirector && S.hadAttack && (S.phase === 'home' || S.phase === 'after') && now - (S.homeAt !== undefined ? S.homeAt : S.afterAt || (S.afterAt = now)) > (look ? 3 : 9)) { S.ending = look ? 2 : 1; return pick(); }
+    if (WW.camDirector && S.hadAttack && (S.phase === 'home' || S.phase === 'after') && now - (S.homeAt !== undefined ? S.homeAt : S.afterAt || (S.afterAt = now)) > (look ? (S.phase === 'home' ? 0 : 2) : 9)) { S.ending = look ? 2 : 1; return pick(); }
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
     // a long, empty transit: every other shot cuts to the ships it is about (the target, else the carrier it guards)
     // at toy's-eye level, so the story's minutes over open sea also show the ships big

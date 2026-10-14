@@ -164,6 +164,10 @@ window.WW = window.WW || {};
           if (!shot.look) shot.look = V().set(a.x, a.y, a.z); else shot.look.lerp(_u.set(a.x, a.y, a.z), 1 - Math.exp(-rdt * 2.2));
           shot.noAtt = 0;
         } else { shot.noAtt = (shot.noAtt || 0) + rdt; if (!shot.look) shot.look = V().set(s.x + fx * 60, 40, s.z + fz * 60); if (shot.noAtt > 3) shot.dur = Math.min(shot.dur, shot.t + 1); }
+        // (camera5: a hit on this ship known to land within 2.5 s (the look-ahead): the crew's eyes come down to where it
+        // lands, so the deck camera sees its own ship hit)
+        const hit = WW.camLook && WW.camLook.active() ? WW.camLook.forecastFor(s) : null;
+        if (hit && hit.etaReal < 2.5 && hit.etaReal > -0.5 && hit.kind !== 'sink') { shot.look.lerp(_u.set(s.x + hit.ox, 1.5, s.z + hit.oz), 1 - Math.exp(-rdt * 3)); shot.dur = Math.max(shot.dur, shot.t + hit.etaReal + 2); }
         gL.copy(shot.look);
         shot.aim = (shot.aim || V()).copy(shot.look);
         shot.deck = true;

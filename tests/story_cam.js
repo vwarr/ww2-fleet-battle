@@ -42,7 +42,11 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
     WW.cam.afterRender = function () {
       orig.call(this);
       const c = WW.camera, s = WW.cam._shot();
-      let hull = 99; for (const o of WW.world.ships) if (!o.removed) hull = Math.min(hull, Math.hypot(c.position.x - o.x, c.position.z - o.z) - o.stats.length / 2 + (c.position.y > 14 ? 99 : 0));
+      // (a deck camera (the AA crew's view, shot.deck) stands on its own ship: that ship counts by the height over its deck)
+      let hull = 99; for (const o of WW.world.ships) if (!o.removed) {
+        if (s && s.deck && o === s.subj) { const top = (o.model && o.model.deck ? o.model.deck.position.y : 2) + (o.group ? o.group.position.y : 0); hull = Math.min(hull, c.position.y - top); continue; }
+        hull = Math.min(hull, Math.hypot(c.position.x - o.x, c.position.z - o.z) - o.stats.length / 2 + (c.position.y > 14 ? 99 : 0));
+      }
       const am = s && (s.aim || s.last), nd = am ? am.clone().project(c) : { x: 0, y: 0 };
       const f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
       if (s && !s.__id) s.__id = ++__rec.ids;
@@ -282,14 +286,14 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
 
   // camera sanity over the whole recording
   const rec = await p.evaluate(() => __rec.slice());
-  const offBy = {}; let minG = 99, minH = 99, out = 0, nsub = 0, maxRot = 0, rotAt = '';
+  const offBy = {}; let minG = 99, minH = 99, minHAt = '', out = 0, nsub = 0, maxRot = 0, rotAt = '';
   const ang = (a, c) => Math.acos(Math.min(1, a.fx * c.fx + a.fy * c.fy + a.fz * c.fz));
   rec.forEach((f, i) => {
-    minG = Math.min(minG, f.ground); minH = Math.min(minH, f.hull);
+    minG = Math.min(minG, f.ground); if (f.hull < minH) { minH = f.hull; minHAt = f.sk + ' @' + f.t.toFixed(1) + ' y ' + f.y.toFixed(1); }
     if (f.sk !== '-' && f.sk !== 'high') { nsub++; if (Math.abs(f.nx) > 0.6 || Math.abs(f.ny) > 0.6) { out++; offBy[f.sk] = (offBy[f.sk] || 0) + 1; } }
     if (i > 4 && f.id && rec[i - 4].id === f.id && rec[i - 1].sk === f.sk && f.t - rec[i - 1].t < 0.25) { const w = ang(f, rec[i - 1]) / Math.max(1e-3, f.t - rec[i - 1].t); if (w > maxRot) { maxRot = w; rotAt = f.sk + ' @' + f.t.toFixed(1); } }
   });
-  console.log(`[camera] frames ${rec.length}, min height over ground ${minG.toFixed(1)}, min hull clearance (below 14) ${minH.toFixed(1)}, subject off-frame ${out}/${nsub} ${JSON.stringify(offBy)}, max view rotation ${maxRot.toFixed(2)} rad/s (${rotAt})`);
+  console.log(`[camera] frames ${rec.length}, min height over ground ${minG.toFixed(1)}, min hull clearance (below 14) ${minH.toFixed(1)} (${minHAt}), subject off-frame ${out}/${nsub} ${JSON.stringify(offBy)}, max view rotation ${maxRot.toFixed(2)} rad/s (${rotAt})`);
   console.log('errors', errs.length, errs.slice(0, 5).join(' / '));
   await b.close();
 })();

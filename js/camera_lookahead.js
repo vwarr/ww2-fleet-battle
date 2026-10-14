@@ -83,11 +83,13 @@ window.WW = window.WW || {};
     const P = st.lead, T = (isShip(st.laTarget) && st.laTarget) || P.diveTgt || P.target || (P.wave && P.wave.target);   // (the planned arc's target: a plane past its drop may have dropped its own)
     if (!isShip(T) || (!T.alive && !T.sinking)) return null;
     if (ok(P) && P.ordnance && (P.phase === 'run' || P.phase === 'roll' || P.phase === 'dive')) return null;
-    const e = evs().find(v => v.s === T); if (!e || e.etaReal < 0.8 || e.etaReal > 10) return null;
+    const dead = !ok(P);   // (the protagonist fell: the attack it died in still lands: its climax, from anyone)
+    if (!dead && P.ordnance && P.kind !== 'fighter') return null;   // still on its way in: its own run is the story (others' hits: camera_director.js climax())
+    const e = evs().find(v => v.s === T); if (!e || e.etaReal < 0.8 || e.etaReal > (dead ? 14 : 10)) return null;
     if (e.src && e.src.obj === P && ok(P) && P.ordnance) return null;   // (its own bomb / torpedo already away: the target, braced)
     // past its own attack, the story waits only for its own wave's hits (another strike's are another story)
     const past = !ok(P) || !P.ordnance, so = e.src && e.src.obj;
-    if (past && so && so !== P && (!so.pt || !P.wave || so.wave !== P.wave)) return null;
+    if (past && !dead && so && so !== P && (!so.pt || !P.wave || so.wave !== P.wave)) return null;
     ST.storyBraces = (ST.storyBraces || 0) + 1;
     return { kind: 'brace', subj: T, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(e.lastReal + 2.6, 4, 12), why: e.kind, label: D() && D().labelOf ? D().labelOf(e) : '' };
   }
