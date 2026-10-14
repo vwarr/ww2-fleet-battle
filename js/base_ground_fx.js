@@ -31,6 +31,60 @@ window.WW = window.WW || {};
     m.group.position.set(x, gy(x, z) + gear - (wreck ? gear * 0.55 : 0), z);
     m.group.rotation.set(wreck ? 0.32 : 0, -h, wreck ? -0.12 : 0);
     if (wreck && m.payload) m.payload.visible = false;
+    else m.group.position.y = gy(x, z) + 0.01 - lowOf(m.group);   // resting on its hardstand (0.01 above padH; onPaving)
+  }
+
+  // ---------- planes on the paving: resting on it, not sunk into it ----------
+  // The sim puts a plane on the ground at padH + its gear (land_ground.js pin), but the paving stands above padH
+  // (models_base strips: the main runway slab 0.08, the cross runway 0.06, taxiways 0.02) and a model's lowest point
+  // (its wheels, a hung bomb or torpedo, the spinning prop's disc on the take-off roll) is a little below its gear
+  // height: the wheels sank 0.1 into the runway and the prop disc 0.2 (and the heavies floated a little). Visual only:
+  // the model is set so its lowest visible part rests on the surface under it, the offset fading out over the first
+  // 1.5 u of the climb-out (and in over the last of the approach); the parked planes too. lowOf: per model group, each mesh's lowest point in the group frame (once); a spinning
+  // part (a prop's blades and disc: the group holding a disc, renderOrder 5) counts its full swept radius.
+  const LOW = new WeakMap(), _w = new THREE.Vector3(), _gi = new THREE.Matrix4(), _r = new THREE.Matrix4();
+  function lows(g) {
+    let L = LOW.get(g); if (L) return L;
+    const pos = g.position.clone(), rot = g.rotation.clone();
+    g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.updateMatrixWorld(true);
+    L = [];
+    g.traverse(o => {
+      if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+      const pa = o.geometry.attributes.position, spin = o.parent !== g && o.parent.children.some(c => c.renderOrder === 5);
+      let low = 1e9;
+      if (spin) { // about the prop group's x axis: its centre less the farthest vertex from the axis
+        _r.copy(o.parent.matrixWorld).invert().multiply(o.matrixWorld); let R = 0;
+        for (let i = 0; i < pa.count; i++) { _w.fromBufferAttribute(pa, i).applyMatrix4(_r); R = Math.max(R, Math.hypot(_w.y, _w.z)); }
+        _w.setFromMatrixPosition(o.parent.matrixWorld); low = _w.y - R * new THREE.Vector3().setFromMatrixColumn(o.parent.matrixWorld, 1).length();
+      } else for (let i = 0; i < pa.count; i++) low = Math.min(low, _w.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld).y);
+      L.push({ o, low });
+    });
+    g.position.copy(pos); g.rotation.copy(rot); g.updateMatrixWorld(true);
+    LOW.set(g, L); return L;
+  }
+  function lowOf(g) { // the lowest visible part, below the group's origin (negative)
+    let low = 0;
+    for (const e of lows(g)) {
+      let o = e.o, vis = true; while (o && o !== g) { if (!o.visible) { vis = false; break; } o = o.parent; }
+      if (vis && e.low < low) low = e.low;
+    }
+    return low;
+  }
+  function surfTop(x, z) { // the paving's top above padH at (x, z) (models_base strips)
+    const L = base.layout, q = L.toL(x, z), R0 = base.runways[0];
+    if (Math.abs(q.v) < R0.w / 2 + 0.2 && Math.abs(q.u) < R0.len / 2 + 0.2) return 0.08;
+    return L.crossD(q.u, q.v) < base.runways[1].w / 2 + 0.2 ? 0.06 : 0.02;
+  }
+  function onPaving() {
+    const pad = base.site.padH;
+    for (const p of WW.world.planes) {
+      if (p.carrier !== base || !p.alive || p.removed || !p.group || p.crashed || p.rwPh === 'crash') continue;
+      if (p.state !== 'takeoff' && p.state !== 'rollout' && p.state !== 'landing') continue;
+      const gear = (p.variant && V()[p.variant].gear) || WW.air._pool.deckY, hy = p.y - pad - gear;
+      if (hy > 1.5) continue;
+      const want = pad + surfTop(p.x, p.z) - lowOf(p.group), k = Math.min(1, 1 - hy / 1.5);
+      p.group.position.y = p.y + (want - p.y) * k;
+    }
   }
   function parkedPlanes(now) {
     const seen = new Set();
@@ -463,6 +517,7 @@ window.WW = window.WW || {};
     if (base !== b) { clear(); base = b; lastT = WW.time.now; }
     const now = WW.time.now, sdt = Math.max(0, Math.min(0.5, now - lastT)); lastT = now; burnDt = sdt;
     parkedPlanes(now);
+    onPaving();
     rearmTrips();
     const cam = WW.camera.position, near = (cam.x - b.x) ** 2 + (cam.z - b.z) ** 2 < FAR * FAR;
     fig = 0; if (trace) { trace.figs.length = 0; trace.veh.length = 0; }

@@ -14,7 +14,10 @@ window.WW = window.WW || {};
   }
   function init() {
     r = WW.renderer;
-    const opts = { type: THREE.HalfFloatType, depthBuffer: true };
+    // stencilBuffer: r149 gives a render target with a depth but no stencil buffer a 16-bit depth (DEPTH_COMPONENT16):
+    // anything layered on the ground (the runways, taxiways and their paint, the crater decals) hatched beyond ~40 u;
+    // with the stencil it is DEPTH24_STENCIL8
+    const opts = { type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: true };
     rtScene = new THREE.WebGLRenderTarget(4, 4, Object.assign({ samples: 4 }, opts));
     rtA = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
     rtB = rtA.clone();
