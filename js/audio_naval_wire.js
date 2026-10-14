@@ -56,7 +56,7 @@ window.WW = window.WW || {};
     const s = e.ship, x = e.x != null && isFinite(e.x) ? e.x : s.x, z = e.z != null && isFinite(e.z) ? e.z : s.z, y = 1.2;
     if (e.kind === 'torpedo') A.play('torp.hit', { x, y: 0, z });
     else if (e.kind === 'bomb') A.play('ship.hit', { x, y, z, size: 1.6, bang: 0, vol: 0.4 }); // the bomb blast itself belongs to the aircraft/weapons family
-    else if (e.kind === 'dc') { /* dcBlast covers it */ }
+    else if (e.kind === 'dc' || e.kind === 'near') { /* dcBlast / the bomb's own splash (audio_air.js weaponImpact) covers it */ }
     else if (e.cal === 'mg') A.play('ship.ping', { x, y, z, vol: 0.5 });
     else { const size = clamp((e.amount || 20) / 55, 0.35, 2); A.play('ship.hit', { x, y, z, size, duck: size > 1.5 ? 0.35 : 0 }); }
   });

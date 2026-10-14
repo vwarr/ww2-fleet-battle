@@ -215,7 +215,7 @@ window.WW = window.WW || {};
   const room = (pl, dh, P) => dh > hastyR(pl, P) + EXT_R;
   const facing = (pl, t, k) => Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < k;
   function goIn(pl, t, P, g, now) {
-    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp;
+    pl.side = bowOf(pl, t); pl.sk = null; pl.phase = 'run'; pl.hasty = Math.max(P, 0.01); pl.ready = false; pl.runHp = pl.hp; pl.runAbort = false;
     pl.dropR = hastyR(pl, P); ST.runs++;
     g.goT = now; g.hastyT = now;   // the squadron turns in with it
   }
@@ -295,7 +295,7 @@ window.WW = window.WW || {};
     }
     // Turn in once pointing at the target (or after 3 s), so nobody starts the run with a 180-degree turn.
     if (go && ((ds < 30 && Math.abs(WW.angleDiff(pl.heading, Math.atan2(t.z - pl.z, t.x - pl.x))) < 1) || now - g.goT > 6)) {
-      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
+      pl.phase = 'run'; pl.sk = null; pl.hasty = 0; pl.runHp = pl.hp; pl.runAbort = false; pl.dropR = WW.lerp(DROP_FAR, DROP_NEAR, press(pl)); ST.runs++;
     }
   }
   // Hit on the run (P8c): aircraft.js damage() lets a bomber jettison and turn for home only before its attack, but a
