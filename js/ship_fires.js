@@ -113,6 +113,7 @@ window.WW = window.WW || {};
 
   // ---- hits ----
   function hit(ship, amount, kind, cal, x, z) {
+    if (kind === 'crash') kind = 'bomb';   // a burning wreck on the deck (air_impact.js): fires and a loaded deck as a bomb hit
     if (!battle() || !ship.alive || ship.hp <= 0 || !(amount > 0) || kind === 'deck' || kind === 'dc' || kind === 'magazine' || ship.type === 'submarine') return;
     if (magazine(ship, kind, cal, x, z)) return;
     if (kind === 'bomb' && ship.type === 'carrier') {   // the deck load, then the hole in the flight deck (ship_deck.js)
