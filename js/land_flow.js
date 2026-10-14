@@ -23,7 +23,8 @@ window.WW = window.WW || {};
   'use strict';
   const MAYDAY_HP = 0.6, LOW_FUEL = 0.1, SLOT_WAIT = 12, SLOT_GAP = 5, NEAR_OM = 60, CROSS_R = 12;
   const ROUTE_T = 1, DIRECT = 90, LEG = 110, FTR_R = 75, THREAT_R = 400;
-  const ST = { slots: 0, maydaySlots: 0, maydays: 0, reroutes: 0, crossWaits: 0, guests: 0 };
+  const SEC = 3, SEC_L = 2;   // planes called in together: a section of small planes, a pair of land bombers
+  const ST = { slots: 0, maydaySlots: 0, maydays: 0, reroutes: 0, crossWaits: 0, guests: 0, calls: 0, sections: 0 };
 
   const mayday = p => !!p.crippled || p.hp < p.maxHp * MAYDAY_HP;
   const lowFuel = p => p.fuel < p.pt.range / p.pt.speed * 6 * LOW_FUEL;
@@ -41,6 +42,7 @@ window.WW = window.WW || {};
     }
     wait.sort((x, y) => need(y) - need(x) || x.lqT - y.lqT);
     a.lq = done.concat(wait);
+    call(b, wait);
     // the slot ends once its lander has turned off the runway (or is lost, towed, gone round to leave)
     const s = o.lslot, LH = WW.landHold;
     if (s && (!s.alive || s.removed || s.carrier !== b || s.leaving || (s.state !== 'landing' && s.state !== 'rollout') ||
@@ -54,6 +56,28 @@ window.WW = window.WW || {};
       if (m || (now - q.lqT >= SLOT_WAIT && now - (o.slotT || -1e9) >= SLOT_GAP && (o.lastRoll > (o.slotT || -1e9) || !o.holdQ.length))) { o.lslot = q; ST.slots++; if (m) ST.maydaySlots++; }
       break;
     }
+  }
+  // The call-in (the carriers' "Charlie"): the planes wait at their marshal points far out (land_hold.js) and the
+  // field calls them in a section at a time (SEC; SEC_L land bombers), the next once the last one called is past its outer marker,
+  // so they arrive, land and taxi in with no orbiting over the field. The maydays are called at once (a section of them, even while it launches); the need order
+  // (emergency, low fuel, arrival) picks the section. Not while the field launches (the landing slot below), holds a
+  // long recovery window, or is shut; the land bombers not while a raid is over the field. With the cross runway open,
+  // every second plane of a section lands on it (towed clear: land_air.js useCross).
+  function call(b, wait) {
+    const a = b.ai, o = b.ops, LH = WW.landHold;
+    let em = false; for (const q of a.lq) if (q.called && mayday(q) && q.rwPh === 'circuit') em = true;
+    if (!em) { let k = 0; for (const q of wait) if (!q.called && !q.leaving && mayday(q)) { q.called = true; q.trailK = k; q.useCross = false; ST.calls++; if (++k >= SEC) break; } }   // the maydays: a section of them at once, in trail
+    const main = WW.landGround.opsOpen(b), cross = !b.neutralized && !!(b.runways[1] && !b.runways[1].closed);
+    if (main ? o.mode === 'launch' || o.hold : !cross) return;   // (the main shut: sections onto the cross runway)
+    for (const q of a.lq) if (q.called && q.state === 'landing' && q.rwPh === 'circuit' && !q.apOut) return;   // a section still inbound (the next is called as the last one passes its outer marker)
+    let k = 0, n = 0, km = 0, kc = 0;
+    for (const q of wait) {
+      if (q.called || q.leaving || (LH.big(q) && a.raid)) continue;
+      if (!k) n = LH.big(q) ? SEC_L : SEC;
+      q.called = true; q.useCross = main && cross && k % 2 === 1; q.trailK = q.useCross || !main ? kc++ : km++; ST.calls++;   // trailK: its place in trail on its runway
+      if (++k >= n) break;
+    }
+    if (k) ST.sections++;
   }
   // cleared to approach the main runway: the field recovering (an emergency even in a long recovery window), or this
   // plane holds the landing slot

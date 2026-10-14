@@ -24,9 +24,9 @@ function install() {
   fresh(); WW.on('roundStart', fresh);
   function group(p, B) {
     if (p.carrier === B) {
-      if (!p.variant) return 'guest:' + p.state;
+      if (!p.variant) return 'guest:' + p.state + (R.detail && p.state === 'landing' ? ':' + (p.rwPh === 'final' ? 'final' : p.cleared ? (p.apOut ? 'gate' : 'om') : p.called ? 'called' : 'wait') : '');
       if (p.state === 'landing') { if (p.rwPh === 'final' || p.cleared) return 'approach'; if (!R.detail) return 'hold';
-        const F = B.ai.hfix && B.ai.hfix[WW.landHold.big(p) ? 'L' : 'S'], df = F ? Math.hypot(p.x - F.x, p.z - F.z) : -1;
+        const F = p.mfix || (B.ai.hfix && B.ai.hfix[WW.landHold.big(p) ? 'L' : 'S']), df = F ? Math.hypot(p.x - F.x, p.z - F.z) : -1;
         return 'hold:' + (p.holdT > 0 ? 'shut' : B.ai.raid ? 'raid' : 'q') + ':' + (df < 0 ? 'nofix' : df < 70 ? 'atFix' : 'toFix'); }
       if (p.state === 'return') return 'home';
       if (p.state === 'takeoff') return 'climbout';

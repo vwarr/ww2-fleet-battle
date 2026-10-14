@@ -14,8 +14,9 @@
 //    the base is neutralized or it is dusk; queued launches wait for the runway to be repaired.
 //  - Home: every plane holds at a fix away from the island and the enemy's ships (land_hold.js: the land bombers, B-17,
 //    B-26, Betty, high and far out, kept off while a raid is over the field; the small planes closer in and lower),
-//    cleared to land in turn when the field is recovering (the next as the one ahead passes the outer marker), or in a
-//    landing slot between take-offs while it launches, the emergencies first (land_flow.js); final down the centreline
+//    called in from its marshal point a section at a time when the field is recovering (land_flow.js call: each in
+//    trail, its outer marker TRAIL farther out than the one ahead; with the cross runway open every second plane lands
+//    on it and is towed clear, useCross), or in a landing slot between take-offs while it launches, the maydays first; final down the centreline
 //    into the wind, touchdown. Main runway closed: an emergency landing on the cross
 //    runway if it is open (the plane is towed off), else the plane holds for the repair (burning HOLD_BURN) until its own
 //    bingo (bingoOut: its fuel and reserve just cover the way out; a neutralized base: LEAVE_T s, 6 s more per place in the stack), so a stack leaves one
@@ -46,8 +47,9 @@ window.WW = window.WW || {};
   for (const k in VAR) if (VAR[k].gear) VAR[k].gear *= WW.cfg.PLANE_K || 1;   // gear heights above were measured at the 1.7 plane scale
   const KATE = { alt: 40, bombs: 1 };
   const SCRAMBLE_MAX = 6, OVER_R = 220;    // base fighters in the air under a raid (VMF-221 put up 25 at Midway; the roster limits it)
+  const TRAIL = 110;                        // a called section in trail on one runway: its outer markers this far apart (the one ahead is past LAND_SEP on its roll as the next reaches the gate)
   const CAP_QUIET = 2;                      // the standing CAP with no raid on the plot: one section, out on the threat bearing (air_cap.js)
-  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, scrambles: 0, closedLaunches: 0, defence: 0, defStrikes: 0 };
+  const ST = { launches: 0, landings: 0, ditched: 0, diverted: 0, strikes: 0, levelDrops: 0, holds: 0, emergency: 0, crossLand: 0, goRound: 0, scrambles: 0, closedLaunches: 0, defence: 0, defStrikes: 0 };
 
   const groundY = b => b.site.padH;
   const gearOf = p => (p.variant && VAR[p.variant].gear) || WW.air._pool.deckY;
@@ -218,9 +220,13 @@ window.WW = window.WW || {};
   // the runway to land on, into the wind: the main one, else (emergency) the cross runway; null: none open
   function landRunway(b) {
     if (b.neutralized) return null;
-    const o = b.ops, wh = WW.wind ? WW.wind.a + Math.PI : b.heading;
+    const o = b.ops;
     if (G().opsOpen(b)) { const h = o.dir > 0 ? b.heading : b.heading + Math.PI, td = b.layout.toW(-o.dir * 34, 0); return { h, x: td.x, z: td.z, main: true }; }
-    const r = b.runways[1]; if (!r || r.closed) return null;
+    return crossR(b);
+  }
+  // the cross runway into the wind (null: shut)
+  function crossR(b) {
+    const r = b.runways[1], wh = WW.wind ? WW.wind.a + Math.PI : b.heading; if (!r || r.closed || b.neutralized) return null;
     const h = Math.cos(WW.angleDiff(r.h, wh)) >= 0 ? r.h : r.h + Math.PI;
     return { h, x: r.x - Math.cos(h) * r.len * 0.36, z: r.z - Math.sin(h) * r.len * 0.36, main: false };
   }
@@ -231,8 +237,9 @@ window.WW = window.WW || {};
     const i = Math.max(0, a.lq.indexOf(p));
     p.rwT += dt;
     if (p.leaving) return leave(p, b, dt);
-    const R = landRunway(b), LH = WW.landHold, bg = LH.big(p);
+    const R0 = landRunway(b), LH = WW.landHold, bg = LH.big(p), R = p.useCross && R0 && R0.main ? crossR(b) || R0 : R0;   // (useCross: called to the cross runway, land_flow.js)
     if (!R) { // nowhere to land: hold at the fix, then divert (carrier types) or ditch by a friendly ship
+      p.called = false; p.useCross = false;
       const gh = 2.5 + Math.max(0, -WW.terrain.depthAt(p.x, p.z)); if (p.y < gh) { p.y = gh; p.vy = Math.max(0, p.vy); }
       if (o.occ === p) o.occ = null; if (o.crossOcc === p) o.crossOcc = null;
       p.rwPh = 'circuit'; p.cleared = false; p.holdT = (p.holdT || 0) + dt; if (p.holdT === dt) ST.holds++;
@@ -249,21 +256,20 @@ window.WW = window.WW || {};
       // yet on final), the second in trail once the one ahead is past the outer marker (a plane far out at its fix as
       // soon as the one ahead is cleared: its run in is long); a cleared approach is never cancelled by the field changing mode (only a
       // closed runway sends it round, and a raid over the field a land bomber short of the outer marker: land_hold.js)
-      const ox = R.x - c * 150, oz = R.z - s * 150, up = i > 0 ? a.lq[i - 1] : null;
-      const clear = R.main ? WW.landFlow.clear(p, b) : !o.crossOcc;   // the field recovering, or a landing slot (land_flow.js)
-      let ahead = 0; for (let k = 0; k < i; k++) if (a.lq[k].cleared && a.lq[k].rwPh !== 'final') ahead++;
-      const next = ahead === 0 || (ahead === 1 && up && up.cleared && up.rwPh !== 'final' && (up.apOut || LH.far(p, ox, oz)));
+      const om = 150 + TRAIL * (p.trailK || 0), ox = R.x - c * om, oz = R.z - s * om;   // a section in trail: each its own outer marker, TRAIL apart
+      const clear = R.main ? WW.landFlow.clear(p, b) : !o.crossOcc && (R === R0 || WW.landFlow.clear(p, b));   // the field recovering, or a landing slot (land_flow.js); the cross free
+      const go = p.called || o.lslot === p;   // called in from the marshal (land_flow.js call), or a landing slot
       const off = bg && LH.raidHold(p, b, dt);
-      if (off || (!(p.cleared && p.clearedMain === R.main) && (!next || !clear))) { LH.orbit(p, b, i, dt); p.apOut = false; return; }
+      if (off || (!(p.cleared && p.clearedMain === R.main) && (!go || !clear))) { LH.orbit(p, b, i, dt); p.apOut = false; return; }
       p.cleared = true; p.clearedMain = R.main;
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
-      if (!p.apOut) { p.fly(ox, oz, 16, dt, p.pt.speed * 0.75, 1.4); if (WW.dist(p.x, p.z, ox, oz) < 22) p.apOut = true; return; }
+      if (!p.apOut) { const dm = WW.dist(p.x, p.z, ox, oz); p.fly(ox, oz, 16, dt, p.pt.speed * (dm > 120 ? 0.9 : 0.75), 1.4); if (dm < 22) p.apOut = true; return; }   // (in from the marshal at cruise, slowing near the marker)
       const d = WW.dist(p.x, p.z, fx, fz);
       p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
       if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7 && (R.main ? !o.occ : !o.crossOcc)) {   // the runway free: on final (else round the gate again)
         p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = R.x; p.rwZ = R.z; p.emergency = !R.main;
-        if (R.main) o.occ = p; else { o.crossOcc = p; ST.emergency++; }
-      } else if (d < 14) p.apOut = false;
+        if (R.main) o.occ = p; else { o.crossOcc = p; if (p.useCross) ST.crossLand++; else ST.emergency++; }
+      } else if (d < 14) { p.apOut = false; ST.goRound++; }
       return;
     }
     // final: down the centreline (PD on the cross-track drift), descending to the touchdown point
