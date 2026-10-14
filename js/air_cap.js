@@ -9,6 +9,10 @@
 //   band onto the torpedo planes; the inner section (the 4th station) stays back until the raid is close.
 // - IJN ('overhead': lookouts, no radar): shotai patrol over the fleet in wide loops (3.5-4 hull lengths), low and
 //   medium; they react only when a raid is seen and every shotai goes for it, the torpedo planes first.
+// - Over the island base (base.isBase) the CAP does not stack over the field: the USN inner section keeps its station
+//   BASE_IN out on the threat bearing and the pickets BASE_OUT farther out (the racetrack turns clear of the field);
+//   the IJN shotai each loop a sector of their own (BASE_SEC out, 120 deg apart, the first on the threat bearing),
+//   round the island rather than concentric over it.
 // Engagement (plane.foe) starts only at visual range (ENGAGE): the vector is flown with plane.vec, no foe.
 // Sim code: WW.rand never needed (deterministic geometry). State: cv._cap (per carrier), plane.capWp / vec.
 window.WW = window.WW || {};
@@ -27,6 +31,7 @@ window.WW = window.WW || {};
   const PICKET = [{ d: 140, a: 0, y: 62 }, { d: 115, a: 0.5, y: 32 }, { d: 135, a: -0.5, y: 64 }, { d: 60, a: 0, y: 30, inner: true }];
   const LEG = 90, TURN = 0.42;           // racetrack half-leg (u) and turn rate (rad/s)
   const RING_A = 0.35, RING_D = 15, RING_DY = 1.5;   // USN: a further round of sections, across the bearing, ~300 ft up
+  const BASE_OUT = 25, BASE_IN = 120, BASE_SEC = 120, BASE_LR = 45;   // the island base: pickets farther out, the inner station, the IJN sector loops (centre out, radius)
   // IJN loops round the fleet, low and medium (Zeros at 1,000-2,500 m: 27-38 u), shotai a few hundred feet apart in a band
   const LOOP = [{ r: 95, y: 27, dir: 1 }, { r: 115, y: 38, dir: -1 }, { r: 80, y: 29, dir: 1 }];
   const ST = { vectors: 0, contacts: 0, joins: 0 };
@@ -157,7 +162,7 @@ window.WW = window.WW || {};
       // a further round of sections spreads out across the bearing (wider, a little farther out), not up: real
       // stations a few hundred feet apart in the band (RING_DY, the altitude rule y = 0.4 h^0.59), not a stack 8 u a step
       const ring = Math.floor(i / PICKET.length), ra = ring ? (ring % 2 ? 1 : -1) * Math.ceil(ring / 2) * RING_A : 0;
-      const a = b + S.a + ra, sd = S.d + ring * RING_D, p = inMap(c.x + Math.cos(a) * sd, c.z + Math.sin(a) * sd, 60);
+      const a = b + S.a + ra, sd = (c.isBase ? (S.inner ? BASE_IN : S.d + BASE_OUT) : S.d) + ring * RING_D, p = inMap(c.x + Math.cos(a) * sd, c.z + Math.sin(a) * sd, 60);
       racetrack(pl, p[0], p[1], a, S.y + ring * RING_DY, D, dt);
       return true;
     }
@@ -166,8 +171,9 @@ window.WW = window.WW || {};
     pl.capBand = null;                    // the Zeros all go for whatever is lowest and nearest (drawn to the torpedo planes)
     if (u) { if (pl.vec !== u) { pl.vec = u; ST.vectors++; } vector(pl, u, L.y < 35 ? 'low' : 'high', dt); return true; }
     pl.vec = null;
-    const cx = c.x + Math.cos(b) * 25, cz = c.z + Math.sin(b) * 25;
-    const r = L.r * (1 + 0.12 * Math.sin(WW.time.now * 0.11 + i)), a = Math.atan2(pl.z - cz, pl.x - cx) + L.dir * 0.4;
+    const sa = b + (i % LOOP.length) * 2.094 + lr * 1.05, bo = c.isBase ? BASE_SEC : 25, ba = c.isBase ? sa : b;
+    const cx = c.x + Math.cos(ba) * bo, cz = c.z + Math.sin(ba) * bo;
+    const r = (c.isBase ? BASE_LR + lr * 10 : L.r) * (1 + 0.12 * Math.sin(WW.time.now * 0.11 + i)), a = Math.atan2(pl.z - cz, pl.x - cx) + L.dir * 0.4;
     const p = inMap(cx + Math.cos(a) * r, cz + Math.sin(a) * r, 40);
     const far = WW.dist(pl.x, pl.z, cx, cz) > r * 1.6;
     pl.fly(p[0], p[1], L.y, dt, (pl.pt.cruise || pl.pt.speed * 0.8) * (far ? 1.1 : 1), far ? 0.7 : 0.5);

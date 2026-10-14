@@ -9,6 +9,7 @@ window.WW = window.WW || {};
   // Tallest point of each ship type above the water (measured model bounds), for pull-out / pop-up clearance (air_attack.js).
   const TOP = { carrier: 6.4, battleship: 7.2, cruiser: 5.2, destroyer: 3.7, submarine: 0.7, pt: 2.0 };
   const FORM_R = 40, FORM_UP = 35, GUIDE_V = 20;   // rendezvous circle radius (+0.3 u a plane, to 50), its centre upwind of the carrier
+  const BASE_RDV = 170;   // the island base: the rendezvous point out on the departure track (VMSB-241 met 20 nm east of Midway)
   let waves = [];
   const gv = w => w.v || (w.nation === 'IJN' ? 25 : 22);   // the guide's speed in transit (doctrine: USN 22, IJN 25 u/s)
 
@@ -119,13 +120,16 @@ window.WW = window.WW || {};
     if (!w.go) { // orbit over the carrier while the deck launches the rest of the load (wider for a bigger load)
       if (WW.airBoss) WW.airBoss.formTarget(w);                // a carrier sighted while forming: the strike goes for it
       const R = FORM_R + Math.min(10, w.n0 * 0.3), v = w.v || GUIDE_V, t = w.target;
-      if (w.n0 >= RDV_N && w.t1 >= 0 && w.pendN <= 0 && t && t.alive) { // a big load all up: a running rendezvous, rolled out on the course out at RDV_V (the trailing slots close up on a straight leg)
+      if ((w.n0 >= RDV_N || c.isBase) && w.t1 >= 0 && w.pendN <= 0 && t && t.alive) { // a big load all up: a running rendezvous, rolled out on the course out at RDV_V (the trailing slots close up on a straight leg)
         const k = aimAt(w, t), want = Math.atan2(k.z - w.z, k.x - w.x);
         w.h += WW.clamp(WW.angleDiff(w.h, want), -0.3 * dt, 0.3 * dt);
         w.x += Math.cos(w.h) * v * RDV_V * dt; w.z += Math.sin(w.h) * v * RDV_V * dt;
         w.dT = WW.dist(w.x, w.z, k.x, k.z);
-      } else { // the rendezvous circle, upwind of the carrier where the planes come off the bow
-        const up = WW.wind ? WW.wind.a + PI : c.heading, ox = c.x + Math.cos(up) * FORM_UP, oz = c.z + Math.sin(up) * FORM_UP;
+      } else { // the rendezvous circle, upwind of the carrier where the planes come off the bow (the island base: out on the
+        // course to the target, so the planes join on the way out, not in a column over the field)
+        let up = WW.wind ? WW.wind.a + PI : c.heading, ru = FORM_UP;
+        if (c.isBase && t && t.alive) { const k = aimAt(w, t); up = Math.atan2(k.z - c.z, k.x - c.x); ru = Math.min(BASE_RDV, WW.dist(c.x, c.z, k.x, k.z) * 0.5); }   // (a ship close off the island: half-way)
+        const ox = c.x + Math.cos(up) * ru, oz = c.z + Math.sin(up) * ru;
         w.ang += (v * 0.85 / R) * dt * w.dir;
         w.x = ox + Math.cos(w.ang) * R; w.z = oz + Math.sin(w.ang) * R; w.h = w.ang + w.dir * PI / 2;
       }
