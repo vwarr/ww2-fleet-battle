@@ -22,7 +22,8 @@
 //    bomb; Hood, the thin-decked battlecruiser: the MAG_CLS class factors), a carrier's bomb room and avgas tanks
 //    now and then (Liscome Bay, Taiho). x MAG_KIND (a torpedo bursts below the belt, by the magazines: Juneau,
 //    Barham) and x MAG_TURRET within MAG_R of a main turret (the shell rooms under the barbettes).
-//    Calibrated (tests/crit_probe.js) to about one magazine every 3-4 rounds of a real surface or air fight.
+//    Calibrated (tests/crit_probe.js, after the 1942 bomb / torpedo rescale) to about one magazine every 4-5 rounds over
+//    standard, battle_line, midway and carrier_duel together.
 // Ship.takeDamage calls hit(); main.js step calls update(). Public: ship.fireN, ship.avgas, ship.repaired.
 window.WW = window.WW || {};
 (function () {
@@ -33,7 +34,7 @@ window.WW = window.WW || {};
   var FLOOD_RATE = 0.0015, FLOOD_FLOOR = 0.4, REPAIR_HP = 1.5, REPAIR_MAX = 0.05, REPAIR_MIN_HP = 0.6, DC_GOOD = 1.15;
   var BREACH_DPS = 0.003, SHORE_P = 0.03, COUNTER = 0.75, CAPSIZE = 0.19, CAPSIZE_P = 0.05, CAPSIZE_ROLL = 1.7;
   // magazine: chance per heavy hit by type, x MAG_KIND, x MAG_CLS (class key), x MAG_TURRET within MAG_R of a main turret
-  var MAG = { destroyer: 0.012, cruiser: 0.006, battleship: 0.0015, carrier: 0.003 }, MAG_TURRET = 2.5, MAG_R = 3;
+  var MAG = { destroyer: 0.022, cruiser: 0.011, battleship: 0.0028, carrier: 0.004 }, MAG_TURRET = 2.5, MAG_R = 3;
   var MAG_KIND = { torpedo: 1.5, bomb: 1, shell: 1 };
   var MAG_CLS = { kongo: 2, atlanta: 1.6 };   // Kongo: a rebuilt battlecruiser's thin deck (Hood); Atlanta: a light AA cruiser (Juneau)
   var tick = 0, stats = null;
@@ -74,7 +75,8 @@ window.WW = window.WW || {};
       p.remove(); lost++;
     }
     if (cv.rearm) { lost += cv.rearm.length; cv.rearm.length = 0; }
-    var below = hg > 0 && onDeck < DECK_MIN;   // the hangar went up, the deck was all but empty (Akagi)
+    var below = hg > 0;   // armed bombers below went up too (Akagi). hg > 0 only while a strike is spotted or the reserve rearmed,
+    // both of which load the deck too, so this is not 'the deck all but empty' (that never happened: 0 in 48 rounds)
     if (hg > 0) lost += SD.hangarBoom(cv);
     load = Math.round(load);
     stats.deckHits[n]++; stats.deckPlanes[n] += lost;
