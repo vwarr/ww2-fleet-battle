@@ -53,15 +53,62 @@ window.WW = window.WW || {};
   // A free place for a facility of radius r near (u, v): on land, off the network, clear of the other facilities and
   // of the dispersal rows; searched outward on a spiral (out to ~190 u: with a full air group's rows the near ground
   // is taken, and at 40 steps / 62 u the hangars and the fuel farm were left off most fields). Returns { u, v } or null.
+  // Only on the field's own island (home()). When the spiral (sparse far out: ~80 u between its points at 80 u) finds
+  // room only off it (where the facility used to go: an islet, Sand Island), a dense 2 u scan of the island nearest
+  // (u, v) moves it onto the field's island; null when there is none left (that facility is left out). A facility the
+  // spiral finds no room for anywhere is left out as before (the scan is not run: the base keeps its strength).
   function free(L, u, v, r, rowsToo) {
+    var away = false;
+    var ok = function (uu, vv) {
+      if (!L.landBox(uu, vv, r, r) || onNetwork(L, uu, vv, r) || climbOut(L, uu, vv, r)) return false;
+      if (L.facs.some(function (f) { return Math.hypot(f.u - uu, f.v - vv) < f.r + r + 3; })) return false;
+      if (rowsToo !== false && L.spots.some(function (p) { return Math.hypot(p.u - uu, p.v - vv) < Math.max(p.len, p.span) / 2 + 2.5 + r + 2; })) return false; // clear of the revetment and a truck's way round it
+      if (!homeBox(L, uu, vv, r)) { away = true; return false; }
+      return true;
+    };
     for (var k = 0; k < 120; k++) {
       var a = k * 2.4, d = k * 1.6, uu = u + Math.cos(a) * d, vv = v + Math.sin(a) * d;
-      if (!L.landBox(uu, vv, r, r) || onNetwork(L, uu, vv, r) || climbOut(L, uu, vv, r)) continue;
-      if (L.facs.some(function (f) { return Math.hypot(f.u - uu, f.v - vv) < f.r + r + 3; })) continue;
-      if (rowsToo !== false && L.spots.some(function (p) { return Math.hypot(p.u - uu, p.v - vv) < Math.max(p.len, p.span) / 2 + 2.5 + r + 2; })) continue; // clear of the revetment and a truck's way round it
-      return { u: uu, v: vv };
+      if (ok(uu, vv)) return { u: uu, v: vv };
+    }
+    if (!away) return null;
+    var cand = [];
+    for (var cv = -HOME_R; cv <= HOME_R; cv += 2) for (var cu = -HOME_R; cu <= HOME_R; cu += 2) {
+      var dd = Math.hypot(cu - u, cv - v); if (dd < 190 && home(L, cu, cv)) cand.push([dd, cu, cv]);
+    }
+    cand.sort(function (p, q) { return p[0] - q[0] || p[1] - q[1] || p[2] - q[2]; });
+    for (var m = SHORE_M; m >= 0; m -= SHORE_M) for (var i = 0; i < cand.length; i++) {   // inland of the shore first (the coastal batteries' ground)
+      if (ok(cand[i][1], cand[i][2]) && homeBox(L, cand[i][1], cand[i][2], r + m)) return { u: cand[i][1], v: cand[i][2] };
     }
     return null;
+  }
+  // The airfield's own island: the dry land (depthAt < -0.35) connected to the pad's centre, flood-filled on a 1 u
+  // site-local grid on first use (only that island's cells are visited). The facilities, the camp and the vehicles'
+  // homes and ways keep to it: an islet, the reef ring or the second island beside the field (Sand Island across the
+  // lagoon on an atoll) has no road to the field, and the spiral in free() used to reach them.
+  var HOME_R = 280, HOME_W = 2 * HOME_R + 1, SHORE_M = 8;
+  function home(L, u, v) {
+    var M = L.homeMask;
+    if (!M) {
+      M = L.homeMask = new Uint8Array(HOME_W * HOME_W);
+      var dry = function (i, j) { var p = L.toW(i - HOME_R, j - HOME_R); return WW.terrain.depthAt(p.x, p.z) < -0.35; };
+      var q = [HOME_R * HOME_W + HOME_R], N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]]; M[q[0]] = 1;
+      for (var h = 0; h < q.length; h++) {
+        var c = q[h], i = c % HOME_W, j = (c - i) / HOME_W;
+        for (var n = 0; n < 4; n++) {
+          var a = i + N4[n][0], b = j + N4[n][1], k = b * HOME_W + a;
+          if (a < 0 || b < 0 || a >= HOME_W || b >= HOME_W || M[k]) continue;
+          M[k] = dry(a, b) ? 1 : 2;   // 2: looked at, not the island
+          if (M[k] === 1) q.push(k);
+        }
+      }
+    }
+    var i2 = Math.round(u) + HOME_R, j2 = Math.round(v) + HOME_R;
+    return i2 >= 0 && j2 >= 0 && i2 < HOME_W && j2 < HOME_W && M[j2 * HOME_W + i2] === 1;
+  }
+  // a box of half size r round (u, v) on the island: its centre, corners and edge middles
+  function homeBox(L, u, v, r) {
+    for (var a = -1; a <= 1; a++) for (var b = -1; b <= 1; b++) if (!home(L, u + a * r, v + b * r)) return false;
+    return true;
   }
   function addFac(L, u, v, r) { L.facs.push({ u: u, v: v, r: r }); }
   // the climb-out / approach lanes past both ends of each runway: no building there (a plane lifting off at the far
@@ -198,5 +245,5 @@ window.WW = window.WW || {};
   }
 
   WW.airfieldLayout = { make: make, columns: columns, rows: rows, free: free, addFac: addFac, outPath: outPath, inPath: inPath,
-    netDist: netDist, onNetwork: onNetwork, climbOut: climbOut, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
+    netDist: netDist, onNetwork: onNetwork, home: home, homeBox: homeBox, climbOut: climbOut, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
 })();

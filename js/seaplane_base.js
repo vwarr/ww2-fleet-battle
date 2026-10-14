@@ -43,7 +43,7 @@ window.WW = window.WW || {};
     };
     const ox = S.atoll ? S.atoll.x : S.island ? S.island.x : S.x - 1, oz = S.atoll ? S.atoll.z : S.island ? S.island.z : S.z;
     const sea = Math.atan2(S.z - oz, S.x - ox);     // toward the open sea from the field
-    let best = null, bs = -1e9;
+    let best = null, bs = -1e9, bestOwn = false;   // an apron on the field's own island first (airfield_layout home()), else the best anywhere (Sand Island)
     for (let r = R0; r <= R1; r += 4) for (let i = 0; i < 48; i++) {
       const a = i / 48 * Math.PI * 2, wx = S.x + Math.cos(a) * r, wz = S.z + Math.sin(a) * r;
       if (!water(wx, wz) || WW.terrain.depthAt(wx, wz) > 6) continue;
@@ -59,7 +59,10 @@ window.WW = window.WW || {};
       const lagoon = S.atoll ? WW.dist(wx, wz, S.atoll.x, S.atoll.z) < S.atoll.R - 14 : false;
       const lee = -Math.cos(WW.angleDiff(Math.atan2(wz - S.z, wx - S.x), sea));    // 1: the side away from the open sea
       const sc = (lagoon ? 120 : 0) + lee * 40 + runs.length * 2 - r * 0.6;
-      if (sc > bs) { bs = sc; best = { wx, wz, lx, lz, ax, az, h: hd, runs, lagoon }; }
+      const q = L.toL(ax, az), own = AL.homeBox(L, q.u, q.v, APRON / 2);
+      if (sc > bs && (own || !bestOwn)) { bs = sc; best = { wx, wz, lx, lz, ax, az, h: hd, runs, lagoon }; }
+      else if (own && !bestOwn) { bs = sc; best = { wx, wz, lx, lz, ax, az, h: hd, runs, lagoon }; }
+      if (own) bestOwn = true;
     }
     b.seaplane = null;
     if (!best) return null;

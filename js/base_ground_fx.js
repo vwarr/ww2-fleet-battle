@@ -394,7 +394,7 @@ window.WW = window.WW || {};
   const ways = new Map();
   function gridWay(f, t, tol) {   // tol: arrive within this many cells of t (a crash truck: t may be in a blocked cell)
     const L = base.layout, U0 = -90, V0 = -80, NU = 181, NV = 161, id = (i, j) => j * NU + i;
-    const blocked = (u, v) => inRevet(u, v, f, true) || !L.land(u, v);   // out of its own building from the middle
+    const blocked = (u, v) => inRevet(u, v, f, true) || !L.land(u, v) || !WW.airfieldLayout.home(L, u, v);   // the field's own island only   // out of its own building from the middle
     const start = [f.u, f.v], si = Math.round(start[0] - U0), sj = Math.round(start[1] - V0), ti = Math.round(t[0] - U0), tj = Math.round(t[1] - V0);
     const prev = new Int32Array(NU * NV).fill(-2), q = [id(si, sj)]; prev[q[0]] = -1;
     let end = -1;

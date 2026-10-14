@@ -75,7 +75,7 @@ window.WW = window.WW || {};
       if (!last) continue;
       const bx = last.x - Math.cos(a) * 4, bz = last.z - Math.sin(a) * 4;
       const lq = base && base.layout ? base.layout.toL(bx, bz) : null;
-      if (!onLand(bx, bz) || (lq && (WW.airfieldLayout.onNetwork(base.layout, lq.u, lq.v, 4) || WW.airfieldLayout.climbOut(base.layout, lq.u, lq.v, 4) || base.layout.facs.some(f => Math.hypot(f.u - lq.u, f.v - lq.v) < f.r + 6) ||
+      if (!onLand(bx, bz) || (lq && (!WW.airfieldLayout.home(base.layout, lq.u, lq.v) || WW.airfieldLayout.onNetwork(base.layout, lq.u, lq.v, 4) || WW.airfieldLayout.climbOut(base.layout, lq.u, lq.v, 4) || base.layout.facs.some(f => Math.hypot(f.u - lq.u, f.v - lq.v) < f.r + 6) ||
         base.layout.spots.some(p => Math.hypot(p.u - lq.u, p.v - lq.v) < Math.max(p.len, p.span) / 2 + 6)))) continue;   // clear of the revetments
       cand.push({ x: bx, z: bz, a, sc: Math.cos(WW.angleDiff(a, out)) });
     }
