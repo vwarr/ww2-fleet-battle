@@ -61,6 +61,15 @@ async function main(b) {
     check(v.drawn - h.drawn >= Math.max(2, base * 0.5), `frames resume (${v.drawn - h.drawn} drawn in 2.5 s, ${base} before hiding)`);
     check(v.bg.beats === h.bg.beats || v.bg.beats - h.bg.beats <= 1, 'the beat stops stepping once visible');
   }
+  // a round that ends while hidden: auto mode rolls into the next one (VICTORY_TIME 9 sim s: 4.5 wall s at 4x)
+  {
+    const r0 = await p.evaluate(() => { __sim.setScale(4); __setHidden(true); WW.game.endRound('USN', 'kill'); return WW.stats.round; });
+    await p.waitForTimeout(7000);
+    const r1 = await p.evaluate(() => ({ round: WW.stats.round, state: WW.game.state }));
+    await p.evaluate(() => { __setHidden(false); __sim.setScale(1); });
+    check(r1.round === r0 + 1 && r1.state === 'battle', `a round ended while hidden rolls on (round ${r0} -> ${r1.round}, ${r1.state})`);
+    await p.waitForTimeout(1500);
+  }
   // the look-ahead copy idled while hidden (lookahead.js pace()): it catches up and the director has it again
   const la = await p.evaluate(async () => { const L = WW.lookahead; if (!L || !L.on) return null; const t0 = performance.now(); const r = await L.waitAhead(10, 60000); return { s: +((performance.now() - t0) / 1000).toFixed(1), usable: L.usable(), ahead: +r.ahead.toFixed(1), state: WW.game.state }; });
   check(!la || la.usable || la.state !== 'battle', 'look-ahead ahead again after return ' + JSON.stringify(la));
