@@ -53,6 +53,7 @@ window.WW = window.WW || {};
     if (WW.baseLifeModels) { // the camp (base.decor): huts, tents, the mess, pits, trenches, masts, ... and the lit windows
       const life = WW.baseLifeModels.build(e.base, built.mat);
       for (const part of life.parts) { for (const o of [part.mesh, part.gun, part.head, part.flag]) if (o) built.group.add(o); built.parts.push(part); }
+      for (const im of life.insts || []) built.group.add(im);   // the camp and the flight line's clutter, one InstancedMesh per kind
       if (life.glow) built.group.add(built.glow = life.glow);
     }
     WW.scene.add(built.group);
@@ -105,7 +106,7 @@ window.WW = window.WW || {};
   function burn(dt, now) {
     const ld = WW.damage ? WW.damage.load() : 0;
     fires.forEach((st, f) => {
-      const age = now - st.t0, big = f.kind === 'fuel' || f.kind === 'hangar', mid = f.decor && (f.kind === 'mess' || f.kind === 'hut' || f.kind === 'sick' || f.kind === 'drums' || f.kind === 'truck' || f.kind === 'radio'), life = big ? 180 : mid ? 150 : 60;
+      const age = now - st.t0, big = f.kind === 'fuel' || f.kind === 'hangar', mid = f.decor && (f.kind === 'mess' || f.kind === 'hut' || f.kind === 'sick' || f.kind === 'drums' || f.kind === 'drumrow' || f.kind === 'ops' || f.kind === 'truck' || f.kind === 'radio'), life = big ? 180 : mid ? 150 : 60;
       if (age > life) return;
       const k = (1 - age / life) * (ld > 0.9 ? 0.4 : 1), y = Math.max(WW.terrain.PAD_H, -WW.terrain.depthAt(f.x, f.z));
       if (f.kind === 'trench' || f.kind === 'drill') return;
