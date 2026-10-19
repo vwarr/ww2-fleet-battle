@@ -374,11 +374,11 @@ window.WW = window.WW || {};
   // never makes a 0-step frame followed by a 2-step one: the sim clock runs a hair elastic against the wall clock instead)
   const SNAP = 0.25;
   let framed = false;   // inside a frame's advance: the particles and lifeboats run on the frame's sim time instead (frame())
-  function advance(simDt) {
+  function advance(simDt, budget = STEP_BUDGET, backlog = MAX_BACKLOG) {
     framed = true;
-    try { advance1(simDt); } finally { framed = false; }
+    try { advance1(simDt, budget, backlog); } finally { framed = false; }
   }
-  function advance1(simDt) {
+  function advance1(simDt, budget, backlog) {
     acc += simDt;
     let n = Math.floor(acc / LIVE_STEP + SNAP);
     if (n <= 0) return;
@@ -386,7 +386,7 @@ window.WW = window.WW || {};
     const t0 = performance.now();
     for (let i = 0; i < n; i++) {
       stepLive();
-      if (i < n - 1 && performance.now() - t0 > STEP_BUDGET) { acc = Math.min(acc + (n - 1 - i) * LIVE_STEP, MAX_BACKLOG); break; }
+      if (i < n - 1 && performance.now() - t0 > budget) { acc = Math.min(acc + (n - 1 - i) * LIVE_STEP, backlog); break; }
     }
   }
   WW.on('roundStart', () => { acc = 0; });
@@ -396,7 +396,7 @@ window.WW = window.WW || {};
   // frame's rdt is the whole real time since the last one: the sim still advances by real time (in render mode its
   // step size already follows the frame rate; the tests drive __sim.fastForward and never see this). The 3 ms slack
   // keeps a 60 cap on a 120 Hz display at every other vsync instead of alternating 8 / 16 ms. A hidden tab gets no
-  // rAF at all (the browser stops it; audio.js mutes on visibilitychange). ?nocap: uncapped (fps / stress tests).
+  // rAF at all (the browser stops it; audio.js mutes on visibilitychange): the background beat steps it then (bgBeat). ?nocap: uncapped (fps / stress tests).
   const FPS_CAP = 60, FPS_IDLE = 30, IDLE_AFTER = 1500, NO_CAP = /[?&]nocap\b/.test(location.search);
   let lastInput = -1e9;
   const touched = () => { lastInput = performance.now(); };
@@ -518,6 +518,58 @@ window.WW = window.WW || {};
     call('cam', 'init');
     startGame();
     requestAnimationFrame(frame);
+    bgInit();
+  }
+
+  // Background battle: a hidden tab gets no rAF, so frame() never runs and the battle would freeze. While the tab is
+  // hidden a tiny Blob worker (its timers are not throttled the way a hidden page's are: ~1 Hz, then once a minute after
+  // ~5 min of Chrome's intensive throttling) posts a heartbeat every BG_TICK ms, and each beat runs the same live steps a
+  // frame would for the real time since the last one: the same round, bit for bit (the look-ahead copy keeps pace
+  // through the same WW.afterStep chain: lookahead.js), only nothing is drawn. The director's slow motion (WW.time.warp)
+  // is ignored: no director runs. The particles and lifeboats age once a beat (no burst of stale smoke on return); audio
+  // is muted already (audio.js). Not on the ready screen (setup: nothing moves) and not on ?sim pages (no boot()). A
+  // round that ends while hidden goes on as in the foreground: auto / infinite rolls into the next round, a standalone
+  // battle shows its victory and goes back to setup (the beats then stop stepping). Nothing to draw, so a beat may use
+  // BG_BUDGET ms of its BG_TICK. A live step costs ~0.3 ms in the foreground (a carrier duel mid-strike, 79 planes up, an
+  // M-series Mac) but ~0.7 ms in a hidden tab (a background-priority CPU; at 1x the short 12-step bursts cost ~4 ms a
+  // step, still a quarter of a beat), so ~200 steps a beat: 4x keeps the wall clock (60 hidden s at 4x: 99.8%); past
+  // the budget the backlog is capped at BG_BACKLOG and the battle runs slower than wall clock, never differently. The
+  // look-ahead copy idles while hidden (it doubled the cost: lookahead.js pace()). `last` moves with each beat (the rAF
+  // clock), so the first visible frame does not count the hidden time again; on return the camera cuts (cam.snap) to a
+  // fresh shot of where the battle is now.
+  const BG_TICK = 200, BG_BUDGET = 150, BG_BACKLOG = 4;   // (backlog: a busy spike's steps catch up on the next beats)
+  let bgWorker = null, bgUrl = null;   // (one Blob URL for every hide)
+  WW.bgTick = { beats: 0, steps: 0, ms: 0, stepMs: 0 };   // (tests / the report: what the background ran and what it cost)
+  function bgBeat() {
+    const now = performance.now();
+    if (!document.hidden || game.state === 'setup') { last = now; return; }
+    const rdt = last ? Math.min(2, (now - last) / 1000) : 0;   // (a late beat: at most 2 s of real time)
+    last = now;
+    call('shipSwell', 'unpose'); call('dmgVis', 'unpose'); call('renderInterp', 'unpose');   // (as stepFixed(): idempotent)
+    const simDt = rdt * WW.time.scale * BASE_SPEED, n0 = game.stepN || 0;
+    advance(simDt, BG_BUDGET, BG_BACKLOG);
+    WW.bgTick.stepMs += performance.now() - now;
+    if (simDt > 0) { call('fx', 'update', simDt); call('lifeboats', 'update', simDt); }
+    const B = WW.bgTick; B.beats++; B.steps += Math.max(0, (game.stepN || 0) - n0); B.ms += performance.now() - now;
+  }
+  function bgStart() {
+    if (bgWorker) return;
+    last = performance.now();
+    try {
+      bgUrl = bgUrl || URL.createObjectURL(new Blob(['setInterval(function () { postMessage(0); }, ' + BG_TICK + ');'], { type: 'text/javascript' }));
+      bgWorker = new Worker(bgUrl);
+      bgWorker.onmessage = bgBeat;
+    } catch (e) { bgWorker = { iv: setInterval(bgBeat, BG_TICK), terminate() { clearInterval(this.iv); } }; }   // (no worker: the throttled page timer)
+  }
+  function bgStop() {
+    if (!bgWorker) return;
+    bgWorker.terminate(); bgWorker = null;
+    last = 0; acc = Math.min(acc, MAX_BACKLOG);   // (the first frame back steps 1/60 s: its rAF time may lie a hair before now; a frame's backlog)
+    if (game.state !== 'setup') call('cam', 'snap');   // the first frame back is a cut
+  }
+  function bgInit() {
+    document.addEventListener('visibilitychange', () => { if (document.hidden) bgStart(); else bgStop(); });
+    if (document.hidden) bgStart();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
