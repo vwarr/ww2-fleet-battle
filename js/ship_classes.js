@@ -3,10 +3,9 @@
 // SCALE: ships are at true relative size. A carrier hull (~250 m) is WW.cfg.L = 26 u, so 1 u = 9.6 m
 // (WW.cfg.U_PER_M = 0.104 u/m). Every class's length and beam come from its real dimensions in metres x U_PER_M.
 // Distances tied to ship size should be written in L (e.g. 2.7 * L), so they survive any later change of L.
-// Two deliberate exaggerations remain, both tied to the open plane-scale question (WW.cfg.PLANE_SCALE):
-//   - carrier flight decks are DECK_K x their real width (and the hull beam half that much) so that parked
-//     planes at the arcade plane scale still fit; DECK_K = 1 at true plane scale (see deckK below);
-//   - sailor figures (models_crew.js) are about 3.8 m tall at the default plane scale (readable, not true scale).
+// Planes are at true size too (PLANE_SCALE 0.41, 2026-10-18), so the flight decks are at their real width
+// (DECK_K = 1; a larger ?planeScale= widens them again, see DK below). Sailor figures (models_crew.js) are near
+// true size (see its SCALE).
 //
 // A class: { key, type, nation, name, lenM, beamM, tons, names[], hull{...}, mod{hp, speed, turn, aa}, guns[] }.
 //   hull: model loft parameters in fractions (top = deck height u, bowF = bow entry share of L, sternW, sheer u).
@@ -18,14 +17,14 @@ window.WW = window.WW || {};
 (function (WW) {
   'use strict';
   var L = 26, U = L / 250;
-  // Plane scale: 0.82, about 2x true (user's choice, 2026-10-09; an F4F spans 2.4 u, a Yorktown is 26 u long). True
-  // scale is ~0.41 (an F4F's 11.6 m span = 1.2 u; the fighter model spans 2.94 u at scale 1); 1.7 is the old arcade
-  // scale (~4x) the game was first tuned at. ?planeScale=x overrides (tests, comparison shots).
+  // Plane scale: 0.41, true size (user's choice, 2026-10-18: an F4F's 11.6 m span = 1.2 u, the fighter model spans
+  // 2.94 u at scale 1; a Yorktown is 26 u long). 0.82 (~2x) was the 2026-10-09 choice; 1.7 is the old arcade scale
+  // (~4x) the game was first tuned at. ?planeScale=x overrides (tests, comparison shots).
   // PLANE_K = PLANE_SCALE / 1.7: every length tied to the plane's size (deck spots, wingman slots, hit boxes, gear
   // height, trails, base parking, ground crews) was written at 1.7 and is multiplied by PLANE_K at run time.
   var m = /[?&]planeScale=([0-9.]+)/.exec(typeof location !== 'undefined' ? location.search : '');
-  var PS = m ? parseFloat(m[1]) : 0.82, PS_TRUE = 0.41, PS_REF = 1.7;
-  var DK = Math.pow(WW.clamp(PS / PS_TRUE, 1, 5), 0.42);   // flight deck widening for the plane scale (1.34 at 0.82, 1.8 at 1.7)
+  var PS = m ? parseFloat(m[1]) : 0.41, PS_TRUE = 0.41, PS_REF = 1.7;
+  var DK = Math.pow(WW.clamp(PS / PS_TRUE, 1, 5), 0.42);   // flight deck widening for a plane scale over true (1 at 0.41, 1.34 at 0.82, 1.8 at 1.7)
   Object.assign(WW.cfg, { L: L, U_PER_M: U, PLANE_SCALE: PS, PLANE_SCALE_TRUE: PS_TRUE, PLANE_K: PS / PS_REF, DECK_K: DK });
 
   // Type baselines at true size (the class table below overrides per ship).
