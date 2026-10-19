@@ -212,7 +212,7 @@ window.WW = window.WW || {};
   //     0.4, nearly wakeless; Type 91 1; USN steam 1.1) x eye (the lookouts' height: TL.EYE0 + (1 - TL.EYE0) x R.EYE)
   //     x sqrt(cond);
   //   cond = light (nightOps.visK: darkness against the side's nightEye, rain on the line, star shells) x sea (whitecaps:
-  //     TL.SEA0 - TL.SEA1 x WW.seaState) x doctrine.lookouts (IJN 1.15) x load (1 / (1 + AA firing + attackers + anvil)
+  //     TL.SEA0 - TL.SEA1 x WW.seaState.douglas) x doctrine.lookouts (IJN 1.15) x load (1 / (1 + AA firing + attackers + anvil)
   //     x own fires) x a smoke screen on the line;
   //   the drop: an aerial torpedo just released (run < TL.DROP_RUN) within R.DROP of a ship: one roll per ship, chance
   //     TL.DROP_P x (1 - (d / R.DROP)^2) x light x lookouts x the bridge's load (1 / (1 + TL.DROP_N (n - 1)) for n planes
@@ -244,7 +244,7 @@ window.WW = window.WW || {};
   }
   WW.on('weaponImpact', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
   WW.on('weaponDropped', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
-  function seaK() { var ss = WW.seaState === undefined ? 3 : WW.seaState; return WW.clamp(TL.SEA0 - TL.SEA1 * ss, TL.SEA_MIN, 1); }
+  function seaK() { var ss = WW.seaState && WW.seaState.douglas !== undefined ? WW.seaState.douglas : 3; return WW.clamp(TL.SEA0 - TL.SEA1 * ss, TL.SEA_MIN, 1); }
   // the lookouts' load this tick: { aa (her guns firing), n (planes on their run / dive at her), anvil, k (the wake factor) }
   var loadC = new Map();
   function load(s, now) {

@@ -47,14 +47,17 @@ window.WW = window.WW || {};
   };
   WW.weather = W;
 
-  // The sea state (torpedo realism, 2026-10-18): WW.seaState, Douglas 1 (smooth) .. 5 (rough), rolled here with the
-  // front so it is the same in every mode: the round's wind (damage.js, 0.5-0.9) raises it, one WW.rand draw spreads it
-  // (a Pacific trade-wind sea is ~3-4), a squall line adds 0.5. Whitecaps hide torpedo wakes (intel.js TL.SEA). Sim
-  // state: the visual waves (water.js / pacific-sea) may read it; nothing here reads them.
+  // The sea state (torpedo realism, 2026-10-18): WW.seaState = { douglas, beaufort, S }, Douglas 1 (smooth) .. 5
+  // (rough), rolled here with the front so it is the same in every mode: the round's wind (damage.js, 0.5-0.9) raises
+  // it, one WW.rand draw spreads it (a Pacific trade-wind sea is ~3-4), a squall line adds 0.5. Whitecaps hide torpedo
+  // wakes (intel.js seaK). beaufort ~ douglas + 1; S = (douglas - 1) / 4 in 0..1 is what sea_state.js (the drawn
+  // South Pacific sea) reads, so the waves agree with the sim; nothing here reads the visual sea.
+  function seaOf(d) { d = WW.clamp(d, 1, 5); return { douglas: d, beaufort: d + 1, S: (d - 1) / 4 }; }
   function seaRoll(r) {
     var w = WW.wind ? Math.hypot(WW.wind.x, WW.wind.z) : 0.7;
-    WW.seaState = WW.clamp(1 + 2.5 * (w - 0.5) / 0.4 + 1.5 * r, 1, 5);
+    WW.seaState = seaOf(1 + 2.5 * (w - 0.5) / 0.4 + 1.5 * r);
   }
+
   function roll() {
     var r = WW.rand(), cx = WW.cfg.MAP_W * (0.3 + 0.4 * WW.rand()), cz = WW.cfg.MAP_H * (0.3 + 0.4 * WW.rand()), cross = 120 + 180 * WW.rand();
     var raw = [];
@@ -64,7 +67,7 @@ window.WW = window.WW || {};
       f === 'clear' || f === 'scatter' || f === 'line' ? f : r < P.LINE ? 'line' : r < P.LINE + P.SCATTER ? 'scatter' : 'clear';
     if (f === 'line') { cx = WW.cfg.MAP_W / 2; cz = WW.cfg.MAP_H / 2; cross = 140; } // test hook: the line crosses mid-map ~140 s in
     W.kind = kind; cells.length = 0; stats.rounds++; stats.kinds[kind]++;
-    if (kind === 'line') WW.seaState = Math.min(5, WW.seaState + 0.5);
+    if (kind === 'line') WW.seaState = seaOf(WW.seaState.douglas + 0.5);
     if (kind === 'clear') return;
     var wd = WW.wind || { x: 1, z: 0 }, wl = Math.hypot(wd.x, wd.z) || 1, ux = wd.x / wl, uz = wd.z / wl;   // drift direction
     var sp = Math.max(0.5, wl) * DRIFT, back = sp * cross;   // start upwind: the front reaches (cx, cz) `cross` s in
@@ -77,8 +80,8 @@ window.WW = window.WW || {};
     }
   }
   WW.on('roundStart', roll);
-  WW.seaState = 3;
-  WW.on('setupStart', function () { cells.length = 0; W.kind = 'clear'; WW.seaState = 3; });
+  WW.seaState = seaOf(3);
+  WW.on('setupStart', function () { cells.length = 0; W.kind = 'clear'; WW.seaState = seaOf(3); });
   function update(dt) {
     if (!WW.game || WW.game.state === 'setup') return;
     for (var i = 0; i < cells.length; i++) { var c = cells[i]; c.x += c.vx * dt; c.z += c.vz * dt; }
