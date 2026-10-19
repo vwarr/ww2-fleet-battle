@@ -16,7 +16,7 @@
 // Conditions: name=hz/vsyncs-per-frame(cycled, '+')/time scale/slow motion, e.g. 120o=120/2+3/1/1 (a 120 Hz display
 // whose frame overruns a vsync every other time). The 60 fps cap (main.js) applies, as on a real display.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=... node tests/cam_jitter.js --who pby [--conds all|name,...]
-//   [--frames 150] [--q cam=forecast|nointerp] [--tod day|dusk|night|n] [--at s|end] [--seed 1] [--sheet dir [--every 15]] [--json out.json]
+//   [--frames 150] [--q cam=forecast|nointerp] [--tod day|dusk|night|n] [--at s|end] [--seed 1] [--sheet dir [--every 15]] [--json out.json] [--dump dir]
 const fs = require('fs'), path = require('path');
 const { chromium } = require('playwright');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -26,6 +26,7 @@ const SHEET = arg('--sheet', null), JSON_OUT = arg('--json', null), BASE = arg('
 const CONDS = {
   '60': [60, [1], 1, 1], '120': [120, [1], 1, 1], '120o': [120, [2, 3], 1, 1], '144': [144, [1], 1, 1],
   'slow60': [60, [1], 1, 0.5], 'slow120o': [120, [2, 3], 1, 0.5], 'ramp60': [60, [1], 1, 0.75],
+  'u13': [1000, [13, 20.33], 1, 1], 'u14': [1000, [14, 19.33], 1, 1],   // uneven frames in ms (u13: tests/scale_jitter.js's UNEVEN; its 13 ms frames fall under the 60 fps cap)
   '2x60': [60, [1], 2, 1], '2x120o': [120, [2, 3], 2, 1], '4x60': [60, [1], 4, 1], '4x120o': [120, [2, 3], 4, 1]
 };
 const DIRECTOR = WHO === 'director';
@@ -136,6 +137,7 @@ const condNames = (arg('--conds', 'all') === 'all' ? (DIRECTOR ? ['60', '120o', 
     } else await run(fr);
     if (WHO === 'pan') await p.keyboard.up('ArrowRight');
     const rec = await p.evaluate(() => { __recOn = false; return __rec.splice(0); });
+    if (arg('--dump', null)) fs.writeFileSync(path.join(arg('--dump'), WHO + '_' + name + '.json'), JSON.stringify(rec));   // the raw frames
     const r = analyse(rec);
     r.who = WHO; r.cond = name; r.info = info; out.push(r);
     console.log(`[${WHO}] ${name} (${info}) steps ${JSON.stringify(r.hist)} shots ${r.shots} d~${r.dist}` +

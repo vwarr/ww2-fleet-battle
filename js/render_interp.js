@@ -110,8 +110,13 @@ window.WW = window.WW || {};
     unposeSim();
     for (let i = 0; i < nG; i++) {
       const e = posedG[i], g = e.g, p = g.position, E = g.rotation, Q = g.quaternion;
-      if (p.x === e.sx && p.y === e.sy && p.z === e.sz && E._x === e.sex && E._y === e.sey && E._z === e.sez) {   // untouched since: exactly what the sim left
-        p.x = e.px; p.y = e.py; p.z = e.pz;
+      // untouched since: exactly what the sim left, component by component (a per-frame visual may have set one of
+      // them after the pose: base_ground_fx.js puts a runway plane's height on the paving; that one stays its own,
+      // the rest must still go back, or the next step's capture would start from the drawn pose)
+      if (p.x === e.sx) p.x = e.px;
+      if (p.y === e.sy) p.y = e.py;
+      if (p.z === e.sz) p.z = e.pz;
+      if (E._x === e.sex && E._y === e.sey && E._z === e.sez) {
         E._x = e.ex; E._y = e.ey; E._z = e.ez;
         Q._x = e.qx; Q._y = e.qy; Q._z = e.qz; Q._w = e.qw;
       }
