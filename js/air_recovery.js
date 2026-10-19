@@ -172,7 +172,8 @@ window.WW = window.WW || {};
         to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS_MAX - 1), p.pt.speed * 0.7, 1.5);
         const groove = !ahead || (D.k.tdX - toLocal(c, ahead.x, ahead.z)[0]) < GROOVE;   // the plane ahead is well into its final
         // the lowest plane placed to go in (a wave-off still up ahead lets the next one through first)
-        if (first && D.mode === 'recover' && !D.closing && !inApp && groove && placed(c, D, lx, lz)) { p.deckPh = 'app'; p.phT = 0; }   // the app leg turns it up the wake from wherever it is on the racetrack
+        // (not while the handlers are still pushing the deck spot out of the landing area: air_deck.js D.blk: no more than its crews can have under way at once, clear within the approach)
+        if (first && D.mode === 'recover' && !D.closing && !inApp && groove && !(D.blk > D.cols.length * D.doc.crews) && placed(c, D, lx, lz)) { p.deckPh = 'app'; p.phT = 0; }   // the app leg turns it up the wake from wherever it is on the racetrack
         break;
       }
       case 'app': // straight in from astern (the stack lies behind the gate) onto the centreline, descending to the groove
