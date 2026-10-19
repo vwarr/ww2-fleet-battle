@@ -168,8 +168,45 @@ window.WW = window.WW || {};
     if (LB) for (const b of LB) if (b.alive && b.g && b.g.visible && b.state !== 'beached' && b.state !== 'wait') floatObj(b.g, b.x, b.z, 1, 1.5);
   }
 
+  // The pose as a ship-local delta (L = sim matrix^-1 x posed matrix: the swell's heave, pitch and roll and
+  // damage_visuals.js's settling and trim), kept through unpose: what spawns on a ship during the sim step (fires and
+  // smoke at her hit sites, funnel smoke, the avgas plumes) is placed on the deck the camera sees, posedPoint().
+  // mark() (main.js, before any pose) takes the sim's matrix; seal() at the end of pose() the posed one.
+  const simM = new WeakMap(), poseL = new WeakMap(), _mi = new THREE.Matrix4();
+  function mark() {
+    if (WW.simOnly) return;
+    for (const s of WW.world.ships) {
+      if (!s.group || s.removed) continue;
+      let m = simM.get(s); if (!m) simM.set(s, m = new THREE.Matrix4());
+      s.group.updateMatrix(); m.copy(s.group.matrix); m.marked = true;
+    }
+  }
+  function sealDeltas() {
+    for (const s of WW.world.ships) {
+      const m = s.group && simM.get(s);
+      if (!m || !m.marked) { poseL.delete(s); continue; }
+      m.marked = false;
+      s.group.updateMatrix();
+      const L = _mi.copy(m).invert().multiply(s.group.matrix), e = L.elements;
+      let off = 0; for (let i = 0; i < 16; i++) off = Math.max(off, Math.abs(e[i] - (i % 5 === 0 ? 1 : 0)));
+      if (off < 1e-5) { poseL.delete(s); continue; }
+      let o = poseL.get(s); if (!o) poseL.set(s, o = new THREE.Matrix4());
+      o.copy(L);
+    }
+  }
+  // a ship-local point (lx, ly, lz) in the world on her posed hull, from her current (sim) matrix: call during the sim
+  function posedPoint(s, lx, ly, lz, out) {
+    s.group.updateMatrix();
+    out.set(lx, ly, lz);
+    const L = poseL.get(s); if (L) out.applyMatrix4(L);
+    return out.applyMatrix4(s.group.matrix);
+  }
+
   function pose(rdt) {
     stats.ships = stats.planes = stats.floaters = 0;
+    try { poseAll(rdt); } finally { if (!WW.simOnly) sealDeltas(); }
+  }
+  function poseAll(rdt) {
     if (WW.simOnly || !WW.sea || !WW.sea.active) return;
     const W = WW.sea, dt = Math.min(0.1, rdt || 0);
     deltas.clear();
@@ -190,5 +227,5 @@ window.WW = window.WW || {};
     }
     posed.clear();
   }
-  WW.shipSwell = { pose, unpose, stats: () => stats, TYPE };
+  WW.shipSwell = { pose, unpose, mark, posedPoint, stats: () => stats, TYPE };
 })(window.WW);

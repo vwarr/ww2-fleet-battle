@@ -29,6 +29,16 @@ window.WW = window.WW || {};
     return [home[0] + lx, home[1] + lz];
   }
   function deckY(s) { return (s.group ? s.group.position.y : 0) + (s.model && s.model.deck ? s.model.deck.position.y : 2); }
+  // a point on her deck (local lx along the keel, lz across) on the hull as posed (ship_swell.js: the swell, settling)
+  var _pv = null;
+  function onDeck(s, lx, lz, home) {
+    if (s && !s.removed && s.group && WW.shipSwell && WW.shipSwell.posedPoint && typeof THREE !== 'undefined') {
+      if (!_pv) _pv = new THREE.Vector3();
+      var p = WW.shipSwell.posedPoint(s, lx, s.model && s.model.deck ? s.model.deck.position.y : 2, lz, _pv);
+      return [p.x, p.z, p.y];
+    }
+    var w = at(s, lx, lz, home); return [w[0], w[1], s && !s.removed ? deckY(s) : 0.5];
+  }
 
   // ---------- the magazine ----------
   function magazine(e) {
@@ -146,12 +156,12 @@ window.WW = window.WW || {};
       var fade = 1 - m.t / m.life, y = m.s.removed ? 0.5 : m.y !== undefined ? deckY(m.s) : 0.4;
       if (m.kind === 'avgas') {
         for (var a = 0; a < 2; a++) {
-          var p = at(m.s, WW.clamp(m.lx + (a ? 1 : -1) * rr(0.05, 0.22) * m.L, -m.L * 0.45, m.L * 0.45), rr(-0.6, 0.6), m.home);
+          var p = onDeck(m.s, WW.clamp(m.lx + (a ? 1 : -1) * rr(0.05, 0.22) * m.L, -m.L * 0.45, m.L * 0.45), rr(-0.6, 0.6), m.home); y = m.s.removed ? y : p[2];
           P('smoke').spawn(p[0], y + 1, p[1], wx() * 1.2 + rr(-0.3, 0.3), rr(4, 6.5) * (0.6 + 0.4 * fade), wz() * 1.2 + rr(-0.3, 0.3), rr(16, 22), 1.6, rr(4, 6) * (0.6 + 0.4 * fade), C(R() < 0.6 ? 0x24201e : 0x34302c), C(0x6a6460), -0.05, 0.12, rr(-0.3, 0.3));
           if (R() < 0.6) WW.fx.fire(p[0], y + 0.3, p[1]);
         }
       } else if (m.kind === 'hole') {
-        var h = at(m.s, m.lx, 0, m.home);
+        var h = onDeck(m.s, m.lx, 0, m.home); if (!m.s.removed) y = h[2];
         P('smoke').spawn(h[0], y + 0.6, h[1], wx() + rr(-0.3, 0.3), rr(2.5, 4), wz() + rr(-0.3, 0.3), rr(8, 12), 1, rr(2.5, 3.5) * (0.5 + 0.5 * fade), C(0x4e4a46), C(0x9a958e), -0.1, 0.25, rr(-0.3, 0.3));
       } else {   // the wreck: fires on the water where she went
         var w = at(m.s, m.lx + rr(-0.3, 0.3) * m.L, rr(-1, 1), m.home);

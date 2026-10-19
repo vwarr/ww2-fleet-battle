@@ -422,6 +422,7 @@ window.WW = window.WW || {};
     // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
     call('sea', 'update', rdt);     // the sea state's clock and the round's sea (sea_state.js), visual only; before what rides it
+    call('shipSwell', 'mark');      // the sim's hull matrices, before any pose (ship_swell.js: fires spawn on the posed deck)
     call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
     call('shipSwell', 'pose', rdt); // Normandy: the ships heave, pitch and roll on the swell (ship_swell.js), visual only
     call('water', 'update', rdt);  // water, foam and glitter animate on real time

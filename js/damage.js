@@ -41,6 +41,7 @@ window.WW = window.WW || {};
   }
   function worldOf(ship, s) {
     if (!v) v = new THREE.Vector3();
+    if (WW.shipSwell && WW.shipSwell.posedPoint) return WW.shipSwell.posedPoint(ship, s.lx, s.ly, s.lz, v);   // on the deck as posed (the swell, settling)
     ship.group.updateMatrix();     // group is a direct child of the scene: matrix == world matrix
     return v.set(s.lx, s.ly, s.lz).applyMatrix4(ship.group.matrix);
   }
@@ -179,7 +180,7 @@ window.WW = window.WW || {};
     ship.group.updateMatrix();
     var dark = f < 0.35, b = 0.45 + ship.stats.length / 60;
     for (var i = 0; i < ship._stackL.length; i++) {
-      var p = v.copy(ship._stackL[i]).applyMatrix4(ship.group.matrix);
+      var q0 = ship._stackL[i], p = WW.shipSwell && WW.shipSwell.posedPoint ? WW.shipSwell.posedPoint(ship, q0.x, q0.y, q0.z, v) : v.copy(q0).applyMatrix4(ship.group.matrix);
       if (fx.trail) plumePuff(p.x, p.y, p.z, 2 + ship.stats.length / 10, b, b * 2.4, dark, 0.9);
       else fx.smoke(p.x, p.y, p.z, dark, 1 + ship.stats.length / 20);
     }
