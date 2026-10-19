@@ -258,47 +258,47 @@ window.WW = window.WW || {};
   // ---- shared overrides, applied by the core after the role ----
   // (the old cripple withdrawal lived here: every role now handles its own cripples, ai_surface.js crippleHome,
   // ai_carrier.js, ai_pt.js; subs never withdrew. Removed as dead code: Fable F30.)
-  // Torpedo combing: a ship that has seen (WW.intel.torpedoes) a torpedo track heading for it turns parallel to
-  // it (bow or stern on, whichever needs less rudder) after a reaction delay by type. Returns true while combing.
+  // Torpedo combing: a ship that has seen a torpedo track heading for her with her own lookouts (WW.intel.torpSeen:
+  // her believed heading and speed of the track, errors and all; intel.js scanTorps) turns parallel to it (bow or stern
+  // on, whichever needs less rudder) after a reaction delay by type. Returns true while combing. Event 'torpedoComb'
+  // { proj, ship } when she starts (tests/torpedo_review.js).
   const REACT = { pt: 0.4, destroyer: 0.7, submarine: 1, cruiser: 1.2, carrier: 1.8, battleship: 2 }, COMB_R = 130;   // COMB_R: was 70 (long drops went uncombed)
-  // Combing needs the turn made before the track arrives. T90: s for a 90-degree turn at full rudder, from the real
-  // tactical diameters at the game's ship speeds (a quarter of the circle: (pi / 2) x (diameter / 2) / speed; carrier
-  // ~800 m, battleship ~650 m, cruiser ~650 m, destroyer ~550 m, PT ~200 m, submarine ~500 m at 10 m a unit). The
-  // nav turn rates (stats.turn) are about twice that for handling; this is the captain's judgement of his own ship.
-  // A ship that cannot come parallel in time holds her course and takes it (turning half-way only shows more beam).
-  const T90 = { pt: 1.5, destroyer: 5.8, submarine: 11, cruiser: 9.2, carrier: 11.2, battleship: 12.2 };
+  // The turn (torpedo realism, 2026-10-18). TACT_R: the real tactical radius, u (half the tactical diameter at 10 m a
+  // unit: carrier ~800 m, battleship and cruiser ~650 m, destroyer ~550 m, PT ~200 m, submarine ~500 m). While she
+  // combs (here and ai_surface.js earlyComb) or turns bow or stern on to a torpedo plane (airEvade), a ship turns at
+  // her real rate, speed / TACT_R (ships.js helmR), not at the nav rate (stats.turn, about twice it, for handling).
+  // t90: s for a 90-degree turn at her speed now (a quarter of the circle; the tactical diameter barely changes with
+  // speed, so a slow ship turns slower), the captain's judgement of his own ship: a carrier at 32 kn ~11 s, which on
+  // the ship clock (1 u/s ~5.7 kn, ~3.4x real time) is the ~40 s of the real turn. A ship that cannot come parallel in
+  // time holds her course and takes it (turning half-way only shows more beam).
+  const TACT_R = { pt: 10, destroyer: 27.5, submarine: 25, cruiser: 32.5, carrier: 40, battleship: 32.5 };
+  function helmV(ship) { return Math.max(ship.speed || 0, 0.4 * ship.stats.speed); }   // ships.js: the rudder's bite floor
+  function t90(ship) { return (PI / 2) * (TACT_R[ship.type] || 30) / helmV(ship); }
+  function realHelm(ship, until) { ship.helmR = TACT_R[ship.type] || 30; if (!(ship.helmUntil > until)) ship.helmUntil = until; }
   function canComb(ship, e, along) {
     const turn = Math.min(Math.abs(WW.angleDiff(ship.heading, e.h)), Math.abs(WW.angleDiff(ship.heading, e.h + PI)));
-    return 0.4 + turn / (PI / 2) * (T90[ship.type] || 8) < along / Math.max(1, e.speed);
-  }
-  // An aerial torpedo's drop is seen only by ships within R.DROP of it (the lookouts watching the plane's run);
-  // for the others the track counts once its wake is within R.TORP x sight of this ship (intel.js).
-  function sawIt(ship, e) {
-    const R = WW.intel.R, p = e.proj, c = Math.cos(e.h), s = Math.sin(e.h);
-    if (p && p.src === 'Air' && R.DROP) { const r = R.DROP; if (WW.dist2(ship.x, ship.z, e.x - c * (e.run || 0), e.z - s * (e.run || 0)) < r * r) return true; }
-    const rt = R.TORP * ((p && p.sight) || 1);
-    return WW.dist2(ship.x, ship.z, e.x, e.z) < rt * rt;
+    return 0.4 + turn / (PI / 2) * t90(ship) < along / Math.max(1, e.speed);
   }
   function comb(ship) {
     const a = ship.ai, now = WW.time.now;
-    if (a.combUntil > now) { ship.desiredHeading = a.combH; return true; }
-    if (!WW.intel || !WW.intel.torpedoes || ship.submerged) return false;
-    const T = WW.intel.torpedoes(ship.nation), L = ship.stats.length * 0.5 + 6, rt = REACT[ship.type] || 1;
+    if (a.combUntil > now) { ship.desiredHeading = a.combH; realHelm(ship, a.combUntil); return true; }
+    if (!WW.intel || !WW.intel.torpSeen || ship.submerged) return false;
+    const T = WW.intel.torpSeen(ship), L = ship.stats.length * 0.5 + 6, rt = REACT[ship.type] || 1;
     for (let i = 0; i < T.length; i++) {
-      const e = T[i];
+      const e = T[i];   // her own sighting: the believed track (e.h, e.speed), last seen at e.seenAt
       if (now - e.firstSeenAt < rt) continue;
       const dt = now - e.seenAt, c = Math.cos(e.h), s = Math.sin(e.h);
       const px = e.x + c * e.speed * dt, pz = e.z + s * e.speed * dt, rx = ship.x - px, rz = ship.z - pz;
       const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
-      // passed, too far, or missing wide; out to COMB_R: an aerial drop is seen from the bridge at the drop (sawIt R.DROP), so a long
-      // drop (Mk 13 ~33 kn, Type 91 ~40 kn from 1,000 m+) gives a big ship the time to come round and comb it (a track seen
-      // only by its wake, R.TORP, is inside this anyway)
+      // passed, too far, or missing wide (as she believes it); out to COMB_R: an aerial drop seen from the bridge gives
+      // a big ship the time to come round and comb it
       if (along < -2 || along > COMB_R || perp > L + along * 0.12) continue;
-      if (!sawIt(ship, e) || !canComb(ship, e, along)) continue;            // not seen from here, or too late to turn
+      if (!canComb(ship, e, along)) continue;            // too late to turn
       if (WW.dstat && e.proj) { WW.dstat('combN', e.proj.nation); WW.dstat('combD', e.proj.nation, along); } // metric: by the torpedo's nation
+      WW.emit('torpedoComb', { proj: e.proj, ship: ship });
       a.combH = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
       a.combUntil = now + along / Math.max(1, e.speed) + 1.5;
-      ship.desiredHeading = a.combH;
+      ship.desiredHeading = a.combH; realHelm(ship, a.combUntil);
       return true;
     }
     return false;
@@ -370,13 +370,14 @@ window.WW = window.WW || {};
       ev.h = ship.heading + ev.dir * EV.LEG; ev.leg++;
     }
     ship.desiredHeading = ev.h; ship.throttle = 1;
+    if (ev.kind === 'torp') realHelm(ship, now + 0.6);   // her real turn rate (TACT_R): the turn against a torpedo plane is the comb begun early
     return true;
   }
 
   const roles = {}; // type -> fn(ship, dt), filled by the role files; 'surface' is the default
   WW.shipAI = {
     roles,
-    h: { bearing, seen, lead, fireSpread, blend, idle, comb, canComb, airEvade, EV, sawIt, score, riskOf, unreachable }, // shared helpers for the role files
+    h: { bearing, seen, lead, fireSpread, blend, idle, comb, canComb, realHelm, t90, TACT_R, REACT, airEvade, EV, score, riskOf, unreachable }, // shared helpers for the role files
     ROLE_W, VALUE, retarget,
     setup(ship) {
       const st = ship.stats;

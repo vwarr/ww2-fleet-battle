@@ -350,6 +350,33 @@ Ship-launched torpedo hit rates are unchanged (~26-28%). Balance: gates USN 53 /
 
 ![before: the hole decal drawn over the water](torpedo/holes_before.jpg) ![after: ruptures cut by the water](torpedo/holes_after.jpg) ![a battleship listing onto her holed side](torpedo/list_holed_side.jpg) ![the column up a carrier's side](torpedo/hit_column.jpg) ![a USN aerial torpedo striking an IJN cruiser](torpedo/aerial_hit.jpg)
 
+### Torpedo realism (2026-10-18, branch torpedo-realism)
+
+User: "I wonder if the issue is not that the torpedoes are too slow at real speeds but that ships see them too easily?" Before: any ship within 130 u of an aerial drop saw it for certain within one tick, every other track was seen for certain inside 45 u × the wake, the side shared one perfect plot (exact heading and speed), and a combing ship turned at the nav rate (about twice the real one), so the aerial torpedoes had been sped up to 10 / 8 u/s and the submarine and PT torpedoes ran 1.7-3× real. Changes (sim, `WW.rand`):
+
+- **Real speeds** for every torpedo (core.js `WW.TORPEDO_NATION`, each with its source: Campbell, *Naval Weapons of World War Two*; NavWeaps). 1 u/s ≈ 5.71 kn on the ship clock. Type 93 48 kn 8.4, Mk 15 45 kn 7.9 (unchanged); Type 95 49 kn 8.6 (was 15); Mk 14 46 kn 8.05 (was 13.5); Mk 8 36 kn 6.3 (was 13.5); Type 91 42 kn 7.35 (air was 10, IJN PT 14); Mk 13 33.5 kn 5.85 (was 8). GER (Normandy) unchanged. Wakes (`sight`): Type 93 / 95 0.4 (was 0.7), Type 91 1, USN steam 1.1.
+- **Per-ship lookouts** (intel.js `scanTorps`, table `TL`): each (own ship, enemy torpedo) pair within reach gets one `WW.rand` roll a tick against a hazard rate `TL.RATE × cond × (1 − d / Rw)^1.5` inside `Rw = TL.WAKE (85) × wake × eye × √cond`; `cond` = light (`nightOps.visK`: darkness against the side's `nightEye`, rain, star shells) × sea (`1.15 − 0.12 × WW.seaState`, at least 0.45) × doctrine `lookouts` (IJN 1.15, USN 1) × load (`1 / (1 + 0.25 AA firing + 0.2 per extra attacker on her + 0.3 anvil)`, her fires) × 0.25 through a smoke screen. An aerial drop within `R.DROP` is one roll per ship: `0.85 × (1 − (d / 130)²) × light × lookouts / (1 + 0.35 (n − 1))` for n attackers on her, × 0.7 for an anvil, × 0.85 with her AA firing, × 0.5 for a ship that is not the target. A sighting is the ship's own (`torpSeen(ship)`), with a heading error (σ 0.06 drop / 0.1 wake × (0.5 + d / 85) / √cond, at most 0.4 rad; × 0.85 a tick while she keeps the wake in sight) and a ±12% speed error. The side's list (`torpedoes(nation)`) holds the reports; a big ship acts on another ship's report `TL.REPORT` (2) s late (ai_surface.js `earlyComb`).
+- **Sea state**: `WW.seaState` (Douglas 1-5), rolled in weather.js `roll()` on roundStart from the wind and one `WW.rand` draw (+0.5 with a squall line); 3 in setup. Sim state; the visual waves can read it.
+- **AA load**: combat_aa.js sets `ship.aaAt` when a ship fires a heavy salvo or a light stream.
+- **Combing**: comb / earlyComb use only what the ship believes (her own sighting or the report), and `canComb` uses her real 90° time at her speed now (`t90` = (π/2) × `TACT_R` / speed). While combing, and while turning against a torpedo plane on its run (airEvade), ships.js caps the turn at `speed / TACT_R` (`ship.helmR` / `helmUntil`): carrier 40, battleship and cruiser 32.5, destroyer 27.5, PT 10, submarine 25 u, half the real tactical diameters. A carrier's 90° at 32 kn takes ~11 game s, about 40 s of real time on the ship clock (which runs ~3.4× real), plus the rudder. The dive-bomb weave still uses the nav rate.
+- Events `torpedoSeen` { proj, ship, d, drop } and `torpedoComb` { proj, ship } (tests/torpedo_review.js). `docStats.torpSeenN / D` now count per ship sighting.
+
+Measured with `node tests/torpedo_review.js --seeds 12` (48 rounds: standard, carrier_duel, midway, surface). Before = main a3e24e0 plus the two events (no behaviour change); "seen" in the before column is the side's shared plot (the old code had no per-ship sighting, so its "hits seen by the ship hit" counts only the nearest ship).
+
+| | before | after | 1942 record |
+|---|---|---|---|
+| aerial hit rate USN / IJN | 21 / 22% | 15 / 24% | ~10-25% on manoeuvring warships (Midway, Coral Sea, Santa Cruz) |
+| ship torpedoes USN / IJN | 20 / 15% | 21 / 13% | USN Mk 15 near nil in 1942 (Tassafaronga 0 of ~20); Long Lance ~10-15% of those fired (Tassafaronga, Kolombangara) |
+| submarine USN / IJN | 50 / 58% (USN duds 15) | 45 / 48% (USN duds 18) | far lower; the Mk 14 ran deep and its exploder failed (fixed 1943); I-19's 3 of 6 on Wasp was exceptional |
+| PT USN / IJN | 61 / 69% (52 fired) | 30 / 42% (22 fired) | very low (a handful of hits in 1942) |
+| tracks seen, aerial USN / IJN | 100 / 100%, first at 87 / 91 u | 86 / 81%, 58 / 47 u (p90 113 / 98) | |
+| tracks seen, ship USN / IJN (Long Lance) | 99 / 72%, 47 / 30 u | 90 / 24%, 33 / 14 u | Long Lance wakes rarely seen |
+| hits the ship hit had seen first, ship IJN | (side 91%) | 48% | |
+| comb attempts per 100 aerial, USN / IJN | 69 / 36, 89 / 93% succeed | 34 / 24, 93 / 86% succeed | |
+| aerial torpedoes whose target combed | 78% | 39% | |
+| anvils ≥ 3 torpedoes that score, USN / IJN | 50 / 66% | 39 / 64% | |
+| rounds USN / IJN; length p50 | 20 / 28; 531 s | 17 / 31; 491 s | (balance not tuned) |
+
 ### Ship movement review (2026-10-09, branch ships)
 
 User: "the ships also seem to come far closer together than they should and not really stay in formation." Measured with `tests/ship_review.js` (a read-only recorder: station keeping, spacing, near-collisions, heading coherence, broadside fire, main-battery rounds at PT boats, chases against a replayed tail chase and the ideal intercept, the AA ring against the raid bearing, torpedo spreads, fatal blows) and looked at with `tests/ship_tracks.js` (top-down track maps with the commander's stations overlaid, from `ship_review.js --trace SCEN:SEED`).
@@ -908,16 +935,20 @@ WW.intel = {
   enemyShips(nation, { fresh }) -> Contact[],  // fresh: true (3 s) or a number of s; filtered result is a shared scratch array
   enemyPlanes(nation, { fresh }) -> Contact[], // default fresh: true
   centre(nation) -> { x, z } | null,         // centre of the ship contacts' last-known positions
-  torpedoes(nation) -> Track[],              // enemy torpedo tracks seen within R.TORP = 45 of any own ship (shared array)
+  torpedoes(nation) -> Track[],              // enemy torpedo tracks some ship of the side has seen: the side's reports (shared array)
+  torpSeen(ship) -> Obs[],                   // that ship's own sightings, with her believed heading / speed (shared array)
+  TL,                                        // the torpedo lookouts' table (scanTorps)
   age(contact) -> s, R, T, stats             // R: every detection range, T: timing (one table each, top of intel.js)
   typeOf(contact) -> type                    // the type the side believes: contact.reportedType (a misidentification) or unit.type
 };
 // Contact: { unit, x, z, heading, speed, seenAt, firstSeenAt, quality: 'visual' | 'radar' | 'sonar' | 'patrol' | 'scout' | 'air', by,
 //            reportedType, misid, err, ex, ez }   (x, z include the report error ex, ez; err = its length)
-// Track: { proj, x, z, h, speed, run, seenAt, firstSeenAt } - one object per running torpedo, dropped when it ends
+// Track: { proj, x, z, h, speed, run, seenAt, firstSeenAt, by, obs } - one per running torpedo some ship has seen, its
+//        fields copied from the latest observation (believed, not true, heading and speed); dropped when it ends
+// Obs:   { proj, ship, x, z, h, speed, run, seenAt, firstSeenAt, hErr, spK, d, drop } - one ship's own sighting
 ```
 
-- Every 0.5 s of sim time (both sides in one tick) each side looks for enemy ships and planes. Detection uses no random numbers.
+- Every 0.5 s of sim time (both sides in one tick) each side looks for enemy ships and planes. Ship and plane detection uses no random numbers; torpedo sightings are each ship's lookouts' `WW.rand` rolls (see Torpedo realism).
 - A ship sees an enemy ship at `R.SEEN[target type] × R.EYE[observer type]` (battleship or carrier 240, cruiser 210, destroyer 170, surfaced sub 70, PT boat 75; a destroyer's eye is 0.85, a PT boat's 0.55, a submerged sub's periscope 0.5). A ship that fired its guns in the last 6 s is seen at `R.FLASH[cal]` (big 400). Land more than 0.4 above the sea between two ships blocks the view (up to 10 samples of `WW.terrain.depthAt`, cached per pair per tick).
 - Destroyer sonar finds a submerged sub within 65. Nothing else sees a submerged sub.
 - Airborne planes see ships within 100, scouts within 120, with no line-of-sight test. A scout also sets `ship.spottedUntil` / `spottedBy` within 85 for `combat.js` `SPOT_DISP`.

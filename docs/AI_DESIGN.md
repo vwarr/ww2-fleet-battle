@@ -31,6 +31,7 @@ Goal (user): World-of-Warships feel. Each type plays its role and avoids fights 
 **Aircraft awareness (ships).**
 - AA priority: a plane in an attack run on self > on a protected ship (the carrier) > closest.
 - Evasion: turn parallel to detected torpedo tracks, or toward the drop point of torpedo bombers on a run. Hard rudder under a dive-bomb wheel. Detection of the attack is required, with a reaction delay by ship type (PT and DD fast, BB slow).
+- Torpedo lookouts and combing (2026-10-18; ARCHITECTURE.md "Torpedo realism"): each ship sees a torpedo with her own lookouts, by a seeded roll whose odds fall with the range, the wake (the Type 93 / 95 are nearly wakeless; USN steam torpedoes leave a clear wake), darkness, the sea state (`WW.seaState`), her own AA fire, several attackers at once (an anvil from both bows), her fires and smoke. A drop is watched from the bridge: likely for a lone plane close in, rarely in a crowded sky. A sighting carries a heading and speed error, and the captain decides on what he believes. Big ships also act on the escorts' warnings (`TL.REPORT` s late). While combing (and turning against a torpedo plane) a ship turns at her real tactical-diameter rate, not the nav rate. Doctrine: `lookouts` (IJN 1.15, USN 1) and `nightEye` (IJN 0.5, USN 0.3); the USN radar does not see torpedoes.
 - Under an air raid, escorts close on the carrier (AA umbrella). The carrier calls CAP to its own position.
 
 **Morale / withdrawal.** HP < ~30–35%, or flooding, or alone and outgunned → withdraw toward own carrier, own fleet or land cover. A DD lays smoke if available. A withdrawing ship still shoots back but doesn't chase.
@@ -200,7 +201,7 @@ Over 100 rounds of randomized fleets for both sides, each nation wins 50 ± 5. N
 ## 12. Historical doctrine items (formations, torpedoes, submarines, supply)
 Every nation difference below is a doctrine parameter (fleet_groups.js BASE) or a per-nation stat table (core.js WW.TORPEDO_NATION), so the balance pass can tune it. Details: ARCHITECTURE.md (Formation doctrine, Submarine doctrine, Ammunition and fuel).
 - Formations: USN AA ring (escorts 25-45 around each carrier on the threat axis, turning with it); IJN surface vanguard well ahead of the carriers (Santa Cruz); both zigzag under sub threat on a shared plan.
-- Torpedoes: IJN Type 93 / 95 longer, faster, nearly wakeless (tracks seen at ~27 instead of 45, so combing comes late); USN Mk 13 / 14 / 15 slower, shorter, visible wakes, 12-28% duds.
+- Torpedoes: every torpedo at its real 1942 speed (core.js, with sources). IJN Type 93 / 95 longer, faster, nearly wakeless (wake 0.4: a ship's lookouts see one at about a third of a steam wake's range, often too late to comb); USN Mk 13 / 14 / 15 / 8 slower, shorter, clear steam wakes (1.1), 10-30% duds; the IJN lookouts are the better (`lookouts` 1.15, `nightEye` 0.5).
 - Submarines: IJN carriers first, shadowing, patrol line; USN nearest target, lifeguard pickups.
 - Supply: finite main / AA ammunition, torpedo reload sets (IJN DD / CA one, USN none), destroyer fuel.
 - Measured effect on the 100-round gate (seed0 1, Oct 2026, each item switched off alone): the torpedo table is by far the largest; ring, vanguard, zigzag and sub roles are each within noise; supply favours the USN (it caps the IJN reloads). See tests/doctrine.js for the per-nation metrics.

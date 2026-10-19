@@ -23,7 +23,7 @@ window.WW = window.WW || {};
       // the launcher's nation torpedo (core.js WW.TORPEDO_NATION): a ship's own stats, a plane's 'air' entry
       var q = owner && owner.stats && owner.stats.torpedoes ? owner.stats.torpedoes : WW.torpSpec ? WW.torpSpec(nation, 'air') : {};
       p.sp = q.speed || (WW.TORPEDO && WW.TORPEDO.speed) || 14;
-      p.sight = q.sight || 1;                      // intel.js: how close a ship must be to see the track
+      p.sight = q.sight || 1;                      // the wake: x the range a ship's lookouts can see it at (intel.js TL.WAKE)
       p.dud = q.dud > 0 && WW.rand() < q.dud;      // rolled at launch (seeded): a dud hits with a clang and no damage
       p.src = owner && owner.stats ? 'Ship' : 'Air';
       if (WW.dstat) WW.dstat('torpFired' + p.src, nation);

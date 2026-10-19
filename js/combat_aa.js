@@ -306,7 +306,7 @@ window.WW = window.WW || {};
           if (sc < bs) { bs = sc; best = pl; }
         }
         var ak = best && WW.supply ? WW.supply.aa(s, true) : 1;   // AA ammunition (ship_supply.js): weaker when low
-        if (best && ak > 0) heavySalvo(s, best, aa.dps * hs * ak);
+        if (best && ak > 0) { heavySalvo(s, best, aa.dps * hs * ak); s.aaAt = WW.time.now; }   // aaAt: the guns are firing (intel.js: the lookouts' load)
       }
       if (tm.l <= 0) {
         tm.l += LIGHT.interval; if (tm.l <= 0) tm.l = LIGHT.interval * rnd();
@@ -327,6 +327,7 @@ window.WW = window.WW || {};
         var hc = LIGHT.hitK * (1.4 - 0.8 * frac) * (lt.kind === 'fighter' ? 0.6 : 1) * exposure(lt);
         if (s.aaSup && s.aaSup.until > WW.time.now) hc *= s.aaSup.k;   // strafed: the gun crews' heads down (air_gunners.js)
         var hit = rnd() < hc * lk;
+        s.aaAt = WW.time.now;
         if (hit) hitPlane(lt, aa.dps * (1 - hs) * LIGHT.interval * LIGHT.dmgK, s, 'lightKills');
         if (lk >= 1 || hit || Math.random() < lk * 0.6) tracerStream(s, lt, hit);   // visual only: every light-AA tick shows a stream (fewer when its ammunition runs low)
         WW.emit('aaLightFired', { ship: s, target: lt, hit: hit });   // sound (audio_aa.js)

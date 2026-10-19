@@ -60,16 +60,19 @@ window.WW = window.WW || {};
   //                cannot get ahead of; lifeguard (flag, USN): surfaced boats pick up survivors and aircrew (ai_sub_roles.js)
   //   aaAmmo       AA ammunition factor (ship_supply.js; USN 1.25: deeper ready-use allowances); ddFuel: destroyer fuel
   //                factor (USN 1.1: longer legs); torpReloads: reload sets for destroyer / cruiser tubes (IJN 1, USN 0)
+  //   lookouts     the ship lookouts' skill against torpedo wakes and drops (intel.js scanTorps: x the sighting rate); not
+  //                rolled. IJN 1.15: picked, drilled lookouts with big binoculars, the best in 1942 (with nightEye 0.5 at
+  //                night); USN 1: radar did the search, and radar does not see a torpedo
   // Torpedo performance per nation (range, speed, dud rate, wake sighting) is a stat table: core.js WW.TORPEDO_NATION.
   //   air          air style (an object, not rolled; air_cap.js, air_attack.js): cap 'picket' (USN: radar-vectored pickets
   //                out on the threat bearing, high and low bands) | 'overhead' (IJN: Zeros over the fleet, reacting to
   //                lookouts); press0 / pressT: how hard the strike presses its attack (1 = veterans: low release, close
   //                drop), rising from press0 to 1 over pressT s and with the first strike flown; x the admiral's aggression;
   //                sweep: the second escort element flies ahead of the strike to take on the CAP
-  //   (jointStrike, followUp, reserveFrac, pursuitReserve, patrolBombs and air are not rolled: they are doctrine, not tuning)
+  //   (jointStrike, followUp, reserveFrac, pursuitReserve, patrolBombs, lookouts and air are not rolled: they are doctrine, not tuning)
   var BASE = {
     USN: { aggression: 0.5, rangeFrac: 0.84, torpedo: 0.35, carrier: 0.8, night: 0.2, nightEye: 0.3, radar: 1, searchlight: 0.15, cvStandoff: 230, screenAhead: 70, flotilla: 1,
-      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18,
+      pressRatio: 1.2, withdrawRatio: 0.45, damageControl: 1.5, avgas: 0.8, escortCharge: 1, rescue: true, scuttle: false, reportErr: 0.09, misId: 0.18, lookouts: 1,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
       ringR: 55, cvSpread: 150, ringDD: 2, ringBB: true, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: true,
       aaAmmo: 1.25, ddFuel: 1.1, torpReloads: 0,
@@ -77,7 +80,7 @@ window.WW = window.WW || {};
       air: { cap: 'picket', press0: 0.35, pressT: 160, sweep: true },
       risk: { carrier: 0, battleship: 0.55, cruiser: 0.45, destroyer: 0.45, submarine: 0.35, pt: 0.2 } },
     IJN: { aggression: 0.65, rangeFrac: 0.78, torpedo: 0.8, carrier: 0.55, night: 0.8, nightEye: 0.5, radar: 0, searchlight: 0.8, cvStandoff: 200, screenAhead: 60, flotilla: 2,
-      pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12,
+      pressRatio: 1.1, withdrawRatio: 0.4, damageControl: 1, avgas: 1, escortCharge: 0.6, rescue: false, scuttle: true, reportErr: 0.07, misId: 0.12, lookouts: 1.15,
       jointStrike: true, followUp: 'deckload', reserveFrac: 0.4, pursuitReserve: 0.4,
       ringR: 0, cvSpread: 90, ringDD: 1, ringBB: false, vanguard: 0.33, zigzag: 1, subLine: true, subCV: 2.2, subNear: 40, subShadow: true, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
@@ -88,7 +91,7 @@ window.WW = window.WW || {};
     // Cherbourg and Le Havre: hit-and-run torpedo raids at night, no radar to speak of, no carriers); the coast
     // defences are not ships (coast_defence.js) and have their own doctrine
     GER: { aggression: 0.55, rangeFrac: 0.8, torpedo: 0.85, carrier: 0, night: 0.75, nightEye: 0.4, radar: 0.2, searchlight: 0.4, cvStandoff: 200, screenAhead: 60, flotilla: 2,
-      pressRatio: 1.15, withdrawRatio: 0.5, damageControl: 1.1, avgas: 1, escortCharge: 0.5, rescue: false, scuttle: true, reportErr: 0.08, misId: 0.15,
+      pressRatio: 1.15, withdrawRatio: 0.5, damageControl: 1.1, avgas: 1, escortCharge: 0.5, rescue: false, scuttle: true, reportErr: 0.08, misId: 0.15, lookouts: 1,
       jointStrike: false, followUp: 'squadron', reserveFrac: 0.2, pursuitReserve: 0.4,
       ringR: 0, cvSpread: 90, ringDD: 1, ringBB: false, vanguard: 0, zigzag: 1, subLine: false, subCV: 1, subNear: 25, subShadow: false, lifeguard: false,
       aaAmmo: 1, ddFuel: 1, torpReloads: 1,
@@ -96,7 +99,7 @@ window.WW = window.WW || {};
       air: { cap: 'overhead', press0: 0.6, pressT: 120, sweep: false },
       risk: { carrier: 0, battleship: 0.5, cruiser: 0.5, destroyer: 0.5, submarine: 0.4, pt: 0.35 } }
   };
-  var FIXED = { cvSpread: 1, jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1, air: 1 }; // doctrine fields that are not rolled
+  var FIXED = { cvSpread: 1, jointStrike: 1, followUp: 1, reserveFrac: 1, pursuitReserve: 1, patrolBombs: 1, ringDD: 1, torpReloads: 1, air: 1, lookouts: 1 }; // doctrine fields that are not rolled
   var JITTER = 0.1; // +-10% per round on every numeric parameter (risk.carrier stays 0)
   function rollDoctrine(nation) {
     var b = BASE[nation] || BASE.USN, d = { nation: nation, risk: {} }, k, j = function () { return 1 + JITTER * (WW.rand() * 2 - 1); };
