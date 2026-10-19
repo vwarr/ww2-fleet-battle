@@ -187,6 +187,7 @@ window.WW = window.WW || {};
 
   WW.lifeboats = {
     init: init,
+    get boats() { return pool; },   // ship_swell.js floats them on the sea (visual)
     update: function (dt) {
       if (!(dt > 0) || !init()) return;
       try {

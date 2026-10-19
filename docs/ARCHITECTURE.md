@@ -34,7 +34,8 @@ js/audio_naval.js       naval sound patches: guns, shells, splashes, hits, sinki
 js/audio_naval_wire.js  plays the naval patches from sim events; polls engines, fires, sinking and sub dives while sound is on
 js/audio_air.js         aircraft sounds: engines, wing guns, hits, ordnance release, deaths, carrier deck
 js/sky.js               WW.sky: sky dome, clouds, lights, fog
-js/water.js             WW.water: water shader, foam, contact shadows
+js/sea_state.js         WW.sea: the Pacific's sea state (swell + wind sea per round), its height in JS and GLSL, ride() for other materials
+js/water.js             WW.water: the displaced sea surface (camera-centred grid), foam, surf, contact shadows
 js/terrain_islands.js   WW.terrainIslands: the island layout (atoll or volcanic island), the airfield pad and site
 js/terrain_normandy_data.js WW.normandyData: the Normandy coast's stations (cross-shore profiles), draws, sectors, villages, obstacle belts
 js/terrain_normandy.js  WW.normandyTerrain: the Normandy coast height function (past the map edges too), ground colours, the beach obstacles (sim data)
@@ -459,14 +460,14 @@ Behaviour suite: 1 FAIL before (stuck: a submarine) and 2 after. The 2 FAILs are
 
 Each animation frame (`main.js`, `frame`):
 
-1. `WW.dmgVis.unpose` (the sim must not see the visual settling), then advance the simulation. For each step (`step`):
+1. `WW.shipSwell.unpose` and `WW.dmgVis.unpose` (the sim must not see the sea or the visual settling), then advance the simulation. For each step (`step`):
    1. `WW.terrain.update`, then `WW.dayNight.update` (`WW.daylight`), `WW.weather.update` and `WW.nightOps.update`, then `WW.intel.update` (contact tables, every 0.5 s), then `WW.fleetCmd.update` (side commanders and danger fields, every 2 s per side)
    2. `WW.ships.update`: ship AI, movement, the collision pass (`WW.shipNav.resolve`), sinking, wrecks and `WW.damage.update`, then `WW.islandBase.update` (the island base: repairs, coastal guns, raid warning, the base air group), `WW.endgame.update` (escapes, survivor pickups, scuttling), `WW.shipFires.update` (fires, flooding, damage control, once a sim second) and `WW.charge.update` (smoke clouds, escort charges)
    3. `WW.air.update`
    4. `WW.combat.update`: projectiles and anti-aircraft fire
    5. `WW.fx.update`, then `WW.lifeboats.update`
    6. Round logic: victory, time limit and the next round
-2. `WW.dmgVis.pose` (visual settling and trim), `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.dmgVis.draw` (decals on the posed hulls), `WW.baseFx.update` (the island base's craters, fires and parked planes), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
+2. `WW.sea.update` (the sea's clock, the round's sea), `WW.dmgVis.pose` (visual settling and trim), `WW.shipSwell.pose` (everything afloat rides the sea), `WW.water.update`, `WW.cam.update`, `WW.crew.update` (after the camera: it uses the camera distance), `WW.dmgVis.draw` (decals on the posed hulls), `WW.baseFx.update` (the island base's craters, fires and parked planes), `WW.audio.update`, `WW.sky.update` and `WW.ui.update` on real time.
 3. Render through `WW.post.render` (HDR, bloom, tone curve). If `WW.post` is not available, render directly.
 
 `__sim.fastForward(seconds)` runs simulation steps without a render. The tests use it.
@@ -613,9 +614,49 @@ Fewer, larger islands (`terrain_islands.js`, `WW.terrainIslands.make`, from terr
 ### sky.js, water.js, post.js
 
 - `WW.sky`: a sky dome with a golden-hour gradient (peach near the sun, blue away from the sun), smooth toon clouds, a warm low sun (approximately 21°) with soft shadows, a strong cool sky fill light, and fog. It gives `HORIZON`, `SUN_DIR` and `sunColor()`.
-- `WW.water`: one large water plane to the horizon. A small depth texture controls the depth colours, the foam lines around islands and shoals, the clear shallows, the sun glitter and the fog. It also has a pool of soft dark contact-shadow blobs under ship hulls.
+- `WW.water`: the sea surface to the horizon (see The sea below). A small depth texture controls the depth colours, the foam lines around islands and shoals, the clear shallows, the sun glitter and the fog. It also has a pool of soft dark contact-shadow blobs under ship hulls.
 - `WW.post`: renders the scene into a half-float target with MSAA, adds a soft bloom (bright pass and blur at quarter resolution), then applies a soft tone curve and 10% desaturation. `WW.post.toggle()` turns it off. Three.js ACES tone mapping is not used, because it made the pastel colours grey.
 - `WW.shaderWarm` (shader_warm.js, wraps `WW.post.render`): WebGL compiles a program the first time a material variant is drawn, synchronously in three r149 (100-450 ms per cold toon variant on an M1 Pro): a freeze on first sight, often at a director cut. At load, each round start and on a 2 s sweep, it creates the programs of everything in the scene not yet warmed (hidden pools and models too) plus proxies for variants made later (each ship material clipped as ship_breakup.js clips it, the cut slab, every plane type instanced as air_render.js draws it, flying boats, float planes, combat.js / combat_aa.js projectile materials, the shadow map's depth variants) in one batch with `renderer.compile()`, with three's per-program uniform read stubbed out so the driver links them side by side; once linked, one tiny offscreen render of just those objects (layer 30) settles the rest. The proxies keep the programs alive (a program dies with its last material). Measure with `tests/cut_freeze.js` (a real GPU: ANGLE Metal, headless).
+
+### The sea: sea_state.js, water.js, ship_swell.js (visual only)
+
+The Pacific is a moving sea, not a flat plane. Nothing here is sim: the sim's ships sail a flat sea, `__sim` traces are
+bit-identical with or without it (`?nosea` turns it off for A/B), and no `WW.rand` is drawn.
+
+- **The sea state** (`WW.sea`, sea_state.js) at real scale (1 u = 9.6 m): a long swell from one direction (1.0-2.5 m,
+  10-12.5 s, 150-245 m: three components close in direction and length) and a trade-wind sea on top from the round's
+  wind (`WW.wind`: 0.1 m glassy calm .. ~1.7 m fresh chop, 2.5-5.5 s, five components about the wind, crests peaked as it
+  rises), real dispersion (omega = sqrt(g k)) on the real clock. Heights are drawn x2.0 (`HEIGHT_EXAG`) so they read at
+  the game's camera distances; the shading uses the slope x1.6 again (`NORMAL_EXAG`). Shoaling: the waves grow over the
+  reef shelf and die on the flat.
+- **Per round**: S (0 a glassy calm like Midway on 4 June 1942 .. 1 fresh trades) from a hash of the map seed and the
+  round number (never `WW.rand`), about one round in six calm, raised by the wind's strength and to 0.55+ / 0.78+
+  under scattered squalls / a squall line (`WW.weather.kind`). A sim-level sea state (`WW.seaState`: 0..1, a Beaufort
+  number, or `{ S | state | level | beaufort }`), when a sim module rolls one, wins over the visual roll (read only).
+  `?sea=glassy|calm|moderate|fresh|rough|0..1` forces it (shots); `WW.sea.info` reports the round's sea.
+- **One height function, three copies**: JS (`WW.sea.height / slope / grad`, for what rides it), the water's shaders,
+  and `WW.sea.ride(material, 'conform' | 'origin')`, an `onBeforeCompile` patch that lifts other materials onto the
+  surface on the GPU (the effects' foam / wakes / torpedo tracks and oil: conform, every vertex; splash columns and
+  floating debris: origin, by the instance's origin, fading out above 1.5-6 u; the hull contact blobs; the shadow
+  catcher). In Normandy `WW.sea.height` defers to waves.js and the Pacific surface is flattened (`uSeaAmp` 0).
+- **The surface** (water.js): a polar grid about the camera (192 segments, rings 0.4 u apart near the middle then as wide
+  as the segments, to 7000 u; ~43k vertices) displaced in the vertex shader; components shorter than ~3 grid samples
+  are left out there (no swimming), so far off it is flat and the fragment shader carries the waves: the full surface
+  normal per pixel (components shorter than ~3 pixel footprints dropped, the far pattern warped a little to break the
+  lattice), crests lighter and greener, troughs darker, the glitter and the fresnel on the normal, whitecaps on the
+  steep crests from Beaufort 4, wind streaks, and the surf: breaker lines running in over the reef edge with the swell.
+  The shadow catcher is a 300 u grid on the sun's shadow box that rides the waves.
+- **What rides it** (ship_swell.js, posed after the sim, unposed before it, restored exactly): ships heave on the mean
+  surface under the hull, pitch to bow and stern (per type gain and lag: carriers slow and visible, destroyers quick),
+  roll as a damped oscillator at the hull's roll period driven by the slope across it (destroyers roll deep, carriers
+  hardly), PT boats ride bow-up and slam; sinking ships ride less as they settle, submarines below heave only. Parked
+  planes and the deck crew are carrier-local and ride already; a plane on the deck in world space (spotted, its run,
+  the climb-out, the groove, the trap, the roll-out) takes the carrier's sea motion (posed x unposed^-1) blended by
+  how near the deck it is, so a landing plane meets the moving deck. Ditched planes, lifeboats and rafts heave and tilt.
+  Bow waves and bow spray (white, Math.random) scale with speed, most on destroyers and PT boats.
+- **The camera** (main.js `seaFloor`, after `WW.cam.update`): a soft floor 0.5 u over the local surface, never under a
+  crest. The director's shots aim at the sim's (unposed) positions, so a camera following a pitching ship stays smooth
+  while the ship moves in the frame.
 
 ### Time of day and weather: daylight.js, weather.js, night_ops.js, sky_time.js, night_fx.js, weather_fx.js
 
