@@ -72,7 +72,8 @@ window.WW = window.WW || {};
       if (o.roll > ROLL_MAX) { o.roll = ROLL_MAX; o.rv = Math.min(0, o.rv); } else if (o.roll < -ROLL_MAX) { o.roll = -ROLL_MAX; o.rv = Math.max(0, o.rv); }
     }
     o.hb = hb;
-    const pitch = o.pitch * tilt, roll = o.roll * tilt;
+    let pitch = o.pitch * tilt, roll = o.roll * tilt;
+    if (WW.isScn('normandy')) { pitch = Math.atan2(hb - hs, 2 * a) * 0.9; roll = -Math.atan2(hS - hP, 2 * b) * 1.1; }   // Normandy: its pose as before (the Channel's short sea: no roll resonance)
     save(g);
     g.updateMatrix(); _m0.copy(g.matrix);
     _q.setFromEuler(g.rotation).multiply(_qp.setFromAxisAngle(_Z, pitch)).multiply(_qr.setFromAxisAngle(_X, roll));
