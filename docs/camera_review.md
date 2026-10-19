@@ -308,3 +308,12 @@ camera's look direction shook up to 0.46 mrad p95 on main (dive, 2x 120o), <= 0.
 on both. The free camera panning, blends between shots: no shake on either. The Dumbo (rescue Catalina) did not fly
 in the seeded window; it is the same FlyingBoat class as the patrol and the PBY on the water at the ramp (director, round
 start) is covered.
+Rebased on pacific-sea (the ships, the decks' planes and the floating things ride a visual sea: ship_swell.js). The
+order is: render_interp unposes last and poses first, so the sea pose goes on top of the interpolated sim pose and comes
+off before it; nothing posed is ever fed back to the sim. With ?sea=rough the same table (main with the sea > branch):
+slow motion 60 Hz: destroyer 0.13 > 0.00, PT boat 0.66 > 0.00, turning ship 0.15 > 0.00, sinking ship 0.10 > 0.00,
+deck take-off 0.16 > 0.00, carrier landing 1.37 > 0.00, PBY 1.03 > 0.00, dive 1.35 > 0.00, director (start / 60 / 150 /
+250 s) 3.74 / 1.71 / 2.10 / 2.16 > 0.00; 120o: every case <= 0.05 on the branch (main up to 0.52); F at 4x 2.82 > 0.08.
+Left: the 4x carrier landing (0.78 > 0.99) and 4x PT boat (0.11 > 0.17) are the hook / slam motions themselves at 4x,
+not a step sawtooth (the same with and without interpolation at whole steps a frame). The Dumbo did not fly in the
+seeded window (no aircrew in the water early enough); it is the same FlyingBoat class as the patrol boats measured.
