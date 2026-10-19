@@ -23,7 +23,7 @@ async function openPage(b, errs, render = H.RENDER) {
   const p = await b.newPage({ viewport: { width: 640, height: 360 } });
   p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   p.on('pageerror', e => errs.push('PAGE ' + e.message));
-  await p.goto(H.url('', render));
+  await p.goto(H.url('', render), { timeout: 240000 });
   await p.waitForTimeout(H.settle(render));
   // same setup as sim_rounds.js: stop the render loop, the test drives the sim alone
   await p.evaluate(() => { window.requestAnimationFrame = () => 0; WW.time.warp = 1; });

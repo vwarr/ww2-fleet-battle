@@ -19,10 +19,16 @@ window.WW = window.WW || {};
   var K = {
     hut: [2.1, 1.0, 120, 1.4, 1], sick: [2.1, 1.0, 120, 1.4, 1], tent: [1.15, 1.15, 50, 1.2, 1], mess: [3.0, 1.4, 160, 2.4, 1],
     radio: [3.7, 0.95, 50, 8.6, 1], water: [1.2, 1.2, 60, 6.4, 1], cp: [1.75, 1.45, 120, 1.6, 1], flag: [0.35, 0.35, 400, 7, 1],
-    mg: [1.3, 1.3, 50, 0.9, 0], trench: [3.0, 0.8, 400, 0.3, 0], drums: [1.0, 0.8, 25, 1, 1], light: [0.8, 0.8, 40, 1.6, 1],
+    mg: [1.3, 1.3, 50, 0.9, 0], trench: [3.1, 1.15, 400, 0.3, 0], drums: [1.0, 0.8, 25, 1, 1], light: [0.8, 0.8, 40, 1.6, 1],
     truck: [0.75, 0.36, 30, 1.0, 1], fire: [0.75, 0.36, 30, 1.0, 1], jeep: [0.55, 0.33, 20, 0.7, 1], laundry: [2.0, 0.3, 10, 1.5, 0], table: [0.35, 0.35, 10, 0.6, 1],
     drill: [3.6, 2.6, 1e9, 0, 0], yard: [3.8, 1.1, 1e9, 0, 0]   // yard: the motor pool's forecourt (kept clear)
   };
+  // True size (2026-10-18): the camp was drawn ~2.5x (a Quonset hut 40 m long, the radio masts 80 m); CAMP_K brings
+  // every item, its offsets in the groups below and its model (models_base_life.js) to real size: a hut 16 x 8 m,
+  // the mess hall 23 x 11 m, the masts 33 m, the water tower 25 m. The parked vehicles follow the base vehicles'
+  // VEH_K instead (models_base.js; the extents above were written at the 0.82 plane scale's 0.56).
+  var CAMP_K = 0.4, VEH_R = Math.pow(WW.cfg.PLANE_K || 1, 0.8) / 0.558, CAR = { truck: 1, fire: 1, jeep: 1, yard: 1 };
+  for (var kk in K) { var kr = CAR[kk] ? VEH_R : CAMP_K; K[kk][0] *= kr; K[kk][1] *= kr; K[kk][3] *= kr; }
   var H = Math.PI / 2;
   // groups: [name, preferred spots (site-local u, v), members [kind, du, dv, yaw]] (du along the group's axis, dv
   // across it, away from the runway on the side it stands; yaw 0: the item's +x along that axis). A preferred spot
@@ -47,8 +53,12 @@ window.WW = window.WW || {};
     ['light', [[0, 70], [0, -70]], [['light', 0, 0, 0]]],
     ['drums', ['fuel', 'motor'], [['drums', 0, 0, 0]]]
   ];
-  var FLAT = 0.35, GAP = 0.7, NET = 2, MAXD = 70, TRIES = 500;
-  var U0 = -130, V0 = -115, NU = 261, NV = 231;
+  GROUPS.forEach(function (g) {   // the members' offsets at true size; the preferred spots stretched with the runway
+    g[1] = g[1].map(function (p) { return typeof p === 'string' ? p : [WW.airfieldLayout.stretch(p[0]), p[1]]; });
+    g[2].forEach(function (m) { var k = CAR[m[0]] || g[0] === 'motor' ? VEH_R : CAMP_K; m[1] *= k; m[2] *= k; });
+  });
+  var FLAT = 0.35, GAP = 0.7 * CAMP_K + 0.2, NET = 2, MAXD = 70, TRIES = 500;
+  var U0 = -150, V0 = -115, NU = 301, NV = 231;
 
   // the free-ground grid (1 u cells): free (0/1) and the ground height
   function grid(base) {
@@ -57,7 +67,7 @@ window.WW = window.WW || {};
     for (var j = 0; j < NV; j++) for (var i = 0; i < NU; i++) {
       var u = U0 + i, v = V0 + j, w = L.toW(u, v), d = WW.terrain.depthAt(w.x, w.z), c = j * NU + i;
       hy[c] = Math.max(S.padH, -d);
-      if (!(d < -0.6 && d > -2.6) || !AL.home(L, u, v) || (Math.abs(u) < 50 && Math.abs(v) < L.TAXI_V + 6) || AL.onNetwork(L, u, v, NET) || AL.climbOut(L, u, v, NET)) continue;
+      if (!(d < -0.6 && d > -2.6) || !AL.home(L, u, v) || (Math.abs(u) < AL.HALF + 7 && Math.abs(v) < L.TAXI_V + 6) || AL.onNetwork(L, u, v, NET) || AL.climbOut(L, u, v, NET)) continue;
       var bad = false;
       for (var k = 0; k < L.spots.length && !bad; k++) { var p = L.spots[k]; bad = Math.abs(p.u - u) < p.span / 2 + 2.2 && Math.abs(p.v - v) < p.len / 2 + 2.2; }
       for (k = 0; k < fac.length && !bad; k++) bad = Math.hypot(fac[k][0] - u, fac[k][1] - v) < fac[k][2];
@@ -140,5 +150,5 @@ window.WW = window.WW || {};
       if (d.hp <= 0) { d.hp = 0; d.out = true; d.outAt = WW.time.now; }
     }
   }
-  WW.baseLifeLayout = { place: place, hit: hit, K: K, GROUPS: GROUPS };
+  WW.baseLifeLayout = { place: place, hit: hit, K: K, GROUPS: GROUPS, CAMP_K: CAMP_K };
 })();

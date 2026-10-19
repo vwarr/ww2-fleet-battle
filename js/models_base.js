@@ -18,6 +18,8 @@ window.WW = window.WW || {};
     taxi: 0xaaa595, stand: 0xb6b09f, revet: 0x8f9a5e, revetTop: 0x9fac6a, hold: 0xe8c55a, crate: 0x7c7a4e, bomb: 0x4a4e48, olive: 0x6b7350, ijnV: 0x7c7f60, tyre: 0x2e2e2c,
     fire: 0xc8402f, steel: 0x8a9096 };
 
+  var SIZE = { hangar: [0.52, 0.33, 0.52], tower: [0.22, 0.22, 0.22], fuel: [0.45, 0.42, 0.45], barracks: [0.55, 0.3, 0.3],
+    pit: [0.2, 0.2, 0.2], aagun: [0.2, 0.2, 0.2], emp: [0.25, 0.25, 0.25], cgun: [0.25, 0.25, 0.25], ammo: [0.3, 0.3, 0.3], ramp: [0.5, 0.5, 0.5] };
   var _inv = new THREE.Matrix4(), _mw = new THREE.Matrix4(), _nm = new THREE.Matrix3(), _v = new THREE.Vector3();
   function bake(root) { // a temp group -> one geometry, vertex colour = material colour x the geometry's own colours
     root.updateMatrixWorld(true); _inv.copy(root.matrixWorld).invert();
@@ -114,6 +116,13 @@ window.WW = window.WW || {};
     M._box(g, C.olive, 1.6, 0.4, 2.4, -3.2, 0.1, 2.6); M._box(g, C.tyre, 0.5, 0.5, 0.25, -3.2, 0, 3.8); M._box(g, C.tyre, 0.5, 0.5, 0.25, -3.2, 0, 1.4);
     TPL.ramp = bake(g);
     TPL.scorch = M._mat(0x5d5249);
+    // True size (2026-10-18): the templates above were drawn 2-5x (a hangar 115 m long and 44 m high, the tower 90 m,
+    // an AA pit 38 m across); each is scaled to its real size here: a steel arch hangar 60 x 45 x 14 m, the control
+    // tower ~20 m to the flagpole top, fuel tanks 19 m across and 10 m high, barracks 37 x 10 m, a 3-inch AA pit 8 m
+    // across, a 7-inch coastal gun's emplacement 15 m across (its barrel 10 m), the ammunition dump 20 m, the seaplane
+    // apron 48 x 43 m (a PBY spans 32 m). The hit radii and hp (island_base.js R / HP) are sim values and unchanged.
+    for (var tk in SIZE) { var z = SIZE[tk]; TPL[tk].scale(z[0], z[1], z[2]); TPL[tk].computeBoundingSphere(); }
+    TPL.flag.USN.scale(SIZE.tower[0], SIZE.tower[0], SIZE.tower[0]); TPL.flag.IJN.scale(SIZE.tower[0], SIZE.tower[0], SIZE.tower[0]);
     return TPL;
   }
   // the ground pieces (strips, revetment berms, gun pits, the slipway): one white toon material of their own, made
@@ -147,13 +156,13 @@ window.WW = window.WW || {};
         if (all || clear(r, o, t - lt / 2, t + lt / 2, w - lw / 2, w + lw / 2, CLEAR)) M._bar(q, C.paint, lt, th + 0.02, lw, t, 0, w);
       };
       var sa = o ? Math.sin(r.h - o.h) : 0, dx = o ? r.x - o.x : 0, dz = o ? r.z - o.z : 0;
-      if (!i || Math.abs(sa) < 0.2) for (var u = -r.len / 2 + 9; u < r.len / 2 - 8; u += 6) paint(2.6, 0.3, u, 0, !i); // centreline dashes
+      if (!i || Math.abs(sa) < 0.2) for (var u = -r.len / 2 + 9; u < r.len / 2 - 8; u += 6) paint(3.0, 0.12, u, 0, !i); // centreline dashes (30 x 1 m)
       else { // the cross runway's: laid out both ways from where it meets the main's centreline, from just off its edges
         var tx = (dx * Math.sin(o.h) - dz * Math.cos(o.h)) / sa, d0 = (o.w / 2 + CLEAR + 0.2) / Math.abs(sa) + 1.3;
-        [-1, 1].forEach(function (e) { for (var t = tx + e * d0; Math.abs(t) <= r.len / 2 - 7.5; t += e * 6) paint(2.6, 0.3, t, 0); });
+        [-1, 1].forEach(function (e) { for (var t = tx + e * d0; Math.abs(t) <= r.len / 2 - 7.5; t += e * 6) paint(3.0, 0.12, t, 0); });
       }
       [-1, 1].forEach(function (e) {
-        for (var k = -3; k <= 3; k++) if (k) paint(3, 0.38, e * (r.len / 2 - 2.5), k * 0.55);     // threshold bars
+        for (var k = -6; k <= 6; k++) if (k) paint(3, 0.18, e * (r.len / 2 - 2.5), k * 0.42);     // threshold bars (30 x 1.8 m)
         paint(0.4, r.w, e * (r.len / 2 - 5), 0);
       });
     });
@@ -164,20 +173,20 @@ window.WW = window.WW || {};
       var du = u1 - u0, dv = v1 - v0, len = Math.hypot(du, dv) + w, m = M._bar(F, col, len, th, w, (u0 + u1) / 2, gy((u0 + u1) / 2, (v0 + v1) / 2), (v0 + v1) / 2);
       m.rotation.y = -Math.atan2(dv, du); return m;
     };
-    var TU = L.TAXI_U, TV = L.TAXI_V, HV = L.HOLD_V;
+    var TU = L.TAXI_U, TV = L.TAXI_V, HV = L.HOLD_V, TW = 2.4;
     [1, -1].forEach(function (sd) {
-      seg(-TU, sd * TV, TU, sd * TV, 5, C.taxi, 0.06);                                  // the parallel taxiway
+      seg(-TU, sd * TV, TU, sd * TV, TW, C.taxi, 0.06);                                 // the parallel taxiway (23 m wide)
       [-1, 1].forEach(function (e) {
-        seg(e * TU, 0, e * TU, sd * TV, 5, C.taxi, 0.06);                               // the end connector
+        seg(e * TU, 0, e * TU, sd * TV, TW, C.taxi, 0.06);                              // the end connector
         for (var k = 0; k < 2; k++) { var hv = sd * (HV + 0.5 + k * 0.7);                   // hold-short bars (not under the cross runway)
-          if (clear(R0, R1, e * TU - 2.6, e * TU + 2.6, hv - 0.2, hv + 0.2, 0.3)) seg(e * TU - 2.5, hv, e * TU + 2.5, hv, 0.25, C.hold, 0.075); }
+          if (clear(R0, R1, e * TU - TW / 2 - 0.1, e * TU + TW / 2 + 0.1, hv - 0.2, hv + 0.2, 0.3)) seg(e * TU - TW / 2, hv, e * TU + TW / 2, hv, 0.12, C.hold, 0.075); }
       });
     });
-    L.segs.forEach(function (q) { seg(q.u0, q.v0, q.u1, q.v1, q.w + 1, C.taxi, 0.06); });   // columns and row lanes
+    L.segs.forEach(function (q) { seg(q.u0, q.v0, q.u1, q.v1, TW, C.taxi, 0.06); });   // columns and row lanes
     L.spots.forEach(function (sp) {                                                       // hardstands and their driveways
-      var M2 = M._bar(F, C.stand, sp.span + 1.2, 0.05, sp.len + 1.2, sp.u, gy(sp.u, sp.v), sp.v); M2.rotation.y = 0;
-      var dv = Math.sign(sp.laneV - sp.v) * ((sp.len + 1.2) / 2 + 1.5);                      // (seg runs 1.5 past each end):
-      seg(sp.u, sp.v + dv, sp.u, sp.laneV, 3, C.taxi, 0.055);                               // from the hardstand's edge, not over it
+      var M2 = M._bar(F, C.stand, sp.span + 0.5, 0.05, sp.len + 0.5, sp.u, gy(sp.u, sp.v), sp.v); M2.rotation.y = 0;
+      var dv = Math.sign(sp.laneV - sp.v) * ((sp.len + 0.5) / 2 + 0.8);                      // (seg runs 0.8 past each end):
+      seg(sp.u, sp.v + dv, sp.u, sp.laneV, 1.6, C.taxi, 0.055);                             // from the hardstand's edge, not over it
     });
     return new THREE.Mesh(bake(g), groundMat());
   }
@@ -200,15 +209,15 @@ window.WW = window.WW || {};
       }
       if (f.kind === 'tower') {
         var fl = new THREE.Mesh(T.flag[base.nation], mat), c = Math.cos(S.h), s = Math.sin(S.h);
-        fl.position.set(f.x, y + 8.2, f.z); fl.rotation.y = -(WW.wind ? WW.wind.a : 0); part.flag = fl; root.add(fl);
+        fl.position.set(f.x, y + 8.2 * SIZE.tower[1], f.z); fl.rotation.y = -(WW.wind ? WW.wind.a : 0); part.flag = fl; root.add(fl);
       }
       parts.push(part);
     });
     // the slipway: a concrete strip from the apron's edge down into the lagoon to the ramp foot
     var SP = base.seaplane;
     if (SP) {
-      var ex = SP.ax - Math.cos(SP.h) * 4, ez = SP.az - Math.sin(SP.h) * 4, y0 = gy(ex, ez) + 0.05, y1 = -0.5, len = Math.hypot(SP.wx - ex, SP.wz - ez);
-      var sg = new THREE.BoxGeometry(len + 1, 0.16, 4.2);
+      var ex = SP.ax - Math.cos(SP.h) * 2.4, ez = SP.az - Math.sin(SP.h) * 2.4, y0 = gy(ex, ez) + 0.05, y1 = -0.5, len = Math.hypot(SP.wx - ex, SP.wz - ez);
+      var sg = new THREE.BoxGeometry(len + 1, 0.12, 1.7);   // the slipway, 16 m wide
       var ac = M._mat(C.apron).color, ca = new Float32Array(sg.attributes.position.count * 3);
       for (var i = 0; i < ca.length; i += 3) { ca[i] = ac.r; ca[i + 1] = ac.g; ca[i + 2] = ac.b; }
       sg.setAttribute('color', new THREE.Float32BufferAttribute(ca, 3));   // the apron colour as vertex colours (the ground material is white)
@@ -232,20 +241,20 @@ window.WW = window.WW || {};
   }
   // a revetment for a plane class: low grassed earth walls behind the tail and beside the wingtips (clear of them by
   // 0.9), open at the nose; local +x = the nose, centred on the spot
-  var REV = {};
+  var REV = {}, BK = Math.sqrt(WW.cfg.PLANE_K || 1), BH = BK * 0.72;   // berm size: x PLANE_K^0.5 (1 at the 1.7 scale; at true size ~3 m high)
   // the berms of a spot's revetment, spot-local (+x = the nose): [centre x, centre z, length, base width, yaw]
   function revetWalls(sp) {
-    var hl = sp.len / 2, hs = sp.span / 2, back = -hl - 1.4, side = hs + 1.35, front = hl - 0.6;
+    var AL = WW.airfieldLayout, hl = sp.len / 2, hs = sp.span / 2, back = -hl - AL.BERM_B, side = hs + AL.BERM_S, front = hl - 0.6 * BK;
     return [[back, -side, back, side], [back, -side, front, -side], [back, side, front, side]].map(function (w) {
-      return [(w[0] + w[2]) / 2, (w[1] + w[3]) / 2, Math.hypot(w[2] - w[0], w[3] - w[1]) + 0.9, 1.15, -Math.atan2(w[3] - w[1], w[2] - w[0])];
+      return [(w[0] + w[2]) / 2, (w[1] + w[3]) / 2, Math.hypot(w[2] - w[0], w[3] - w[1]) + 0.9 * BK, 1.15 * BK, -Math.atan2(w[3] - w[1], w[2] - w[0])];
     });
   }
   function revetGeo(k, sp) {
     if (REV[k]) return REV[k];
     var g = new THREE.Group();
     revetWalls(sp).forEach(function (w) { // a berm: a wide base and a narrower grassed top
-      var b = M._bar(g, C.revet, w[2], 0.55, w[3], w[0], 0, w[1]); b.rotation.y = w[4];
-      var t = M._bar(g, C.revetTop, w[2] - 0.3, 0.4, 0.7, w[0], 0.5, w[1]); t.rotation.y = w[4];
+      var b = M._bar(g, C.revet, w[2], 0.55 * BH, w[3], w[0], 0, w[1]); b.rotation.y = w[4];   // ~3 m high, 5 m thick at the base
+      var t = M._bar(g, C.revetTop, w[2] - 0.3 * BK, 0.4 * BH, 0.7 * BK, w[0], 0.5 * BH, w[1]); t.rotation.y = w[4];
     });
     REV[k] = bake(g); return REV[k];
   }

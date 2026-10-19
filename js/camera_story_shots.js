@@ -12,7 +12,7 @@ window.WW = window.WW || {};
   const V = () => new THREE.Vector3();
   const _f = V(), _r = V(), _c = V(), _t = V();
   const ok = p => p && !p.removed && p.alive;
-  const FK = Math.pow(WW.cfg.PLANE_K || 1, 0.6);   // single-plane framing distances (written at the 1.7 plane scale) close in with the plane size
+  const FK = WW.cfg.PLANE_FRAME || 1;   // single-plane framing distances (written at the 1.7 plane scale) close in with the plane size (ship_classes.js)
   const airborne = p => ok(p) && p.state !== 'takeoff' && p.state !== 'rollout' && p.state !== 'landing';
 
   // eased heading: hard turns swing the camera round slowly

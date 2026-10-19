@@ -12,7 +12,7 @@ require('fs').mkdirSync(out, { recursive: true });
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGE ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.goto(process.env.BASE_URL + 'index.html?auto&v=' + Date.now());
+  await p.goto(process.env.BASE_URL + 'index.html?auto&v=' + Date.now() + (process.env.Q ? '&' + process.env.Q : ''));   // Q: extra query (crewM=2.6)
   await p.waitForFunction(() => window.__sim && window.WW && WW.game && WW.game.state === 'battle');
   await p.waitForTimeout(1500);
   await p.evaluate(() => {

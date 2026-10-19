@@ -161,7 +161,7 @@ js/main.js              renderer, main loop, rounds (WW.game), window.__sim
 
 ## World coordinates
 
-- Ship scale: 1 unit = 9.6 m (`WW.cfg.U_PER_M` = 0.104), from `WW.cfg.L` = 26 u, the carrier hull (~250 m). Ships are at true relative size (ship_classes.js). Write ship-size-related distances in hull lengths L (`2.7 * WW.cfg.L`, or a ship's own `stats.length`). Planes are drawn at `WW.cfg.PLANE_SCALE` (default 0.82, ~2x true, the user's choice of 2026-10-09; true 0.41; the old arcade scale 1.7; `?planeScale=x`). Every length tied to the plane's size was written at 1.7 and is multiplied by `WW.cfg.PLANE_K` = PLANE_SCALE / 1.7 at run time (see "Plane scale" below), so `?planeScale=1.7` reproduces the old numbers.
+- Ship scale: 1 unit = 9.6 m (`WW.cfg.U_PER_M` = 0.104), from `WW.cfg.L` = 26 u, the carrier hull (~250 m). Ships are at true relative size (ship_classes.js). Write ship-size-related distances in hull lengths L (`2.7 * WW.cfg.L`, or a ship's own `stats.length`). Planes are drawn at `WW.cfg.PLANE_SCALE` (default 0.41, true size, the user's choice of 2026-10-18; 0.82 (~2x) was the 2026-10-09 choice; the old arcade scale 1.7; `?planeScale=x`). The island base, its camp and the crews are at true size too (see "Plane scale" below). Every length tied to the plane's size was written at 1.7 and is multiplied by `WW.cfg.PLANE_K` = PLANE_SCALE / 1.7 at run time (see "Plane scale" below), so `?planeScale=1.7` reproduces the old numbers.
 - The map is `WW.cfg.MAP_W` (x, 0 to 2400) by `WW.cfg.MAP_H` (z, 0 to 1350) (`REF_W` 960: the old width, for the few tactical distances written as a share of it). Sea level is y = 0. Up is +y.
 - A heading `h` is in radians. It goes from +x toward +z. The forward vector is `(cos h, 0, sin h)`.
 - Each model (ship and plane) has its bow or nose on local **+x**. To show heading `h`, set `group.rotation.y = -h`.
@@ -713,7 +713,7 @@ WW.nightOps = { seeR(s, o, size, glow), visK(s, o), radarR(s, o), airK(o), lit(o
 
 - `WW.pickClass(type, nation, key, slot)`: a forced key (tests), a carrier's class from its slot name (`WW.CV_ROSTER`, shared with air_squadrons.js: Kaga looks like Kaga), else weighted `WW.rand`. `ship.cls`, `ship.mk` (the model key) and `ship.name` are set in the Ship constructor.
 - `WW.classStats(base, cls)`: the type's per-nation stats shaded by the class (hp, AA; speed capped ±3 %, turn ±5 %); gun mounts per class keep the type's fire rate.
-- Carrier flight decks are `DECK_K` x their real width (1.34 at the default 0.82, 1.8 at 1.7, 1 at true scale) so parked planes fit; `navBeam` (the collision / nav footprint) is the deck width. `DECK_K` follows `PLANE_SCALE`, so changing the plane scale changes carrier footprints in the sim, not only rendering.
+- Carrier flight decks are `DECK_K` x their real width (1 at the default true scale; 1.34 at 0.82, 1.8 at 1.7, so bigger planes still fit); `navBeam` (the collision / nav footprint) is the deck width. `DECK_K` follows `PLANE_SCALE`, so changing the plane scale changes carrier footprints in the sim, not only rendering.
 - Carrier DECK API (models_cv.js): `model.deck` (Object3D at the deck surface) and `model.deckDims = { len, w, halfW, x0, top, islandSide, island: [x0, x1], stern, bow, aftFront, barrier, launchX, tdX, elevX, elevators[], lane }` in deck-local x (bow +x). air_deck.js reads its stations from it.
 - Class builders: models_cv.js (carriers), models_usn.js, models_ijn.js on the shared kit in models.js (`WW.models.CLASS[key]`). Screenshots: `node tests/class_shots.js [outdir] [--only lineup,close,cvside,planes,formation]`; probe: `node tests/class_probe.js`.
 
@@ -751,7 +751,7 @@ WW.lifeboats = { init(), update(dt), figures(), clearAll(), stats() };
 ```
 
 - Visual only: `Math.random`, no effect on the simulation. Both clear themselves on `roundStart` and `setupStart`.
-- Sailors are about 0.39 units tall (3.8 m; `SCALE` = 1.1 x PLANE_K^0.27, 1.1 at the old plane scale 1.7). That is larger than true scale, like the planes' `PLANE_SCALE`, so they read in close shots, and about a sixth of a fighter's length, so they never tower over the planes. The island base's ground crews are `FIG_K` (2 x PLANE_K^0.73, ~1.2) times a sailor: a fifth of a fighter's length, the real proportion. All sailors in the scene are 4 `InstancedMesh`es (shirt, trousers, head, cap) that share one instance-matrix buffer, plus a 5th for the arms (2 instances per figure, its own matrix buffer, pivot at the shoulder). Per-instance colours: USN dungarees with a white cap, IJN whites with a dark cap, khaki officers, grey-helmeted gunners and coloured carrier deck jerseys.
+- Sailors are 1.8 m tall at true size (0.19 u; `CREW_M` 1.8, `?crewM=x` overrides; `SCALE` = CREW_M x U_PER_M / 0.48 x 1.1). They were 3.8 m at the 0.82 plane scale (1.1 x PLANE_K^0.27). The island base's ground crews and camp people are the same size (`FIG_K` 1 in base_ground_fx.js / base_life.js; it was 2 x PLANE_K^0.73). All sailors in the scene are 4 `InstancedMesh`es (shirt, trousers, head, cap) that share one instance-matrix buffer, plus a 5th for the arms (2 instances per figure, its own matrix buffer, pivot at the shoulder). Per-instance colours: USN dungarees with a white cap, IJN whites with a dark cap, khaki officers, grey-helmeted gunners and coloured carrier deck jerseys.
 - Poses: each frame a sailor gets an arm swing forward (`aL`, `aR`, radians; 0 hangs, π is straight up) and an outward flare (`oL`, `oR`), a crouch `cr` (0..1, the body squashes by up to 28%), a forward `lean`, a `hop` and a recoil offset `dx` along its facing. Walking swings the arms; `WW.crewOps.pose` sets the working poses.
 - `stations()` also bakes a top-surface height map per type and nation (`top(type, nation, x, z)`: decks and low roofs up to 1.4 above the hull deck, the median of a 3 × 3 sample, so masts and rails do not count). `damage_visuals.js` puts its deck decals there.
 - Stations per type are in ship-local coordinates (carrier 13, battleship 10, cruiser 7, destroyer 5, PT boat 3, submarine 3). The surplus valid stations are spares for rescued sailors. Deck heights come from vertical-line hits on a throwaway model of each type and nation, made one time in `init`. A station that would be in the air, inside superstructure or without head room is dropped. Each deck sailor also gets a walkable lane along x.
@@ -1355,6 +1355,41 @@ Visual / UI only: they read the sim and never write it, use `Math.random` only, 
 - **War diary** (`WW.diary`): entries `{ t, clock, text, pri 0..3, nation, kind }`, kept in time order, at most 160. Clock: `WW.dayNight.hourAt(roundTime)` when the night branch is present, else 0600 + roundTime / 120 h (one sim second is half a minute). Sources: `contact` (first) and `report` (flying boats) batched per side over 1.5 s into one sighting report with a bearing from the side's fleet centre and the observer ("Kingfisher from Northampton"); `misidResolved`, `airOrder` strikeAway, `shipHit` (first bomb or torpedo, below half hp), `deckHit`, `magazine`, `engineHit`, `shipSunk`, `shipScuttled`, `shipEscaped`, `escortCharge`, `rescue`, `ace`, `flyingBoat` lost, `admiralOrder` (its `text`), `victory`. Ship names: `ship.name`, else a period name by nation, type and order (carriers follow the air-group slots). The card (`#diary`) slides in at the right in map view; `L` toggles it per view (off in the director view by default). An entry of priority 2 or more flashes as a small caption through `WW.airCaptions.say` (its 15 s throttle; never over the victory card), only when the card is hidden. It emits `diaryEntry`.
 - **After-action report** (`WW.aar`): a snapshot at `victory` (winner and reason; per side: the admiral from `WW.admirals.of`, ships lost by name and type from the `shipSunk` / `shipScuttled` events, escaped ships, planes lost (every plane flown that is no longer alive), the ship of the day (sinkings credited to gun ships aiming at the victim within 1.3 × their longest weapon range, half a sinking to the carrier of a plane attacking it), the top pilot (`planeKill` this round); the 5 key moments from the diary). It shows 4.5 s after the victory caption, stays through the victory pause and on the ready screen until the next battle (auto mode: about 34 s of real time); a click hides it. `VICTORY_TIME` is unchanged.
 - Test: `node tests/plot_shots.js [seed] [seconds]` (render mode) shoots the three plots of one moment, the danger layer, the diary card and the report into tests/shots/plot/ and prints the diary.
+
+### True scale (2026-10-18, branch true-scale)
+
+`PLANE_SCALE` 0.82 -> 0.41: true size (an F4F spans 1.2 u = 11.6 m). Everything in the 2026-10-09 table below follows
+`PLANE_K` (now 0.24) as before; what changed besides:
+
+| what | where | true-size value |
+|---|---|---|
+| flight decks / hull beam (`DECK_K` 1), so carrier `navBeam` | ship_classes.js | the real deck widths: Yorktown 26.2 m (2.72 u), Lexington 32 m, Akagi / Kaga 30.5 m, Soryu 26 m, Hiryu 27 m, Shokaku 29 m |
+| deck spot `spotCap` | air_deck.js | Yorktown 10 -> 20 (two columns of folded planes aft of the spot line, GAP 0.2 u = 2 m); strikes are sized `spotCap x LOADS` (air_boss.js) |
+| runways | terrain_islands.js `RUN1` / `RUN2` / `RUN_W` | main 1,550 m (161 u, Eastern Island's longest strip), cross 1,200 m (125 u), both 61 m (6.3 u) wide; were 826 / 538 m long and 86 m wide |
+| field island, reef ring | terrain_islands.js | field `RX` = RUN1 / 2 + 24 (~2 km x 1.5 km of flat coral), `RZ` 74; the atoll ring R 128-140 (was 115-128) so the longer field fits inside it; the cross runway crosses at 0.3 x RUN1 west of the centre |
+| ground plan | airfield_layout.js | taxi ends, line-up, columns, rows and climb-out lanes from `HALF` (RUN1 / 2); `stretch(u)` moves the facility / camp places written for the old 86 u runway; revetment berms `BERM_S` / `BERM_B` (~7 m off the wingtip / tail, x PLANE_K^0.5), shared berms `PITCH` apart |
+| facility models | models_base.js `SIZE` | hangar 60 x 45 x 14 m, control tower ~20 m to the flagpole, fuel tanks 19 m across / 10 m high, barracks 37 x 10 m, AA pit 8 m, 7-inch battery emplacement 15 m (barrel 10 m), ammo dump 20 m, seaplane apron 48 x 43 m, slipway 16 m wide; taxiways 23 m, centreline 30 x 1 m |
+| hit radii, hp | island_base.js `R` / `HP` | unchanged (sim values) |
+| camp | base_life_layout.js `CAMP_K` 0.4 | Quonset hut 16 x 8 m, mess 23 x 11 m, radio masts 33 m, water tower 25 m; the item extents, the group offsets, the models and the people's posts follow it; parked trucks follow `VEH_K` (~7 m fuel truck) |
+| crews | models_crew.js `CREW_M` | 1.8 m (`?crewM=` overrides; was 3.8 m); base ground crews and camp people the same (`FIG_K` 1) |
+| birds | base_life_fx.js | albatross-sized (2 m span) |
+| camera plane framing | `WW.cfg.PLANE_FRAME` (ship_classes.js) | linear in the plane size from the 0.82 framing (0.32 at 0.41; was PLANE_K^0.6): chase / story / OTS / bomb cam / the keep-off round a plane / the base's field shots |
+
+Tests: `tests/scale_jitter.js` (camera and on-screen jitter on a chase, a dive, a dogfight and a deck take-off),
+`tests/scale_shots.js` (`Q=crewM=2.6` for the crew comparison), `tests/base_shots.js`, `tests/base_clip.js`.
+Measured (2026-10-18; behaviour suite 15 scenarios x 8 seeds, before = main at 0.82, after = this branch before its
+rebase): FAIL 0 both. Means over the scenarios: carrier strike drops 26.5 -> 23.3, CAP bomber kills 11.1 -> 9.5, fighter
+bomber kills 13.3 -> 11.5 (the smaller hit radius), fighter-fighter kills 6.0 -> 6.9, wingman distance (`elem_coh`)
+6.2 -> 3.1, base sorties 39.7 -> 57.3 (`spotCap` and the bigger deck loads; the base's launches in tests/base_ground.js
+12 seeds 538 -> 702), base strikes 2.2 -> 2.7. Wins (USN of 128 rounds, 8-round samples, noisy) 53 -> 60. The new
+terrain (the field island and the reef ring) changes every seed's geography. Gates PASS after the rebase (determinism
+--cross 1,2,3, look-ahead trace, behaviour suite FAIL 0); base_clip 8 rounds 0 (after the fixes), base_ground PASS.
+Camera (tests/scale_jitter.js, seed 2, 60 fps): the plane's span on screen chase 64 -> 61 px, dive 79 -> 67, dogfight
+OTS 145 -> 141, deck take-off 70 -> 34 (that shot sits outside the hull's no-go circle: the plane is half the size);
+on-screen judder (second difference) p95 under 0.3 px at even 60 fps; with uneven 13 / 20 ms frames the dogfight OTS
+reaches p95 6.7 px (main 2.5 px, max 265 px) and the take-off 2.5 px (main 0.3): the planes move in un-interpolated
+1/120 s sim steps, which the closer framing magnifies (render interpolation will remove it). tests/deck_ride.js: 168
+take-off runs and traps on a rough sea, height error over the moving deck 0.000 u.
 
 ### Plane scale (2026-10-09, branch scalebase)
 

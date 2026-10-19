@@ -85,7 +85,7 @@ window.WW = window.WW || {};
   // a lander has the main runway (land_ground.js: the departures hold short): cleared on the main and near the outer
   // marker, past it or on final, or the slot lander still on the runway
   function inbound(b) {
-    const o = b.ops, h = o.dir > 0 ? b.heading : b.heading + Math.PI, td = b.layout.toW(-o.dir * 34, 0);
+    const o = b.ops, h = o.dir > 0 ? b.heading : b.heading + Math.PI, td = b.layout.toW(-o.dir * WW.airfieldLayout.HALF * 0.79, 0);
     const ox = td.x - Math.cos(h) * 150, oz = td.z - Math.sin(h) * 150;
     for (const q of b.ai.lq) {
       if (!q.alive || q.removed || q.state !== 'landing' || !q.clearedMain) continue;

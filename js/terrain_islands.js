@@ -14,7 +14,11 @@ window.WW = window.WW || {};
   // spread over it (each about as big as before), so there is still cover and line-of-sight breaks along the approach
   const AREA_K = W * H / (960 * 600), NUM_K = Math.max(1, Math.round(Math.sqrt(AREA_K))), N_SECOND = Math.max(1, Math.round(AREA_K / 2.5));
   const PAD_H = 1.2;                 // airfield ground height above the sea
-  const RUN1 = 86, RUN2 = 56, RUN_W = 4.5, X_ANG = 1.15; // main / cross runway lengths, half width, crossing angle
+  // Runways at true 1942 size (2026-10-18): Midway's Eastern Island had three coral strips of about 1,000-1,600 m, Wake
+  // one of 1,500 m x 60 m, Henderson Field 1,160 m x 50 m. The main runway is 1,550 m (Eastern Island's longest), the
+  // cross runway 1,200 m, both 61 m (200 ft) wide (they were 86 m wide and 826 / 538 m long at the 2x plane scale).
+  const UM = WW.cfg.U_PER_M || 0.104;
+  const RUN1 = +(1550 * UM).toFixed(1), RUN2 = +(1200 * UM).toFixed(1), RUN_W = +(30.5 * UM).toFixed(2), X_ANG = 1.15; // main / cross lengths, half width, crossing angle
   // shelf: width (units) of the shallow ledge outside the coast; drop: width of the slope down to deep water
   const SHELF = { island: [6, 20], low: [8, 18], field: [8, 18], islet: [4, 15], spit: [3, 9], bar: [2.5, 7], reef: [3, 10] };
   let K = null;                      // terrain.js helpers: { rnd, rr, vnoise, smooth, BASE }
@@ -41,10 +45,11 @@ window.WW = window.WW || {};
 
   // ---- the airfield: two crossing runways and an apron, on a flat 'field' island ----
   // the field island (runways, taxiways, dispersal rows: airfield_layout.js); FIELD_U / FIELD_V: the soft pad (parking area)
-  const FIELD_RX = 80, FIELD_RZ = 70, FIELD_U = 74, FIELD_V = 64;
+  // (sized from the main runway: ~2 km x 1.5 km of flat coral, about Eastern Island's 1.9 km x 1.2 km)
+  const FIELD_RX = RUN1 / 2 + 24, FIELD_RZ = 74, FIELD_U = RUN1 / 2 + 18, FIELD_V = 64;
   function rect(cx, cz, h, hl, hw, soft) { return { cx, cz, c: Math.cos(h), s: Math.sin(h), hl, hw, soft: !!soft }; }
   function airfield(cx, cz, h, kind, extra) {
-    const c = Math.cos(h), s = Math.sin(h), h2 = h + X_ANG, o2 = -36;  // the cross runway crosses the main one near its west end (the dispersal rows keep the rest)
+    const c = Math.cos(h), s = Math.sin(h), h2 = h + X_ANG, o2 = -0.3 * RUN1;  // the cross runway crosses the main one toward its west end (the dispersal rows keep the rest)
     const r2x = cx + c * o2, r2z = cz + s * o2;
     const ap = 17;                                                     // (the old apron point, kept in the site for reference)
     // forced pads: the two runways (always flat land); soft pad: the parking area, flattened where it is land already
@@ -56,7 +61,7 @@ window.WW = window.WW || {};
   }
 
   function makeAtoll() {
-    const R = K.rr(115, 128), cx = K.rr(W * 0.37, W * 0.63), cz = K.rr(R + 75, H - R - 75);
+    const R = K.rr(128, 140), cx = K.rr(W * 0.37, W * 0.63), cz = K.rr(R + 75, H - R - 75);
     const ring = add('ring', cx, cz, R, R, 0, -0.85, true);
     ring.w = 7; ring.gapA = K.rr(0, Math.PI * 2); ring.lagoon = -3.4;
     centres.push([cx, cz, R + 40]);
@@ -64,7 +69,7 @@ window.WW = window.WW || {};
     const a1 = K.rr(0, Math.PI * 2), d1 = R * 0.2, fx = cx + Math.cos(a1) * d1, fz = cz + Math.sin(a1) * d1;
     const h = a1 + Math.PI / 2 + K.rr(-0.5, 0.5);   // the main runway roughly along the ring
     airfield(fx, fz, h, 'atoll', { atoll: { x: cx, z: cz, R } });
-    const a2 = a1 + Math.PI + K.rr(-0.5, 0.5), d2 = R * 0.62;
+    const a2 = a1 + Math.PI + K.rr(-0.5, 0.5), d2 = R * 0.64;
     add('low', cx + Math.cos(a2) * d2, cz + Math.sin(a2) * d2, R * K.rr(0.32, 0.38), R * K.rr(0.17, 0.21), a2 + Math.PI / 2 + K.rr(-0.3, 0.3), 2.4, true);
     if (K.rnd() < 0.55) add('islet', cx + Math.cos(a1 + 1.7) * R * 0.55, cz + Math.sin(a1 + 1.7) * R * 0.55, 6, 5, K.rr(0, 3), 1.6, true); // a sandy cay
     for (let i = 0; i < N_SECOND; i++) second(220);
@@ -168,5 +173,5 @@ window.WW = window.WW || {};
     return h;
   }
 
-  WW.terrainIslands = { make, featureHeight, reach, flatten, padDist, PAD_H, get site() { return site; }, get features() { return features; } };
+  WW.terrainIslands = { RUN1, RUN2, RUN_W, make, featureHeight, reach, flatten, padDist, PAD_H, get site() { return site; }, get features() { return features; } };
 })(window.WW);

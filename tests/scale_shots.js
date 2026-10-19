@@ -21,7 +21,7 @@ const WHICH = (process.argv[4] || 'deck,strike,dogfight,overview,base').split(',
     window.requestAnimationFrame = cb => { __raf.push(cb); return __raf.length; };
     window.__step = n => { for (let i = 0; i < n; i++) { __fakeT += 1000 / 30; const cbs = __raf.splice(0); cbs.forEach(cb => cb(__fakeT)); } };
   });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8790/') + 'index.html?auto' + (PS ? '&planeScale=' + PS : ''));
+  await p.goto((process.env.BASE_URL || 'http://localhost:8790/') + 'index.html?auto' + (PS ? '&planeScale=' + PS : '') + (process.env.Q ? '&' + process.env.Q : ''));   // Q: extra query (crewM=2.6)
   await p.waitForTimeout(1500);
   await p.addStyleTag({ content: '#hud, .panel, #film .caption, .caption { visibility: hidden !important; }' });
   const setup = (seed, comp) => p.evaluate(([seed, comp]) => {
@@ -70,7 +70,7 @@ const WHICH = (process.argv[4] || 'deck,strike,dogfight,overview,base').split(',
     if (WHICH.includes('deck')) {
       say('[deck] ' + await p.evaluate(() => {
         const cv = WW.world.ships.find(s => s.type === 'carrier' && s.nation === 'USN');
-        until(() => cv._deck && cv._deck.mode === 'idle' && WW.game.roundTime > 15 && cv._deck.cols.reduce((s, c) => s + c.e.filter(e => e.ph === 'park').length, 0) >= WW.airDeck.spotCap(cv), 60);
+        until(() => cv._deck && cv._deck.mode === 'idle' && WW.game.roundTime > 15 && cv._deck.cols.reduce((s, c) => s + c.e.filter(e => e.ph === 'park').length, 0) >= Math.min(WW.airDeck.spotCap(cv), 14), 240);
         window.__cv = cv; window.__lookFn = () => rel(cv, 24, 18, 14, -4, 0, 1.5);
         const D = cv._deck; return 'spotted ' + D.cols.reduce((s, c) => s + c.e.length, 0) + ' (spotCap ' + WW.airDeck.spotCap(cv) + ')';
       }));

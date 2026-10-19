@@ -18,16 +18,19 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   const R = Math.random, rr = (a, b) => a + (b - a) * R(), PI = Math.PI;
-  const FAR = 420, DRAW = 135, MAXP = 110, WALK = 0.8, RUN = 2.4, CALM = 30;
+  // CK: the camp's true-size factor (base_life_layout.js CAMP_K): the posts round the huts, the pits and the trenches, the
+  // spacing of men in a line and their stand-off from walls shrink with it (the men were ~4.5 m tall, now 1.8 m)
+  const CK = (WW.baseLifeLayout && WW.baseLifeLayout.CAMP_K) || 1;
+  const FAR = 420, DRAW = 135, MAXP = 110, WALK = 0.8 * Math.sqrt(CK), RUN = 2.4 * Math.sqrt(CK), CALM = 30, SM = 0.3 * CK;   // walk ~5 m/s, run ~15 m/s (toy-quick)
   let base = null, built = null, P = [], S = null, phase = 'peace', lastT = 0, hitSeen = -1e9, calmT = 0, threatT = -1e9, afterT = 0, nextTeam = 0;
-  const FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73), G0 = { fail: 0 };
+  const FIG_K = 1, G0 = { fail: 0 };
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _p = new THREE.Vector3(), _s = new THREE.Vector3(), pose = { aL: 0, aR: 0, oL: null, oR: null };
   const gy = (x, z) => Math.max(base.site.padH, -WW.terrain.depthAt(x, z));
   const dir = a => [Math.cos(a), Math.sin(a)];
   const W = () => WW.baseLifePaths;
 
   // ---------- the places: doors, the chow line, the drill ground, trenches, pits ----------
-  function door(d, out) { const c = dir(d.a); return { x: d.x + c[0] * (d.hx + (out || 1.0)), z: d.z + c[1] * (d.hx + (out || 1.0)), face: d.a + PI }; }
+  function door(d, out) { const c = dir(d.a), o = (out || 1.0) * CK; return { x: d.x + c[0] * (d.hx + o), z: d.z + c[1] * (d.hx + o), face: d.a + PI }; }
   function sites() {
     const D = base.decor || [], s = { doors: [], huts: [], trenches: [], pits: [], mess: null, sick: null, drill: null, table: null, laundry: null, cp: null, flag: null };
     for (const d of D) {
@@ -36,18 +39,18 @@ window.WW = window.WW || {};
       if (d.kind === 'laundry') s.laundry = d; if (d.kind === 'cp') s.cp = door(d, 0.7); if (d.kind === 'flag') s.flag = d;
       if (d.kind === 'trench') { // crouching places along the three bays (models_base_life.js trench)
         const c = dir(d.a), sl = [];
-        for (const [bx, bz] of [[-2.0, 0.25], [0, -0.25], [2.0, 0.25]]) for (const o of [-0.7, 0, 0.7]) sl.push({ x: d.x + c[0] * (bx + o) - c[1] * bz, z: d.z + c[1] * (bx + o) + c[0] * bz, who: null });
+        for (const [bx, bz] of [[-2.0, 0.25], [0, -0.25], [2.0, 0.25]]) for (const o of [-0.7, 0, 0.7]) sl.push({ x: d.x + (c[0] * (bx + o) - c[1] * bz) * CK, z: d.z + (c[1] * (bx + o) + c[0] * bz) * CK, who: null });
         s.trenches.push({ d, slots: sl });
       }
-      if (d.kind === 'mg') s.pits.push({ f: d, r: 0.6, n: 2 });
+      if (d.kind === 'mg') s.pits.push({ f: d, r: 0.6 * CK, n: 2 });
     }
-    for (const f of base.facilities) if (f.kind === 'aa') s.pits.push({ f, r: 1.15, n: 3 });
+    for (const f of base.facilities) if (f.kind === 'aa') s.pits.push({ f, r: 0.25, n: 3 });   // inside the pit's sandbag ring (models_base.js: 0.4 u)
     for (const p of s.pits) { p.slots = []; for (let i = 0; i < p.n; i++) { const a = (f => f.a || 0)(p.f) + PI + (i - (p.n - 1) / 2) * 1.3; p.slots.push({ x: p.f.x + Math.cos(a) * p.r, z: p.f.z + Math.sin(a) * p.r, who: null }); } }
     if (s.mess) { // the chow line: out of the mess door and away along its end wall (the side that is open)
       const c = dir(s.mess.a), dq = door(s.mess, 0.45);
       for (const sv of [1, -1]) {
         const L = [];
-        for (let i = 0; i < 7; i++) { const o = sv * (0.3 + i * 0.5), x = dq.x - c[1] * o + c[0] * 0.15 * i / 6, z = dq.z + c[0] * o + c[1] * 0.15 * i / 6; if (W().stand(x, z)) L.push({ x, z, face: Math.atan2(dq.z - z, dq.x - x) }); else break; }
+        for (let i = 0; i < 7; i++) { const o = sv * (0.3 + i * 0.5) * CK, x = dq.x - c[1] * o + c[0] * 0.15 * CK * i / 6, z = dq.z + c[0] * o + c[1] * 0.15 * CK * i / 6; if (W().stand(x, z, SM)) L.push({ x, z, face: Math.atan2(dq.z - z, dq.x - x) }); else break; }
         if (!s.chow || L.length > s.chow.length) s.chow = L;
       }
       s.messDoor = dq;
@@ -76,17 +79,17 @@ window.WW = window.WW || {};
     if (S.chow) S.chow.forEach((q, i) => out.push({ act: 'chow', x: q.x, z: q.z, face: q.face, i }));
     if (S.drill) { // an instructor and three ranks
       const d = S.drill, c = dir(d.a);
-      out.push({ act: 'instr', x: d.x + c[0] * 2.6, z: d.z + c[1] * 2.6, face: d.a + PI, role: 'o' });
-      for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) { const a = -1 + r * 0.9, b = -1.5 + k * 1.0; out.push({ act: 'drill', x: d.x + c[0] * a - c[1] * b, z: d.z + c[1] * a + c[0] * b, face: d.a }); }
+      out.push({ act: 'instr', x: d.x + c[0] * 2.6 * CK, z: d.z + c[1] * 2.6 * CK, face: d.a + PI, role: 'o' });
+      for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) { const a = (-1 + r * 0.9) * CK, b = (-1.5 + k * 1.0) * CK; out.push({ act: 'drill', x: d.x + c[0] * a - c[1] * b, z: d.z + c[1] * a + c[0] * b, face: d.a }); }
     }
-    if (S.table) for (let k = 0; k < 4; k++) { const a = S.table.a + k * PI / 2, c = Math.cos(a), sn = Math.sin(a); out.push({ act: 'cards', x: S.table.x + c * 0.62, z: S.table.z + sn * 0.62, face: a + PI, via: { x: S.table.x + c * 1.9, z: S.table.z + sn * 1.9 } }); }
-    if (S.laundry) { const c = dir(S.laundry.a); out.push({ act: 'laundry', x: S.laundry.x + c[0] * 0.8 - c[1] * 0.55, z: S.laundry.z + c[1] * 0.8 + c[0] * 0.55, face: S.laundry.a + PI / 2 }); }
+    if (S.table) for (let k = 0; k < 4; k++) { const a = S.table.a + k * PI / 2, c = Math.cos(a), sn = Math.sin(a); out.push({ act: 'cards', x: S.table.x + c * 0.62 * CK, z: S.table.z + sn * 0.62 * CK, face: a + PI, via: { x: S.table.x + c * 1.9 * CK, z: S.table.z + sn * 1.9 * CK } }); }
+    if (S.laundry) { const c = dir(S.laundry.a); out.push({ act: 'laundry', x: S.laundry.x + (c[0] * 0.8 - c[1] * 0.55) * CK, z: S.laundry.z + (c[1] * 0.8 + c[0] * 0.55) * CK, face: S.laundry.a + PI / 2 }); }
     if (S.cp) out.push({ act: 'sentry', x: S.cp.x, z: S.cp.z, face: S.cp.face + PI, role: 'o' });
     S.doors.slice(0, 14).forEach((q, i) => { // one or two men loafing at each door, facing out (a smoke, a chat)
       const c = dir(q.face + PI), n = c[1], m = -c[0];
-      for (let k = 0; k < (i % 3 ? 1 : 2); k++) { const o = (k ? -1 : 1) * 0.4; out.push({ act: 'idle', x: q.x + c[0] * 0.3 + n * o, z: q.z + c[1] * 0.3 + m * o, face: q.face + PI + (k ? 0.9 : -0.9) * (i % 3 ? 0.4 : 1) }); }
+      for (let k = 0; k < (i % 3 ? 1 : 2); k++) { const o = (k ? -1 : 1) * 0.4 * CK; out.push({ act: 'idle', x: q.x + c[0] * 0.3 * CK + n * o, z: q.z + c[1] * 0.3 * CK + m * o, face: q.face + PI + (k ? 0.9 : -0.9) * (i % 3 ? 0.4 : 1) }); }
     });
-    return out.filter(q => W().stand(q.x, q.z, 0.3));
+    return out.filter(q => W().stand(q.x, q.z, SM));
   }
   function populate() {
     P = [];
@@ -119,8 +122,8 @@ window.WW = window.WW || {};
     for (const s of fs) {
       const d = nearest(S.huts.filter(h => (h.n || 0) < 2), s.x, s.z); if (!d) break; d.n = (d.n || 0) + 1;   // two pilots at most from a hut door, one after the other
       const sp = s.spot, C = WW.airfieldLayout.CLS[V[s.v].cls || 'S'], c = dir(sp.h), sd = R() < 0.5 ? 1 : -1;
-      const lane = WW.airfieldLayout && base.layout.toW(sp.u, sp.laneV), nose = { x: sp.x + c[0] * (C.len / 2 + 0.9), z: sp.z + c[1] * (C.len / 2 + 0.9) };
-      const tip = { x: sp.x + c[0] * C.len * 0.27 - c[1] * sd * (C.span / 2 + 0.35), z: sp.z + c[1] * C.len * 0.27 + c[0] * sd * (C.span / 2 + 0.35) };
+      const lane = WW.airfieldLayout && base.layout.toW(sp.u, sp.laneV), nose = { x: sp.x + c[0] * (C.len / 2 + 0.9 * CK), z: sp.z + c[1] * (C.len / 2 + 0.9 * CK) };
+      const tip = { x: sp.x + c[0] * C.len * 0.27 - c[1] * sd * (C.span / 2 + 0.35 * CK), z: sp.z + c[1] * C.len * 0.27 + c[0] * sd * (C.span / 2 + 0.35 * CK) };
       const p = man(d.x, d.z, 'o', 'idle'); if (!p) break;
       p.delay = WW.time.now + 0.4 + (d.n - 1) * 1.1 + k++ * 0.25;
       p.pilot = s; go(p, lane.x, lane.z, true, 'climb', sp.h + PI); if (p.pend) p.tail = [nose, tip]; else if (p.path) p.path.push(nose, tip); else p.gone = true;
@@ -160,7 +163,7 @@ window.WW = window.WW || {};
       if (P.some(p => p.fire === f && !p.gone)) continue;
       const d = nearest(S.doors, f.x, f.z) || S.cp; if (!d) return;
       for (let k = 0; k < 3; k++) {
-        const r = (f.hx ? Math.hypot(f.hx, f.hz) : f.r) + 1.1, a0 = Math.atan2(d.z - f.z, d.x - f.x) + (k - 1) * 0.6, x = f.x + Math.cos(a0) * r, z = f.z + Math.sin(a0) * r;
+        const r = (f.hx ? Math.hypot(f.hx, f.hz) : f.r * 0.5) + 1.1 * CK, a0 = Math.atan2(d.z - f.z, d.x - f.x) + (k - 1) * 0.6, x = f.x + Math.cos(a0) * r, z = f.z + Math.sin(a0) * r;
         if (!W().stand(x, z)) continue;
         const p = man(d.x, d.z, k ? 'c' : 'r', 'idle'); if (!p) return;
         p.fire = f; go(p, x, z, true, 'hose', a0 + PI);
@@ -231,9 +234,9 @@ window.WW = window.WW || {};
       const t = p.path[p.pi], dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz);
       const spd = p.spd * (attack && p.act === 'run' ? 1.15 : 1), mv = Math.min(d, spd * dt);
       const nx = p.x + dx / (d || 1) * mv, nz = p.z + dz / (d || 1) * mv;
-      if (!W().stand(nx, nz, 0.3) && W().stand(p.x, p.z, 0.3) && p.goal && now > (p.replanT || 0)) { p.replanT = now + 2; const g = p.goal, n0 = p.next, f0 = p.goalFace; go(p, g[0], g[1], g[2], g[3], g[4], g[5]); if (p.next === undefined) { p.next = n0; p.goalFace = f0; } clearOf(p, gp, vs); return; } // about to brush a wall: plan again from here
-      if (!W().stand(nx, nz, 0.3) && W().stand(p.x, p.z, 0.3)) { p.wait += dt; }
-      else if (blocker(nx, nz, gp, vs, 0.3, false) || (blocker(nx, nz, gp, vs, 0.3, true) && !blocker(p.x, p.z, gp, vs, 0.3, true))) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
+      if (!W().stand(nx, nz, SM) && W().stand(p.x, p.z, SM) && p.goal && now > (p.replanT || 0)) { p.replanT = now + 2; const g = p.goal, n0 = p.next, f0 = p.goalFace; go(p, g[0], g[1], g[2], g[3], g[4], g[5]); if (p.next === undefined) { p.next = n0; p.goalFace = f0; } clearOf(p, gp, vs); return; } // about to brush a wall: plan again from here
+      if (!W().stand(nx, nz, SM) && W().stand(p.x, p.z, SM)) { p.wait += dt; }
+      else if (blocker(nx, nz, gp, vs, SM, false) || (blocker(nx, nz, gp, vs, SM, true) && !blocker(p.x, p.z, gp, vs, SM, true))) { p.wait += dt; if (p.wait > 25 && !p.pilot) { p.path = null; arrive(p); } }
       else { p.x = nx; p.z = nz; p.face = Math.atan2(dz, dx); p.wait = 0; }
       if (d - mv < 0.05) { p.pi++; if (p.pi >= p.path.length) { p.path = null; arrive(p); } }
     }
@@ -242,7 +245,8 @@ window.WW = window.WW || {};
     else if (!attack && p.act === 'prone' && phase === 'after') { p.act = 'idle'; p.walker = true; p.at = now + rr(1, 5); }
     // a plane or a truck came at him: a step clear (to the nearer side of its box)
     clearOf(p, gp, vs);
-    if (p.pilot && (p.pilot.state !== 'parked' || !p.pilot.spot)) { p.pilot = null; const t = trenchFor(p); if (t) { t.who = p; p.station = t; go(p, t.x, t.z, true, 'trench'); } else p.act = 'prone'; }
+    if (p.pilot && (p.pilot.state !== 'parked' || !p.pilot.spot)) { if (p.pilot.spot && Math.hypot(p.x - p.pilot.spot.x, p.z - p.pilot.spot.z) < p.pilot.spot.span * 1.2) { p.gone = true; return; }   // at the plane as it goes: he is the one in it
+      p.pilot = null; const t = trenchFor(p); if (t) { t.who = p; p.station = t; go(p, t.x, t.z, true, 'trench'); } else p.act = 'prone'; }
   }
   // a plane or a truck came at him: the nearest step clear of its whole box (beside it, ahead of it or behind it)
   // that is clear of everything else too; nowhere to go: he is not drawn this frame (p.hid)
@@ -310,9 +314,9 @@ window.WW = window.WW || {};
         default: face += Math.sin(t * 0.5 + p.ph) * 0.2;
       }
       let fx = p.x, fz = p.z;
-      if (p.act === 'prone') { fx -= Math.cos(face) * 0.2 * FIG_K / 1.17; fz -= Math.sin(face) * 0.2 * FIG_K / 1.17; }   // feet back: the body lies centred on his spot
+      if (p.act === 'prone') { fx -= Math.cos(face) * 0.2 * CK; fz -= Math.sin(face) * 0.2 * CK; }   // feet back: the body lies centred on his spot
       if (p.team) { // the bearers fore and aft must be clear too (else the team waits unseen behind it)
-        const c = Math.cos(face), sn = Math.sin(face), k = 0.32 * FIG_K / 1.17;
+        const c = Math.cos(face), sn = Math.sin(face), k = 0.32 * CK;
         const ok = q => !blocker(q[0], q[1], gp, vs, 0.22, false) && W().stand(q[0], q[1], 0.25);
         if (ok([p.x + c * k, p.z + sn * k]) && ok([p.x - c * k, p.z - sn * k])) carry(p, face, y, tr);
         continue;
@@ -322,13 +326,13 @@ window.WW = window.WW || {};
   }
   // a stretcher team: two bearers fore and aft of the leader's point, the wounded man lying on the canvas between
   function carry(p, face, y, tr) {
-    const c = Math.cos(face), s = Math.sin(face), k = 0.32 * FIG_K / 1.17;
+    const c = Math.cos(face), s = Math.sin(face), k = 0.32 * CK;
     figure(p.x + c * k, p.z + s * k, face, 'c', y, 0.05, 1, { x: p.x + c * k, z: p.z + s * k, role: 'c', act: 'stretcher' });
     figure(p.x - c * k, p.z - s * k, face, 'r', y * 0.7, 0.05, 1, { x: p.x - c * k, z: p.z - s * k, role: 'r', act: 'stretcher' });
     pose.aL = pose.aR = 2.9; pose.oL = pose.oR = null;
-    _q.setFromEuler(_e.set(0, -face, PI / 2, 'YXZ')); _p.set(p.x + c * 0.2 * FIG_K, gy(p.x, p.z) + 0.2 * FIG_K, p.z + s * 0.2 * FIG_K); _s.set(FIG_K, FIG_K, FIG_K);
+    _q.setFromEuler(_e.set(0, -face, PI / 2, 'YXZ')); _p.set(p.x + c * 0.2 * CK, gy(p.x, p.z) + 0.2 * CK, p.z + s * 0.2 * CK); _s.set(FIG_K, FIG_K, FIG_K);
     WW.crew.addFigure(_m.compose(_p, _q, _s), base.nation, 'c', pose);
-    if (WW.baseLifeCars) WW.baseLifeCars.stretcher(p.x, gy(p.x, p.z) + 0.17 * FIG_K, p.z, face);
+    if (WW.baseLifeCars) WW.baseLifeCars.stretcher(p.x, gy(p.x, p.z) + 0.17 * CK, p.z, face);
   }
   function clear() { P = []; base = null; built = null; S = null; phase = 'peace'; }
   WW.on('roundStart', clear); WW.on('setupStart', clear);

@@ -27,7 +27,7 @@ window.WW = window.WW || {};
   function send(c, x, z, job) {
     const H = c.home, P = WW.baseLifePaths, fromHome = !c.away, toHome = job === 'home';
     let out = null;   // out of the bay: ahead if that is clear, else backing out
-    for (const sg of [1, -1]) { const q = { x: H.x + Math.cos(H.h) * sg * 4.0 * K(), z: H.z + Math.sin(H.h) * sg * 4.0 * K() }; if (P.stand(q.x, q.z, 0.9, true) || sg < 0) { out = q; break; } }
+    for (const sg of [1, -1]) { const q = { x: H.x + Math.cos(H.h) * sg * 4.0 * K(), z: H.z + Math.sin(H.h) * sg * 4.0 * K() }; if (P.stand(q.x, q.z, 0.9 * K() / 0.558, true) || sg < 0) { out = q; break; } }   // (the clearance x the trucks' size: 0.9 at the 0.82 scale's VEH_K)
     const a = fromHome ? out : c, b = toHome ? out : { x, z };
     const w = WW.baseLifePaths.path(a.x, a.z, b.x, b.z, true, true); if (!w) return false;
     c.path = (fromHome ? [out] : []).concat(w.slice(1), [b]);
@@ -138,7 +138,7 @@ window.WW = window.WW || {};
       stretchers.count = 0; stretchers.frustumCulled = false; stretchers.castShadow = true; WW.scene.add(stretchers);
     }
     if (nS >= 8) return;
-    const k = 0.24 * (WW.baseLife ? WW.baseLife.FIG_K : 1);
+    const k = 0.28 * ((WW.baseLifeLayout && WW.baseLifeLayout.CAMP_K) || 1);   // a 1.9 m stretcher (the men are true size)
     _q.setFromEuler(_e.set(0, -face, 0)); _p.set(x, y, z); _s.set(k, k, k);
     stretchers.setMatrixAt(nS++, _m.compose(_p, _q, _s)); stretchers.count = nS; stretchers.instanceMatrix.needsUpdate = true;
   }

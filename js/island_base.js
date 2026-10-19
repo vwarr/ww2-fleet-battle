@@ -35,8 +35,12 @@ window.WW = window.WW || {};
   const R = { hangar: 6, fuel: 3.5, tower: 3, barracks: 4, aa: 3, battery: 3.5, ammo: 3.5 };
   // facility places (site-local u, v; the ring search in airfield_layout.js free() moves them onto free ground): the
   // buildings stand beyond the runway ends and at the field's edges, clear of the runways, taxiways and dispersal rows
-  const PLACES = { hangar: [[63, 9], [63, -9]], tower: [[-58, 11]], fuel: [[-61, -6], [-66, 5]], ammo: [[66, 24], [66, -24]],
+  // (written for the old 86 u main runway: u is stretched with the true-size runway, airfield_layout HALF, and kept on
+  // the field island)
+  const PLACES0 = { hangar: [[63, 9], [63, -9]], tower: [[-58, 11]], fuel: [[-61, -6], [-66, 5]], ammo: [[66, 24], [66, -24]],
     barracks: [[-64, -22], [64, 38], [-62, 34]], aa: [[68, -32], [-66, -38], [2, 66], [44, -62], [-44, 64]] };
+  const PLACES = {};
+  for (const k in PLACES0) PLACES[k] = PLACES0[k].map(q => [WW.airfieldLayout.stretch(q[0]), q[1]]);
   const NAMES = { USN: { atoll: 'Midway', volcanic: 'Henderson Field' }, IJN: { atoll: 'Wake', volcanic: 'Rabaul' } };
   // Base strength knobs (the balance pass; tests: sim_behaviour.js --tune k=v,...). tons: x BASE_TONS in the tiebreak;
   // guns: coastal battery rate of fire (0: silent); pits: x 3 AA pits; air: x the ROSTER (land_air.js); radar: x the
@@ -71,7 +75,7 @@ window.WW = window.WW || {};
     for (let i = 0; i < 24; i++) {
       const a = i / 24 * Math.PI * 2;
       let last = null;
-      for (let r = 10; r < 110; r += 2) { const x = S.x + Math.cos(a) * r, z = S.z + Math.sin(a) * r; if (!onLand(x, z)) break; last = { x, z }; }
+      for (let r = 10; r < 150; r += 2) { const x = S.x + Math.cos(a) * r, z = S.z + Math.sin(a) * r; if (!onLand(x, z)) break; last = { x, z }; }
       if (!last) continue;
       const bx = last.x - Math.cos(a) * 4, bz = last.z - Math.sin(a) * 4;
       const lq = base && base.layout ? base.layout.toL(bx, bz) : null;

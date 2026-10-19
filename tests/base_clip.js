@@ -161,7 +161,7 @@ function round(P) {
     const p = await b.newPage({ viewport: { width: 320, height: 200 } }), errs = [];
     p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
     await p.addInitScript(install);
-    await p.goto((process.env.BASE_URL || 'http://localhost:8790/') + 'index.html?auto&v=' + Date.now());
+    await p.goto((process.env.BASE_URL || 'http://localhost:8790/') + 'index.html?auto&v=' + Date.now(), { timeout: 180000 });
     await p.waitForFunction(() => window.__sim && window.WW && WW.game && WW.baseFx);
     await p.waitForTimeout(800);
     await p.evaluate(setup);

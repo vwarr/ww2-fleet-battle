@@ -11,9 +11,11 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var R = Math.random, PI = Math.PI;
-  // figure height ~0.48 u x SCALE / 1.1: 1.1 at the old 1.7 plane scale; they shrink with the planes (x PLANE_K^0.27),
-  // so at 0.82 a sailor is ~0.39 u (3.8 m): about a sixth of a fighter's length (real ~a fifth), still readable on ships
-  var SCALE = 1.1 * Math.pow(WW.cfg.PLANE_K || 1, 0.27);
+  // figure height ~0.48 u x SCALE / 1.1. Sized in metres (2026-10-18, true-size planes and decks): CREW_M tall
+  // (?crewM=x overrides; 1.8 is true). Was 1.1 x PLANE_K^0.27: 3.8 m at the 0.82 plane scale, 5.3 m at 1.7.
+  var CREW_DEFAULT_M = 1.8;
+  var CREW_M = (function () { var m = /[?&]crewM=([0-9.]+)/.exec(typeof location !== 'undefined' ? location.search : ''); return m ? parseFloat(m[1]) : CREW_DEFAULT_M; })();
+  var SCALE = CREW_M * (WW.cfg.U_PER_M || 0.104) / 0.48 * 1.1;
   var MAX = 640, FAR = 115;              // instance capacity (ships' sailors + the island base's people), LOD distance from the camera
   var COUNT = { carrier: 13, battleship: 10, cruiser: 7, destroyer: 5, pt: 3, submarine: 3 };
   // Per-class geometry: a ship's model key k (ship.mk, the class key; a type name means its first class). The
@@ -424,6 +426,6 @@ window.WW = window.WW || {};
       var sl = 0; recs.forEach(function (r) { sl += r.sailors.filter(function (s) { return s.mode !== 'gone'; }).length; });
       return { ships: recs.length, sailors: sl, visible: perf.vis, ms: +perf.ms.toFixed(3), maxMs: +perf.max.toFixed(3), buildMs: Math.round(perf.build), modelMs: Math.round(perf.model) };
     },
-    SCALE: SCALE, FAR: FAR
+    SCALE: SCALE, CREW_M: CREW_M, FAR: FAR
   };
 })();
