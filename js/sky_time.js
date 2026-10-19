@@ -55,11 +55,13 @@ window.WW = window.WW || {};
   // Land at a high sun: the flat ground (sand, grass, the base's strips and berms) faces a high sun square on, and its
   // light (sun x sin(elevation) + sky fill) went from ~1.0 at 17:00 to ~1.75 at noon: the colours ran past the tone
   // curve's shoulder (post.js, 0.72) and rolled to near-white. So the land's colour is scaled by LAND_CAP / that light,
-  // capped at 1 (the sun below ~25 deg: dawn, the golden afternoon and dusk unchanged). The terrain floor takes it in
-  // its shader above the waterline only (landK; the seabed shows through the water, which must not darken); the toon
+  // capped at 1 (a low sun: dawn, the golden afternoon and dusk unchanged; 17:00's light is ~0.93, landK 1). LAND_CAP
+  // 0.93 (was 1.15: the noon sand still rolled to a pale cream, 236/228/201, against 190/167/135 at 17:00). The terrain
+  // floor takes it in its shader, the seabed too (terrain.js: the pale sand under the shallows otherwise whitened the
+  // lagoon at noon); the toon
   // base materials (addLand: models_base.js) barely brighten with the sun's height (their gradient's top steps), so
   // they take its square root. Ships, planes and buildings are left alone.
-  const LAND_CAP = 1.15, LAND_TOON = 0.75, LAND = [], landK = { value: 1 };
+  const LAND_CAP = 0.93, LAND_TOON = 0.75, LAND = [], landK = { value: 1 };
   const lum = c => c.r * 0.3 + c.g * 0.59 + c.b * 0.11;
   const MOON = new THREE.Vector3(0.82, 0.26, -0.5).normalize();   // a low moon (~15 deg) in the east: a long glitter path
   let wx = 0, t = 0, cloudMat = null, gradeOn = false;
