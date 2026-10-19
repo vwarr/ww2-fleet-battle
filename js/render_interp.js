@@ -9,6 +9,7 @@
 // before anything else runs (unpose). Interpolated for the frame:
 //   - the ships' hull groups (and a broken ship's stern half), the planes' groups, the projectiles' meshes: position
 //     and rotation (Euler and quaternion restored bit for bit afterwards);
+//   - visuals on the sim clock: lag() (the flak puffs' uTime, combat_aa.js);
 //   - the sim objects' own x / y / z / heading, so the camera, the crew, the audio listener and every other per-frame
 //     visual reads the same in-between pose as the meshes it films (restored right after the render, and at the
 //     start of the next frame, only if nothing else wrote them meanwhile: setup-mode dragging, a new round).
@@ -21,7 +22,7 @@ window.WW = window.WW || {};
   const JUMP2 = 36, TURN = 0.8;       // a move of over 6 u or a turn of over 0.8 rad in one step is a jump (a spawn, a re-parent, a pooled mesh reused): drawn as is
   const snapO = new WeakMap(), snapG = new WeakMap();
   const posedO = [], posedG = [];
-  let nO = 0, nG = 0;
+  let nO = 0, nG = 0, lagS = 0;   // lagS: sim s the frame's pose lies behind the sim's own (lag())
   const live = () => !OFF && !WW.simOnly;
 
   function forEach(fn) {
@@ -56,8 +57,10 @@ window.WW = window.WW || {};
   // after the frame's steps: alpha in [0, 1], 0 = the pose before the last step, 1 = the sim's current pose
   function pose(alpha, n) {
     unpose();
+    lagS = 0;
     if (!live() || !(alpha < 1)) return;
     const t = Math.max(0, alpha), prevN = n - 1;
+    lagS = (1 - t) * ((window.__sim && window.__sim.LIVE_STEP) || 1 / 120);
     forEach((o, g1, g2) => {
       const r = snapO.get(o);
       if (r && r.n === prevN && num(o.x) && num(o.z)) {
@@ -116,5 +119,7 @@ window.WW = window.WW || {};
     }
     nG = 0;
   }
-  WW.renderInterp = { capture, pose, unpose, unposeSim, off: OFF, stats: () => ({ objs: nO, groups: nG }) };
+  // lag(): how far (sim s) this frame's drawn pose lies behind the sim clock (0 when not interpolating): a visual on the
+  // sim clock (combat_aa.js's flak puffs, uTime) draws at WW.time.now - lag() so it moves with everything else
+  WW.renderInterp = { capture, pose, unpose, unposeSim, off: OFF, lag: () => lagS, stats: () => ({ objs: nO, groups: nG }) };
 })(window.WW);

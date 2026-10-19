@@ -246,6 +246,7 @@ window.WW = window.WW || {};
     if (WW.sky && WW.sky.SUN_DIR) u.uSunV.value.copy(WW.sky.SUN_DIR).transformDirection(cam.matrixWorldInverse);
     u.uDay.value = WW.daylight === undefined ? 1 : WW.daylight;
     u.uPx.value = cam.projectionMatrix.elements[5] * 0.5 * rd.domElement.height;   // pixels per unit at distance 1
+    u.uTime.value = this.time - (WW.renderInterp ? WW.renderInterp.lag() : 0);   // the frame's own time (render_interp.js): the puffs grow and drift every frame, in slow motion too
   };
   Sky.prototype.live = function () {   // puffs alive now (tests)
     var T = this.at.aT.array, n = 0, t = this.time, c = this.u.uClear.value;
