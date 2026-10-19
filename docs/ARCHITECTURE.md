@@ -1377,7 +1377,19 @@ Visual / UI only: they read the sim and never write it, use `Math.random` only, 
 
 Tests: `tests/scale_jitter.js` (camera and on-screen jitter on a chase, a dive, a dogfight and a deck take-off),
 `tests/scale_shots.js` (`Q=crewM=2.6` for the crew comparison), `tests/base_shots.js`, `tests/base_clip.js`.
-MEASURED_TRUE_SCALE
+Measured (2026-10-18; behaviour suite 15 scenarios x 8 seeds, before = main at 0.82, after = this branch before its
+rebase): FAIL 0 both. Means over the scenarios: carrier strike drops 26.5 -> 23.3, CAP bomber kills 11.1 -> 9.5, fighter
+bomber kills 13.3 -> 11.5 (the smaller hit radius), fighter-fighter kills 6.0 -> 6.9, wingman distance (`elem_coh`)
+6.2 -> 3.1, base sorties 39.7 -> 57.3 (`spotCap` and the bigger deck loads; the base's launches in tests/base_ground.js
+12 seeds 538 -> 702), base strikes 2.2 -> 2.7. Wins (USN of 128 rounds, 8-round samples, noisy) 53 -> 60. The new
+terrain (the field island and the reef ring) changes every seed's geography. Gates PASS after the rebase (determinism
+--cross 1,2,3, look-ahead trace, behaviour suite FAIL 0); base_clip 8 rounds 0 (after the fixes), base_ground PASS.
+Camera (tests/scale_jitter.js, seed 2, 60 fps): the plane's span on screen chase 64 -> 61 px, dive 79 -> 67, dogfight
+OTS 145 -> 141, deck take-off 70 -> 34 (that shot sits outside the hull's no-go circle: the plane is half the size);
+on-screen judder (second difference) p95 under 0.3 px at even 60 fps; with uneven 13 / 20 ms frames the dogfight OTS
+reaches p95 6.7 px (main 2.5 px, max 265 px) and the take-off 2.5 px (main 0.3): the planes move in un-interpolated
+1/120 s sim steps, which the closer framing magnifies (render interpolation will remove it). tests/deck_ride.js: 168
+take-off runs and traps on a rough sea, height error over the moving deck 0.000 u.
 
 ### Plane scale (2026-10-09, branch scalebase)
 
