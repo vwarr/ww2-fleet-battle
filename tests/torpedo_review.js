@@ -5,6 +5,11 @@
 //   anvil           aerial attacks (torpedoes of one nation dropped at one ship within 25 s): share with >= 1 hit,
 //                   hits per attack; combed: the target was combing a track when the torpedo ran out / hit
 //   follow-on       per torpedoed ship: speed factor after the hit, list, hp lost to fire / flooding after it
+//   spotting        per torpedo: seen by a ship of the side it ran at (event 'torpedoSeen' { proj, ship, d }: intel.js), the
+//                   distance of the first sighting; hits seen beforehand by the ship they hit
+//   combing         comb attempts (event 'torpedoComb' { proj, ship }: ships_ai.js comb / ai_surface.js earlyComb, one per
+//                   ship and torpedo) and successes (the combing ship was not hit by that torpedo); |sin| of the angle
+//                   between the hull and the track at a hit (0 = combed, 1 = beam on)
 //   sinkings        ships sunk with >= 1 torpedo hit; "by torpedo" = the fatal blow was a torpedo or torpedoes did
 //                   >= 50% of the direct damage; time from the first torpedo hit to sinking; hits to sink a CV / BB
 // Usage: node tests/torpedo_review.js [--seeds N=12] [--seed0 S=1] [--only standard,carrier_duel,midway,surface]
@@ -48,7 +53,8 @@ function install() {
     try {
       const C = R.cur; if (!C || !e || e.kind !== 'torpedo' || !e.proj) return;
       const p = e.proj, t = p.src === 'Air' && e.plane && e.plane.target && e.plane.target.stats ? e.plane.target : null;
-      const sh = { i: C.shots.length, t: now(), n: p.nation, src: src(p), dud: !!p.dud, tgt: t ? t.id : null, tgtType: t ? t.type : null, res: null, onType: null, combed: null };
+      const sh = { i: C.shots.length, t: now(), n: p.nation, src: src(p), dud: !!p.dud, tgt: t ? t.id : null, tgtType: t ? t.type : null, res: null, onType: null, combed: null,
+        seen: 0, seenD: null, seenBy: [], combs: [], hitSeen: null, hitPar: null };
       p.__trI = sh.i; p.__trRound = C; C.shots.push(sh);
       if (t) { // group aerial torpedoes into attacks on one ship
         let a = C.attacks.find(a => a.tgt === t.id && a.n === p.nation && sh.t - a.t1 < 25);
@@ -62,6 +68,8 @@ function install() {
       const C = R.cur; if (!C || !e || e.kind !== 'torpedo' || !e.proj || e.proj.__trRound !== C) return;
       const sh = C.shots[e.proj.__trI]; if (!sh || sh.res) return;
       sh.res = e.ship ? (e.dud ? 'dud' : 'hit') : 'miss'; sh.onType = e.ship ? e.ship.type : null;
+      if (e.ship) { sh.hitSeen = sh.seen > 0 && sh.seenBy.indexOf(e.ship.id) >= 0; sh.hitSeenSide = sh.seen > 0; sh.hitPar = +Math.abs(Math.sin(e.ship.heading - e.proj.h)).toFixed(2); sh.hitId = e.ship.id; }
+      for (const c of sh.combs) c.ok = !e.ship || e.ship.id !== c.id;
       const tg = sh.tgt !== null ? WW.world.ships.find(s => s.id === sh.tgt) : null, p = e.proj;
       sh.combed = tg && tg.ai ? (tg.ai.combUntil || 0) > sh.t : null;
       if (sh.res === 'miss' && tg) { // why: ran out short of the target (outrun / dropped too far), passed it (wide / combed), or land
@@ -70,6 +78,22 @@ function install() {
         sh.why = !tg.alive || tg.sinking ? 'gone' : p.run < p.range - 0.5 ? 'land' : along > 0 ? 'short' : 'passed';
         sh.along = +along.toFixed(1); sh.perp = +perp.toFixed(1); sh.par = +par.toFixed(2); sh.run = +p.run.toFixed(0);
       }
+    } catch (x) { if (R.cur) R.cur.err++; }
+  });
+  // spotting and combing (intel.js 'torpedoSeen', ships_ai.js / ai_surface.js 'torpedoComb')
+  WW.on('torpedoSeen', e => {
+    try {
+      const C = R.cur; if (!C || !e || !e.proj || e.proj.__trRound !== C) return;
+      const sh = C.shots[e.proj.__trI]; if (!sh || sh.res) return;
+      const id = e.ship ? e.ship.id : -1; if (sh.seenBy.indexOf(id) >= 0) return;
+      sh.seenBy.push(id); if (!sh.seen) sh.seenD = +(+e.d || 0).toFixed(1); sh.seen++;
+    } catch (x) { if (R.cur) R.cur.err++; }
+  });
+  WW.on('torpedoComb', e => {
+    try {
+      const C = R.cur; if (!C || !e || !e.proj || !e.ship || e.proj.__trRound !== C) return;
+      const sh = C.shots[e.proj.__trI]; if (!sh || sh.res || sh.combs.some(c => c.id === e.ship.id)) return;
+      sh.combs.push({ id: e.ship.id, type: e.ship.type, ok: null });
     } catch (x) { if (R.cur) R.cur.err++; }
   });
   WW.on('shipHit', e => {
@@ -138,6 +162,16 @@ function report(rounds) {
     const k = w => M.filter(s => s.why === w);
     say(`  air ${n} misses: short (ran out before reaching the target) ${pc(k('short').length / M.length)} (target still ${f0(med(k('short').map(s => s.along)))} u ahead p50), ` +
       `passed ${pc(k('passed').length / M.length)} (wide by ${f2(med(k('passed').map(s => s.perp)))} u p50; target parallel-ish |sin| < 0.4: ${pc(k('passed').filter(s => s.par < 0.4).length / (k('passed').length || 1))}), land ${pc(k('land').length / M.length)}, target gone ${pc(k('gone').length / M.length)}`);
+  }
+  say('\nspotting and combing by launcher (seen: share of torpedoes seen by a ship of the side they ran at; dist p50 / p90 of the first sighting;\n  hits seen: share of hits the ship hit had seen first; combs: attempts per 100 torpedoes, success = that ship not hit by it; |sin| at a hit p50)');
+  out.spot = {};
+  for (const sc of ['air', 'ship', 'sub', 'pt']) for (const n of ['USN', 'IJN']) {
+    const S = shots.filter(s => s.src === sc && s.n === n && s.seen !== undefined); if (!S.length) continue;
+    const seen = S.filter(s => s.seen > 0), H = S.filter(s => s.res === 'hit' || s.res === 'dud'), C = S.flatMap(s => s.combs || []);
+    const Cok = C.filter(c => c.ok), hs = H.filter(s => s.hitSeen).length;
+    out.spot[sc + ':' + n] = { seen: seen.length / S.length, d50: med(seen.map(s => s.seenD)), d90: qs(seen.map(s => s.seenD), 0.9), hitSeen: H.length ? hs / H.length : null, combs: C.length, combPer: C.length / S.length, combOk: C.length ? Cok.length / C.length : null, hitPar: med(H.map(s => s.hitPar).filter(v => v !== null)) };
+    const o = out.spot[sc + ':' + n];
+    say(`  ${(sc + ' ' + n).padEnd(9)} seen ${pc(o.seen).padStart(4)}  dist ${f0(o.d50)} / ${f0(o.d90)} u  hits seen ${pc(o.hitSeen).padStart(4)}  combs ${f0(100 * o.combPer)} / 100, success ${pc(o.combOk)}  |sin| at hit ${f2(o.hitPar)}`);
   }
   const air = shots.filter(s => s.src === 'air'), airC = air.filter(s => s.combed !== null);
   say(`  aerial torpedoes whose target was combing at the drop or later: ${pc(airC.filter(s => s.combed).length / (airC.length || 1))}; hit rate when combed ${pc(airC.filter(s => s.combed && s.res === 'hit').length / (airC.filter(s => s.combed).length || 1))}, not combed ${pc(airC.filter(s => !s.combed && s.res === 'hit').length / (airC.filter(s => !s.combed).length || 1))}`);
@@ -208,7 +242,7 @@ function report(rounds) {
   if (errs.length) console.log('page errors: ' + errs.length + '\n  ' + errs.slice(0, 5).join('\n  '));
   const R = report(res);
   console.log(R.text);
-  for (const sc of ONLY) { const rr = res.filter(r => r.scen === sc); console.log(`\n--- ${sc}`); console.log(report(rr).text.split('\n').filter(l => /hit rate|air |ship |sub |pt |carrier|battleship|cruiser|scored/.test(l)).join('\n')); }
+  for (const sc of ONLY) { const rr = res.filter(r => r.scen === sc); console.log(`\n--- ${sc}`); console.log(report(rr).text.split('\n').filter(l => /hit rate|air |ship |sub |pt |seen|carrier|battleship|cruiser|scored/.test(l)).join('\n')); }
   if (JSON_OUT) fs.writeFileSync(JSON_OUT, JSON.stringify({ when: new Date().toISOString(), args: argv, summary: R.out, rounds: res }, null, 0));
   console.log(`\n(${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 })().catch(e => { console.error(e); process.exit(1); });
