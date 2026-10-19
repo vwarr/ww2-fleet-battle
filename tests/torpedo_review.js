@@ -10,6 +10,9 @@
 //   combing         comb attempts (event 'torpedoComb' { proj, ship }: ships_ai.js comb / ai_surface.js earlyComb, one per
 //                   ship and torpedo) and successes (the combing ship was not hit by that torpedo); |sin| of the angle
 //                   between the hull and the track at a hit (0 = combed, 1 = beam on)
+//   PT launches     per PT spread (torpedoes from one boat within 1 s): the range to the boat's target at the launch,
+//                   the target angle (the bearing of the boat off the target's bow: 0 dead ahead, 90 the beam, 180
+//                   astern), the target's speed, the spread's hits; PT boats lost per round
 //   sinkings        ships sunk with >= 1 torpedo hit; "by torpedo" = the fatal blow was a torpedo or torpedoes did
 //                   >= 50% of the direct damage; time from the first torpedo hit to sinking; hits to sink a CV / BB
 // Usage: node tests/torpedo_review.js [--seeds N=12] [--seed0 S=1] [--only standard,carrier_duel,midway,surface]
@@ -27,14 +30,17 @@ const SCEN = {
   standard: { random: true },
   carrier_duel: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'] },
   midway: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN' },
-  surface: { A: ['battleship', 'cruiser', 'destroyer', 'destroyer', 'destroyer', 'submarine'], B: ['battleship', 'cruiser', 'destroyer', 'destroyer', 'destroyer', 'submarine'] }
+  surface: { A: ['battleship', 'cruiser', 'destroyer', 'destroyer', 'destroyer', 'submarine'], B: ['battleship', 'cruiser', 'destroyer', 'destroyer', 'destroyer', 'submarine'] },
+  // PT boats against a surface force (the Solomons): four boats a side with a cruiser force, by day and by night
+  pt: { A: ['cruiser', 'destroyer', 'destroyer', 'pt', 'pt', 'pt', 'pt'], B: ['cruiser', 'destroyer', 'destroyer', 'pt', 'pt', 'pt', 'pt'] },
+  pt_night: { A: ['cruiser', 'destroyer', 'destroyer', 'pt', 'pt', 'pt', 'pt'], B: ['cruiser', 'destroyer', 'destroyer', 'pt', 'pt', 'pt', 'pt'], tod: 'night' }
 };
 function specFor(name, seed) {
   const sc = SCEN[name];
   if (!sc) throw new Error('torpedo_review: unknown scenario ' + name);
   const s = sc.random ? { seed, random: true, light: true } :
     { seed, A: sc.A, B: sc.B, aNation: sc.aFixed || (seed % 2 ? 'USN' : 'IJN'), cripple: -1, noStall: false, base: sc.base || null, light: true };
-  s.scen = name;
+  s.scen = name; if (sc.tod) s.tod = sc.tod;
   return s;
 }
 
@@ -43,12 +49,13 @@ function install() {
   const R = window.__trec = { cur: null };
   const now = () => WW.time.now;
   const src = p => (p.src === 'Air' ? 'air' : p.owner && p.owner.type === 'submarine' ? 'sub' : p.owner && p.owner.type === 'pt' ? 'pt' : 'ship');
-  function fresh() { return { shots: [], hits: [], ships: {}, attacks: [], err: 0 }; }
+  function fresh() { return { shots: [], hits: [], ships: {}, attacks: [], pt: [], ptN: { USN: 0, IJN: 0 }, ptLost: { USN: 0, IJN: 0 }, err: 0 }; }
   function ship(s) {
     const C = R.cur, k = s.id;
     return C.ships[k] || (C.ships[k] = { id: k, type: s.type, nation: s.nation, maxHp: s.maxHp, torp: 0, torpDmg: 0, other: 0, firstT: null, sunkT: null, killer: null, lastT: -1, lastKind: null, hp0: null, spd: [], burnAfter: 0 });
   }
   WW.on('roundStart', () => { R.cur = fresh(); });
+  R.countPt = function () { const C = R.cur; if (!C) return; for (const s of WW.world.ships) if (s.type === 'pt' && C.ptN[s.nation] !== undefined) C.ptN[s.nation]++; };
   WW.on('weaponDropped', e => {
     try {
       const C = R.cur; if (!C || !e || e.kind !== 'torpedo' || !e.proj) return;
@@ -56,6 +63,16 @@ function install() {
       const sh = { i: C.shots.length, t: now(), n: p.nation, src: src(p), dud: !!p.dud, tgt: t ? t.id : null, tgtType: t ? t.type : null, res: null, onType: null, combed: null,
         seen: 0, seenD: null, seenBy: [], combs: [], hitSeen: null, hitPar: null };
       p.__trI = sh.i; p.__trRound = C; C.shots.push(sh);
+      if (sh.src === 'pt') { // a PT spread: one entry per boat and launch
+        const o = p.owner, u = o.ai && o.ai.lt && o.ai.lt.tgt && o.ai.lt.tgt.stats ? o.ai.lt.tgt : o.target && o.target.stats ? o.target : null;
+        let L = C.pt.find(q => q.id === o.id && sh.t - q.t < 1);
+        if (!L) {
+          L = { id: o.id, n: p.nation, t: sh.t, shots: [], tgtType: u ? u.type : null, r: null, ang: null, spd: null, night: (WW.daylight === undefined ? 1 : WW.daylight) < 0.3, amb: !!(o.ai && o.ai.lt && o.ai.lt.ambRun) };
+          if (u) { L.r = +WW.dist(o.x, o.z, u.x, u.z).toFixed(1); L.ang = +(Math.abs(WW.angleDiff(u.heading, Math.atan2(o.z - u.z, o.x - u.x))) * 180 / Math.PI).toFixed(0); L.spd = +(u.speed || 0).toFixed(2); }
+          C.pt.push(L);
+        }
+        L.shots.push(sh.i);
+      }
       if (t) { // group aerial torpedoes into attacks on one ship
         let a = C.attacks.find(a => a.tgt === t.id && a.n === p.nation && sh.t - a.t1 < 25);
         if (!a) { a = { tgt: t.id, type: t.type, n: p.nation, t0: sh.t, t1: sh.t, shots: [] }; C.attacks.push(a); }
@@ -110,6 +127,7 @@ function install() {
   WW.on('shipSunk', s => {
     try {
       const C = R.cur; if (!C || !s) return;
+      if (s.type === 'pt' && C.ptLost[s.nation] !== undefined) C.ptLost[s.nation]++;
       const S = ship(s); S.sunkT = now(); S.killer = s.capsized ? 'capsize' : S.lastT === now() ? S.lastKind : (s.floodHp || 0) > 0 && s.breach > 0 ? 'flooding' : 'fire/flood';
       S.torpDmg += s.floodHp || 0;   // hp lost to torpedo breaches (ship_fires.js) counts as torpedo damage
     } catch (x) { if (R.cur) R.cur.err++; }
@@ -126,6 +144,7 @@ function install() {
   };
   R.flush = function () {
     const C = R.cur; R.cur = null; if (!C) return null;
+    if (WW.lightAI && WW.lightAI.stats) C.ptStats = Object.assign({}, WW.lightAI.stats); // ai_pt.js run checks and ambushes (if it keeps them)
     return C;
   };
 }
@@ -134,7 +153,9 @@ function runPage(spec) {
   // drive the round in 1 s chunks so the recorder can sample (the harness's own loop is __beh.run)
   const orig = __sim.fastForward;
   __sim.fastForward = function (s) { let left = s; while (left > 0) { const d = Math.min(1, left); orig.call(__sim, d); left -= d; R.tick(); } };
-  let o;
+  let o, first = true;
+  const f0 = __sim.fastForward;
+  __sim.fastForward = function (s) { if (first) { first = false; R.countPt(); } return f0.call(this, s); };
   try { o = B.run(spec); } finally { __sim.fastForward = orig; }
   return { winner: o.winner, len: o.len, comp: o.comp, rec: R.flush() };
 }
@@ -197,6 +218,28 @@ function report(rounds) {
     const at = i => S.filter(s => s.spd[i]).map(s => s.spd[i]);
     say(`  ${t.padEnd(11)} +5 s: speed ${f2(med(at(0).map(x => x.k)))} list ${f2(med(at(0).map(x => x.list)))} hp ${f2(med(at(0).map(x => x.hp)))}   +20 s: speed ${f2(med(at(1).map(x => x.k)))} list ${f2(med(at(1).map(x => x.list)))} hp ${f2(med(at(1).map(x => x.hp)))}  (n ${S.length})`);
   }
+  say('\nPT launches (one per boat and spread; range to its target u, target angle deg off the bow: 0 ahead, 90 beam, 180 astern; p50 [p10-p90])');
+  out.pt = {};
+  for (const n of ['USN', 'IJN']) {
+    const P = rounds.flatMap(r => r.rec.pt.map(q => ({ q, shots: r.rec.shots }))).filter(x => x.q.n === n);
+    const boats = rounds.reduce((a, r) => a + (r.rec.ptN ? r.rec.ptN[n] : 0), 0), lost = rounds.reduce((a, r) => a + (r.rec.ptLost ? r.rec.ptLost[n] : 0), 0);
+    const ptR = rounds.filter(r => r.rec.ptN && r.rec.ptN[n] > 0).length;
+    if (!boats && !P.length) continue;
+    const hitsOf = x => x.q.shots.filter(i => x.shots[i].res === 'hit').length, R_ = P.filter(x => x.q.r !== null).map(x => x.q.r), A_ = P.filter(x => x.q.ang !== null).map(x => x.q.ang);
+    const hits = P.reduce((a, x) => a + hitsOf(x), 0), fired = P.reduce((a, x) => a + x.q.shots.length, 0), scored = P.filter(x => hitsOf(x) > 0).length;
+    const fwd = A_.filter(a => a < 90).length, night = P.filter(x => x.q.night), ambN = P.filter(x => x.q.amb).length;
+    out.pt[n] = { launches: P.length, perRound: ptR ? P.length / ptR : 0, boats, lost, lostPerRound: ptR ? lost / ptR : 0, r50: med(R_), ang50: med(A_), fwd: A_.length ? fwd / A_.length : null, fired, hits, rate: fired ? hits / fired : null, scored: P.length ? scored / P.length : null, night: night.length };
+    const o = out.pt[n];
+    say(`  ${n}: rounds with PTs ${ptR}, boats ${boats}; launches ${P.length} (${f2(o.perRound)} / round, ${night.length} at night, ${ambN} from an ambush); range ${f0(o.r50)} [${f0(qs(R_, 0.1))}-${f0(qs(R_, 0.9))}] u; target angle ${f0(o.ang50)} [${f0(qs(A_, 0.1))}-${f0(qs(A_, 0.9))}] deg, ahead of the beam ${pc(o.fwd)}; torpedoes ${fired}, hits ${hits} (${pc(o.rate)}), spreads that scored ${pc(o.scored)}; targets ${Object.entries(P.reduce((m, x) => (m[x.q.tgtType] = (m[x.q.tgtType] || 0) + 1, m), {})).map(([k, v]) => k + ' ' + v).join(', ')}; PT lost ${lost} (${f2(o.lostPerRound)} / round, ${pc(boats ? lost / boats : null)} of boats)`);
+  }
+  for (const amb of [true, false]) { // the launches from an ambush (ai_pt.js) against the rest (dashes, partner runs)
+    const P = rounds.flatMap(r => r.rec.pt.map(q => ({ q, shots: r.rec.shots }))).filter(x => !!x.q.amb === amb);
+    if (!P.length || (amb && !P.some(x => x.q.amb))) continue;
+    const R_ = P.filter(x => x.q.r !== null).map(x => x.q.r), A_ = P.filter(x => x.q.ang !== null).map(x => x.q.ang), f = P.reduce((a, x) => a + x.q.shots.length, 0), h = P.reduce((a, x) => a + x.q.shots.filter(i => x.shots[i].res === 'hit').length, 0);
+    say(`  ${amb ? 'from an ambush' : 'other runs   '} (both sides): launches ${P.length}, range ${f0(med(R_))} [${f0(qs(R_, 0.1))}-${f0(qs(R_, 0.9))}] u, target angle ${f0(med(A_))} [${f0(qs(A_, 0.1))}-${f0(qs(A_, 0.9))}] deg, ahead of the beam ${pc(A_.filter(v => v < 90).length / (A_.length || 1))}, hits ${h} / ${f} (${pc(f ? h / f : null)})`);
+  }
+  const PS = rounds.filter(r => r.rec.ptStats).map(r => r.rec.ptStats);
+  if (PS.length && PS[0].amb !== undefined) { const sum = k => PS.reduce((a, q) => a + (q[k] || 0), 0); say(`  ambushes (both sides): set ${sum('amb')}, waits reached ${sum('ambWait')}, runs ${sum('ambRun')}, dropped ${sum('ambLost')}, waits timed out ${sum('ambTime')}, broken off ${sum('ambFlee')}; runs from an ambush ${sum('ambFire')} fired, ${sum('ambAbort')} aborted; dashes refused as stern chases ${sum('astern')}`); }
   say('\nsinkings');
   out.sink = {};
   const tk = s => s.sunkT !== null && (s.killer === 'torpedo' || s.killer === 'flooding' || s.killer === 'capsize' || s.torpDmg >= 0.5 * (s.torpDmg + s.other));
@@ -242,7 +285,7 @@ function report(rounds) {
   if (errs.length) console.log('page errors: ' + errs.length + '\n  ' + errs.slice(0, 5).join('\n  '));
   const R = report(res);
   console.log(R.text);
-  for (const sc of ONLY) { const rr = res.filter(r => r.scen === sc); console.log(`\n--- ${sc}`); console.log(report(rr).text.split('\n').filter(l => /hit rate|air |ship |sub |pt |seen|carrier|battleship|cruiser|scored/.test(l)).join('\n')); }
+  for (const sc of ONLY) { const rr = res.filter(r => r.scen === sc); console.log(`\n--- ${sc}`); console.log(report(rr).text.split('\n').filter(l => /hit rate|air |ship |sub |pt |seen|carrier|battleship|cruiser|scored|launches/.test(l)).join('\n')); }
   if (JSON_OUT) fs.writeFileSync(JSON_OUT, JSON.stringify({ when: new Date().toISOString(), args: argv, summary: R.out, rounds: res }, null, 0));
   console.log(`\n(${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 })().catch(e => { console.error(e); process.exit(1); });
