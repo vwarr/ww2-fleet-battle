@@ -120,6 +120,10 @@ async function flak(b) {
     await snap(p, 'flak_' + tag, JSON.stringify(await p.evaluate(() => WW.combatAA._debug())));
     await p.evaluate(() => { const c = __cv; window.__look = { s: { x: c.x, z: c.z }, d: 260, h: 60, brg: c.heading + 2.4, y: 30 }; });
     await frames(p, 4); await snap(p, 'flak_' + tag + '_wide');
+    // close to the bursts: the flash cores (combat_aa.js core + flash) in view
+    await p.evaluate(() => { const c = __cv; window.__look = { s: { x: c.x, z: c.z }, d: 45, h: 6, brg: c.heading + 1.2, y: 26 }; });
+    for (let k = 0; k < 40; k++) { await frames(p, 1); if (await p.evaluate(() => WW.combatAA._debug().cores > 1)) break; }
+    await snap(p, 'flak_' + tag + '_close', JSON.stringify(await p.evaluate(() => WW.combatAA._debug())));
   }
   console.log('errors:', p.errs.length, p.errs.slice(0, 5)); await p.close();
 }
@@ -138,14 +142,17 @@ async function rough(b) {
     const rec = (x, y, z) => { const D = window.__deck; if (!D) return; let best = 1e9, by = 0; for (const q of D) { const d = Math.hypot(q.x - x, q.z - z); if (d < best) { best = d; by = q.y; } } if (best < 1.2) __off.push(y - by); };
     WW.fx.fire = function (x, y, z) { rec(x, y - 0.1, z); return f0.apply(this, arguments); };
     // the posed site positions of the last frame (after shipSwell.pose: the deck the camera sees)
-    const ui = WW.ui.update; WW.ui.update = function () { const S = cv.dmgSites || []; cv.group.updateMatrix(); window.__deck = S.map(q => new THREE.Vector3(q.lx, q.ly, q.lz).applyMatrix4(cv.group.matrix)); return ui.apply(this, arguments); };
+    // and WW.damage.siteWorld at frame time (night_fx.js reads it for the fire lights): it must equal the posed deck
+    window.__sw = 0;
+    const ui = WW.ui.update; WW.ui.update = function () { const S = cv.dmgSites || []; cv.group.updateMatrix(); window.__deck = S.map(q => new THREE.Vector3(q.lx, q.ly, q.lz).applyMatrix4(cv.group.matrix));
+      for (let i = 0; i < S.length; i++) { const w = WW.damage.siteWorld(cv, i); __sw = Math.max(__sw, Math.abs(w.y - __deck[i].y)); } return ui.apply(this, arguments); };
     return { sea: WW.sea && WW.sea.active, sites: (cv.dmgSites || []).length, key: cv.cls && cv.cls.key };
   }, SEED);
   console.log('rough', JSON.stringify(r));
   await p.evaluate(() => { const s = __cv; look(s, s.stats.length * 0.7 + 5, 2.5, s.heading + 1.75, 2); });
   await frames(p, 150);
   const st = await p.evaluate(() => { const a = __off.map(Math.abs); a.sort((x, y) => x - y); return { n: a.length, max: +(a[a.length - 1] || 0).toFixed(3), p90: +(a[Math.floor(a.length * 0.9)] || 0).toFixed(3), mean: +(a.reduce((s, x) => s + x, 0) / (a.length || 1)).toFixed(3) }; });
-  console.log('fire spawn off the posed deck', JSON.stringify(st));
+  console.log('fire spawn off the posed deck', JSON.stringify(st), ' frame-time siteWorld off the posed deck, max', await p.evaluate(() => __sw.toFixed(4)));
   await snap(p, 'rough_carrier_fire_close');
   await frames(p, 17); await snap(p, 'rough_carrier_fire_close_b');
   await p.evaluate(() => { const s = __cv; look(s, s.stats.length * 1.6 + 14, 6, s.heading + 2.2, 2); }); await frames(p, 4); await snap(p, 'rough_carrier_fire_medium');

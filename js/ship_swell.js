@@ -173,6 +173,7 @@ window.WW = window.WW || {};
   // smoke at her hit sites, funnel smoke, the avgas plumes) is placed on the deck the camera sees, posedPoint().
   // mark() (main.js, before any pose) takes the sim's matrix; seal() at the end of pose() the posed one.
   const simM = new WeakMap(), poseL = new WeakMap(), _mi = new THREE.Matrix4();
+  let posedNow = false;   // between pose() and unpose() the groups already carry the pose: posedPoint must not add it again
   function mark() {
     if (WW.simOnly) return;
     for (const s of WW.world.ships) {
@@ -194,17 +195,18 @@ window.WW = window.WW || {};
       o.copy(L);
     }
   }
-  // a ship-local point (lx, ly, lz) in the world on her posed hull, from her current (sim) matrix: call during the sim
+  // a ship-local point (lx, ly, lz) in the world on her posed hull: during the sim from her sim matrix and the pose
+  // delta; at frame time (posed) from her matrix alone
   function posedPoint(s, lx, ly, lz, out) {
     s.group.updateMatrix();
     out.set(lx, ly, lz);
-    const L = poseL.get(s); if (L) out.applyMatrix4(L);
+    const L = posedNow ? null : poseL.get(s); if (L) out.applyMatrix4(L);
     return out.applyMatrix4(s.group.matrix);
   }
 
   function pose(rdt) {
     stats.ships = stats.planes = stats.floaters = 0;
-    try { poseAll(rdt); } finally { if (!WW.simOnly) sealDeltas(); }
+    try { poseAll(rdt); } finally { if (!WW.simOnly) { sealDeltas(); posedNow = true; } }
   }
   function poseAll(rdt) {
     if (WW.simOnly || !WW.sea || !WW.sea.active) return;
@@ -219,6 +221,7 @@ window.WW = window.WW || {};
     poseFloaters();
   }
   function unpose() {
+    posedNow = false;
     for (const [g, P] of posed) {
       // untouched since: give back exactly what the sim (or the module that owns it) left
       if (g.position.x === P.x1 && g.position.y === P.y1 && g.position.z === P.z1 && g.rotation.x === P.rx1 && g.rotation.y === P.ry1 && g.rotation.z === P.rz1) {

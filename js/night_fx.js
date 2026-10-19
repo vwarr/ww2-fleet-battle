@@ -76,7 +76,7 @@ window.WW = window.WW || {};
       s.visible = false; s.renderOrder = 6; S.add(s); flares.push(s);
     }
     WW.on('shellFired', e => { if (n > 0.2 && e && (e.cal === 'big' || e.cal === 'med')) addFlash(e.x, (e.y || 2) + 1, e.z, e.cal === 'big' ? 2.2 : 1.4, 0.14, 70); });
-    WW.on('shipBoom', e => { if (n > 0.2 && e) { addFlash(e.x, (e.y || 2) + 3, e.z, 1.8, 0.35, 70); if (e.ship) flareShip(e.ship); } });   // short: a flash, not a floodlight
+    WW.on('shipBoom', e => { if (n > 0.2 && e) { addFlash(e.x, (e.y || 2) + 3, e.z, 1.8, 0.35, 70, true); if (e.ship) flareShip(e.ship); } });   // short: a flash, not a floodlight
     WW.on('starShell', sh => { if (n > 0.1 && sh && sh.by && WW.fx) WW.fx.muzzleFlash(sh.fromX, 3, sh.fromZ); });
     WW.on('roundStart', () => { flashes.length = 0; });
     (WW.camHooks = WW.camHooks || []).push(camHook);
@@ -84,13 +84,13 @@ window.WW = window.WW || {};
   }
   // flashes at one spot in the same instant (a sinking ship's boom, her break and the blast all at once) merge into one:
   // the brightest, not their sum
-  function addFlash(x, y, z, i, life, dist) {
-    for (const f of flashes) if (f.t < 0.25 && Math.abs(f.x - x) + Math.abs(f.z - z) < 8) {
+  function addFlash(x, y, z, i, life, dist, merge) {
+    if (merge) for (const f of flashes) if (f.merge && f.t < 0.25 && Math.abs(f.x - x) + Math.abs(f.z - z) < 8) {
       const left = f.i * (1 - f.t / f.life);
       if (i > left) { f.life = Math.max(life, f.life - f.t); f.i = i; f.t = 0; f.dist = Math.max(dist, f.dist); f.x = x; f.y = y; f.z = z; }
       return;
     }
-    if (flashes.length > 6) flashes.shift(); flashes.push({ x, y, z, i, life, t: 0, dist });
+    if (flashes.length > 6) flashes.shift(); flashes.push({ x, y, z, i, life, t: 0, dist, merge: !!merge });
   }
 
   function topY(s) { return s.model && s.model._hg ? s.model._hg[2] : 2; }
@@ -291,7 +291,7 @@ window.WW = window.WW || {};
     S.pick.night = true;
   }
   // a big flash that lights the scene at night (fx_critical.js: a magazine, a hangar going up)
-  function flash(x, y, z, i, life, dist) { if (n > 0.2) addFlash(x, y, z, i, life, dist); }
+  function flash(x, y, z, i, life, dist) { if (n > 0.2) addFlash(x, y, z, i, life, dist, true); }
   WW.nightFx = { update, flash, stats: () => ({ lights: lights.filter(L => L.intensity > 0).length, pools: pools.filter(m => m.visible).length, cones: cones.filter(m => m.visible).length,
     streaks: streaks.filter(m => m.visible).length, fires: fireList.length }) };
 })(window.WW);
