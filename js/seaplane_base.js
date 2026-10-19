@@ -16,7 +16,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  const SHORE = 10, RUN = 80, MIN_D = 1.3, R0 = 30, R1 = 190, APRON = 6;
+  const SHORE = 10, RUN = 80, MIN_D = 1.3, R0 = 30, R1 = 190, APRON = 4;   // APRON: waterline -> apron centre (the apron 48 x 43 m, models_base.js)
   function ownedRamp(nation) {
     const b = WW.islandBase && WW.islandBase.base;
     if (!b || b.nation !== nation || !b.seaplane || b.seaplane.f.out) return null;

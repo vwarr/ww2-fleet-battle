@@ -219,7 +219,7 @@ window.WW = window.WW || {};
     return false;
   }
   function wreckAtStop(p, b) {
-    var q = b.layout.toL(p.x, p.z), r = rad(p.variant), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + r && Math.abs(q.u) < 48;
+    var q = b.layout.toL(p.x, p.z), r = rad(p.variant), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + r && Math.abs(q.u) < WW.airfieldLayout.HALF + 5;
     rw = rw || b.layout.crossD(q.u, q.v) < WW.airfieldLayout.RUN_HALF_W + r;
     var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, k: p.kind, t: WW.time.now, runway: rw, crash: true };   // k: a guest carrier plane's kind (variant null, land_flow.js field)
     var on = null; for (var i = 0; b.wrecks && i < b.wrecks.length && !on; i++) if (Math.hypot(b.wrecks[i].x - w.x, b.wrecks[i].z - w.z) < b.wrecks[i].r + w.r) on = b.wrecks[i];
@@ -389,7 +389,7 @@ window.WW = window.WW || {};
   // a plane on the ground (taxiing, holding, rolling) destroyed where it stands: a wreck there (a taxiway, the runway:
   // b.wrecks, an obstruction until the crash crew clears it); its spot is free for a reserve plane
   function wreckGround(p, b) {
-    var q = b.layout.toL(p.x, p.z), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + rad(p.variant) && Math.abs(q.u) < 48;
+    var q = b.layout.toL(p.x, p.z), rw = Math.abs(q.v) < WW.airfieldLayout.RUN_HALF_W + rad(p.variant) && Math.abs(q.u) < WW.airfieldLayout.HALF + 5;
     (b.wrecks = b.wrecks || []).push({ x: p.x, z: p.z, h: p.heading, r: rad(p.variant), v: p.variant, k: p.kind, t: WW.time.now, runway: rw });
     var sl = p.slot; if (sl && sl.plane === p) { sl.state = 'empty'; sl.plane = null; }
     var hq = b.ops.holdQ.indexOf(p); if (hq >= 0) b.ops.holdQ.splice(hq, 1);
@@ -433,7 +433,7 @@ window.WW = window.WW || {};
     if (!b || !b.slots || !b.layout) return null;
     var r = rad(p.variant), L = b.layout, q = L.toL(p.x, p.z), AL = WW.airfieldLayout, i;
     smash(b, p.x, p.z, r, true, p);
-    var rw = (Math.abs(q.v) < AL.RUN_HALF_W + r && Math.abs(q.u) < 48) || L.crossD(q.u, q.v) < AL.RUN_HALF_W + r;
+    var rw = (Math.abs(q.v) < AL.RUN_HALF_W + r && Math.abs(q.u) < WW.airfieldLayout.HALF + 5) || L.crossD(q.u, q.v) < AL.RUN_HALF_W + r;
     if (!rw && !AL.onNetwork(L, q.u, q.v, r)) return null;   // on the grass, among the revetments: in no one's way
     for (i = 0; b.wrecks && i < b.wrecks.length; i++) { var o = b.wrecks[i]; if (Math.hypot(o.x - p.x, o.z - p.z) < o.r + r) { o.runway = o.runway || rw; return o; } }   // on another wreck: one heap to clear
     var w = { x: p.x, z: p.z, h: p.heading, r: r, v: p.variant, k: p.kind, t: WW.time.now, runway: rw, fell: true };

@@ -138,7 +138,7 @@ window.WW = window.WW || {};
       stretchers.count = 0; stretchers.frustumCulled = false; stretchers.castShadow = true; WW.scene.add(stretchers);
     }
     if (nS >= 8) return;
-    const k = 0.24 * (WW.baseLife ? WW.baseLife.FIG_K : 1);
+    const k = 0.28 * ((WW.baseLifeLayout && WW.baseLifeLayout.CAMP_K) || 1);   // a 1.9 m stretcher (the men are true size)
     _q.setFromEuler(_e.set(0, -face, 0)); _p.set(x, y, z); _s.set(k, k, k);
     stretchers.setMatrixAt(nS++, _m.compose(_p, _q, _s)); stretchers.count = nS; stretchers.instanceMatrix.needsUpdate = true;
   }

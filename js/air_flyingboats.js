@@ -300,8 +300,9 @@ window.WW = window.WW || {};
     }
     wakes(dt, size) { // visual only (Math.random): wake and spray off the hull
       if (!WW.fx || !(this.speed > 1)) return;
-      if (Math.random() < dt * (2 + this.speed * 0.3)) WW.fx.wake(this.x - Math.cos(this.heading) * 3, this.z - Math.sin(this.heading) * 3, this.heading, size + this.speed * 0.03);
-      if (this.speed > 8 && Math.random() < dt * this.speed * 0.25) WW.fx.splash(this.x + Math.cos(this.heading) * 2, this.z + Math.sin(this.heading) * 2, 0.35 + this.speed * 0.02);
+      var k = SCALE / 0.82;   // offsets and sizes written at the 0.82 plane scale (a PBY's hull ~4 u long there, 2 u at true size)
+      if (Math.random() < dt * (2 + this.speed * 0.3)) WW.fx.wake(this.x - Math.cos(this.heading) * 3 * k, this.z - Math.sin(this.heading) * 3 * k, this.heading, (size + this.speed * 0.03) * Math.sqrt(k));
+      if (this.speed > 8 && Math.random() < dt * this.speed * 0.25) WW.fx.splash(this.x + Math.cos(this.heading) * 2 * k, this.z + Math.sin(this.heading) * 2 * k, (0.35 + this.speed * 0.02) * Math.sqrt(k));
     }
     remove() {
       if (this.removed) return;

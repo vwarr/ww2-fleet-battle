@@ -227,7 +227,7 @@ window.WW = window.WW || {};
       _q.setFromUnitVectors(shot.dir, _d); _q0.identity().slerp(_q, Math.min(k, 0.7 * rdt / ang));
       shot.dir.applyQuaternion(_q0).normalize();
     }
-    const FK = Math.pow(WW.cfg.PLANE_K || 1, 0.6), dir = shot.dir, back = 16 * FK;   // closer in for smaller planes (16 at the 1.7 plane scale)
+    const FK = WW.cfg.PLANE_FRAME || 1, dir = shot.dir, back = 16 * FK;   // closer in for smaller planes (16 at the 1.7 plane scale)
     _r.set(-dir.z, 0, dir.x).normalize();
     shot.lat = shot.lat === undefined ? shot.side * 3 * FK : shot.lat;
     gP.set(a.x - dir.x * back + _r.x * shot.lat, a.y - dir.y * back + 5 * FK, a.z - dir.z * back + _r.z * shot.lat);

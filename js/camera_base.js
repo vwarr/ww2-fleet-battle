@@ -21,7 +21,7 @@ window.WW = window.WW || {};
   const WIN = 45, STRIKE_WIN = 30, CAMP = 5, LINE = [4.5, 10], RUN_MAX = 22, STRIKE_MAX = 18, BEAT_WAIT = 14, BIG = 8.5, HOLD_PR = 8.2;
   const ORDER = { warm: 0, taxi: 1, hold: 2, lineup: 3, roll: 4, stopped: 2, climb: 5 };
   const SHIP = { carrier: 'carriers', battleship: 'battleships', cruiser: 'cruisers', destroyer: 'destroyers' };
-  const PFK = Math.pow(WW.cfg.PLANE_K || 1, 0.6);   // camera.js: plane framing distances close in with the plane size
+  const PFK = WW.cfg.PLANE_FRAME || 1;   // camera.js: plane framing distances close in with the plane size
   let S = null, sid = 0, struck = false;
   const ST = { seqs: 0, beats: {}, lapsed: 0 };
   const base = () => (WW.islandBase && WW.islandBase.base) || null;

@@ -221,7 +221,7 @@ window.WW = window.WW || {};
   function landRunway(b) {
     if (b.neutralized) return null;
     const o = b.ops;
-    if (G().opsOpen(b)) { const h = o.dir > 0 ? b.heading : b.heading + Math.PI, td = b.layout.toW(-o.dir * 34, 0); return { h, x: td.x, z: td.z, main: true }; }
+    if (G().opsOpen(b)) { const h = o.dir > 0 ? b.heading : b.heading + Math.PI, td = b.layout.toW(-o.dir * WW.airfieldLayout.HALF * 0.79, 0); return { h, x: td.x, z: td.z, main: true }; }
     return crossR(b);
   }
   // the cross runway into the wind (null: shut)

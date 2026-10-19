@@ -125,8 +125,9 @@ window.WW = window.WW || {};
       case 'fire': return (TPL[k] = B.vehicle('crash', nat));
       default: TPL[k] = null; return null;
     }
-    TPL[k] = B._bake(g); return TPL[k];
+    TPL[k] = B._bake(g); TPL[k].scale(CK(), CK(), CK()); TPL[k].computeBoundingSphere(); return TPL[k];   // drawn at true size
   }
+  function CK() { return (WW.baseLifeLayout && WW.baseLifeLayout.CAMP_K) || 1; }   // the camp's true-size factor (base_life_layout.js)
   // ---- vehicles: nose +x, wheels on y = 0, ~2.4 long at x1 (drawn x VEH_K) ----
   function wheels(g, xs, w, r) { xs.forEach(function (x) { [-1, 1].forEach(function (s) { var t = M._cyl(g, C.tyre, r, 0.2, x, r, s * w + s * 0.1); t.rotation.x = PI / 2; t.position.y = r; }); }); }
   function vehicle(kind, nation) {
@@ -163,11 +164,11 @@ window.WW = window.WW || {};
         m.castShadow = d.kind !== 'trench'; m.receiveShadow = true; part.mesh = m;
       }
       if (d.kind === 'mg') { var gn = new THREE.Mesh(tpl('mggun', nat), mat); gn.position.set(d.x, y + 0.02, d.z); gn.rotation.y = -d.a; gn.castShadow = true; part.gun = gn; }
-      if (d.kind === 'light') { var hd = new THREE.Mesh(tpl('lamp', nat), mat); hd.position.set(d.x, y + 0.5, d.z); hd.rotation.y = -d.a; part.head = hd; }
-      if (d.kind === 'flag') { var fl = new THREE.Mesh(B._tpl().flag[nat], mat); fl.position.set(d.x, y + 5.3, d.z); part.flag = fl; }
+      if (d.kind === 'light') { var hd = new THREE.Mesh(tpl('lamp', nat), mat); hd.position.set(d.x, y + 0.5 * CK(), d.z); hd.rotation.y = -d.a; part.head = hd; }
+      if (d.kind === 'flag') { var fl = new THREE.Mesh(B._tpl().flag[nat], mat); fl.position.set(d.x, y + 5.3 * CK(), d.z); fl.scale.setScalar(CK()); part.flag = fl; }
       (WIN[d.kind] || []).forEach(function (w) { // lit windows: tiny boxes just proud of the walls
-        var c = Math.cos(d.a), s = Math.sin(d.a), q = wg.clone(); q.scale(0.04, 0.24, 0.26); q.rotateY(Math.abs(w[0]) < 1 ? PI / 2 : 0);
-        q.rotateY(-d.a); q.translate(d.x + c * w[0] - s * w[2], y + w[1] + 0.12, d.z + s * w[0] + c * w[2]); glowG.push(q);
+        var c = Math.cos(d.a), s = Math.sin(d.a), q = wg.clone(), ck = CK(); q.scale(0.04 * ck, 0.24 * ck, 0.26 * ck); q.rotateY(Math.abs(w[0]) < 1 ? PI / 2 : 0);
+        q.rotateY(-d.a); q.translate(d.x + (c * w[0] - s * w[2]) * ck, y + (w[1] + 0.12) * ck, d.z + (s * w[0] + c * w[2]) * ck); glowG.push(q);
       });
       parts.push(part);
     });

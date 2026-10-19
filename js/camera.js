@@ -62,7 +62,7 @@ window.WW = window.WW || {};
   // what a wide / diorama shot looks at: the front line once the fleets are close, else one fleet on its approach
   // (on the big map the midpoint between two distant fleets is empty sea)
   const APART = 280;
-  const PFK = Math.pow(WW.cfg.PLANE_K || 1, 0.6);   // plane framing distances close in with the plane size (camera_story_shots FK)
+  const PFK = WW.cfg.PLANE_FRAME || 1;   // plane framing distances close in with the plane size (camera_story_shots FK)
   function sceneCentre() {
     const f = frontCentre();
     if (!(f.d > APART)) return f;

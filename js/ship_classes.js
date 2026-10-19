@@ -25,7 +25,11 @@ window.WW = window.WW || {};
   var m = /[?&]planeScale=([0-9.]+)/.exec(typeof location !== 'undefined' ? location.search : '');
   var PS = m ? parseFloat(m[1]) : 0.41, PS_TRUE = 0.41, PS_REF = 1.7;
   var DK = Math.pow(WW.clamp(PS / PS_TRUE, 1, 5), 0.42);   // flight deck widening for a plane scale over true (1 at 0.41, 1.34 at 0.82, 1.8 at 1.7)
-  Object.assign(WW.cfg, { L: L, U_PER_M: U, PLANE_SCALE: PS, PLANE_SCALE_TRUE: PS_TRUE, PLANE_K: PS / PS_REF, DECK_K: DK });
+  // PLANE_FRAME: the camera's single-plane framing distances (chase, story, dogfight, the keep-off round a plane; written
+  // at the 1.7 scale) x this. It is linear in the plane size from the 0.82 scale's framing (PLANE_K^0.6 = 0.645 there),
+  // so a true-size plane fills the frame as a 2x one did (0.32 at 0.41).
+  var PFK = Math.pow(0.82 / PS_REF, 0.6) * PS / 0.82;
+  Object.assign(WW.cfg, { L: L, U_PER_M: U, PLANE_SCALE: PS, PLANE_SCALE_TRUE: PS_TRUE, PLANE_K: PS / PS_REF, DECK_K: DK, PLANE_FRAME: PFK });
 
   // Type baselines at true size (the class table below overrides per ship).
   var BASE_LEN = { carrier: 26, battleship: 23, cruiser: 19.5, destroyer: 12, submarine: 10.5, pt: 2.5 };

@@ -9,7 +9,7 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  const U0 = -130, V0 = -115, NU = 261, NV = 231, N = NU * NV, MAXEXP = 240000;
+  const U0 = -150, V0 = -115, NU = 301, NV = 231, N = NU * NV, MAXEXP = 240000;
   let G = null, budget = 2;
   const ST = { ms: 0, n: 0 };   // planning cost (all new paths so far)   // new (uncached) paths per frame: a crowd starting at once spreads its planning over frames
   const id = (i, j) => j * NU + i;
@@ -31,7 +31,7 @@ window.WW = window.WW || {};
       const u = U0 + i, v = V0 + j, w = L.toW(u, v), d = WW.terrain.depthAt(w.x, w.z), k = id(i, j);
       if (!(d < -0.35)) { wall[k] = vwall[k] = 1; continue; }
       if (d < -2.6) { vwall[k] = 1; cost[k] = 3; continue; }        // the hillside: people only
-      const run = (Math.abs(u) < 47 && Math.abs(v) < AL.RUN_HALF_W + 1.5) || L.crossD(u, v) < AL.RUN_HALF_W + 1.5;
+      const run = (Math.abs(u) < AL.HALF + 4 && Math.abs(v) < AL.RUN_HALF_W + 1.5) || L.crossD(u, v) < AL.RUN_HALF_W + 1.5;
       const net = run || AL.onNetwork(L, u, v, 0);
       cost[k] = run ? 6 : net ? 3 : 1; vcost[k] = 1;
       if (net || AL.onNetwork(L, u, v, 1.5)) vwall[k] = 1;   // the camp's trucks keep off the runways and taxiways (the planes' ground)
@@ -40,7 +40,7 @@ window.WW = window.WW || {};
     for (const d of b.decor || []) { if (d.solid) stamp(wall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 0.55); if (d.kind !== 'drill' && d.kind !== 'yard') stamp(vwall, 1, d.u, d.v, d.a - S.h, d.hx, d.hz, 1.3); }
     if (built) for (const part of built.parts) {
       if (part.decor || !part.mesh) continue;
-      const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 4.0, 4.0, 2.0); continue; }   // pad: a truck's half length
+      const k = part.f.kind; if (k === 'aa' || k === 'battery') { const q = site(part.f.x, part.f.z); stamp(vwall, 1, q.u, q.v, 0, 1.0, 1.0, 1.0); continue; }   // the pit / emplacement (models_base.js, true size) + a truck's half length
       const m = part.mesh, g = m.geometry; if (!g.boundingBox) g.computeBoundingBox();
       const bb = g.boundingBox, h = -m.rotation.y, cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
       const q = site(m.position.x + Math.cos(h) * cx - Math.sin(h) * cz, m.position.z + Math.sin(h) * cx + Math.cos(h) * cz);

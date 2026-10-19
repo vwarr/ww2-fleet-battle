@@ -14,7 +14,7 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
-  const FAR = 420, NEAR_FIG = 170, FIG_K = 2 * Math.pow(WW.cfg.PLANE_K || 1, 0.73), // ground crews x the sailors' size: about a fifth of a fighter's length (2 at the 1.7 plane scale)
+  const FAR = 420, NEAR_FIG = 170, FIG_K = 1, // ground crews: the sailors' size (models_crew.js CREW_M; was 2 x PLANE_K^0.73 when the sailors were oversized)
     MAX_FIG = 170, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
   let trace = null;   // tests/base_clip.js: this frame's figures and vehicles ({ figs, veh })
   let base = null, planes = new Map(), wrecks = new Map(), prev = new Map(), crews = new Map(), trips = [], veh = {}, scrT = -1e9, fig = 0;
@@ -151,6 +151,10 @@ window.WW = window.WW || {};
     }
     return c;
   }
+  // the crews' stand-offs round a plane (written at the 1.7 scale, where a revetment was 2.7 u wider than the plane):
+  // x the revetments' berm margin, so a man backing off stays short of the next spot's wingtip
+  const AWAY_K = Math.min(1, WW.airfieldLayout.BERM_S / 1.4);
+  const mrSide = c => (c.men[1] && c.men[1].r < 0 ? -1 : 1);
   function crewsAt(cam, now) {
     const nat = base.nation, scramble = performance.now() / 1000 - scrT < 10;
     for (const s of base.slots) {
@@ -163,9 +167,9 @@ window.WW = window.WW || {};
         const p = s.plane;
         if (!c.left) c.left = now;
         const t = now - c.left; if (t > 18) continue;
-        away = Math.min(1, t / (scramble ? 1.2 : 3)) * (scramble ? 1.8 : 1.2); run = scramble && t < 2;   // clear of the props, short of the next revetment
+        away = Math.min(1, t / (scramble ? 1.2 : 3)) * (scramble ? 1.8 : 1.2) * AWAY_K; run = scramble && t < 2;   // clear of the props, short of the next revetment
         if (p && p.alive && p.rwPh === 'warm' && t < 18) { // the plane captain stays at the wingtip till it rolls
-          const C = CLS(s.v); figure(p.x + rx * (C.span / 2 + 0.9) + fx * 1.2, p.z + rz * (C.span / 2 + 0.9) + fz * 1.2, h + Math.PI / 2 + Math.PI, nat, 'y', false);
+          const C = CLS(s.v), ph = p.heading, px = Math.cos(ph), pz = Math.sin(ph), sg = mrSide(c); figure(p.x - pz * sg * (C.span / 2 + 0.9 * AWAY_K) + px * 1.2 * AWAY_K, p.z + px * sg * (C.span / 2 + 0.9 * AWAY_K) + pz * 1.2 * AWAY_K, ph + sg * Math.PI / 2 + Math.PI, nat, 'y', false);   // off the plane's own wingtip as it turns out
         }
       } else if (s.state === 'parked' || s.state === 'rearm') c.left = null;
       else continue;

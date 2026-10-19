@@ -14,10 +14,17 @@
 window.WW = window.WW || {};
 (function () {
   'use strict';
-  var TAXI_V = 16, HOLD_V = 11, TAXI_U = 44, LINEUP_U = 39, RUN_HALF_W = 4.5;
+  // The plan follows the runways (terrain_islands.js: true 1942 size, a 1,550 m main runway 61 m wide): HALF is the main
+  // runway's half length. Taxiways ~150 m off the centreline, hold-short 105 m (the berms' and lanes' margins below are
+  // real distances: a taxiing wingtip clears a parked nose by ~12 m, a revetment's earth wall ~5 m off the wingtip).
+  var TI = WW.terrainIslands, HALF = (TI && TI.RUN1 ? TI.RUN1 : 86) / 2;
+  var TAXI_V = 16, HOLD_V = 11, TAXI_U = HALF + 1, LINEUP_U = HALF - 4, RUN_HALF_W = TI && TI.RUN_W ? TI.RUN_W : 4.5;
   var PK = WW.cfg.PLANE_K || 1;   // the plane footprints below are at the 1.7 plane scale (ship_classes.js)
   var CLS = { S: { len: 4.6 * PK, span: 5.3 * PK }, M: { len: 6.4 * PK, span: 8.0 * PK }, L: { len: 8.3 * PK, span: 11.8 * PK } };
-  var COL_U = 38, ROW_U = 64, MAX_V = 66, CLIMB_U = 100; // climb-out lanes run to |u| CLIMB_U past the main runway's ends
+  var COL_U = HALF - 5, ROW_U = HALF + 21, MAX_V = 66, CLIMB_U = HALF + 57; // climb-out lanes run to |u| CLIMB_U past the main runway's ends
+  // revetments: the earth wall's centreline this far off the wingtip / behind the tail (real berms ~3 m high, ~5 m thick;
+  // 1.35 / 1.4 u at the 1.7 scale, x PLANE_K^0.5 so a 2x or 4x plane keeps room for its bigger crew and trucks)
+  var BERM_S = 1.35 * Math.sqrt(PK) + 0.05, BERM_B = 1.4 * Math.sqrt(PK) + 0.05, PITCH = 2 * BERM_S;
 
   function make(S) {
     var c = Math.cos(S.h), s = Math.sin(S.h), x0 = S.x, z0 = S.z;
@@ -39,7 +46,7 @@ window.WW = window.WW || {};
   // Ground kept for the taxi network (no facility on it): runways, taxiways, hold-short connectors, columns, lanes.
   function onNetwork(L, u, v, r) {
     var av = Math.abs(v);
-    if (Math.abs(u) < 47 + r && av < RUN_HALF_W + 2 + r) return true;                 // main runway
+    if (Math.abs(u) < HALF + 4 + r && av < RUN_HALF_W + 2 + r) return true;           // main runway
     if (L.crossD(u, v) < RUN_HALF_W + 2 + r) return true;                             // cross runway
     if (Math.abs(u) < TAXI_U + 4 + r && Math.abs(av - TAXI_V) < 3 + r) return true; // taxiways
     if (Math.abs(Math.abs(u) - TAXI_U) < 4 + r && av < TAXI_V + 3) return true;      // hold-short connectors
@@ -110,11 +117,14 @@ window.WW = window.WW || {};
     for (var a = -1; a <= 1; a++) for (var b = -1; b <= 1; b++) if (!home(L, u + a * r, v + b * r)) return false;
     return true;
   }
+  // a site-local u written for the old 86 u main runway (|u| 43 its end) -> the same place by the true-size runway:
+  // along it in proportion, past its end by the same distance (at most 14 u past it: on the field island)
+  function stretch(u) { return Math.abs(u) > 43 ? Math.sign(u) * Math.min(HALF + 14, Math.abs(u) - 43 + HALF) : u * HALF / 43; }
   function addFac(L, u, v, r) { L.facs.push({ u: u, v: v, r: r }); }
   // the climb-out / approach lanes past both ends of each runway: no building there (a plane lifting off at the far
   // end is still low over them)
   function climbOut(L, u, v, r) {
-    if (Math.abs(u) > 40 && Math.abs(u) < CLIMB_U && Math.abs(v) < RUN_HALF_W + 3 + r) return true;
+    if (Math.abs(u) > HALF - 3 && Math.abs(u) < CLIMB_U && Math.abs(v) < RUN_HALF_W + 3 + r) return true;
     var R2 = L.S.runways[1]; if (!R2) return false;
     var q = L.toL(R2.x, R2.z), a = R2.h - L.S.h, c = Math.cos(a), s = Math.sin(a), du = u - q.u, dv = v - q.v;
     var al = du * c + dv * s, ac = -du * s + dv * c;
@@ -179,7 +189,7 @@ window.WW = window.WW || {};
           var w = L.toW(u, sp.v); sp.x = w.x; sp.z = w.z;
           sp.h = Math.atan2(-sd * Math.cos(L.S.h), sd * Math.sin(L.S.h)); // nose to the lane (toward the runway)
           L.spots.push(sp); row.spots.push(sp); need[cls]--; n++;
-          u += C.span + 2.7 - 0.5;                                          // the next revetment: its berm is shared with this one (models_base revetWalls)
+          u += C.span + PITCH - 0.5;                                        // the next revetment: its berm is shared with this one (models_base revetWalls)
         }
         if (n) { L.rows.push(row); placed += n; edge[sd] = spotV + C.len / 2 + 1; prevHalf[sd] = 0; }
         else full[fk] = true;
@@ -233,7 +243,7 @@ window.WW = window.WW || {};
   // distance (site units) from a world point to the taxi network (runways count): the ground-ops test
   function netDist(L, x, z) {
     var q = L.toL(x, z), u = q.u, v = q.v, av = Math.abs(v), best = 1e9;
-    if (Math.abs(u) <= 47) best = Math.min(best, Math.max(0, av - RUN_HALF_W));
+    if (Math.abs(u) <= HALF + 4) best = Math.min(best, Math.max(0, av - RUN_HALF_W));
     best = Math.min(best, Math.max(0, L.crossD(u, v) - RUN_HALF_W));
     if (Math.abs(u) <= TAXI_U) best = Math.min(best, Math.abs(av - TAXI_V));
     if (av <= TAXI_V + 0.1) best = Math.min(best, Math.abs(Math.abs(u) - TAXI_U));
@@ -245,5 +255,5 @@ window.WW = window.WW || {};
   }
 
   WW.airfieldLayout = { make: make, columns: columns, rows: rows, free: free, addFac: addFac, outPath: outPath, inPath: inPath,
-    netDist: netDist, onNetwork: onNetwork, home: home, homeBox: homeBox, climbOut: climbOut, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
+    netDist: netDist, onNetwork: onNetwork, stretch: stretch, HALF: HALF, BERM_S: BERM_S, BERM_B: BERM_B, home: home, homeBox: homeBox, climbOut: climbOut, CLS: CLS, TAXI_V: TAXI_V, HOLD_V: HOLD_V, TAXI_U: TAXI_U, LINEUP_U: LINEUP_U, RUN_HALF_W: RUN_HALF_W };
 })();

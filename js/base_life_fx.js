@@ -14,7 +14,7 @@ window.WW = window.WW || {};
   let base = null, birds = [], meshes = null, cones = [], sweeps = [];
   const _m = new THREE.Matrix4(), _w = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
   const UP = new THREE.Vector3(0, 1, 0), _v = new THREE.Vector3();
-  const BK = 0.85 * Math.pow(WW.cfg.PLANE_K || 1, 0.5) / 0.69;   // bird size: ~0.35 u long, 0.9 u span at the 0.82 plane scale
+  const BK = 0.2;   // bird size: Laysan albatrosses (Midway's gooney birds), ~0.08 u long, 0.21 u (2 m) span (was 0.85 at the 0.82 plane scale)
   const gy = (x, z) => Math.max(base.site.padH, -WW.terrain.depthAt(x, z));
 
   // ---------- models ----------
