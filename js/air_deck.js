@@ -324,10 +324,14 @@ window.WW = window.WW || {};
         }
         case 'run':
           p.rel += 21 * dt; p.lx += p.rel * dt;
-          if (p.lx >= D.k.bow) { p.deckPh = 'climb'; p.deckT = 0; p.vy = -1.8; p.speed = c.speed + p.rel; }
+          // Off the bow at the take-off speed (the carrier's speed into the wind plus the run), and free from this step on:
+          // integrate() carries it on at that speed, level (vy 0), from where the last deck step left it. (It used to fall
+          // through to onDeck() below with the phase already 'climb', so rel 0: one step at the CARRIER's speed, then a
+          // 1-2 s crawl back up at speedTo's 8 u/s^2, the nose dropping ~10 deg and the prop back to blades: air_fx.js.)
+          if (p.lx >= D.k.bow) { p.deckPh = 'climb'; p.deckT = 0; p.speed = c.speed + p.rel; p.vy = 0; p.turn = 0; return; }
           break;
-        case 'climb': // off the bow: settle a little, then climb away
-          p.turn = 0; p.speedTo(p.pt.speed * 0.9, dt);
+        case 'climb': // off the bow: settle a little, then climb away, never slower than it left the deck
+          p.turn = 0; p.speedTo(Math.max(p.speed, p.pt.speed * 0.9), dt);
           if (p.deckT < 0.6) p.vy += WW.clamp(-1.2 - p.vy, -6 * dt, 6 * dt);
           else p.vy += WW.clamp(5 - p.vy, -6 * dt, 6 * dt);
           if (p.y < 1.2) { p.y = 1.2; p.vy = Math.max(0, p.vy); }
