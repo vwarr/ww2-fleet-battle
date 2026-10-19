@@ -53,7 +53,12 @@ window.WW = window.WW || {};
     if (mine.get(n) === theirs.get(n)) LA.checks++;
     else if (!LA.diverged) { LA.diverged = true; LA.mismatch = { n, page: mine.get(n), worker: theirs.get(n) }; }
   }
-  function pace() { if (worker && !LA.failed) worker.postMessage({ cmd: 'pace', gen: LA.gen, n: liveN(), ahead: Math.round(AHEAD / h()) }); }
+  // (not while the tab is hidden: main.js's background beat steps the round with no director to film it, and the copy
+  // racing alongside it on the same throttled background CPU made each live step ~5x dearer: a 4x battle kept 54% of
+  // wall clock instead of 100%. The copy idles at its last target and catches up on return (the director films with the
+  // live forecast until it is ahead again: usable()).)
+  function pace() { if (worker && !LA.failed && !document.hidden) worker.postMessage({ cmd: 'pace', gen: LA.gen, n: liveN(), ahead: Math.round(AHEAD / h()) }); }
+  if (LA.on) document.addEventListener('visibilitychange', () => { if (!document.hidden) pace(); });
   WW.on('roundStart', () => {
     if (!LA.on) return;
     if (WW.scn && WW.scn().id && WW.scn().id !== 'pacific') { LA.gen++; LA.ev = []; LA.wn = 0; return; }   // (another scenario chosen at run time: no copy)
