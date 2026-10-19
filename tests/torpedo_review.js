@@ -232,6 +232,12 @@ function report(rounds) {
     const o = out.pt[n];
     say(`  ${n}: rounds with PTs ${ptR}, boats ${boats}; launches ${P.length} (${f2(o.perRound)} / round, ${night.length} at night, ${ambN} from an ambush); range ${f0(o.r50)} [${f0(qs(R_, 0.1))}-${f0(qs(R_, 0.9))}] u; target angle ${f0(o.ang50)} [${f0(qs(A_, 0.1))}-${f0(qs(A_, 0.9))}] deg, ahead of the beam ${pc(o.fwd)}; torpedoes ${fired}, hits ${hits} (${pc(o.rate)}), spreads that scored ${pc(o.scored)}; targets ${Object.entries(P.reduce((m, x) => (m[x.q.tgtType] = (m[x.q.tgtType] || 0) + 1, m), {})).map(([k, v]) => k + ' ' + v).join(', ')}; PT lost ${lost} (${f2(o.lostPerRound)} / round, ${pc(boats ? lost / boats : null)} of boats)`);
   }
+  for (const amb of [true, false]) { // the launches from an ambush (ai_pt.js) against the rest (dashes, partner runs)
+    const P = rounds.flatMap(r => r.rec.pt.map(q => ({ q, shots: r.rec.shots }))).filter(x => !!x.q.amb === amb);
+    if (!P.length || (amb && !P.some(x => x.q.amb))) continue;
+    const R_ = P.filter(x => x.q.r !== null).map(x => x.q.r), A_ = P.filter(x => x.q.ang !== null).map(x => x.q.ang), f = P.reduce((a, x) => a + x.q.shots.length, 0), h = P.reduce((a, x) => a + x.q.shots.filter(i => x.shots[i].res === 'hit').length, 0);
+    say(`  ${amb ? 'from an ambush' : 'other runs   '} (both sides): launches ${P.length}, range ${f0(med(R_))} [${f0(qs(R_, 0.1))}-${f0(qs(R_, 0.9))}] u, target angle ${f0(med(A_))} [${f0(qs(A_, 0.1))}-${f0(qs(A_, 0.9))}] deg, ahead of the beam ${pc(A_.filter(v => v < 90).length / (A_.length || 1))}, hits ${h} / ${f} (${pc(f ? h / f : null)})`);
+  }
   const PS = rounds.filter(r => r.rec.ptStats).map(r => r.rec.ptStats);
   if (PS.length && PS[0].amb !== undefined) { const sum = k => PS.reduce((a, q) => a + (q[k] || 0), 0); say(`  ambushes (both sides): set ${sum('amb')}, waits reached ${sum('ambWait')}, runs ${sum('ambRun')}, dropped ${sum('ambLost')}, waits timed out ${sum('ambTime')}, broken off ${sum('ambFlee')}; runs from an ambush ${sum('ambFire')} fired, ${sum('ambAbort')} aborted; dashes refused as stern chases ${sum('astern')}`); }
   say('\nsinkings');
