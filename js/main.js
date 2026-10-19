@@ -355,7 +355,7 @@ window.WW = window.WW || {};
     call('charge', 'update', dt);   // smoke screens, escorts charging to save a carrier (ai_charge.js)
     call('air', 'update', dt);
     call('combat', 'update', dt);
-    if (!WW.simOnly) { call('fx', 'update', dt); call('lifeboats', 'update', dt); } // visual only
+    if (!WW.simOnly && !framed) { call('fx', 'update', dt); call('lifeboats', 'update', dt); } // visual only (the live game's frames run them on frame time: frame())
     updateGame(dt);
   }
   // The live game steps the sim in FIXED steps of LIVE_STEP sim s (camera5): the same steps in the same order whatever the
@@ -368,11 +368,17 @@ window.WW = window.WW || {};
   const LIVE_STEP = 1 / 120, STEP_BUDGET = 30, MAX_BACKLOG = 0.5;
   let acc = 0;
   // WW.afterStep(n): optional hook after each live step (n: the round's step count): the look-ahead worker's log, tests
-  function stepLive() { step(LIVE_STEP); game.stepN = (game.stepN || 0) + 1; if (WW.afterStep) WW.afterStep(game.stepN); }
+  // (render_interp.js: the pose before each step, for the frame's in-between pose; a no-op on sim-only pages)
+  function stepLive() { if (WW.renderInterp) WW.renderInterp.capture(game.stepN || 0); step(LIVE_STEP); game.stepN = (game.stepN || 0) + 1; if (WW.afterStep) WW.afterStep(game.stepN); }
   // (SNAP: a frame within a quarter step of a whole number of steps takes that number, so the frame clock's jitter at 1x
   // never makes a 0-step frame followed by a 2-step one: the sim clock runs a hair elastic against the wall clock instead)
   const SNAP = 0.25;
+  let framed = false;   // inside a frame's advance: the particles and lifeboats run on the frame's sim time instead (frame())
   function advance(simDt) {
+    framed = true;
+    try { advance1(simDt); } finally { framed = false; }
+  }
+  function advance1(simDt) {
     acc += simDt;
     let n = Math.floor(acc / LIVE_STEP + SNAP);
     if (n <= 0) return;
@@ -420,7 +426,16 @@ window.WW = window.WW || {};
     call('shipSwell', 'unpose');   // Normandy: the swell's pose comes off first (ship_swell.js)
     call('dmgVis', 'unpose');      // the sim never sees the visual settling / trim (damage_visuals.js)
     // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
-    advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
+    call('renderInterp', 'unpose'); // render_interp.js: the sim's own poses back before it steps (after the two above)
+    const simDt = rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1);
+    advance(simDt);
+    // Render interpolation (render_interp.js, visual only): the frame lies acc + SNAP steps past the pose before the last
+    // step (SNAP: a frame may take a step up to a quarter early), so every moving thing is drawn, and the camera aims,
+    // at the pose where the frame's time actually is: the same motion every frame however frames and steps line up.
+    call('renderInterp', 'pose', WW.clamp(acc / LIVE_STEP + SNAP, 0, 1), game.stepN || 0);
+    // particles and lifeboats (visual only) age on the frame's sim time, not in whole steps: smoke, wakes and spray
+    // move every frame in slow motion too
+    if (simDt > 0) { call('fx', 'update', simDt); call('lifeboats', 'update', simDt); }
     call('sea', 'update', rdt);     // the sea state's clock and the round's sea (sea_state.js), visual only; before what rides it
     call('shipSwell', 'mark');      // the sim's hull matrices, before any pose (ship_swell.js: fires spawn on the posed deck)
     call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
@@ -449,6 +464,7 @@ window.WW = window.WW || {};
     call('ui', 'update', rdt);
     if (WW.post) WW.post.render(scene, camera); else renderer.render(scene, camera);
     call('cam', 'afterRender');
+    call('renderInterp', 'unposeSim'); // the sim objects' own x / z / heading back (input handlers between frames read them)
   }
 
   function setScale(n) { WW.time.scale = WW.clamp(+n || 1, 0.1, 64); }
@@ -458,11 +474,13 @@ window.WW = window.WW || {};
     if (WW.lookahead && WW.lookahead.desync && seconds > 0) WW.lookahead.desync('fastForward');   // (0.05 s steps: not the live round the worker copies)
     call('shipSwell', 'unpose');
     call('dmgVis', 'unpose');
+    call('renderInterp', 'unpose');
     while (left > 1e-9) { const d = Math.min(STEP, left); step(d); left -= d; if (onStep) onStep(d); }
   }
   function stepFixed(n, onStep) {
     call('shipSwell', 'unpose');
     call('dmgVis', 'unpose');
+    call('renderInterp', 'unpose');
     for (let i = 0; i < n; i++) { stepLive(); if (onStep) onStep(); }
   }
   window.__sim = { stats: WW.stats, game: WW.game, world: WW.world, fastForward, setScale, stepFixed, LIVE_STEP,
