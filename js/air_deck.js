@@ -15,6 +15,22 @@ window.WW = window.WW || {};
   const WIND_FOE = 600, HOLD_FOE = 400;   // a known enemy gun ship this close on the wind bearing: launch and recover on the course held
   const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
   const DEEP = 6, LQ_DEEP = 15, RW_DEEP = 12, LW_DEEP = 35;            // a deep stack: the launch window yields sooner, the recovery window runs longer
+  // Re-spotting (1942 practice): a mode change only marks where the parked planes should be (D.spot: 'aft', spotted
+  // for launch, or 'fwd', the forward park clear of the wires). The deck handlers then push them one at a time from the
+  // free end (to the bow: the foremost first; aft: the rearmost first), the next starting once the last has rolled a
+  // plane length: crews planes per column under way at once, HITCH s between starts in a column, at push u/s.
+  // Hysteresis: idle after a recovery, the park stays forward idleHold s (a straggler may still come aboard; the IJN
+  // strikes it below meanwhile); the window clocks (LW_MIN, the launch wait that ends a recovery window) run only once
+  // the deck is re-spotted; a deck spotted for launch is not pushed forward for the first few back (DEFER_*).
+  // Nation doctrine: the USN kept a deck park and re-spotted it by hand (pre-spotting the next deck load while idle);
+  // the IJN spotted from the hangar just before each launch (only the planes ordered off) and struck recovered planes
+  // below by the elevator nearest the forward park (strike), so little moves fore and aft.
+  const DOC = {
+    USN: { crews: 4, push: 4, idleHold: 6, preSpot: true, strike: false },
+    IJN: { crews: 3, push: 4, idleHold: 30, preSpot: false, strike: true },
+  };
+  const HITCH = 0.35, SETTLE = 0.05;
+  const DEFER_N = 3, DEFER_WAIT = 15, DEFER_FREE = 4, DEFER_FUEL = 25;
   const decks = [];                                 // every deck made this round (sunk carriers too)
   const P = () => WW.air._pool;
 
@@ -43,7 +59,8 @@ window.WW = window.WW || {};
     if (c._deck) return c._deck;
     const k = (c.model && c.model.deckDims) || REF, s = k.islandSide || (c.nation === 'IJN' ? -1 : 1); // island side (+1 starboard)
     const D = { c, s, k, run: -s * 1.05 * k.lane, cols: [{ z: s * 0.68 * k.lane, e: [] }, { z: -s * 1.2 * k.lane, e: [] }], loose: [],
-      mode: 'idle', launchers: [], lq: [], riseT: 1, waitT: 0, recT: 0, recN: 0, modeT: 0, filled: false, dy: 2, fold: true };
+      mode: 'idle', launchers: [], lq: [], riseT: 1, waitT: 0, recT: 0, recN: 0, modeT: 0, filled: false, dy: 2, fold: true,
+      spot: 'aft', doc: DOC[c.nation] || DOC.USN, idleT: 0, winT: 0, blk: 0 };
     c._deck = D; decks.push(D);
     return D;
   }
@@ -51,7 +68,7 @@ window.WW = window.WW || {};
     let L = extra || 0;
     for (const e of col.e) L += e.len;
     L += GAP * Math.max(0, col.e.length - (extra ? 0 : 1));
-    return L <= (D.mode === 'recover' ? D.k.bow - D.k.barrier : D.k.aftFront - D.k.stern);
+    return L <= (D.spot === 'fwd' ? D.k.bow - D.k.barrier : D.k.aftFront - D.k.stern);
   }
   function newEntry(D, m, kind, lx, lz, fold, readyAt, ph) {
     const e = { m, kind, len: lenOf(kind), lx, lz, tx: lx, fold, readyAt, ph, yoff: ph === 'up' ? -2.2 : 0 };
@@ -71,9 +88,9 @@ window.WW = window.WW || {};
     return t;
   }
 
-  // Pack each column toward the stern (spot for launch) or toward the bow (park while recovering).
+  // Targets: each column packed toward the stern (spot for launch) or toward the bow (the park while recovering).
   function pack(D) {
-    const fwd = D.mode === 'recover';
+    const fwd = D.spot === 'fwd';
     for (const col of D.cols) {
       while (col.e.length && !fits(D, col, 0)) { const e = col.e.pop(); e.ph = 'down'; D.loose.push(e); }
       const n = col.e.length;
@@ -81,14 +98,33 @@ window.WW = window.WW || {};
       else { let x = D.k.stern; for (let i = n - 1; i >= 0; i--) { const e = col.e[i]; e.tx = x + e.len / 2; x += e.len + GAP; } }
     }
   }
+  // The handlers: release the next parked plane to be pushed, one per column from the free end (see DOC).
+  function release(D, dt) {
+    for (const col of D.cols) {
+      const a = col.e; let busy = 0, chain = true;
+      col.relCd = (col.relCd || 0) - dt;
+      for (const e of a) if (e.go) {
+        if (e.ph === 'in' || Math.abs(e.tx - e.lx) < SETTLE) { e.go = false; continue; }
+        busy++; if (Math.abs(e.lx - e.x0) < e.len + GAP) chain = false;
+      }
+      if (col.relCd > 0 || busy >= D.doc.crews || !chain) continue;
+      let pick = null;
+      for (let i = 0; i < a.length && !pick; i++) { const e = a[i]; if (e.ph !== 'in' && !e.go && e.tx - e.lx > SETTLE) pick = e; }         // forward: the foremost first
+      for (let i = a.length - 1; i >= 0 && !pick; i--) { const e = a[i]; if (e.ph !== 'in' && !e.go && e.lx - e.tx > SETTLE) pick = e; } // aft: the rearmost first
+      if (pick) { pick.go = true; pick.x0 = pick.lx; col.relCd = HITCH; }
+    }
+  }
+  function settled(D) { for (const col of D.cols) for (const e of col.e) if (e.ph !== 'in' && Math.abs(e.tx - e.lx) > SETTLE) return false; return true; }
   function moveEntries(D, dt) {
+    release(D, dt);
     for (const col of D.cols) {
       const a = col.e;
       for (let i = 0; i < a.length; i++) {
         const e = a[i];
         if (e.ph === 'up') { e.yoff = Math.min(0, e.yoff + 1.4 * dt); if (e.yoff >= 0) e.ph = 'park'; }
         if (Math.abs(e.lz - col.z) > 1e-3) { e.lz += WW.clamp(col.z - e.lz, -2 * dt, 2 * dt); continue; } // taxi across first
-        const tv = e.ph === 'in' && e.lx < D.k.barrier + e.len ? TAXI * 2.2 : TAXI;   // clear of the wires under power, then the handlers push it
+        if (e.ph !== 'in' && !e.go) continue;                                       // parked: still until the handlers reach it
+        const tv = e.ph === 'in' ? (e.lx < D.k.barrier + e.len ? TAXI * 2.2 : TAXI) : D.doc.push;   // clear of the wires under power, then the handlers push it
         let nx = e.lx + WW.clamp(e.tx - e.lx, -tv * dt, tv * dt);
         if (nx > e.lx && i > 0) nx = Math.min(nx, Math.max(e.lx, a[i - 1].lx - (a[i - 1].len + e.len) / 2 - GAP * 0.6));
         if (nx < e.lx && i < a.length - 1) nx = Math.max(nx, Math.min(e.lx, a[i + 1].lx + (a[i + 1].len + e.len) / 2 + GAP * 0.6));
@@ -105,9 +141,11 @@ window.WW = window.WW || {};
     for (let i = D.loose.length - 1; i >= 0; i--) { // to the elevator, then struck below
       const e = D.loose[i];
       if (e.ph === 'elev') {
+        const ex = e.ex === undefined ? D.k.elevX : e.ex;
         e.lz += WW.clamp(0 - e.lz, -2 * dt, 2 * dt);
-        e.lx += WW.clamp(D.k.elevX - e.lx, -TAXI * dt, TAXI * dt);
-        if (Math.abs(e.lz) < 0.02 && Math.abs(e.lx - D.k.elevX) < 0.05) e.ph = 'down';
+        const v = e.pw && e.lx < D.k.barrier + e.len ? TAXI * 2.2 : TAXI;   // under power clear of the wires
+        e.lx += WW.clamp(ex - e.lx, -v * dt, v * dt);
+        if (Math.abs(e.lz) < 0.02 && Math.abs(e.lx - ex) < 0.05) e.ph = 'down';
       } else if ((e.yoff -= 1.4 * dt) < -2.4) { giveBack(e.m); D.loose.splice(i, 1); }
     }
   }
@@ -147,22 +185,34 @@ window.WW = window.WW || {};
       if (p.state === 'return' && WW.dist(p.x, p.z, c.x, c.z) < 140) recPend = true;
     }
     for (const col of D.cols) for (const e of col.e) if (e.ph === 'in' && e.lx - e.len / 2 < D.k.barrier) landAct = true;
-    if (D.loose.some(e => e.ph === 'elev')) landAct = true;
+    if (D.loose.some(e => fouls(D, e))) landAct = true;
     const launchAct = D.launchers.some(p => p.deckPh !== 'queued');
     const launchPend = D.launchers.length > 0;
     // A strike load or a scramble (raid near) may break into a recovery; a CAP relief waits for the stack to clear
     const urgent = !launchPend ? false : c._air && c._air.near > 0 && D.launchers.some(p => !p.target) ? 'scramble' : D.launchers.some(p => p.target) || (c._air && c._air.near > 0);
     let lqWait = 0; for (const p of D.lq) lqWait = Math.max(lqWait, now - (p.lqT === undefined ? now : p.lqT));
-    D.waitT = launchPend && D.mode !== 'launch' ? D.waitT + dt : 0;
+    // Hysteresis: a deck spotted for launch is not pushed forward for a short recovery. The first few back hold in
+    // the stack (DEFER_N in the pattern, or the first held DEFER_WAIT s, or one short of fuel) unless only
+    // DEFER_FREE planes or fewer stand in the landing area.
+    D.blk = 0; for (const col of D.cols) for (const e of col.e) if (e.ph !== 'in' && e.lx - e.len / 2 < D.k.barrier) D.blk++; // parked in the landing area
+    if (recPend && D.mode !== 'recover' && D.spot === 'aft' && !c.deckOut && lqWait < DEFER_WAIT && D.lq.length < DEFER_N && !D.lq.some(q => q.fuel < DEFER_FUEL) && D.blk > DEFER_FREE) recPend = false;
+    const ready = settled(D);   // the deck re-spotted for the window it is in: the window clocks run from here
+    D.waitT = launchPend && D.mode !== 'launch' ? D.waitT + (ready || D.spot !== 'fwd' ? dt : 0) : 0;
+    D.winT += ready ? dt : 0;
     // Windows: a launch window runs until the launch queue is empty (returning planes hold in the marshal stack),
     // unless planes have held LQ_MAX s; a recovery window takes up to RW_N traps while launches wait, then yields
     // (the plane in the groove lands first). Nothing waiting: recover if anyone is home, else idle (spotted for launch).
     const prev = D.mode;
-    if (D.mode === 'launch' && launchPend && !(recPend && lqWait > (D.lq.length >= DEEP && urgent !== 'scramble' ? LQ_DEEP : LQ_MAX) && !launchAct && now - D.modeT > LW_MIN)) { /* keep the launch window */ }
+    if (D.mode === 'launch' && launchPend && !(recPend && lqWait > (D.lq.length >= DEEP && urgent !== 'scramble' ? LQ_DEEP : LQ_MAX) && !launchAct && D.winT > LW_MIN)) { /* keep the launch window */ }
     else if (D.mode === 'recover' && (landAct || (recPend && !yieldRec(D, urgent)))) { /* keep */ }
     else D.mode = launchPend ? 'launch' : recPend ? 'recover' : 'idle';
     if (c.deckOut) D.mode = 'idle';   // holed (ship_deck.js): nothing launches or lands; the queued wait below, the stack holds
-    if (D.mode !== prev) { D.recN = 0; D.modeT = now; }
+    if (D.mode !== prev) { D.recN = 0; D.modeT = now; D.winT = 0; }
+    // where the park should be: forward for a recovery at once; aft for a launch at once, but idle only after
+    // idleHold s (no re-spot for a gap between returning flights)
+    D.idleT = D.mode === 'idle' ? D.idleT + dt : 0;
+    const want = D.mode === 'recover' ? 'fwd' : 'aft';
+    if (want !== D.spot && (want === 'fwd' || D.mode === 'launch' || D.idleT > D.doc.idleHold)) D.spot = want;
     D.closing = D.mode === 'recover' && yieldRec(D, urgent); // no new approaches: the window is closing
     // reconcile what is shown with what the carrier holds (launched from below / rearm counts)
     const t = counts(c), vis = { fighter: 0, dive: 0, torpedo: 0 };
@@ -176,11 +226,14 @@ window.WW = window.WW || {};
     D.riseT -= dt;
     // bring one up from the hangar deck: while idle, and while launching (the next load is spotted as the first goes;
     // not while a plane taxis up the deck or rides the forward elevator)
-    const spotting = !c.deckOut && (D.mode === 'idle' || (D.mode === 'launch' && !D.launchers.some(q => q.deckPh === 'taxi' || q.deckPh === 'rise')));
+    // (the USN pre-spots the next deck load while idle; the IJN brings up only the planes ordered off, in the launch)
+    const spotting = !c.deckOut && D.spot === 'aft' && ((D.mode === 'idle' && D.doc.preSpot) || (D.mode === 'launch' && !D.launchers.some(q => q.deckPh === 'taxi' || q.deckPh === 'rise')));
+    let want2 = t;
+    if (!D.doc.preSpot) { want2 = { fighter: 0, dive: 0, torpedo: 0 }; for (const q of D.launchers) if (q.deckPh === 'queued') want2[q.kind]++; }
     if (spotting && D.riseT <= 0) {
       D.riseT = 1.6;
       for (const k of ['fighter', 'dive', 'torpedo']) {
-        if (vis[k] >= t[k]) continue;
+        if (vis[k] >= Math.min(t[k], want2[k])) continue;
         const col = colFor(D, k, lenOf(k));
         if (!col || col.e.some(q => Math.abs(q.lx - q.tx) > 0.05 || Math.abs(q.lz - col.z) > 1e-3)) continue;
         const e = newEntry(D, P().get(k, c.nation), k, 0, col.z, 1, 0, 'up');
@@ -188,10 +241,34 @@ window.WW = window.WW || {};
         break;
       }
     }
+    if (D.doc.strike && D.spot === 'fwd' && D.mode !== 'launch' && !c.deckOut) strikeBelow(D);
     pack(D);
     moveEntries(D, dt);
     for (const col of D.cols) for (const e of col.e) syncEntry(D, e, now, dt);
     for (const e of D.loose) syncEntry(D, e, now, dt);
+  }
+  // A plane on its way to an elevator (or riding it down) aft of the barrier fouls the landing area.
+  function fouls(D, e) { return e.ph === 'elev' && e.lx - e.len / 2 < D.k.barrier; }
+  // IJN (DOC strike): recovered planes are struck below by the elevator nearest the forward park (the aftmost one
+  // forward of the barrier), one at a time: the rearmost plane of a column (just out of the wires, or parked and at
+  // rest), whose way to the elevator along the deck is clear of the others in its column.
+  function strikeBelow(D) {
+    const els = D.k.elevators; if (!els || !els.length) return;
+    let ex = null; for (const x of els) { const L = lenOf('torpedo'); if (x - L / 2 > D.k.barrier + 0.1 && (ex === null || x < ex)) ex = x; }
+    if (ex === null || D.loose.some(e => e.ex === ex && e.yoff > -2.4)) return;   // the elevator is busy
+    // a plane just out of the wires taxis straight onto it under power; one parked is pushed there only while the
+    // deck is quiet (not across the taxi way while a plane is in the groove, rolling out or taxiing in: it would hold
+    // that one aft of the barrier, the deck foul)
+    let quiet = !D.lq.some(q => q.deckPh === 'final') && !D.cols.some(col => col.e.some(e => e.ph === 'in'));
+    if (quiet) for (const q of WW.world.planes) if (q.carrier === D.c && q.alive && q.state === 'rollout') { quiet = false; break; }
+    for (const col of D.cols) {
+      const a = col.e, e = a[a.length - 1];
+      if (!e || e.go || !(e.ph === 'in' || (quiet && e.ph === 'park' && Math.abs(e.tx - e.lx) <= SETTLE))) continue;
+      const lo = Math.min(e.lx, ex), hi = Math.max(e.lx, ex);
+      if (a.some(o => o !== e && o.lx - o.len / 2 < hi + e.len / 2 + GAP / 2 && o.lx + o.len / 2 > lo - e.len / 2 - GAP / 2)) continue;
+      a.pop(); e.pw = e.ph === 'in'; e.ph = 'elev'; e.ex = ex; D.loose.push(e);
+      return;
+    }
   }
   // Does the recovery window give the deck to the launches waiting below? A strike or a scramble after RW_N traps
   // (or LW_MAX s); a CAP relief once the stack is down to one, or after LW_RELIEF s.
@@ -205,7 +282,7 @@ window.WW = window.WW || {};
   }
   // Is the landing area (aft of the barrier) and the runway clear?
   function clearAft(D) {
-    if (D.mode !== 'recover' || D.loose.some(e => e.ph === 'elev')) return false;
+    if (D.mode !== 'recover' || D.loose.some(e => fouls(D, e))) return false;
     for (const col of D.cols) for (const e of col.e) if (e.lx - e.len / 2 < D.k.barrier) return false;
     for (const p of WW.world.planes) if (p.carrier === D.c && p.alive && p.state === 'rollout') return false;
     return !D.launchers.some(p => p.deckPh !== 'queued');
