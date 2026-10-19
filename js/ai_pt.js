@@ -1,6 +1,7 @@
-// ai_pt.js — PT boats: lurk at island cover in their own half, dash at a target of opportunity when the run is
-// clear (WW.threat danger from ships other than the target), fire the spread as a pair from both beams, break off
-// home at full speed with a jink. MG only at their own size. During the air-war hold (fleet_cmd.js airWar) and the
+// ai_pt.js — PT boats: lurk at island cover in their own half; AMBUSH a ship whose track they can get ahead of (the
+// Solomons doctrine: lie in wait off the enemy's bow, let him come on, fire from ahead of the beam at short range, then
+// turn away at full speed); else dash at a close target of opportunity when the run is clear (WW.threat danger from
+// ships other than the target), fire the spread as a pair from both bows / beams, break off home at full speed with a jink. MG only at their own size. During the air-war hold (fleet_cmd.js airWar) and the
 // approach (posture search / approach: until the fleets engage) they are the fleet's forward PICKETS instead: the
 // pairs run far out toward the enemy, on one flank of its line of approach, and shadow its nearest known ships from
 // just inside their own sighting range (edging out of the guns' reach where they can), so what they see reaches
@@ -11,7 +12,7 @@ window.WW = window.WW || {};
   const PI = Math.PI;
   const H = WW.shipAI.h, seen = H.seen, lead = H.lead;
   const { VAL, now, danger, pen, homeX, age, contacts, ownDps, fanClear, landNear, coverPts, order } = WW.lightAI.h;
-  const stats = { checks: 0, far: 0, deep: 0, shoal: 0, hot: 0, picket: 0 }; // PT run checks and why they were refused; picket: picket station updates
+  const stats = { checks: 0, far: 0, deep: 0, shoal: 0, hot: 0, astern: 0, picket: 0, amb: 0, ambWait: 0, ambRun: 0, ambLost: 0, ambTime: 0, ambFlee: 0, ambFire: 0, ambAbort: 0 }; // PT run checks and why they were refused (astern: a stern chase); picket: picket station updates; amb*: ambushes set, waits reached, runs from one, dropped (target gone / no plan left), waits timed out, broken off (inside another gun ship's reach); runs from an ambush that fired / were aborted
   WW.on('roundStart', () => { for (const k in stats) stats[k] = 0; });
 
   // ---------------- PT boats ----------------
@@ -24,8 +25,31 @@ window.WW = window.WW || {};
     DEEP: { PEN_RUN: 0.95, PEN_ABORT: 1.05, PEN_LURK: 0.85, PEN_HOME: 1.05 }, PEN_HOME: 0.02, // deep: PT_DEEP limits
     GUN_R: 160, GUN_T: 40, GUN_OFF: 18, // skirmish: an enemy PT / surfaced sub this close, at most this long, beam offset
     RUN_MAX: 24, OUT_MIN: 6, OUT_MAX: 28, GHOST_T: 90, LEAD_T: 8, FLEE_DG: 0.6, IDLE_R: 70, IDLE_THR: 0.7, BACK_T: 14,
+    ASTERN: 2.1,      // rad off the target's bow (~120 deg): a boat further aft than this makes no dash at a ship under way
     STALK: 35, BOLD_GATE: 0.8, BOLD_FLEE: 4, BOLD_DASH: 1.8, DARK: 0.35 // BOLD_DASH: x DASH; bold boats: stalk this far outside the guns' reach; run gate x (1 + BOLD_GATE x bold); flee danger
   };
+  // AMBUSH doctrine by nation, [day, night] (Solomons 1942-43: the USN's PT squadrons at Tulagi against the Tokyo
+  // Express; the IJN's few torpedo boats and its night torpedo school). A PT boat cannot catch a ship from astern with a
+  // 27-36 kn Mk 8 (core.js WW.TORPEDO_NATION): it gets ahead of the target's track (the heading and speed its side's plot
+  // holds, intel.js, dead-reckoned) and waits off her bow, idling (a small wake: intel.js PT_WAKE), then runs in as she
+  // closes and fires from ahead of the beam: a short torpedo run at a big target angle. The pair works both bows.
+  //   OFF   wait this far off the predicted track (u; on the boat's own side; the pair's wing on the other bow)
+  //   TRIG  the run starts when the target is this close (a battleship or cruiser: on entering its main battery's reach,
+  //         so a boat never idles inside it: the wait is outside the guns, the run is the dash)
+  //   FIRE  fire at about this range on the run (FIRE + 5 the limit)
+  //   LEAD  s the boat must be at the wait point before the target reaches TRIG of it (a plan it cannot make in time is none)
+  //   DMAX  the furthest ahead along the track a wait point is put (u); REACH: the furthest from the boat (a boat lies in
+  //         wait for what comes its way; it does not cross the sea to get ahead of a ship far off)
+  //   WAIT  s a boat waits before it re-plans; AGE: the oldest contact worth ambushing (s, dead-reckoned)
+  //   CREEP throttle while waiting (idling bow on to the enemy's line: little wake, and way on to bolt)
+  // Night favours the boats: closer to the track, a closer shot, a longer wait, a staler plot dead-reckoned further
+  // (the guns cannot see them either); by day the lookouts see a boat sooner (intel.js), so it waits further off.
+  // IJN: the faster Type 91 and the night torpedo school: a little further off and a longer shot by day, as close at night.
+  const AMB = {
+    USN: { OFF: [50, 30], TRIG: [90, 70], FIRE: [40, 30], LEAD: [5, 3], DMAX: [300, 420], REACH: [220, 300], WAIT: [45, 100], AGE: [30, 60], CREEP: 0.14 },
+    IJN: { OFF: [54, 30], TRIG: [95, 75], FIRE: [44, 34], LEAD: [5, 3], DMAX: [300, 440], REACH: [220, 320], WAIT: [40, 110], AGE: [30, 60], CREEP: 0.14 }
+  };
+  const AMB_BIG = { battleship: 1, cruiser: 1 }; // main batteries the boats keep out of while waiting (sim_behaviour pt_loiter)
   // Boldness (PT doctrine): 2 once the enemy's escorts are gone (no fit destroyer of its seen this round: nothing
   // left that hunts PT boats; the side has seen the enemy), 1 in the dark (the PT boat's hour: Guadalcanal, Surigao),
   // else 0. A bold boat may run deep (the PT_DEEP limits), stalks the enemy's heavy ships just outside the reach of
@@ -94,9 +118,10 @@ window.WW = window.WW || {};
     const G = ghosts[ship.nation]; if (!G) return;
     for (const c of contacts(ship, 3)) if (c.unit.type === 'battleship' || c.unit.type === 'cruiser') G.set(c.unit.id, { u: c.unit, x: c.x, z: c.z, h: c.heading, sp: c.speed, t: c.seenAt });
   }
-  function ghostNear(ship, x, z) {
+  function ghostNear(ship, x, z, except) {
     const G = ghosts[ship.nation]; if (!G) return false;
     for (const [k, g] of G) {
+      if (g.u === except) continue;
       const ag = now() - g.t;
       if (!g.u.alive || ag > PT.GHOST_T) { G.delete(k); continue; }
       const dr = Math.min(ag, 30), gx = g.x + Math.cos(g.h) * g.sp * dr, gz = g.z + Math.sin(g.h) * g.sp * dr;
@@ -175,6 +200,9 @@ window.WW = window.WW || {};
     const dash = WW.dist(ship.x, ship.z, f.x, f.z), DASH = PT.DASH * (ship.ai.lt && ship.ai.lt.bold ? PT.BOLD_DASH : 1); // a bold boat runs in from its stalking spot
     if (WW.dist(ship.x, ship.z, u.x, u.z) > DASH + PT.FIRE) { stats.far++; return null; } // the target itself is close
     stats.checks++;
+    // no stern chase: a ship under way with the boat well abaft her beam outruns the dash and the torpedo (the ambush
+    // plans ahead of her instead)
+    if (u.speed > 2.5 && Math.abs(WW.angleDiff(c.heading, Math.atan2(ship.z - c.z, ship.x - c.x))) > PT.ASTERN) { stats.astern++; return null; }
     if (dash > DASH) { stats.far++; return null; }
     if (pen(ship, f.x) > lim(ship, 'PEN_RUN')) { stats.deep++; return null; }
     if (WW.terrain.depthAt(f.x, f.z) < 2) { stats.shoal++; return null; }
@@ -185,6 +213,124 @@ window.WW = window.WW || {};
     }
     if (ex > gate) { stats.hot++; return null; }
     return { fx: f.x, fz: f.z, dash, ex };
+  }
+  // ---- the ambush ----
+  const dark = () => WW.daylight < PT.DARK;
+  const amb = ship => AMB[ship.nation] || AMB.USN;
+  const ready = ship => ship.ai.torpReload <= 0.5;
+  // the target's range at which the run starts: TRIG, or a big ship's main battery reach (+5), whichever is further
+  function trigR(u, k, D) { return Math.max(D.TRIG[k], AMB_BIG[u.type] && u.stats.guns[0] ? u.stats.guns[0].range + 5 : 0); }
+  // Her mean course: the plotted heading smoothed over COURSE_T s, per side and ship (a zigzag or a jink about a base
+  // course is not a new track: the plotting officer draws the line through it). Kept per round.
+  const COURSE_T = 20, courses = { USN: new Map(), IJN: new Map() };
+  WW.on('roundStart', () => { courses.USN.clear(); courses.IJN.clear(); });
+  function course(n, c) {
+    const M = courses[n]; if (!M) return c.heading;
+    let e = M.get(c.unit);
+    if (!e || now() - e.t > 30) { e = { s: Math.sin(c.heading), c: Math.cos(c.heading), t: now() }; M.set(c.unit, e); return c.heading; }
+    const w = 1 - Math.exp(-(now() - e.t) / COURSE_T);
+    e.s += (Math.sin(c.heading) - e.s) * w; e.c += (Math.cos(c.heading) - e.c) * w; e.t = now();
+    return Math.atan2(e.s, e.c);
+  }
+  // the target's dead-reckoned position now (on her plotted heading) and her mean course / speed (the side's plot, not the truth)
+  function track(c, n) { const dr = Math.min(age(c), 60); return { x: c.x + Math.cos(c.heading) * c.speed * dr, z: c.z + Math.sin(c.heading) * c.speed * dr, h: n ? course(n, c) : c.heading, v: c.speed }; }
+  // the boat's place relative to the predicted track: along (> 0 ahead of the target), cross (> 0 on her one side)
+  function rel(ship, t) { const rx = ship.x - t.x, rz = ship.z - t.z, c = Math.cos(t.h), s = Math.sin(t.h); return { along: rx * c + rz * s, cross: -rx * s + rz * c, d: Math.hypot(rx, rz) }; }
+  // A wait point ahead of c's track on side sd (+1 / -1), or null: the nearest one along the track that the boat can
+  // reach LEAD s before the target comes within TRIG of it, in navigable water, inside the boat's run limits, out of
+  // every OTHER known big ship's main battery reach, with acceptable danger on the way from ships other than the
+  // target (gate, dps).
+  function planAt(ship, c, sd, gate, offK) {
+    const u = c.unit, n = ship.nation, D = amb(ship), k = dark() ? 1 : 0, t = track(c, n);
+    if (t.v < 1.2) return null; // stopped or creeping: the dash (opportunity) takes her
+    const off = D.OFF[k] * (offK || 1), trig = trigR(u, k, D), dT = Math.sqrt(Math.max(0, trig * trig - off * off));
+    const cs = Math.cos(t.h), sn = Math.sin(t.h), W = WW.cfg.MAP_W, Hh = WW.cfg.MAP_H, vb = ship.stats.speed * 0.9;
+    const others = contacts(ship, 30).filter(q => q.unit !== u && AMB_BIG[q.unit.type] && !q.unit.submerged);
+    for (let dd = dT + 20; dd <= D.DMAX[k]; dd += 20) {
+      const ax = t.x + cs * dd - sn * off * sd, az = t.z + sn * dd + cs * off * sd;
+      if (ax < 40 || ax > W - 40 || az < 40 || az > Hh - 40) continue;
+      const dB = WW.dist(ship.x, ship.z, ax, az), tp = dB / vb, tt = (dd - dT) / t.v;
+      if (dB > D.REACH[k] || tp + D.LEAD[k] > tt) continue;           // too far for the boat, or she would be there first
+      if (pen(ship, ax) > lim(ship, 'PEN_RUN') || !WW.terrain.isNavigable(ax, az, 2.5) || WW.terrain.depthAt(ax, az) < 2) continue;
+      if (ghostNear(ship, ax, az, u)) continue;
+      let bad = false;
+      for (const q of others) { const g = q.unit.stats.guns[0]; if (g && WW.dist(ax, az, q.x, q.z) < g.range + 15) { bad = true; break; } }
+      if (bad) continue;
+      let ex = 0;
+      for (let j = 1; j <= 4; j++) {
+        const x = ship.x + (ax - ship.x) * j / 4, z = ship.z + (az - ship.z) * j / 4;
+        ex = Math.max(ex, danger(n, x, z) - ownDps(u, WW.dist(x, z, t.x, t.z)));
+      }
+      if (ex > gate) continue;
+      return { x: ax, z: az, sd, tt, tp, ex };
+    }
+    return null;
+  }
+  const seenCrip = (n, u) => (WW.fleetCmd && WW.fleetCmd.seenHp ? WW.fleetCmd.seenHp(n, u) : u.hp / u.maxHp) < 0.5;
+  const ambGate = (L, crip) => PT.EX_MAX * (crip ? 1.6 : 1) * (1 + PT.BOLD_GATE * (L.bold || 0)) * (dark() ? 1.5 : 1);
+  // The best ambush for this boat: { u, p } or null. The wing of a pair whose leader is setting one takes the same
+  // target from the other bow (or, if it cannot get there in time, on the leader's side further out).
+  function ambush(ship, L) {
+    const n = ship.nation, D = amb(ship), k = dark() ? 1 : 0;
+    const pl = L.pair.p && L.pair.p.ai && L.pair.p.ai.lt;
+    if (!L.pair.lead && pl && (pl.state === 'set' || pl.state === 'wait') && pl.amb && pl.amb.u.alive) {
+      const c = WW.intel.known(n, pl.amb.u);
+      if (c && age(c) <= D.AGE[k]) {
+        const g = ambGate(L, seenCrip(n, c.unit)) * 1.3;
+        const p = planAt(ship, c, -pl.amb.sd, g) || planAt(ship, c, pl.amb.sd, g, 1.35);
+        if (p) return { u: c.unit, p };
+      }
+    }
+    let best = null;
+    for (const c of contacts(ship, D.AGE[k])) {
+      const u = c.unit;
+      if (u.submerged || !VAL[u.type] || u.isBase || u.isLand || u.type === 'submarine' || u.type === 'pt') continue;
+      const crip = seenCrip(n, u), r = rel(ship, track(c, n));
+      const p = planAt(ship, c, r.cross >= 0 ? 1 : -1, ambGate(L, crip)); // the boat's own side of her track: no crossing her bow
+      if (!p) continue;
+      const s = VAL[u.type] * (crip ? 1.6 : 1) / (1 + p.tt / 40 + p.ex / 10);
+      if (!best || s > best.s) best = { u, p, s };
+    }
+    return best;
+  }
+  // Each decision while setting or waiting: run when the target comes within TRIG (from ahead of her beam), re-plan when
+  // her track no longer passes the boat (she turned away, or passed) or the wait is long, give it up when no plan is
+  // left. Returns true when the boat is now on its run.
+  function ambushTick(ship, L, T, nb) {
+    const n = ship.nation, A = L.amb, u = A && A.u, D = amb(ship), k = dark() ? 1 : 0;
+    const c = u && u.alive && !u.sinking && WW.intel ? WW.intel.known(n, u) : null;
+    const drop = () => { stats.ambLost++; L.state = 'lurk'; L.amb = null; L.spotT = 0; };
+    if (!c || age(c) > D.AGE[k] || ship.hp < ship.maxHp * 0.35) { drop(); return false; }
+    // inside the reach of an enemy gun ship that is not the target: break off
+    if (nb && nb.near && nb.near.unit !== u && nb.margin < 0) { stats.ambFlee++; L.state = 'flee'; L.t0 = T; L.from = nb.near.unit; L.amb = null; return false; }
+    const t = track(c, n), r = rel(ship, t), trig = trigR(u, k, D);
+    let bigIn = false; // a known big ship's main battery about to reach the boat: the run starts now, or the boat goes
+    for (const q of contacts(ship, 30)) {
+      const g = q.unit.stats.guns[0];
+      if (AMB_BIG[q.unit.type] && !q.unit.submerged && g && WW.dist(ship.x, ship.z, q.x, q.z) < g.range + 5) { bigIn = true; break; }
+    }
+    if (r.d <= trig || bigIn) {
+      if (r.along > -5 && ready(ship) && r.d < trig + 40 && Math.abs(r.cross) < ship.stats.torpedoes.range) {
+        stats.ambRun++; L.state = 'run'; L.ambRun = true; L.tgt = u; L.t0 = T; L.hp0 = ship.hp; L.side = 0; L.fire = D.FIRE[k]; L.amb = null; ship.target = u;
+        return true;
+      }
+      if (bigIn) { stats.ambFlee++; L.state = 'out'; L.t0 = T; L.from = u; L.amb = null; return false; }
+    }
+    // the wait point still lies ahead on her track, within a torpedo shot of it (as the plot now has her)? Else re-plan:
+    // she turned away or zigged, or passed; a wait too long is re-planned as well
+    const ra = rel(A, t), dT = Math.sqrt(Math.max(0, trig * trig - D.OFF[k] * D.OFF[k]));
+    const lost = !(ra.along > dT * 0.5 && Math.abs(ra.cross) < ship.stats.torpedoes.range * 0.85) || (L.state === 'wait' && r.along < 0);
+    const long = L.state === 'wait' && T - A.waitT > D.WAIT[k];
+    if (lost || long) {
+      if (long) stats.ambTime++;
+      const g = ambGate(L, seenCrip(n, u)), p = planAt(ship, c, A.sd, g) || planAt(ship, c, -A.sd, g);
+      if (!p) { drop(); return false; }
+      // waiting: a small shift of her track is followed at idle (the wait steering); a big one sends the boat on again
+      const far = WW.dist(p.x, p.z, ship.x, ship.z) > 60;
+      A.x = p.x; A.z = p.z; A.sd = p.sd; A.planT = T;
+      if (L.state === 'wait') { if (far) { L.state = 'set'; A.waitT = 0; } else if (long) A.waitT = T; }
+    }
+    return false;
   }
   function opportunity(ship, L) {
     const cs = contacts(ship, 20), guns = cs.filter(c => c.unit.stats.guns.length && !c.unit.submerged);
@@ -258,7 +404,7 @@ window.WW = window.WW || {};
   function ptAI(ship, dt) {
     const a = ship.ai, n = ship.nation, T = now();
     const L = a.lt || (a.lt = { state: 'lurk', t0: T, decT: 0, lx: ship.x, lz: ship.z, tgt: null, side: 0, hp0: ship.hp, spotT: 0, leg: 'fwd', legT: 0, pair: { p: null, lead: true } });
-    a.ownComb = L0state(a) !== 'lurk' && L0state(a) !== 'gun'; // combing a torpedo track would break a dash; at the lurk spot, comb
+    a.ownComb = L0state(a) !== 'lurk' && L0state(a) !== 'gun' && L0state(a) !== 'wait'; // combing a torpedo track would break a dash; at the lurk spot or the wait, comb
     a.ownWithdraw = true; // a crippled PT lurks at home and makes no runs (below) rather than the core's withdrawal
     mgTarget(ship);
     const jink = Math.sin(T * 1.7 + ship.id) * 0.45;
@@ -267,7 +413,7 @@ window.WW = window.WW || {};
     if (decide) { L.decT = 0.5; L.pair = partner(ship); L.bold = bold(ship); if (!L.bold) L.stalk = false; }
     if (L.state === 'run') {
       const u = L.tgt, c = u && u.alive && WW.intel ? WW.intel.known(n, u) : null;
-      let abort = !c || age(c) > 6 || T - L.t0 > PT.RUN_MAX || pen(ship, ship.x) > lim(ship, 'PEN_ABORT') || ship.hp < L.hp0 - ship.maxHp * 0.3;
+      let abort = !c || age(c) > (L.ambRun ? amb(ship).AGE[dark() ? 1 : 0] : 6) || T - L.t0 > PT.RUN_MAX || pen(ship, ship.x) > lim(ship, 'PEN_ABORT') || ship.hp < L.hp0 - ship.maxHp * 0.3;
       if (!abort && decide) {
         // abort when the danger on the run spikes or a destroyer turns toward us
         const lx = ship.x + Math.cos(ship.heading) * 20, lz = ship.z + Math.sin(ship.heading) * 20;
@@ -275,18 +421,21 @@ window.WW = window.WW || {};
         for (const q of contacts(ship, 3)) {
           if (abort || q.unit === u || q.unit.type !== 'destroyer') continue;
           const d = WW.dist(ship.x, ship.z, q.x, q.z);
-          if (d < 80 && Math.abs(WW.angleDiff(q.unit.heading, Math.atan2(ship.z - q.z, ship.x - q.x))) < 0.6) abort = true;
+          // (from an ambush the target's screen comes on toward the boat on her course anyway: only a destroyer that has
+          // turned off it toward the boat counts)
+          if (d < 80 && Math.abs(WW.angleDiff(q.unit.heading, Math.atan2(ship.z - q.z, ship.x - q.x))) < 0.6 && !(L.ambRun && c && Math.abs(WW.angleDiff(q.unit.heading, c.heading)) < 0.35)) abort = true;
         }
       }
-      if (abort) { L.state = 'out'; L.t0 = T; L.from = u; }
+      if (abort) { if (L.ambRun) stats.ambAbort++; L.state = 'out'; L.t0 = T; L.from = u; L.ambRun = false; }
       else {
-        const f = firePoint(ship, u, L.side), d = WW.dist(ship.x, ship.z, u.x, u.z);
+        const d = WW.dist(ship.x, ship.z, u.x, u.z), FM = L.ambRun ? L.fire + 5 : PT.FIRE_MAX;
         const p = lead(ship, u, ship.stats.torpedoes.speed || WW.TORPEDO.speed), lb = Math.atan2(p.z - ship.z, p.x - ship.x);
-        ship.desiredHeading = d > PT.FIRE_MAX + 8 && WW.dist(ship.x, ship.z, f.x, f.z) > 14 ? Math.atan2(f.z - ship.z, f.x - ship.x) : lb;
+        if (L.ambRun) ship.desiredHeading = lb; // from the ambush: straight in on the firing bearing, she is coming to the boat
+        else { const f = firePoint(ship, u, L.side); ship.desiredHeading = d > PT.FIRE_MAX + 8 && WW.dist(ship.x, ship.z, f.x, f.z) > 14 ? Math.atan2(f.z - ship.z, f.x - ship.x) : lb; }
         ship.throttle = 1;
-        if (a.torpReload <= 0 && d < PT.FIRE_MAX && d > 15 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, u) && fanClear(ship, lb, Math.min(ship.stats.torpedoes.range, d + 10))) {
-          if (H.fireSpread(ship, u) !== false) { L.state = 'out'; L.t0 = T; L.from = u; }
-        } else if (d < 15) { L.state = 'out'; L.t0 = T; L.from = u; }
+        if (a.torpReload <= 0 && d < FM && d > 15 && Math.abs(WW.angleDiff(ship.heading, lb)) < 0.3 && seen(ship, u) && fanClear(ship, lb, Math.min(ship.stats.torpedoes.range, d + 10))) {
+          if (H.fireSpread(ship, u) !== false) { if (L.ambRun) stats.ambFire++; L.state = 'out'; L.t0 = T; L.from = u; L.ambRun = false; }
+        } else if (d < 15) { L.state = 'out'; L.t0 = T; L.from = u; L.ambRun = false; }
       }
       if (L.state === 'run') { sweep(ship); return; }
     }
@@ -304,6 +453,25 @@ window.WW = window.WW || {};
     }
     const nb = decide || L.state !== 'lurk' ? nearestBig(ship) : L.nb;
     L.nb = nb;
+    if (L.state === 'set' || L.state === 'wait') {
+      if (decide && ambushTick(ship, L, T, nb)) { sweep(ship); return; }
+      if (L.state === 'set' || L.state === 'wait') {
+        const A = L.amb, D = amb(ship), d = WW.dist(ship.x, ship.z, A.x, A.z), want = Math.atan2(A.z - ship.z, A.x - ship.x);
+        if (L.state === 'set') {
+          ship.desiredHeading = WW.threat ? WW.threat.bestHeading(ship, want, 0.1) : want;
+          ship.throttle = d < 30 ? 0.6 : 1; // at full speed to get there first
+          if (d < 16) { L.state = 'wait'; A.waitT = T; stats.ambWait++; }
+          sweep(ship);
+        } else {
+          // idle at the wait point, bow on to the enemy's line of advance (little wake, way on): a slow circle round it
+          const u = A.u, c = WW.intel.known(n, u), t = c ? track(c) : null;
+          if (d > 22) { ship.desiredHeading = want; ship.throttle = 0.5; }
+          else if (d > 9) { ship.desiredHeading = want + A.sd * 0.6; ship.throttle = D.CREEP; }
+          else { ship.desiredHeading = (t ? Math.atan2(t.z - ship.z, t.x - ship.x) : want) + A.sd * 1.1; ship.throttle = D.CREEP; }
+        }
+        return;
+      }
+    }
     if (L.state === 'out' || L.state === 'flee') {
       // Break off home at full speed with a jink: straight away from the attacker / nearest gun ship, leaning home.
       let from = L.from && L.from.alive ? L.from : null;
@@ -336,7 +504,14 @@ window.WW = window.WW || {};
         if (c && age(c) <= 3 && runCheck(ship, c, -pl.side, PT.EX_MAX * 1.6)) { tgt = pl.tgt; L.side = -pl.side; }
       }
       if (!tgt) { const o = opportunity(ship, L); if (o) { tgt = o.c.unit; L.side = o.side; } }
-      if (tgt) { L.state = 'run'; L.tgt = tgt; L.t0 = T; L.hp0 = ship.hp; ship.target = tgt; return; }
+      if (tgt) { L.state = 'run'; L.ambRun = false; L.tgt = tgt; L.t0 = T; L.hp0 = ship.hp; ship.target = tgt; return; }
+      // no close run: lie in wait ahead of a ship's track (or join the leader's ambush from the other bow)
+      const am = ambush(ship, L);
+      if (am) {
+        stats.amb++; L.state = 'set';
+        L.amb = { u: am.u, x: am.p.x, z: am.p.z, sd: am.p.sd, planT: T, waitT: 0 }; ship.target = am.u;
+        return;
+      }
     }
     if (decide && ship.hp >= ship.maxHp * 0.5) {
       const g = skirmish(ship);
@@ -376,11 +551,11 @@ window.WW = window.WW || {};
   function ptHelm(ship, dt) {
     ptAI(ship, dt);
     const a = ship.ai, L = a.lt;
-    if (!L || L.state !== 'lurk' || L.hot) { a.ptH = undefined; return; }
+    if (!L || (L.state !== 'lurk' && L.state !== 'wait') || L.hot) { a.ptH = undefined; return; }
     if (a.ptH === undefined) a.ptH = ship.heading;
     a.ptH += WW.clamp(WW.angleDiff(a.ptH, ship.desiredHeading), -HELM_RATE * dt, HELM_RATE * dt);
     ship.desiredHeading = a.ptH;
   }
   WW.shipAI.roles.pt = ptHelm;
-  Object.assign(WW.lightAI, { PT, stats, opportunity });
+  Object.assign(WW.lightAI, { PT, AMB, stats, opportunity, ambush });
 })();

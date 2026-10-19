@@ -29,8 +29,11 @@ window.WW = window.WW || {};
     PLANE_PLANE: 100,                                  // planes see planes
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
     TORP: 45,                                          // the old fixed torpedo-wake radius (before the lookouts, 2026-10-18); kept for tests and tools
-    DROP: 130                                          // a ship may see an aerial torpedo's drop this close (the plane on its run and the splash; scanTorps TL)
+    DROP: 130,                                         // a ship may see an aerial torpedo's drop this close (the plane on its run and the splash; scanTorps TL)
+    PT_WAKE: 0.65                                      // a PT boat idling or laid to (no bow wave, no wake) is seen at this share of SEEN.pt; full at half speed and over
   };
+  // a PT boat's bow wave and wake are most of what a lookout sees of her (the Solomons boats waited at idle for that reason)
+  function ptWake(o) { return R.PT_WAKE + (1 - R.PT_WAKE) * Math.min(1, (o.speed || 0) / (0.5 * ((o.stats && o.stats.speed) || 11))); }
   var T = { TICK: 0.5, FRESH: 3, SHIP_TTL: 180, PLANE_TTL: 10, REGAIN: 30, SPOT_HOLD: 20 }; // SHIP_TTL 180 (was 90): the plot keeps a last-known position longer on the big map (the searches go back to it)
   var CAPITAL = { carrier: 1, battleship: 1 };
   var side = {}, tickT = 0, losCache = new Map(), scratch = [];
@@ -134,7 +137,7 @@ window.WW = window.WW || {};
     for (i = 0; i < ships.length; i++) {
       o = ships[i];
       if (o.nation === nation || !usableShip(o)) continue;
-      var size = o.submerged ? 0 : R.SEEN[o.type] || 100, glow = o.firedAt > now - R.FLASH_T ? R.FLASH[o.firedCal] || 0 : 0;
+      var size = o.submerged ? 0 : (R.SEEN[o.type] || 100) * (o.type === 'pt' ? ptWake(o) : 1), glow = o.firedAt > now - R.FLASH_T ? R.FLASH[o.firedCal] || 0 : 0;
       var NO = WW.nightOps; // night_ops.js: darkness, rain, star shells, searchlights (seeR), USN ship radar (radarR)
       if (!NO) size = Math.max(size, glow);
       var seen = false;

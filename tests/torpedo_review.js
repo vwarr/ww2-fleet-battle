@@ -67,7 +67,7 @@ function install() {
         const o = p.owner, u = o.ai && o.ai.lt && o.ai.lt.tgt && o.ai.lt.tgt.stats ? o.ai.lt.tgt : o.target && o.target.stats ? o.target : null;
         let L = C.pt.find(q => q.id === o.id && sh.t - q.t < 1);
         if (!L) {
-          L = { id: o.id, n: p.nation, t: sh.t, shots: [], tgtType: u ? u.type : null, r: null, ang: null, spd: null, night: (WW.daylight === undefined ? 1 : WW.daylight) < 0.3, state: o.ai && o.ai.lt ? o.ai.lt.state : null };
+          L = { id: o.id, n: p.nation, t: sh.t, shots: [], tgtType: u ? u.type : null, r: null, ang: null, spd: null, night: (WW.daylight === undefined ? 1 : WW.daylight) < 0.3, amb: !!(o.ai && o.ai.lt && o.ai.lt.ambRun) };
           if (u) { L.r = +WW.dist(o.x, o.z, u.x, u.z).toFixed(1); L.ang = +(Math.abs(WW.angleDiff(u.heading, Math.atan2(o.z - u.z, o.x - u.x))) * 180 / Math.PI).toFixed(0); L.spd = +(u.speed || 0).toFixed(2); }
           C.pt.push(L);
         }
@@ -144,6 +144,7 @@ function install() {
   };
   R.flush = function () {
     const C = R.cur; R.cur = null; if (!C) return null;
+    if (WW.lightAI && WW.lightAI.stats) C.ptStats = Object.assign({}, WW.lightAI.stats); // ai_pt.js run checks and ambushes (if it keeps them)
     return C;
   };
 }
@@ -226,11 +227,13 @@ function report(rounds) {
     if (!boats && !P.length) continue;
     const hitsOf = x => x.q.shots.filter(i => x.shots[i].res === 'hit').length, R_ = P.filter(x => x.q.r !== null).map(x => x.q.r), A_ = P.filter(x => x.q.ang !== null).map(x => x.q.ang);
     const hits = P.reduce((a, x) => a + hitsOf(x), 0), fired = P.reduce((a, x) => a + x.q.shots.length, 0), scored = P.filter(x => hitsOf(x) > 0).length;
-    const fwd = A_.filter(a => a < 90).length, night = P.filter(x => x.q.night);
+    const fwd = A_.filter(a => a < 90).length, night = P.filter(x => x.q.night), ambN = P.filter(x => x.q.amb).length;
     out.pt[n] = { launches: P.length, perRound: ptR ? P.length / ptR : 0, boats, lost, lostPerRound: ptR ? lost / ptR : 0, r50: med(R_), ang50: med(A_), fwd: A_.length ? fwd / A_.length : null, fired, hits, rate: fired ? hits / fired : null, scored: P.length ? scored / P.length : null, night: night.length };
     const o = out.pt[n];
-    say(`  ${n}: rounds with PTs ${ptR}, boats ${boats}; launches ${P.length} (${f2(o.perRound)} / round, ${night.length} at night); range ${f0(o.r50)} [${f0(qs(R_, 0.1))}-${f0(qs(R_, 0.9))}] u; target angle ${f0(o.ang50)} [${f0(qs(A_, 0.1))}-${f0(qs(A_, 0.9))}] deg, ahead of the beam ${pc(o.fwd)}; torpedoes ${fired}, hits ${hits} (${pc(o.rate)}), spreads that scored ${pc(o.scored)}; targets ${Object.entries(P.reduce((m, x) => (m[x.q.tgtType] = (m[x.q.tgtType] || 0) + 1, m), {})).map(([k, v]) => k + ' ' + v).join(', ')}; PT lost ${lost} (${f2(o.lostPerRound)} / round, ${pc(boats ? lost / boats : null)} of boats)`);
+    say(`  ${n}: rounds with PTs ${ptR}, boats ${boats}; launches ${P.length} (${f2(o.perRound)} / round, ${night.length} at night, ${ambN} from an ambush); range ${f0(o.r50)} [${f0(qs(R_, 0.1))}-${f0(qs(R_, 0.9))}] u; target angle ${f0(o.ang50)} [${f0(qs(A_, 0.1))}-${f0(qs(A_, 0.9))}] deg, ahead of the beam ${pc(o.fwd)}; torpedoes ${fired}, hits ${hits} (${pc(o.rate)}), spreads that scored ${pc(o.scored)}; targets ${Object.entries(P.reduce((m, x) => (m[x.q.tgtType] = (m[x.q.tgtType] || 0) + 1, m), {})).map(([k, v]) => k + ' ' + v).join(', ')}; PT lost ${lost} (${f2(o.lostPerRound)} / round, ${pc(boats ? lost / boats : null)} of boats)`);
   }
+  const PS = rounds.filter(r => r.rec.ptStats).map(r => r.rec.ptStats);
+  if (PS.length && PS[0].amb !== undefined) { const sum = k => PS.reduce((a, q) => a + (q[k] || 0), 0); say(`  ambushes (both sides): set ${sum('amb')}, waits reached ${sum('ambWait')}, runs ${sum('ambRun')}, dropped ${sum('ambLost')}, waits timed out ${sum('ambTime')}, broken off ${sum('ambFlee')}; runs from an ambush ${sum('ambFire')} fired, ${sum('ambAbort')} aborted; dashes refused as stern chases ${sum('astern')}`); }
   say('\nsinkings');
   out.sink = {};
   const tk = s => s.sunkT !== null && (s.killer === 'torpedo' || s.killer === 'flooding' || s.killer === 'capsize' || s.torpDmg >= 0.5 * (s.torpDmg + s.other));
