@@ -9,7 +9,7 @@
 const path = require('path'), fs = require('fs');
 const { chromium } = require('playwright');
 const OUT = process.argv[2], TAG = process.argv[3] || 'shot', SEED = +(process.argv[4] || 1), NATIONS = (process.argv[5] || 'USN,IJN').split(',');
-const PRE = 10, POST = 90, EVERY = 6;   // frames (1/30 s real = 1/60 sim s at the 1x pace) before the bow, after it; a shot every EVERY frames
+const PRE = 10, POST = 90, EVERY = 9;   // frames (1/30 s real = 1/60 sim s at the 1x pace) before the bow, after it; a shot every EVERY frames
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
@@ -25,6 +25,7 @@ const PRE = 10, POST = 90, EVERY = 6;   // frames (1/30 s real = 1/60 sim s at t
   await p.waitForTimeout(1500);
   await p.evaluate((seed) => {
     const t0 = performance.now(); performance.now = () => t0 + __fakeT;
+    window.__render = true; const pr = WW.post.render.bind(WW.post); WW.post.render = (x, y) => { if (__render) pr(x, y); };   // frames without a shot are not drawn (software GL is slow)
     __step(3);
     const camUpd = WW.cam.update.bind(WW.cam);
     WW.cam.update = function (rdt) { if (!window.__lookFn) return camUpd(rdt); const L = __lookFn(); WW.camera.position.set(L.x, L.y, L.z); WW.camera.lookAt(L.tx, L.ty, L.tz); WW.camera.updateMatrixWorld(); };
@@ -61,16 +62,17 @@ const PRE = 10, POST = 90, EVERY = 6;   // frames (1/30 s real = 1/60 sim s at t
     const rows = [];
     let bowF = null;
     for (let f = 0; f < PRE + POST + 12 && (bowF === null || f - bowF <= POST); f++) {
-      const r = await p.evaluate(() => {
-        const q = __q, x0 = q.x, z0 = q.z, t0 = WW.time.now;
+      const shot = f % EVERY === 0 || f === PRE - 1 || f === PRE;
+      const r = await p.evaluate((shot) => {
+        window.__render = shot; const q = __q, x0 = q.x, z0 = q.z, t0 = WW.time.now;
         __step(1);
         const gs = Math.hypot(q.x - x0, q.z - z0) / Math.max(1e-6, WW.time.now - t0), m = q.model, c = q.carrier;
         return { ph: q.state === 'takeoff' ? q.deckPh : q.state, sp: +q.speed.toFixed(2), gs: +gs.toFixed(2), rel: +(gs - c.speed).toFixed(2),
           h: +(q.y - c._deck.dy).toFixed(2), pitch: +((q.pitch || 0) * 180 / Math.PI).toFixed(1), disc: m.disc.visible ? 1 : 0, blades: m.blades.visible ? 1 : 0, kind: q.kind, cv: c.cls && c.cls.key };
-      });
+      }, shot);
       if (bowF === null && r.ph !== 'run') bowF = f;
       r.f = f; rows.push(r);
-      if (f % EVERY === 0 || (bowF === f)) {
+      if (shot) {
         const file = `${TAG}_${nat}_${String(f).padStart(2, '0')}.png`;
         await p.screenshot({ path: path.join(OUT, file), timeout: 180000 });
         r.file = file;
