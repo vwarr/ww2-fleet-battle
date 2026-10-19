@@ -16,7 +16,7 @@ window.WW = window.WW || {};
   const R = Math.random, rr = (a, b) => a + (b - a) * R();
   const FAR = 420, NEAR_FIG = 170, FIG_K = 1, // ground crews: the sailors' size (models_crew.js CREW_M; was 2 x PLANE_K^0.73 when the sailors were oversized)
     MAX_FIG = 170, VCAP = { fuel: 16, bombs: 16, crash: 3, roller: 2 }, VSPD = { fuel: 14, bombs: 12, crash: 16, roller: 1.2 };
-  let trace = null;   // tests/base_clip.js: this frame's figures and vehicles ({ figs, veh })
+  let trace = null, SRC = '';   // SRC: who the figure is (the clip test's report)   // tests/base_clip.js: this frame's figures and vehicles ({ figs, veh })
   let base = null, planes = new Map(), wrecks = new Map(), prev = new Map(), crews = new Map(), trips = [], veh = {}, scrT = -1e9, fig = 0;
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
 
@@ -132,9 +132,9 @@ window.WW = window.WW || {};
 
   // ---------- figures ----------
   function figure(x, z, face, nation, role, run) {
-    if (fig >= MAX_FIG || !WW.crew || !WW.crew.addFigure || inVeh(x, z)) return;
+    if (fig >= MAX_FIG || !WW.crew || !WW.crew.addFigure || inVeh(x, z) || inMover(x, z)) return;
     const bob = run ? Math.abs(Math.sin(performance.now() / 70 + x)) * 0.05 : 0;
-    if (trace) trace.figs.push({ x, z, role });
+    if (trace) trace.figs.push({ x, z, role, act: SRC });
     _q.setFromEuler(_e.set(0, -face, 0)); _p.set(x, gy(x, z) + bob, z); _s.set(FIG_K, FIG_K, FIG_K);
     WW.crew.addFigure(_m.compose(_p, _q, _s), nation, role); fig++;
   }
@@ -144,8 +144,9 @@ window.WW = window.WW || {};
     if (!c) {
       const C = CLS(s.v), n = s.state === 'rearm' ? 3 : 2;
       c = { men: [], left: null };
-      // nose, beside each wingtip, behind the tail: never under a wing (the figure would stand through it)
-      const posts = [[C.len / 2 + 0.7, rr(-0.6, 0.6)], [rr(-0.3, 0.6) * C.len / 4.6, C.span / 2 + 0.35], [rr(-0.8, 0.2) * C.len / 4.6, -C.span / 2 - 0.35], [-C.len / 2 - 0.5, rr(-0.5, 0.5)]];
+      // off the nose (beside its path out, outboard of the wingtip line), beside each wingtip, behind the tail: never under a wing
+      // nor where the plane taxis out or back in
+      const posts = [[C.len / 2 + 0.7 * AWAY_K, (R() < 0.5 ? -1 : 1) * (C.span / 2 + 0.3)], [rr(-0.3, 0.6) * C.len / 4.6, C.span / 2 + 0.35], [rr(-0.8, 0.2) * C.len / 4.6, -C.span / 2 - 0.35], [-C.len / 2 - 0.5, rr(-0.5, 0.5)]];
       for (let i = 0; i < 4; i++) c.men.push({ f: posts[i][0], r: posts[i][1], role: i === 0 ? 'o' : (R() < 0.3 ? 'y' : 'c'), ph: R() * 6.28, on: i < n });
       crews.set(s, c);
     }
@@ -156,6 +157,7 @@ window.WW = window.WW || {};
   const AWAY_K = Math.min(1, WW.airfieldLayout.BERM_S / 1.4);
   const mrSide = c => (c.men[1] && c.men[1].r < 0 ? -1 : 1);
   function crewsAt(cam, now) {
+    SRC = 'crew';
     const nat = base.nation, scramble = performance.now() / 1000 - scrT < 10;
     for (const s of base.slots) {
       if (!s.spot) continue;
@@ -169,7 +171,7 @@ window.WW = window.WW || {};
         const t = now - c.left; if (t > 18) continue;
         away = Math.min(1, t / (scramble ? 1.2 : 3)) * (scramble ? 1.8 : 1.2) * AWAY_K; run = scramble && t < 2;   // clear of the props, short of the next revetment
         if (p && p.alive && p.rwPh === 'warm' && t < 18) { // the plane captain stays at the wingtip till it rolls
-          const C = CLS(s.v), ph = p.heading, px = Math.cos(ph), pz = Math.sin(ph), sg = mrSide(c); figure(p.x - pz * sg * (C.span / 2 + 0.9 * AWAY_K) + px * 1.2 * AWAY_K, p.z + px * sg * (C.span / 2 + 0.9 * AWAY_K) + pz * 1.2 * AWAY_K, ph + sg * Math.PI / 2 + Math.PI, nat, 'y', false);   // off the plane's own wingtip as it turns out
+          const C = CLS(s.v), ph = p.heading, px = Math.cos(ph), pz = Math.sin(ph), sg = mrSide(c); SRC = 'capt'; figure(p.x - pz * sg * (C.span / 2 + 0.9 * AWAY_K) + px * 1.2 * AWAY_K, p.z + px * sg * (C.span / 2 + 0.9 * AWAY_K) + pz * 1.2 * AWAY_K, ph + sg * Math.PI / 2 + Math.PI, nat, 'y', false); SRC = 'crew';   // off the plane's own wingtip as it turns out
         }
       } else if (s.state === 'parked' || s.state === 'rearm') c.left = null;
       else continue;
@@ -188,6 +190,7 @@ window.WW = window.WW || {};
   // the crew of a crash-landed plane: out of the cockpit and running clear of the fire (the first 4 s pulled out
   // by the crash crew once they arrive), then standing off watching it burn
   function crashCrew(cam, now) {
+    SRC = 'crash';
     for (const w of base.wrecks || []) {
       const age = now - w.t; if (!w.crash || age > 40 || (w.x - cam.x) ** 2 + (w.z - cam.z) ** 2 > NEAR_FIG * NEAR_FIG) continue;
       const n = VA(w.v, w.k).kind === 'fighter' ? 1 : 3;
@@ -198,6 +201,7 @@ window.WW = window.WW || {};
     }
   }
   function repairGang(cam, now) {
+    SRC = 'gang';
     const rp = base.repairing, c = rp && rp.crater;
     if (!c || !base.craters.includes(c) || now - rp.at > 30 || base.neutralized) { vehSet('roller', null); return; }
     if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > NEAR_FIG * NEAR_FIG) { vehSet('roller', null); return; }
@@ -310,6 +314,18 @@ window.WW = window.WW || {};
   }
   // a figure inside a vehicle's footprint (this frame's trips, before they are drawn): not drawn there
   let vehPre = [];
+  // a plane taxiing or rolling over the spot where a man of the ground crews stands (or a wreck lying there): he is not
+  // drawn that frame (he has stepped round behind it). The planes on the ground and the wrecks, gathered once a frame.
+  let movT = -1; const mov = [];
+  function inMover(x, z) {
+    const now = performance.now();
+    if (now !== movT) { movT = now; mov.length = 0; for (const p of WW.world.planes) if (p.carrier === base && p.alive && !p.removed && WW.landGround.onGround(p)) mov.push(p); for (const w of base.wrecks || []) mov.push({ variant: w.v, heading: w.h, x: w.x, z: w.z }); }
+    for (const p of mov) {
+      const C = CLS(p.variant), c = Math.cos(p.heading), s = Math.sin(p.heading), dx = x - p.x, dz = z - p.z, a = dx * c + dz * s, b = -dx * s + dz * c;
+      if ((Math.abs(a) < C.len / 2 + 0.1 && Math.abs(b) < C.len * 0.08 + 0.1) || (Math.abs(a - C.len * 0.05) < C.len * 0.15 + 0.1 && Math.abs(b) < C.span / 2 + 0.1)) return true;
+    }
+    return false;
+  }
   function inVeh(x, z) {
     const K = WW.baseModels.VEH_K || 1;
     for (const q of vehPre) { const c = Math.cos(q.h), s = Math.sin(q.h), dx = x - q.x, dz = z - q.z; if (Math.abs(dx * c + dz * s) < 1.3 * K + 0.2 && Math.abs(-dx * s + dz * c) < 0.55 * K + 0.2) return true; }

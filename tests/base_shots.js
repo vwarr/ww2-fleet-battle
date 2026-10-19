@@ -169,7 +169,7 @@ const SHOTS = [
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8776/') + 'index.html?v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8776/') + 'index.html?v=' + Date.now(), { timeout: 180000 });
   await p.waitForTimeout(2500);
   await p.addStyleTag({ content: '#hud, .panel, #film .caption { display: none !important; }' });
   await p.evaluate(([seed, owner, camp, hour]) => {
