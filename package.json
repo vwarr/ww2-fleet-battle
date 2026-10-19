@@ -25,6 +25,8 @@
     "test:determinism": "bash tests/run.sh determinism.js --cross 1,2,3 300",
     "test:determinism:node": "node tests/determinism.js 1 300",
     "test:determinism:proc": "node tests/determinism_proc.js --seeds 1-20 --only midway,standard,carrier_duel --workers 2",
+    "test:lookahead": "bash tests/run.sh lookahead_trace.js --scen standard,carrier_duel --seeds 1,2 --sim 300 --sim2 150",
+    "test:gates": "npm run test:determinism && npm run test:lookahead && npm run test:ai",
     "get-node": "bash tests/get_node.sh"
   },
   "devDependencies": {
