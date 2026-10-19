@@ -76,13 +76,22 @@ window.WW = window.WW || {};
       s.visible = false; s.renderOrder = 6; S.add(s); flares.push(s);
     }
     WW.on('shellFired', e => { if (n > 0.2 && e && (e.cal === 'big' || e.cal === 'med')) addFlash(e.x, (e.y || 2) + 1, e.z, e.cal === 'big' ? 2.2 : 1.4, 0.14, 70); });
-    WW.on('shipBoom', e => { if (n > 0.2 && e) { addFlash(e.x, (e.y || 2) + 3, e.z, 2.6, 0.6, 90); if (e.ship) flareShip(e.ship); } });
+    WW.on('shipBoom', e => { if (n > 0.2 && e) { addFlash(e.x, (e.y || 2) + 3, e.z, 1.8, 0.35, 70); if (e.ship) flareShip(e.ship); } });   // short: a flash, not a floodlight
     WW.on('starShell', sh => { if (n > 0.1 && sh && sh.by && WW.fx) WW.fx.muzzleFlash(sh.fromX, 3, sh.fromZ); });
     WW.on('roundStart', () => { flashes.length = 0; });
     (WW.camHooks = WW.camHooks || []).push(camHook);
     wrapStory();
   }
-  function addFlash(x, y, z, i, life, dist) { if (flashes.length > 6) flashes.shift(); flashes.push({ x, y, z, i, life, t: 0, dist }); }
+  // flashes at one spot in the same instant (a sinking ship's boom, her break and the blast all at once) merge into one:
+  // the brightest, not their sum
+  function addFlash(x, y, z, i, life, dist) {
+    for (const f of flashes) if (f.t < 0.25 && Math.abs(f.x - x) + Math.abs(f.z - z) < 8) {
+      const left = f.i * (1 - f.t / f.life);
+      if (i > left) { f.life = Math.max(life, f.life - f.t); f.i = i; f.t = 0; f.dist = Math.max(dist, f.dist); f.x = x; f.y = y; f.z = z; }
+      return;
+    }
+    if (flashes.length > 6) flashes.shift(); flashes.push({ x, y, z, i, life, t: 0, dist });
+  }
 
   function topY(s) { return s.model && s.model._hg ? s.model._hg[2] : 2; }
   function burning(s) { return !s.removed && ((s.alive && (s.dmgCrit || (s.hp < 0.5 * s.maxHp && s.dmgSites && s.dmgSites.length))) || (s.sinking && (s.sinkT || 0) < 8)); }

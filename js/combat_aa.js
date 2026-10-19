@@ -158,7 +158,7 @@ window.WW = window.WW || {};
     '  #include <fog_vertex>',
     '}'].join('\n');
   var SKY_FS = [
-    'uniform vec3 uSunV, uLit, uAmb;',
+    'uniform vec3 uSunV, uLit, uAmb; uniform float uDay;',
     'varying vec2 vUv; varying vec3 vCol; varying float vA, vFlash, vSeed, vSoft;',
     '#include <fog_pars_fragment>',
     'void main() {',
@@ -178,7 +178,7 @@ window.WW = window.WW || {};
     // toon shading of a ball (the MeshToonMaterial gradient: 0.47 / 0.65 / 0.80), the light of the sky_time palette
     '  vec3 nr = normalize(vec3(vUv * 1.3, sqrt(max(0.05, 1.0 - r * r))));',
     '  float l = dot(nr, uSunV) * 0.5 + 0.5, gr = l < 0.333 ? 0.47 : l < 0.667 ? 0.65 : 0.80;',
-    '  vec3 c = vCol * (uAmb + uLit * mix(gr, 0.62, vSoft * 0.6));',
+    '  vec3 c = vCol * (uAmb + uLit * mix(gr, 0.62, vSoft * 0.6)) * mix(0.55, 1.0, uDay);',   // night: dark smoke against the sky, never moonlit grey
     '  float fc = vFlash * (1.0 - smoothstep(0.0, 0.55, r));',
     '  c = mix(c, vec3(3.2, 1.7, 0.55), fc);',
     '  gl_FragColor = vec4(c, max(vA * m, fc));',

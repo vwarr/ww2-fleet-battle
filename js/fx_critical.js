@@ -37,10 +37,12 @@ window.WW = window.WW || {};
     var lx0 = WW.clamp((hx - s.x) * c + (hz - s.z) * sn, -L * 0.35, L * 0.35), p0 = at(s, lx0, 0, home), x = p0[0], z = p0[1];
     var H = 22 * k + 6;   // the column's height
     stats.magazine++;
-    // the flash: white-hot, lighting the sea round her (and the night sky)
-    P('halo').spawn(x, 3 * sq, z, 0, 0, 0, 0.55, 8 * k, 34 * k, C(0xfff4dc), C(0x8a4a20), 0, 0, 0);
-    P('halo').spawn(x, 6 * sq, z, 0, 2, 0, 1.4, 6 * k, 20 * k, C(0xe8a060), C(0x401808), 0, 0, 0);
-    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(x, 10 * sq, z, 7, 1.6, 260);
+    // the flash: white-hot, lighting the sea round her (and the night sky). In the dark it is as bright but smaller
+    // and shorter (nk), so it reads as a flash and not a white dome over the frame
+    var nt = WW.fx.raw.night ? WW.fx.raw.night() : 0, nk = 1 - 0.6 * nt, D = WW.fx.raw.dim || function (c) { return c; };
+    P('halo').spawn(x, 3 * sq, z, 0, 0, 0, 0.55 * (1 - 0.4 * nt), 8 * k * nk, 34 * k * nk, D(C(0xfff4dc), 1 - 0.3 * nt), C(0x8a4a20), 0, 0, 0);
+    P('halo').spawn(x, 6 * sq, z, 0, 2, 0, 1.4 * (1 - 0.5 * nt), 6 * k * nk, 20 * k * nk, D(C(0xe8a060), 1 - 0.45 * nt), C(0x401808), 0, 0, 0);
+    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(x, 10 * sq, z, 7 - 3 * nt, 1.6 - 0.9 * nt, 260);
     if (WW.emit) WW.emit('shipBoom', { ship: s, x: x, y: 3, z: z, size: 1.6 });   // the sound (audio_naval_wire.js)
     // the fireball: hot puffs along the hull, climbing
     for (var i = 0; i < 34; i++) {
@@ -90,8 +92,9 @@ window.WW = window.WW || {};
     var lx0 = WW.clamp((hx - s.x) * c + (hz - s.z) * sn, -L * 0.4, L * 0.4), n = Math.min(12, 4 + Math.round((e.load || 2) / 2) + (e.hangar ? 3 : 0));
     stats.deck++;
     var p0 = at(s, lx0, 0, home);
-    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(p0[0], y + 6, p0[1], big ? 5 : 3.5, 1.2, 200);
-    P('halo').spawn(p0[0], y + 2, p0[1], 0, 0, 0, 0.5, 6, big ? 22 : 15, C(0xfff0d0), C(0x803818), 0, 0, 0);
+    var nt = WW.fx.raw.night ? WW.fx.raw.night() : 0, nk = 1 - 0.55 * nt, D = WW.fx.raw.dim || function (c) { return c; };   // night: smaller, shorter (magazine)
+    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(p0[0], y + 6, p0[1], (big ? 5 : 3.5) * (1 - 0.4 * nt), 1.2 - 0.6 * nt, 200);
+    P('halo').spawn(p0[0], y + 2, p0[1], 0, 0, 0, 0.5 * (1 - 0.4 * nt), 6 * nk, (big ? 22 : 15) * nk, D(C(0xfff0d0), 1 - 0.3 * nt), C(0x803818), 0, 0, 0);
     // the chain: blasts walking fore and aft from the hit, a few seconds apart at the end
     for (var i = 0; i < n; i++) (function (i) {
       var side = i % 2 ? 1 : -1, lx = WW.clamp(lx0 + side * Math.ceil(i / 2) * L * 0.09 + rr(-1.5, 1.5), -L * 0.46, L * 0.46), t = i === 0 ? 0 : 0.25 + i * rr(0.35, 0.65);
