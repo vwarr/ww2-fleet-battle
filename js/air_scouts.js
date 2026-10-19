@@ -12,7 +12,10 @@ window.WW = window.WW || {};
 (function () {
   'use strict';
   var SPOT_R = WW.intel ? WW.intel.R.SPOT : 85, SPOT_HOLD = WW.intel ? WW.intel.T.SPOT_HOLD : 20, SEARCH_T = 130, ALT = 26, ARC_R = 90;   // SEARCH_T covers the ~35 s flight out on the big map
-  var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, CAT_SLIDE = 0.35, DAWN = [0.5, 6];   // DAWN: first catapult launch (s into the round)
+  var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, DAWN = [0.5, 6];   // DAWN: first catapult launch (s into the round)
+  // the catapult stroke: the carriage runs CAT_LEN along the rail at a constant acceleration and lets the plane go at
+  // CAT_V (u/s relative to the ship, its flying speed): T = 2 CAT_LEN / CAT_V (0.2 s)
+  var CAT_LEN = 1.8, CAT_V = 18, CAT_T = 2 * CAT_LEN / CAT_V, CAT_A = CAT_V / CAT_T;
   var SCALE_FLY = 1.5 * (WW.cfg.PLANE_K || 1), SCALE_CAT = Math.min(0.55, SCALE_FLY); // small on the catapult, the carrier planes' size in flight (1.5 at the 1.7 tuning scale)
   var SHIPS = { cruiser: 1, battleship: 1 };
   if (WW.PLANE_TYPES && !WW.PLANE_TYPES.scout) WW.PLANE_TYPES.scout = { hp: 16, speed: 22, range: 1000 };
@@ -95,16 +98,24 @@ window.WW = window.WW || {};
       if (this.t < CAT_HOLD) {
         var k0 = WW.clamp((this.t - 0.2) / (CAT_HOLD - 0.4), 0, 1), c = this.cat;
         c.ry = c.ry0 + WW.angleDiff(c.ry0, c.ryL) * k0 * k0 * (3 - 2 * k0);
-        this.onCatapult(0); this.speed = this.carrier.speed; this.sync(dt); return;
+        this.onCatapult(0); this.speed = this.carrier.speed * Math.cos(c.ry); this.sync(dt); return;   // her way along the rail's line
       }
-      var k = Math.min(1, (this.t - CAT_HOLD) / CAT_SLIDE), len = 1.8;
+      var tc = this.t - CAT_HOLD, s = this.carrier;
       if (!this.fired) {
         this.fired = true;
         var fx = WW.fx; if (fx) fx.smoke(this.x, this.y, this.z, false, 0.5);   // cordite puff of the catapult charge
       }
-      this.onCatapult(len * k * k);
-      if (k >= 1) {
-        this.state = 'transit'; this.speed = this.carrier.speed + 18; this.vy = 1.5;
+      // the ship's own way along the rail's line: the plane's speed (along its heading) is that plus the stroke's
+      var cv = s.speed * Math.cos(this.cat.ry);
+      if (tc < CAT_T) {
+        this.onCatapult(0.5 * CAT_A * tc * tc); this.speed = cv + CAT_A * tc;
+      } else {
+        // off the end of the rail: where the rail's end was when she left it (the ship has since steamed on for rem s),
+        // then flown on for the rest of the step at the launch speed (no step lost at the end of the stroke)
+        this.onCatapult(CAT_LEN);
+        this.state = 'transit'; this.speed = cv + CAT_V; this.vy = 1.5;
+        var rem = Math.min(tc - CAT_T, dt), fx2 = Math.cos(this.heading) * this.speed - Math.cos(s.heading) * s.speed, fz2 = Math.sin(this.heading) * this.speed - Math.sin(s.heading) * s.speed;
+        this.x += fx2 * rem; this.z += fz2 * rem; this.y += this.vy * rem;
         stats.launched++;
       }
       if (this.prop) this.prop.rotation.x += dt * 45;

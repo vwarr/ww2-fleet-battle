@@ -17,6 +17,14 @@ window.WW = window.WW || {};
     return c;
   }
 
+  // Night (the same curve as night_fx.js: 0 by day, 1 in full dark): the fire and explosion cores burn deep
+  // orange-red and light themselves, dark smoke stays dark under the moon, and flashes shrink so a blast reads as a
+  // flash, not a white-out. The day look is untouched (every night term is multiplied by NIGHT.value).
+  var NIGHT = { value: 0 };
+  function night() { var k = WW.daylight === undefined ? 1 : WW.daylight; return k >= 0.55 ? 0 : Math.min(1, (0.55 - k) / 0.4); }
+  var _nc = null;   // scratch colour (spawn copies r, g, b): never scale the cached palette
+  function dim(c, k) { if (k === 1) return c; if (!_nc) _nc = new THREE.Color(); return _nc.setRGB(c.r * k, c.g * k, c.b * k); }
+
   var FIELDS = ['px', 'py', 'pz', 'vx', 'vy', 'vz', 'age', 'life', 's0', 's1', 'g', 'drag', 'ex', 'ey', 'spin',
     'r0', 'g0', 'b0', 'r1', 'g1', 'b1'];
   // mode: 'puff' (lit/opaque: ease-out growth, smooth shrink at end), 'glow' (additive billboard, colour fades to black),
@@ -114,11 +122,28 @@ window.WW = window.WW || {};
     t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t;
   }
   // toon-lit puff whose emissive glow scales with the instance colour (fire/explosion cores: shaded yet glowing)
+  // At night (uNight) the core is self-lit in a deeper, redder colour (green and blue fall away faster than red: a
+  // yellow core reads orange, an orange one deep red) and the moonlit diffuse fades out, so flames never read pastel.
   function glowPuffMat(tg) {
     var m = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg, emissive: 0x2c2c2c });
     m.onBeforeCompile = function (sh) {
-      sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;',
-        'vec3 totalEmissiveRadiance = emissive;\n#ifdef USE_COLOR\n totalEmissiveRadiance *= vColor;\n#endif');
+      sh.uniforms.uNight = NIGHT;
+      sh.fragmentShader = 'uniform float uNight;\n' + sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;',
+        'vec3 totalEmissiveRadiance = emissive;\n#ifdef USE_COLOR\n totalEmissiveRadiance *= vColor;\n' +
+        ' vec3 deepC = vec3(vColor.r * 1.1, pow(vColor.g, 1.9) * 0.8, pow(vColor.b, 2.6) * 0.35);\n' +
+        ' totalEmissiveRadiance = mix(totalEmissiveRadiance, deepC * 0.95, uNight);\n diffuseColor.rgb *= 1.0 - 0.85 * uNight;\n#endif');
+    };
+    return m;
+  }
+  // smoke: at night the dark smoke stays dark (the moon greys a pale-ended puff into a lilac ball); white steam and
+  // spray-white puffs keep their moonlit white
+  function smokeMat(tg) {
+    var m = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg });
+    m.onBeforeCompile = function (sh) {
+      sh.uniforms.uNight = NIGHT;
+      sh.fragmentShader = 'uniform float uNight;\n' + sh.fragmentShader.replace('#include <color_fragment>',
+        '#include <color_fragment>\n#ifdef USE_COLOR\n float smL = dot(vColor, vec3(0.299, 0.587, 0.114));\n' +
+        ' diffuseColor.rgb *= 1.0 - uNight * 0.55 * (1.0 - smoothstep(0.62, 0.8, smL));\n#endif');
     };
     return m;
   }
@@ -144,7 +169,7 @@ window.WW = window.WW || {};
     P = {
       glow: new Pool(600, ball, glowPuffMat(tg), 'puff'),                                        // fire/flash cores (lit + glow)
       solid: new Pool(500, ball, new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg }), 'puff'),   // splash/debris
-      smoke: new Pool(900, ball, new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: tg }), 'puff'),
+      smoke: new Pool(900, ball, smokeMat(tg), 'puff'),
       halo: new Pool(400, quad, addMat(), 'glow'),                                                 // soft light glows, sparks
       flat: new Pool(900, flatQ, foamMat, 'flat')                                                  // foam on the water
     };
@@ -195,8 +220,8 @@ window.WW = window.WW || {};
   }
   function explosion(x, y, z, size) {
     if (!P) return; size = Math.max(0.3, size || 1);
-    var n = Math.min(14, 4 + Math.round(size * 2.5)), f = 0.5 + 0.45 * size;
-    P.halo.spawn(x, y + 0.5 * f, z, 0, 0.4, 0, 0.6, 1.1 * f, 2.2 * f, col(0x7a5434), col(0x5a2c14), 0, 0, 0);
+    var n = Math.min(14, 4 + Math.round(size * 2.5)), f = 0.5 + 0.45 * size, nk = 1 - 0.45 * NIGHT.value;   // night: a smaller, dimmer glow
+    P.halo.spawn(x, y + 0.5 * f, z, 0, 0.4, 0, 0.6, 1.1 * f * nk, 2.2 * f * nk, dim(col(0x7a5434), nk), col(0x5a2c14), 0, 0, 0);
     for (var i = 0; i < n; i++) {                       // warm fireball puffs
       var hot = i < n / 2;
       P.glow.spawn(x + rr(-0.5, 0.5) * f, y + rr(0, 0.6) * f, z + rr(-0.5, 0.5) * f,
@@ -360,6 +385,7 @@ window.WW = window.WW || {};
 
   function update(dt) {
     if (!P || !(dt > 0)) return;
+    NIGHT.value = night();
     for (var k in P) P[k].update(dt);
     for (var i = 0; i < OIL_N; i++) {
       var o = oil[i]; if (!o.alive) continue;
@@ -382,6 +408,6 @@ window.WW = window.WW || {};
     fire: fire, wake: wake, torpBubbles: torpBubbles, oilSlick: oilSlick, sparks: sparks, trail: trail,
     _stats: function () { var o = {}; for (var k in P) o[k] = P[k].count; return o; },
     // raw pool access for bespoke recipes (fx_critical.js): pool(name).spawn(...), the golden-hour colour, the wind
-    raw: { pool: function (k) { return P && P[k]; }, col: col, windX: windX, windZ: windZ }
+    raw: { pool: function (k) { return P && P[k]; }, col: col, windX: windX, windZ: windZ, night: function () { return NIGHT.value; }, dim: dim }
   };
 })();

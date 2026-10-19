@@ -29,6 +29,16 @@ window.WW = window.WW || {};
     return [home[0] + lx, home[1] + lz];
   }
   function deckY(s) { return (s.group ? s.group.position.y : 0) + (s.model && s.model.deck ? s.model.deck.position.y : 2); }
+  // a point on her deck (local lx along the keel, lz across) on the hull as posed (ship_swell.js: the swell, settling)
+  var _pv = null;
+  function onDeck(s, lx, lz, home) {
+    if (s && !s.removed && s.group && WW.shipSwell && WW.shipSwell.posedPoint && typeof THREE !== 'undefined') {
+      if (!_pv) _pv = new THREE.Vector3();
+      var p = WW.shipSwell.posedPoint(s, lx, s.model && s.model.deck ? s.model.deck.position.y : 2, lz, _pv);
+      return [p.x, p.z, p.y];
+    }
+    var w = at(s, lx, lz, home); return [w[0], w[1], s && !s.removed ? deckY(s) : 0.5];
+  }
 
   // ---------- the magazine ----------
   function magazine(e) {
@@ -37,10 +47,12 @@ window.WW = window.WW || {};
     var lx0 = WW.clamp((hx - s.x) * c + (hz - s.z) * sn, -L * 0.35, L * 0.35), p0 = at(s, lx0, 0, home), x = p0[0], z = p0[1];
     var H = 22 * k + 6;   // the column's height
     stats.magazine++;
-    // the flash: white-hot, lighting the sea round her (and the night sky)
-    P('halo').spawn(x, 3 * sq, z, 0, 0, 0, 0.55, 8 * k, 34 * k, C(0xfff4dc), C(0x8a4a20), 0, 0, 0);
-    P('halo').spawn(x, 6 * sq, z, 0, 2, 0, 1.4, 6 * k, 20 * k, C(0xe8a060), C(0x401808), 0, 0, 0);
-    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(x, 10 * sq, z, 7, 1.6, 260);
+    // the flash: white-hot, lighting the sea round her (and the night sky). In the dark it is as bright but smaller
+    // and shorter (nk), so it reads as a flash and not a white dome over the frame
+    var nt = WW.fx.raw.night ? WW.fx.raw.night() : 0, nk = 1 - 0.6 * nt, D = WW.fx.raw.dim || function (c) { return c; };
+    P('halo').spawn(x, 3 * sq, z, 0, 0, 0, 0.55 * (1 - 0.4 * nt), 8 * k * nk, 34 * k * nk, D(C(0xfff4dc), 1 - 0.3 * nt), C(0x8a4a20), 0, 0, 0);
+    P('halo').spawn(x, 6 * sq, z, 0, 2, 0, 1.4 * (1 - 0.5 * nt), 6 * k * nk, 20 * k * nk, D(C(0xe8a060), 1 - 0.45 * nt), C(0x401808), 0, 0, 0);
+    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(x, 10 * sq, z, 7 - 3 * nt, 1.6 - 0.9 * nt, 260);
     if (WW.emit) WW.emit('shipBoom', { ship: s, x: x, y: 3, z: z, size: 1.6 });   // the sound (audio_naval_wire.js)
     // the fireball: hot puffs along the hull, climbing
     for (var i = 0; i < 34; i++) {
@@ -90,8 +102,9 @@ window.WW = window.WW || {};
     var lx0 = WW.clamp((hx - s.x) * c + (hz - s.z) * sn, -L * 0.4, L * 0.4), n = Math.min(12, 4 + Math.round((e.load || 2) / 2) + (e.hangar ? 3 : 0));
     stats.deck++;
     var p0 = at(s, lx0, 0, home);
-    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(p0[0], y + 6, p0[1], big ? 5 : 3.5, 1.2, 200);
-    P('halo').spawn(p0[0], y + 2, p0[1], 0, 0, 0, 0.5, 6, big ? 22 : 15, C(0xfff0d0), C(0x803818), 0, 0, 0);
+    var nt = WW.fx.raw.night ? WW.fx.raw.night() : 0, nk = 1 - 0.55 * nt, D = WW.fx.raw.dim || function (c) { return c; };   // night: smaller, shorter (magazine)
+    if (WW.nightFx && WW.nightFx.flash) WW.nightFx.flash(p0[0], y + 6, p0[1], (big ? 5 : 3.5) * (1 - 0.4 * nt), 1.2 - 0.6 * nt, 200);
+    P('halo').spawn(p0[0], y + 2, p0[1], 0, 0, 0, 0.5 * (1 - 0.4 * nt), 6 * nk, (big ? 22 : 15) * nk, D(C(0xfff0d0), 1 - 0.3 * nt), C(0x803818), 0, 0, 0);
     // the chain: blasts walking fore and aft from the hit, a few seconds apart at the end
     for (var i = 0; i < n; i++) (function (i) {
       var side = i % 2 ? 1 : -1, lx = WW.clamp(lx0 + side * Math.ceil(i / 2) * L * 0.09 + rr(-1.5, 1.5), -L * 0.46, L * 0.46), t = i === 0 ? 0 : 0.25 + i * rr(0.35, 0.65);
@@ -143,12 +156,12 @@ window.WW = window.WW || {};
       var fade = 1 - m.t / m.life, y = m.s.removed ? 0.5 : m.y !== undefined ? deckY(m.s) : 0.4;
       if (m.kind === 'avgas') {
         for (var a = 0; a < 2; a++) {
-          var p = at(m.s, WW.clamp(m.lx + (a ? 1 : -1) * rr(0.05, 0.22) * m.L, -m.L * 0.45, m.L * 0.45), rr(-0.6, 0.6), m.home);
+          var p = onDeck(m.s, WW.clamp(m.lx + (a ? 1 : -1) * rr(0.05, 0.22) * m.L, -m.L * 0.45, m.L * 0.45), rr(-0.6, 0.6), m.home); y = m.s.removed ? y : p[2];
           P('smoke').spawn(p[0], y + 1, p[1], wx() * 1.2 + rr(-0.3, 0.3), rr(4, 6.5) * (0.6 + 0.4 * fade), wz() * 1.2 + rr(-0.3, 0.3), rr(16, 22), 1.6, rr(4, 6) * (0.6 + 0.4 * fade), C(R() < 0.6 ? 0x24201e : 0x34302c), C(0x6a6460), -0.05, 0.12, rr(-0.3, 0.3));
           if (R() < 0.6) WW.fx.fire(p[0], y + 0.3, p[1]);
         }
       } else if (m.kind === 'hole') {
-        var h = at(m.s, m.lx, 0, m.home);
+        var h = onDeck(m.s, m.lx, 0, m.home); if (!m.s.removed) y = h[2];
         P('smoke').spawn(h[0], y + 0.6, h[1], wx() + rr(-0.3, 0.3), rr(2.5, 4), wz() + rr(-0.3, 0.3), rr(8, 12), 1, rr(2.5, 3.5) * (0.5 + 0.5 * fade), C(0x4e4a46), C(0x9a958e), -0.1, 0.25, rr(-0.3, 0.3));
       } else {   // the wreck: fires on the water where she went
         var w = at(m.s, m.lx + rr(-0.3, 0.3) * m.L, rr(-1, 1), m.home);

@@ -21,10 +21,10 @@ window.WW = window.WW || {};
     rtScene = new THREE.WebGLRenderTarget(4, 4, Object.assign({ samples: 4 }, opts));
     rtA = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
     rtB = rtA.clone();
-    mBright = mat(`uniform sampler2D tex; uniform float threshold, knee; varying vec2 vUv;
-      void main(){ vec3 c = texture2D(tex, vUv).rgb; float l = max(c.r, max(c.g, c.b));
+    mBright = mat(`uniform sampler2D tex; uniform float threshold, knee, cap; varying vec2 vUv;
+      void main(){ vec3 c = min(texture2D(tex, vUv).rgb, vec3(cap)); float l = max(c.r, max(c.g, c.b));
         float w = smoothstep(threshold - knee, threshold + knee, l); gl_FragColor = vec4(c * w, 1.0); }`,
-      { tex: { value: null }, threshold: { value: BLOOM.threshold }, knee: { value: BLOOM.knee } });
+      { tex: { value: null }, threshold: { value: BLOOM.threshold }, knee: { value: BLOOM.knee }, cap: { value: 1e4 } });
     mBlur = mat(`uniform sampler2D tex; uniform vec2 dir; varying vec2 vUv;
       void main(){ vec3 s = texture2D(tex, vUv).rgb * 0.227;
         s += (texture2D(tex, vUv + dir * 1.385).rgb + texture2D(tex, vUv - dir * 1.385).rgb) * 0.316;
@@ -73,6 +73,9 @@ window.WW = window.WW || {};
   function setNight(k) {
     if (!mBright) return;
     mBright.uniforms.threshold.value = BLOOM.threshold - 0.45 * k;
+    // the HDR fed to the bloom is capped in the dark, so a blast's white-hot core glows instead of flooding the frame
+    // with a halo the size of the screen (by day: no cap)
+    mBright.uniforms.cap.value = k > 0 ? 1 / (1 / 1e4 + k * (1 / 2.5 - 1 / 1e4)) : 1e4;
     mComp.uniforms.strength.value = BLOOM.strength + 0.3 * k;
     mComp.uniforms.saturation.value = GRADE.saturation + 0.08 * k + gSat;
   }
