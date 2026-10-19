@@ -305,7 +305,7 @@ window.WW = window.WW || {};
   }
 
   // Air-attack evasion (1942): a ship that sees bombers committed to their attack on her manoeuvres under them at
-  // full speed. Dive bombers (rolling in / diving at her within EV.R): rudder hard over, a turn of EV.LEG rad, then
+  // full speed, at her real turn rate (realHelm: TACT_R, as she combs). Dive bombers (rolling in / diving at her within EV.R): rudder hard over, a turn of EV.LEG rad, then
   // the next leg: the USN weaves (Yorktown, Enterprise: reversing the turn spoils the next pilot's aim), the IJN
   // keeps turning the same way (the Kido Butai circled at Midway). A torpedo plane on its run (seen for the
   // type's reaction time REACT): one turn bow or stern on to it (the less rudder), so its drop runs down her side (a
@@ -370,7 +370,10 @@ window.WW = window.WW || {};
       ev.h = ship.heading + ev.dir * EV.LEG; ev.leg++;
     }
     ship.desiredHeading = ev.h; ship.throttle = 1;
-    if (ev.kind === 'torp') realHelm(ship, now + 0.6);   // her real turn rate (TACT_R): the turn against a torpedo plane is the comb begun early
+    // her real turn rate (TACT_R, the comb's helper) under either attack: the turn against a torpedo plane is the comb
+    // begun early, and the weave or circle under the dive bombers swings no faster than she really could (a carrier's
+    // 1.3 rad leg ~12 s on the ship clock at full speed, ~40 s real: Yorktown and Hiryu, not a destroyer's snap turn)
+    realHelm(ship, now + 0.6);
     return true;
   }
 
