@@ -63,6 +63,9 @@ window.WW = window.WW || {};
   // (on the big map the midpoint between two distant fleets is empty sea)
   const APART = 280;
   const PFK = WW.cfg.PLANE_FRAME || 1;   // plane framing distances close in with the plane size (camera_story_shots FK)
+  // the default follow rate on a plane: the eased camera trails a moving subject by speed / rate, so a smaller plane
+  // needs a crisper follow to fill the frame as at the 0.82 scale (0.9 there; 1.8 at true size)
+  const PLANE_KP = 0.9 * Math.max(1, Math.pow(0.82 / 1.7, 0.6) / PFK);
   function sceneCentre() {
     const f = frontCentre();
     if (!(f.d > APART)) return f;
@@ -497,7 +500,7 @@ window.WW = window.WW || {};
         // heavy easing for the director, crisp for the user; action shots set their own (crisper) rates
         const soft = manual && WW.freecam.soft ? WW.freecam.soft() : 1; // eased right after the user takes over
         if (!manual) _d0.copy(L).sub(P);
-        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 * soft : (shot && shot.kP) || 0.9)));
+        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 * soft : (shot && shot.kP) || (shot && shot.subj && shot.subj.pt ? PLANE_KP : 0.9))));
         L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 * soft : (shot && shot.kL) || 1.3)));
         if (!manual && rdt > 0) capTurn(rdt); // smooth moves, never snaps: the view turns at most TURN_MAX rad/s
         // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)

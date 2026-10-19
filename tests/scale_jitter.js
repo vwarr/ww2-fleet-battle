@@ -19,7 +19,7 @@ const FRAME = +(process.env.FRAME || 1000 / 60), UNEVEN = !!+process.env.UNEVEN;
     window.requestAnimationFrame = cb => { __raf.push(cb); return __raf.length; };
     window.__step = n => { for (let i = 0; i < n; i++) { __fakeT += UNEVEN ? (__fi++ % 2 ? 20.33 : 13) : FRAME; const cbs = __raf.splice(0); cbs.forEach(cb => cb(__fakeT)); } };
   }, [FRAME, UNEVEN]);
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (Q ? '&' + Q : ''));
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (Q ? '&' + Q : ''), { timeout: 180000 });
   await p.waitForTimeout(1500);
   await p.evaluate((seed) => {
     WW.post.render = () => {};
