@@ -130,7 +130,7 @@ window.WW = window.WW || {};
     _p = new THREE.Vector3(); _s = new THREE.Vector3(); _c = new THREE.Color(); _z = new THREE.Vector3(0, 0, 1);
     var ball = new THREE.IcosahedronGeometry(0.5, 2), pa = ball.attributes.position, na = ball.attributes.normal, v = new THREE.Vector3();
     for (var j = 0; j < pa.count; j++) { v.fromBufferAttribute(pa, j).normalize(); na.setXYZ(j, v.x, v.y, v.z); } // smooth normals
-    var quad = new THREE.PlaneGeometry(1, 1), flatQ = new THREE.PlaneGeometry(1, 1); flatQ.rotateX(-Math.PI / 2);
+    var quad = new THREE.PlaneGeometry(1, 1), flatQ = new THREE.PlaneGeometry(1, 1, 3, 3); flatQ.rotateX(-Math.PI / 2);
     var tg = toonGrad(), tex = softTex();
     function addMat() {
       return new THREE.MeshBasicMaterial({ color: 0xffffff, map: tex, transparent: true, depthWrite: false,
@@ -148,11 +148,15 @@ window.WW = window.WW || {};
       halo: new Pool(400, quad, addMat(), 'glow'),                                                 // soft light glows, sparks
       flat: new Pool(900, flatQ, foamMat, 'flat')                                                  // foam on the water
     };
+    // the sea (sea_state.js): foam, wakes and slicks lie on the waves; splash columns and floating debris rise from
+    // where the water is (by their own origin; nothing high up is moved)
+    if (WW.sea) { WW.sea.ride(P.flat.mesh.material, 'conform'); WW.sea.ride(P.solid.mesh.material, 'origin'); }
     P.halo.mesh.renderOrder = 4;
     P.flat.mesh.renderOrder = 3; // draw after the water (renderOrder 1) so foam is not hidden by waves
-    var og = new THREE.PlaneGeometry(2, 2); og.rotateX(-Math.PI / 2);
+    var og = new THREE.PlaneGeometry(2, 2, 6, 6); og.rotateX(-Math.PI / 2);
     for (var i = 0; i < OIL_N; i++) {
       var mm = new THREE.Mesh(og, new THREE.MeshBasicMaterial({ color: 0x3a4a48, map: tex, transparent: true, opacity: 0.28, depthWrite: false }));
+      if (WW.sea) WW.sea.ride(mm.material, 'conform');
       mm.visible = false; mm.renderOrder = 2;
       oil.push({ mesh: mm, age: 0, size: 1, alive: false });
     }

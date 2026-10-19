@@ -401,6 +401,14 @@ window.WW = window.WW || {};
     if (game.state === 'setup' && t - lastInput > IDLE_AFTER) return FPS_IDLE;
     return FPS_CAP;
   }
+  // A low camera rides a little above the local sea: never under a crest. A soft floor (the sea's own smooth motion),
+  // so a shot held low over the swell rises and falls with it instead of cutting through it.
+  const SEA_CLEAR = 0.5;
+  function seaFloor() {
+    if (!WW.sea || !WW.sea.active || !camera) return;
+    const p = camera.position, h = WW.sea.height(p.x, p.z) + SEA_CLEAR;
+    if (p.y < h + 0.3) { p.y = Math.max(p.y, h + 0.3 * Math.exp((p.y - h - 0.3) / 0.3)); camera.updateMatrixWorld(); }
+  }
   let last = 0;
   function frame(t) {
     requestAnimationFrame(frame);
@@ -413,10 +421,12 @@ window.WW = window.WW || {};
     call('dmgVis', 'unpose');      // the sim never sees the visual settling / trim (damage_visuals.js)
     // WW.time.warp: brief cinematic slow motion set by the director camera (camera.js); 1 otherwise
     advance(rdt * WW.time.scale * BASE_SPEED * (WW.time.warp || 1));
+    call('sea', 'update', rdt);     // the sea state's clock and the round's sea (sea_state.js), visual only; before what rides it
     call('dmgVis', 'pose', rdt);    // battle damage: settling and trim, knocked-out turrets, toppling masts
     call('shipSwell', 'pose', rdt); // Normandy: the ships heave, pitch and roll on the swell (ship_swell.js), visual only
     call('water', 'update', rdt);  // water, foam and glitter animate on real time
     call('cam', 'update', rdt);
+    seaFloor();                     // the camera never dips under a crest (sea_state.js), visual only
     if (WW.afterCamera) for (const f of WW.afterCamera) f(rdt); // camera-facing visuals re-faced to this frame's camera (a cut: no frame sized for the old view)
     call('crew', 'update', rdt);    // sailors: after the camera (distance LOD), visual only
     call('baseFx', 'update', rdt);  // the island base: craters, fires, parked planes (base_fx.js), visual only
