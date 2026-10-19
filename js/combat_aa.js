@@ -1,6 +1,7 @@
 // combat_aa.js — anti-aircraft fire (WW.combatAA). Loads after combat.js; combat.js's updateAA delegates here.
 // Heavy AA (battleships, cruisers, carriers): time-fused bursts at a predicted lead point, a short wall across
-// the bombers' path; each burst damages planes by proximity and leaves a black puff that drifts with the wind.
+// the bombers' path; each burst damages planes by proximity. Visual: each burst spawns a cluster of black puffs (the
+// rounds a real screen fired) that spread into ragged smudges over a minute and drift on the wind aloft (the flak sky).
 // Light AA (every armed ship): tracer streams at low / close planes with a hit chance per stream.
 // Planes caught near bursts jink (plane.jink 0..1, applied by applyJink from Plane.update); jinking lowers
 // the chance to be hit, a steady torpedo run or dive raises it.
@@ -123,20 +124,151 @@ window.WW = window.WW || {};
   };
   Ring.prototype.clear = function () { this.on.fill(0); this.head = 0; this.mesh.count = 0; };
 
+  // ---------- the flak sky: soft instanced impostors, animated on the GPU ----------
+  // Every heavy burst, light-AA burst and gun-smoke puff is one camera-facing quad in a single draw call. A puff is
+  // written once when it is spawned (birth, life, sizes, drift, colours) and the vertex shader derives the rest from
+  // the visual clock uTime (sim seconds): the pop to a black ball, the slow spread into a ragged smudge, the greying
+  // and thinning, the drift on the wind, the fade near the camera and below a pixel far off. Dead or invisible puffs
+  // collapse to a point (no fragments). The ring reuses the oldest slot when full (the oldest are the faintest).
+  var SKY_N = 12288;
+  var SKY_VS = [
+    'uniform float uTime, uClear, uDay, uPx;',
+    'attribute vec3 aP, aV, aC0, aC1; attribute vec4 aT, aG;',
+    'varying vec2 vUv; varying vec3 vCol; varying float vA, vFlash, vSeed, vSoft;',
+    '#include <fog_pars_vertex>',
+    'void main() {',
+    '  float age = uTime - aT.x;',
+    '  if (age < 0.0 || age > aT.y || aT.x < uClear) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }',
+    '  float t = age / aT.y, g = 1.0 - exp(-age / aG.x);',
+    // pop: s0 to 2.6 s0 in a fraction of a second; then the slow spread to s1
+    '  float s = aT.z + 1.6 * aT.z * (1.0 - exp(-age * 7.0)) + (aT.w - 2.6 * aT.z) * g;',
+    '  vec4 mvPosition = viewMatrix * vec4(aP + aV * age, 1.0);',
+    '  float d = -mvPosition.z;',
+    '  float a = aG.z * smoothstep(0.0, 0.05, age) * (1.0 - smoothstep(0.5, 1.0, t)) * (1.0 - 0.5 * g);',   // thins as it spreads
+    '  a *= smoothstep(3.0 + 0.4 * s, 10.0 + 1.6 * s, d);',                       // soft near fade: never a wall over the lens
+    '  a *= smoothstep(0.4, 1.4, s * uPx / max(d, 1.0));',                         // distance LOD: under a pixel or so, gone
+    '  a *= mix(0.4, 1.0, uDay);',
+    '  float fl = aG.y > 0.0 ? 1.0 - smoothstep(0.0, aG.y, age) : 0.0;',
+    '  if (a < 0.004 && fl < 0.01) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }',
+    '  float r = aG.w * 6.2832 + age * 0.015, cr = cos(r), sr = sin(r);',
+    '  vUv = position.xy;',
+    '  mvPosition.xy += vec2(cr * position.x - sr * position.y, sr * position.x + cr * position.y) * s * 0.78;',
+    '  gl_Position = projectionMatrix * mvPosition;',
+    '  vCol = mix(aC0, aC1, clamp(0.65 * g + 0.45 * t, 0.0, 1.0)); vA = a; vFlash = fl; vSeed = aG.w; vSoft = g;',
+    '  #include <fog_vertex>',
+    '}'].join('\n');
+  var SKY_FS = [
+    'uniform vec3 uSunV, uLit, uAmb;',
+    'varying vec2 vUv; varying vec3 vCol; varying float vA, vFlash, vSeed, vSoft;',
+    '#include <fog_pars_fragment>',
+    'void main() {',
+    '  float r = length(vUv), an = atan(vUv.y, vUv.x), k = vSeed * 60.0;',
+    // a ragged edge (lobes that grow as it spreads) and a few holes in the thinning smudge
+    '  float n = 0.5 * sin(3.0 * an + k) + 0.3 * sin(5.0 * an + k * 1.7 + vSoft * 2.0) + 0.2 * sin(9.0 * an + k * 2.3);',
+    '  float e = 0.6 + n * (0.07 + 0.13 * vSoft), sf = 0.1 + 0.3 * vSoft;',
+    '  float m = 1.0 - smoothstep(e - sf, e + sf, r);',
+    // two side lobes that drift apart as it spreads: a smudge, not a ball
+    '  float sp = 0.12 + 0.2 * vSoft;',
+    '  vec2 o1 = vec2(cos(k), sin(k)) * sp, o2 = vec2(cos(k * 1.7 + 2.0), sin(k * 1.7 + 2.0)) * sp * 1.1;',
+    '  m = max(m, 0.8 * (1.0 - smoothstep(0.32 - sf * 0.5, 0.36 + sf, length(vUv - o1) + n * 0.04)));',
+    '  m = max(m, 0.7 * (1.0 - smoothstep(0.28 - sf * 0.5, 0.32 + sf, length(vUv - o2) - n * 0.04)));',
+    '  r = min(r, min(length(vUv - o1), length(vUv - o2)) * 1.4);',
+    '  m *= 1.0 - vSoft * 0.35 * (0.5 + 0.5 * sin(vUv.x * 7.0 + k) * sin(vUv.y * 6.0 - k * 0.7));',
+    '  if (m * vA < 0.003 && vFlash < 0.01) discard;',
+    // toon shading of a ball (the MeshToonMaterial gradient: 0.47 / 0.65 / 0.80), the light of the sky_time palette
+    '  vec3 nr = normalize(vec3(vUv * 1.3, sqrt(max(0.05, 1.0 - r * r))));',
+    '  float l = dot(nr, uSunV) * 0.5 + 0.5, gr = l < 0.333 ? 0.47 : l < 0.667 ? 0.65 : 0.80;',
+    '  vec3 c = vCol * (uAmb + uLit * mix(gr, 0.62, vSoft * 0.6));',
+    '  float fc = vFlash * (1.0 - smoothstep(0.0, 0.55, r));',
+    '  c = mix(c, vec3(3.2, 1.7, 0.55), fc);',
+    '  gl_FragColor = vec4(c, max(vA * m, fc));',
+    '  #include <fog_fragment>',
+    '}'].join('\n');
+  function Sky(n) {
+    this.n = n; this.head = 0; this.used = 0; this.time = 0; this.lo = n; this.hi = -1; this.all = false;
+    var g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    var sz = { aP: 3, aV: 3, aC0: 3, aC1: 3, aT: 4, aG: 4 };
+    this.at = {};
+    for (var k in sz) {
+      var a = new THREE.InstancedBufferAttribute(new Float32Array(n * sz[k]), sz[k]);
+      a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(k, a); this.at[k] = a;
+    }
+    this.at.aT.array.fill(-1e9);
+    g.instanceCount = 0;
+    this.u = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      uTime: { value: 0 }, uClear: { value: -1e8 }, uDay: { value: 1 }, uPx: { value: 500 },
+      uSunV: { value: new THREE.Vector3(0, 1, 0) }, uLit: { value: new THREE.Color(1, 1, 1) }, uAmb: { value: new THREE.Color(0.5, 0.5, 0.5) }
+    }]);
+    var mat = new THREE.ShaderMaterial({ uniforms: this.u, vertexShader: SKY_VS, fragmentShader: SKY_FS,
+      transparent: true, depthWrite: false, fog: true });
+    var m = this.mesh = new THREE.Mesh(g, mat);
+    m.frustumCulled = false; m.renderOrder = 3; m.castShadow = m.receiveShadow = false;
+    var self = this;
+    m.onBeforeRender = function (rd, sc, cam) { self.prepare(rd, cam); };
+  }
+  // c0 / c1: THREE.Color young / aged. tau: s for the spread. flash: s of the orange flash (0: none)
+  Sky.prototype.spawn = function (x, y, z, vx, vy, vz, delay, life, s0, s1, tau, flash, alpha, c0, c1) {
+    var i = this.head, A = this.at;
+    this.head = (i + 1) % this.n;
+    if (this.used < this.n) this.used++;
+    if (i < this.lo) this.lo = i;
+    if (i > this.hi) this.hi = i;
+    if (this.head === 0) this.all = true;   // wrapped: the next upload covers the whole ring
+    var p = A.aP.array, v = A.aV.array, c = A.aC0.array, d = A.aC1.array, T = A.aT.array, G = A.aG.array, j3 = i * 3, j4 = i * 4;
+    p[j3] = x; p[j3 + 1] = y; p[j3 + 2] = z; v[j3] = vx; v[j3 + 1] = vy; v[j3 + 2] = vz;
+    c[j3] = c0.r; c[j3 + 1] = c0.g; c[j3 + 2] = c0.b; d[j3] = c1.r; d[j3 + 1] = c1.g; d[j3 + 2] = c1.b;
+    T[j4] = this.time + delay; T[j4 + 1] = life; T[j4 + 2] = s0; T[j4 + 3] = s1;
+    G[j4] = tau; G[j4 + 1] = flash; G[j4 + 2] = alpha; G[j4 + 3] = Math.random();
+  };
+  Sky.prototype.advance = function (dt) { this.time += dt; this.u.uTime.value = this.time; };
+  // after each sim step: the new puffs queued for upload (three uploads before the render; a range still waiting
+  // from an earlier step is widened, not replaced: three resets updateRange.count to -1 once it has uploaded)
+  Sky.prototype.flush = function () {
+    this.mesh.geometry.instanceCount = this.used;
+    if (this.hi < this.lo && !this.all) return;
+    var lo = this.all ? 0 : this.lo, hi = this.all ? this.n : this.hi + 1, A = this.at;
+    for (var k in A) {
+      var a = A[k], r = a.updateRange, o = lo * a.itemSize, e = hi * a.itemSize;
+      if (r.count > 0) { o = Math.min(o, r.offset); e = Math.max(e, r.offset + r.count); }
+      r.offset = o; r.count = e - o; a.needsUpdate = true;
+    }
+    this.lo = this.n; this.hi = -1; this.all = false;
+  };
+  // once per render: the light of the moment (sky_time.js) and the sun in view space
+  Sky.prototype.prepare = function (rd, cam) {
+    var u = this.u, P = WW.sky && WW.sky.parts && WW.sky.parts();
+    if (P && P.sun && P.hemi) {
+      u.uLit.value.copy(P.sun.color).multiplyScalar(P.sun.intensity * 0.85);
+      u.uAmb.value.copy(P.hemi.groundColor).lerp(P.hemi.color, 0.65).multiplyScalar(P.hemi.intensity);
+    }
+    if (WW.sky && WW.sky.SUN_DIR) u.uSunV.value.copy(WW.sky.SUN_DIR).transformDirection(cam.matrixWorldInverse);
+    u.uDay.value = WW.daylight === undefined ? 1 : WW.daylight;
+    u.uPx.value = cam.projectionMatrix.elements[5] * 0.5 * rd.domElement.height;   // pixels per unit at distance 1
+  };
+  Sky.prototype.live = function () {   // puffs alive now (tests)
+    var T = this.at.aT.array, n = 0, t = this.time, c = this.u.uClear.value;
+    for (var i = 0; i < this.used; i++) { var b = T[i * 4]; if (b >= c && b <= t && t - b < T[i * 4 + 1]) n++; }
+    return n;
+  };
+  Sky.prototype.clear = function () { this.u.uClear.value = this.time + 1e-3; };
+
   function initVisuals() {
     if (V || typeof THREE === 'undefined' || !WW.scene || WW.simOnly) return;
     var ball = new THREE.IcosahedronGeometry(0.5, 2), pa = ball.attributes.position, na = ball.attributes.normal, v = new THREE.Vector3();
     for (var j = 0; j < pa.count; j++) { v.fromBufferAttribute(pa, j).normalize(); na.setXYZ(j, v.x, v.y, v.z); } // smooth normals
-    var gt = new THREE.DataTexture(new Uint8Array([120, 120, 120, 255, 165, 165, 165, 255, 205, 205, 205, 255]), 3, 1, THREE.RGBAFormat);
-    gt.minFilter = gt.magFilter = THREE.NearestFilter; gt.generateMipmaps = false; gt.needsUpdate = true;
     V = {
-      puff: new Ring(400, ball, new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: gt })),
+      puff: new Sky(SKY_N),
       core: new Ring(64, ball, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false,
         blending: THREE.AdditiveBlending, fog: false })),
       tmp: { m: new THREE.Matrix4(), q: new THREE.Quaternion(), p: new THREE.Vector3(), s: new THREE.Vector3(),
              c: new THREE.Color(), ax: new THREE.Vector3(0.3, 1, 0.2).normalize() },
-      col: { ink: new THREE.Color(0x1a1a1d), ink2: new THREE.Color(0x26262a), grey: new THREE.Color(0x5a5a5e),
-             grey2: new THREE.Color(0x707074), hot: new THREE.Color(0xffb060), hot2: new THREE.Color(0xc04010) }
+      col: { hot: new THREE.Color(0xffb060), hot2: new THREE.Color(0xc04010) },
+      // the flak palette (young -> aged): USN 5"/38 near-black brown, IJN 12.7 cm grey-black, light AA a dusty
+      // brown-black, gun smoke a pale brown-grey cordite haze. Pastel, never #000.
+      flak: { USN: [new THREE.Color(0x2e2622), new THREE.Color(0x6e6660)], IJN: [new THREE.Color(0x2a2c31), new THREE.Color(0x6c6f75)],
+              light: [new THREE.Color(0x3c3530), new THREE.Color(0x7a746e)], haze: [new THREE.Color(0xa49a90), new THREE.Color(0xbdb7b0)] }
     };
     V.core.mesh.renderOrder = 4;
     // tracer rounds: a hot saturated core (HDR red channel > 1 so the bloom pass makes it glow, green/blue kept
@@ -154,18 +286,41 @@ window.WW = window.WW || {};
     if (V.core.mesh.parent !== WW.scene) WW.scene.add(V.core.mesh);
   }
 
-  // Burst look: orange flash core + a few black puffs that linger ~5 s and drift downwind (stronger aloft).
-  function burstFx(x, y, z) {
+  // Burst look (visual only, Math.random): the orange flash core, then the puffs. One sim burst stands for the many
+  // rounds a real screen fired (a 1942 carrier group's 5-inch guns: 100+ barrels at ~15 rounds a minute each), so it
+  // spawns a cluster: its own burst and FLAK.cluster more, scattered around it across the wall and along the lead,
+  // popping over the salvo interval. Each one is a black ball that spreads into a ragged smudge over a minute and
+  // drifts on the wind aloft (stronger with height), greying and thinning until it is gone.
+  var FLAK = { cluster: 4, spread: 15, life: [45, 90], s0: 0.85, s1: [4.5, 9], tau: [14, 26], alpha: 0.78,
+               lightLife: [14, 32], hazeLife: [30, 50] };
+  function windAt(y, k) { var w = WW.wind || { x: 0.3, z: 0 }, f = (0.7 + y / 30) * (k || 1); return [w.x * f, w.z * f]; }
+  function flakPuff(x, y, z, delay, col, R) {
+    var w = windAt(y), L = FLAK.life;
+    V.puff.spawn(x, y, z, w[0] + (R() - 0.5) * 0.3, 0.05 + R() * 0.08, w[1] + (R() - 0.5) * 0.3, delay,
+      L[0] + R() * (L[1] - L[0]), FLAK.s0 * (0.8 + R() * 0.45), FLAK.s1[0] + R() * (FLAK.s1[1] - FLAK.s1[0]),
+      FLAK.tau[0] + R() * (FLAK.tau[1] - FLAK.tau[0]), 0.14 + R() * 0.06, FLAK.alpha * (0.8 + R() * 0.2), col[0], col[1]);
+  }
+  function burstFx(x, y, z, nation) {
     if (!V) return;
-    var R = Math.random, C = V.col, w = WW.wind || { x: 0.3, z: 0 }, wk = 1.8;
-    V.core.spawn(x, y, z, 0, 0, 0, 0.2 + R() * 0.08, 0.6, 1.6, C.hot, C.hot2);
-    var n = 2 + (R() < 0.5 ? 1 : 0);
-    for (var i = 0; i < n; i++) {
-      var big = i === 0, sz = big ? 2.1 + R() * 0.5 : 1.1 + R() * 0.6;
-      V.puff.spawn(x + (R() - 0.5) * 1.2, y + (R() - 0.5) * 0.8, z + (R() - 0.5) * 1.2,
-        w.x * wk + (R() - 0.5) * 0.5, 0.12 + R() * 0.15, w.z * wk + (R() - 0.5) * 0.5,
-        3.6 + R() * 2.0, sz * 0.3, sz, big ? C.ink : C.ink2, big ? C.grey : C.grey2);
+    var R = Math.random, col = V.flak[nation] || V.flak.USN, S = FLAK.spread;
+    V.core.spawn(x, y, z, 0, 0, 0, 0.2 + R() * 0.08, 0.6, 1.6, V.col.hot, V.col.hot2);
+    flakPuff(x, y, z, 0, col, R);
+    for (var i = 0; i < FLAK.cluster; i++) {
+      flakPuff(x + (R() - 0.5) * 2 * S, Math.max(HEAVY.minAlt * 0.7, y + (R() - 0.5) * S * 0.6), z + (R() - 0.5) * 2 * S,
+        R() * HEAVY.interval, col, R);
     }
+  }
+  // a light-AA burst (40 mm self-destruct / 25 mm): small, lower down, shorter lived
+  function lightPuff(x, y, z, delay, R) {
+    var w = windAt(y), L = FLAK.lightLife, c = V.flak.light;
+    V.puff.spawn(x, y, z, w[0] + (R() - 0.5) * 0.3, 0.06 + R() * 0.06, w[1] + (R() - 0.5) * 0.3, delay,
+      L[0] + R() * (L[1] - L[0]), 0.32 + R() * 0.12, 1.9 + R() * 1.1, 8 + R() * 8, 0.08, 0.6, c[0], c[1]);
+  }
+  // gun smoke drifting off a firing battery: pale, big, low, slow to clear
+  function hazePuff(x, y, z, big, R) {
+    var w = windAt(y, 0.9), L = FLAK.hazeLife, c = V.flak.haze, k = big ? 1 : 0.55;
+    V.puff.spawn(x + (R() - 0.5) * 2, y + R(), z + (R() - 0.5) * 2, w[0] + (R() - 0.5) * 0.2, 0.18 + R() * 0.12, w[1] + (R() - 0.5) * 0.2, 0.05,
+      (L[0] + R() * (L[1] - L[0])) * k, 1.2 * k, (8 + R() * 4) * k, 12 + R() * 8, 0, (big ? 0.24 : 0.16) + R() * 0.06, c[0], c[1]);
   }
 
   // ---------- light AA tracers (combat.js projectile pool, own kind) ----------
@@ -205,9 +360,12 @@ window.WW = window.WW || {};
       var dx = pl.x - sx, dy = (pl.y || 5) - sy, dz = pl.z - sz, d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1, T = d / TR_SPEED;
       var ax = pl.x + pvx * T + (R() - 0.5) * miss * 2, ay = (pl.y || 5) + pvy * T + (R() - 0.5) * miss, az = pl.z + pvz * T + (R() - 0.5) * miss * 2;
       dx = ax - sx; dy = ay - sy; dz = az - sz; d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-      tracerRound(ci, s.nation === 'IJN' ? V.trIJN : V.trUSN, sx, sy, sz, dx / d * TR_SPEED, dy / d * TR_SPEED, dz / d * TR_SPEED,
-        k * (0.055 + R() * 0.03), Math.min(0.8, (d / TR_SPEED) * 1.3));
+      var dl = k * (0.055 + R() * 0.03), lf = Math.min(0.8, (d / TR_SPEED) * 1.3), ey = sy + dy / d * TR_SPEED * lf;
+      tracerRound(ci, s.nation === 'IJN' ? V.trIJN : V.trUSN, sx, sy, sz, dx / d * TR_SPEED, dy / d * TR_SPEED, dz / d * TR_SPEED, dl, lf);
+      // the round bursts where its tracer burns out (40 mm self-destruct, 25 mm): a small dark puff, low down
+      if (ey > 5 && R() < 0.4) lightPuff(sx + dx / d * TR_SPEED * lf, ey, sz + dz / d * TR_SPEED * lf, dl + lf, R);
     }
+    if (R() < 0.12) hazePuff(sx, sy + 0.5, sz, false, R);   // the mount's gun smoke
   }
 
   // ---------- heavy AA: fused bursts ----------
@@ -240,14 +398,14 @@ window.WW = window.WW || {};
     var h = s.heading || 0, L = (s.stats && s.stats.length) || 12, a = (Math.random() - 0.5) * L * 0.4;
     var sd = (-(pl.x - s.x) * Math.sin(h) + (pl.z - s.z) * Math.cos(h)) < 0 ? -1 : 1;
     var gx = s.x + Math.cos(h) * a - Math.sin(h) * sd * L * 0.09, gz = s.z + Math.sin(h) * a + Math.cos(h) * sd * L * 0.09;
-    if (V) V.core.spawn(gx, 3, gz, 0, 0.5, 0, 0.16, 0.9, 1.8, V.col.hot, V.col.hot2);
+    if (V) { V.core.spawn(gx, 3, gz, 0, 0.5, 0, 0.16, 0.9, 1.8, V.col.hot, V.col.hot2); hazePuff(gx, 3.5, gz, true, Math.random); }
     if (WW.fx && WW.fx.muzzleFlash) try { WW.fx.muzzleFlash(gx, 3, gz); } catch (e) { /* ignore */ }
     WW.emit('aaHeavyFired', { ship: s, x: gx, y: 3, z: gz, target: pl });   // sound (audio_aa.js)
   }
 
   function detonate(b, planes) {
     dbg.bursts++;
-    burstFx(b.x, b.y, b.z);
+    burstFx(b.x, b.y, b.z, b.nation);
     WW.emit('flakBurst', { x: b.x, y: b.y, z: b.z, ship: b.ship, nation: b.nation });   // sound (audio_aa.js)
     var R = HEAVY.radius, J = HEAVY.jinkRadius;
     for (var j = 0; j < planes.length; j++) {
@@ -274,7 +432,7 @@ window.WW = window.WW || {};
   function update(dt) {
     var ships = (WW.world && WW.world.ships) || [], planes = (WW.world && WW.world.planes) || [];
     if (WW.landSites) ships = WW.landSites.shooters(ships);   // + the land sites' AA (the island base's pits; land_sites.js)
-    if (V) { V.puff.update(dt, false); V.core.update(dt, true); }
+    if (V) { V.puff.advance(dt); V.core.update(dt, true); }
     else addVisuals();
     // fused bursts in flight
     var w = 0;
@@ -360,13 +518,14 @@ window.WW = window.WW || {};
     _vis: function () { initVisuals(); return V; },   // the shared materials (shader_warm.js warms them)
     _debug: function () {
       return { pending: pending.length, peakPending: dbg.peakPending, bursts: dbg.bursts, heavyKills: dbg.heavyKills, blownUp: dbg.blownUp, lightKills: dbg.lightKills,
-               puffs: V ? V.puff.mesh.count : 0, cores: V ? V.core.mesh.count : 0 };
+               puffs: V ? V.puff.live() : 0, cores: V ? V.core.mesh.count : 0 };
     }
   };
   if (WW.combat && WW.combat._i) WW.combat._i.updaters.aatracer = updateTracerAA;
   // after the camera moves (main.js frame): the live light-AA rounds' near-camera fade re-sized for this frame's camera
   // (dt 0: nothing advances), so a hard cut has no frame of rounds sized for the old view
   (WW.afterCamera = WW.afterCamera || []).push(function () {
+    if (V) V.puff.flush();   // the puffs spawned since the last frame go up to the GPU
     var ci = I(); if (!ci || !V || WW.simOnly) return;
     for (var i = 0, a = ci.active; i < a.length; i++) if (a[i].kind === 'aatracer' && !a[i].dead) updateTracerAA(a[i], 0);
   });
