@@ -50,6 +50,7 @@ window.WW = window.WW || {};
     varying vec3 vWorld; varying float vH;
     #include <fog_pars_fragment>
     ${WW.sea.GLSL}
+    ${WW.sea.GLSL_FRAG}
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float vnoise(vec2 p) {
       vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -74,12 +75,21 @@ window.WW = window.WW || {};
       // the sea's own surface (sea_state.js): the full wave set per pixel (components too short for this pixel's
       // footprint dropped: no shimmer far off), its normal at NORMAL_EXAG, crests lighter, troughs deeper
       float fp = max(max(fwidth(vWorld.x), fwidth(vWorld.z)), 0.02);
-      // (off in the distance the pattern is warped a little: the regular lattice of a few long-crested components
-      // breaks up; near the camera it is exactly the surface that the ships ride)
+      // the swell is exactly the ridden surface (warped a little only far off); the wind sea's lookup is bent near
+      // and far (its crests curve, no long regular trains), its slope eased and the short chop added per pixel
+      // (seaDetail: many short components, slope only). Gusts: patches of rougher and smoother sea drifting downwind.
       float wk = smoothstep(30.0, 160.0, length(cameraPosition.xz - vWorld.xz)) * 5.0;
-      vec2 wp2 = vWorld.xz + wk * (vec2(vnoise(vWorld.xz * 0.045 + 3.1), vnoise(vWorld.xz * 0.045 - 7.7)) - 0.5);
-      vec3 sg = seaGrad(wp2, d, -fp);
-      sg.yz *= 0.7 + 0.6 * vnoise(vWorld.xz * 0.025 + vec2(time * 0.012, -time * 0.008));   // groups: patches of bigger and smaller seas (no regular lattice)
+      vec2 wn = vec2(vnoise(vWorld.xz * 0.045 + 3.1), vnoise(vWorld.xz * 0.045 - 7.7)) - 0.5;
+      vec2 wp2 = vWorld.xz + wk * wn;
+      float L0 = max(uSeaP[3].w, 0.3);
+      vec2 rq = mat2(0.6, 0.8, -0.8, 0.6) * vWorld.xz;   // the noise lattices turned off the map's axes
+      vec2 n1 = vec2(vnoise(rq * (0.37 / L0) + 1.7), vnoise(rq * (0.37 / L0) - 4.2));
+      vec2 n2 = vec2(vnoise(vWorld.xz * (0.23 / L0) + 8.3), vnoise(vWorld.xz * (0.23 / L0) + 2.9));
+      vec2 wpc = vWorld.xz + (wk + L0 * 0.9) * wn + (n1 - 0.5) * L0 * 0.7;
+      vec2 gq = vWorld.xz * 0.018 - uSeaWind * time * 0.25;
+      float gust = 0.45 + 1.1 * smoothstep(0.2, 0.85, vnoise(gq) * 0.65 + vnoise(gq * 2.7 + 5.0) * 0.35);
+      vec3 sg = seaGradW(wp2, wpc, d, -fp, 0.5 * gust * mix(0.6, 1.0, smoothstep(1.0, 6.0, d)));
+      sg.yz += seaDetail(vWorld.xz, fp, n1, n2) * gust * seaAmpK(d) * uSeaAmp;
       vec3 n = normalize(vec3(-sg.y * uSeaN, 1.0, -sg.z * uSeaN));
       float hN = sg.x / max(1e-3, uSeaP[0].x + uSeaP[1].x + uSeaP[3].x + uSeaP[4].x);   // ~-1 (trough) .. 1 (crest)
       vec3 sd = normalize(sunDir);
@@ -97,12 +107,15 @@ window.WW = window.WW || {};
       col = mix(col, cFoam, max(capF * 0.9, streak));
       alpha = max(alpha, capF * 0.85);
       // soft caustic ripples over sandy shallows: reads as water over sand, not a solid surface
-      float cz = vnoise(vWorld.xz * 0.3 + vec2(time * 0.08, -time * 0.06)) + vnoise(vWorld.xz * 0.45 - vec2(time * 0.05, time * 0.07));
+      // (the two noises on rotated, warped lattices: axis-aligned value noise at two near scales read as a diamond net)
+      vec2 cq = vWorld.xz + (n2 - 0.5) * 2.5;
+      float cz = vnoise(mat2(0.8, 0.6, -0.6, 0.8) * cq * 0.3 + vec2(time * 0.08, -time * 0.06)) + vnoise(mat2(0.36, -0.93, 0.93, 0.36) * cq * 0.41 - vec2(time * 0.05, time * 0.07));
       float caust = smoothstep(0.86, 1.0, 1.0 - abs(cz - 1.0)) * (1.0 - smoothstep(1.0, 4.0, d));
       col = mix(col, vec3(0.95, 0.98, 0.94), caust * 0.18);   // calm, slow, faint
       // foam: a crisp outline at the shore plus a softer ring that breathes outward
       float wob = (vnoise(vWorld.xz * 0.25 + time * 0.15) - 0.5) * 0.35;
-      float shore = 1.0 - smoothstep(0.75, 0.98, d + wob);
+      // (a narrow swash line: over a wide flat reef the old 0.75 u band painted the whole shelf white, read as white sand)
+      float shore = (1.0 - smoothstep(0.12, 0.42, d + wob)) * 0.9;
       float ringPos = 1.3 + 0.45 * sin(time * 0.8 + vWorld.x * 0.02);
       // world-space depth slope: rings only where the seabed really shelves (flat tops would give blocky contours)
       float slope = length(vec2(dFdx(d), dFdy(d))) / max(length(vec2(dFdx(vWorld.x), dFdy(vWorld.x))) + length(vec2(dFdx(vWorld.z), dFdy(vWorld.z))), 1e-3);
