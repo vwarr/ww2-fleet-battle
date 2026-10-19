@@ -162,7 +162,10 @@ window.WW = window.WW || {};
       const sf = pivot ? 1.5 : WW.clamp(this.speed / (st.speed * Math.max(0.5, this.speedK)), 0.4, 1); // rudder bite: share of what she can make now
       const diff = WW.angleDiff(this.heading, this.navHeading);
       // Helm: rate ∝ heading error (full rate past BAND), and the rudder takes HELM s to swing hard over.
-      const maxR = st.turn * sf, cmd = maxR * WW.clamp(diff / BAND, -1, 1);
+      let maxR = st.turn * sf;
+      // combing a torpedo track / turning against a torpedo plane (ships_ai.js realHelm): her real tactical-diameter rate
+      if (this.helmUntil > WW.time.now && this.helmR > 0) maxR = Math.min(maxR, Math.max(this.speed, 0.4 * st.speed) / this.helmR);
+      const cmd = maxR * WW.clamp(diff / BAND, -1, 1);
       this.rudder += WW.clamp(cmd - this.rudder, -maxR * dt / HELM, maxR * dt / HELM);
       const turn = WW.clamp(this.rudder * dt, -maxR * dt, maxR * dt), h0 = this.heading;
 

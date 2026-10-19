@@ -325,22 +325,27 @@ window.WW = window.WW || {};
     for (const s of WW.world.ships) if (s !== ship && s.alive && s.nation === ship.nation && s.type !== 'submarine' && WW.dist2(s.x, s.z, c.x, c.z) < SUB_HELP * SUB_HELP) return true;
     return false;
   }
-  // Big ships: an enemy torpedo track seen anywhere by the side (escorts' sightings, WW.intel.torpedoes) that
-  // will pass close inside WARN: turn parallel early (a battleship needs ~7 s to swing 90 deg); the core comb
-  // (ships_ai.js, 70 units) then holds it.
+  // Big ships: an enemy torpedo track that will pass close inside WARN, seen by her own lookouts (WW.intel.torpSeen)
+  // or reported by another ship of the side (WW.intel.torpedoes: the escort's warning by TBS or signal lamp, which
+  // reaches her intel TL.REPORT s after it saw the track, with that ship's believed heading): turn parallel early, at
+  // her real turn rate (ships_ai.js realHelm); the core comb then holds it.
   function earlyComb(ship) {
     const W = WARN[ship.type];
     if (!W || !WW.intel || !WW.intel.torpedoes) return;
-    const T = WW.intel.torpedoes(ship.nation), L = ship.stats.length * 0.5 + 8, now = WW.time.now;
+    const T = WW.intel.torpedoes(ship.nation), own = WW.intel.torpSeen(ship), L = ship.stats.length * 0.5 + 8, now = WW.time.now;
+    const delay = WW.intel.TL.REPORT;
     for (let i = 0; i < T.length; i++) {
-      const e = T[i];
-      if (now - e.firstSeenAt < REACT[ship.type]) continue;
+      let e = T[i], wait = REACT[ship.type] + delay;
+      for (let k = 0; k < own.length; k++) if (own[k].proj === e.proj) { e = own[k]; wait = REACT[ship.type]; break; }
+      if (now - e.firstSeenAt < wait) continue;
       const dt = now - e.seenAt, c = Math.cos(e.h), s = Math.sin(e.h);
       const rx = ship.x - (e.x + c * e.speed * dt), rz = ship.z - (e.z + s * e.speed * dt);
       const along = rx * c + rz * s, perp = Math.abs(-rx * s + rz * c);
       if (along < 0 || along > W || perp > L + along * 0.25) continue;
       if (!WW.shipAI.h.canComb(ship, e, along)) continue;   // too late to come parallel: hold course
       ship.desiredHeading = Math.abs(WW.angleDiff(ship.heading, e.h)) < PI / 2 ? e.h : e.h + PI;
+      if (ship.ai.earlyP !== e.proj) { ship.ai.earlyP = e.proj; WW.emit('torpedoComb', { proj: e.proj, ship: ship }); }
+      WW.shipAI.h.realHelm(ship, now + 0.6);
       ship.ai.earlyCombT = now;   // ships_ai.js airEvade leaves the helm to the combing
       return;
     }

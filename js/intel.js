@@ -3,7 +3,8 @@
 // airborne planes and scouts look for the enemy: visual range by target size x observer height, a long range
 // on a ship that just fired its guns (gun flash), islands block a ship's line of sight, destroyer sonar finds
 // submerged subs, and ships / planes see enemy planes. AI decision code asks intel what is known; physics
-// (hit tests, flak, crashes) stays omniscient. Detection has no dice, so a seeded round stays the same.
+// (hit tests, flak, crashes) stays omniscient. Ship / plane detection has no dice; torpedo sightings are each ship's
+// lookouts' WW.rand rolls (scanTorps), so a seeded round stays the same.
 // A contact is { unit, x, z, heading, speed, seenAt, firstSeenAt, quality, by }: x..speed are the last seen
 // values, quality 'visual' | 'radar' | 'sonar' | 'scout' | 'air', by = the observer. A contact seen within FRESH s is a
 // firing solution (visible); an older one is a last-known position, dropped after SHIP_TTL / PLANE_TTL s.
@@ -27,22 +28,21 @@ window.WW = window.WW || {};
     SEE_PLANE_NATION: { USN: { carrier: 400 } },       // per-nation override: USN carrier radar fighter direction (quality 'radar' beyond SEE_PLANE; CXAM saw big raids 4-5 x a lookout's range: 400 gives the director ~15 s to put the CAP out on the bearing)
     PLANE_PLANE: 100,                                  // planes see planes
     LAND: 0.4,                                         // land higher than this above the sea blocks a ship's line of sight
-    TORP: 45,                                          // a ship sees an enemy torpedo track this close (scanTorps)
-    DROP: 130                                          // ...and an aerial torpedo's drop this close (the plane on its run and the splash, watched by
-                                                       // the lookouts: the ship combs the tracks from the drop; balance pass, Oct 2026)
+    TORP: 45,                                          // the old fixed torpedo-wake radius (before the lookouts, 2026-10-18); kept for tests and tools
+    DROP: 130                                          // a ship may see an aerial torpedo's drop this close (the plane on its run and the splash; scanTorps TL)
   };
   var T = { TICK: 0.5, FRESH: 3, SHIP_TTL: 180, PLANE_TTL: 10, REGAIN: 30, SPOT_HOLD: 20 }; // SHIP_TTL 180 (was 90): the plot keeps a last-known position longer on the big map (the searches go back to it)
   var CAPITAL = { carrier: 1, battleship: 1 };
   var side = {}, tickT = 0, losCache = new Map(), scratch = [];
   var stats = { ticks: 0, los: 0, losHit: 0, contacts: 0, reports: 0, misid: 0, resolved: 0, errSum: 0, wrongStrikes: 0, wrongRedirects: 0 };
 
-  function newSide() { return { list: [], map: new Map(), ships: [], planes: [], ever: new Set(), first: new Set(), torps: [] }; }
+  function newSide() { return { list: [], map: new Map(), ships: [], planes: [], ever: new Set(), first: new Set(), torps: [], seen: new Map(), dropTried: new Map() }; }
   function clear() {
     var NATIONS = WW.sides(); side = {};
     for (var i = 0; i < NATIONS.length; i++) {
       side[NATIONS[i]] = newSide();
     }
-    tickT = 0; losCache.clear();
+    tickT = 0; losCache.clear(); if (typeof loadC !== 'undefined') loadC.clear();
     for (var k in stats) if (k !== 'ticks' && k !== 'los' && k !== 'losHit' && k !== 'contacts') stats[k] = 0;   // per-round report stats
   }
   clear();
@@ -205,36 +205,129 @@ window.WW = window.WW || {};
     L.length = w;
   }
 
-  // Torpedo tracks: an enemy torpedo within R.TORP of any of the side's ships is seen (its wake). One entry
-  // object per running torpedo, { proj, x, z, h, speed, seenAt, firstSeenAt }, dropped when the torpedo ends.
+  // Torpedo lookouts (torpedo realism, 2026-10-18). Each ship's own lookouts look for enemy torpedoes; a side knows a
+  // track only once one of its ships has seen it. Every tick, for each (own ship, enemy torpedo) pair within reach, one
+  // WW.rand roll against a hazard rate, p = 1 - exp(-rate x TICK) (so the odds do not depend on the tick length):
+  //   the wake: rate = TL.RATE x cond x (1 - d / Rw)^1.5 inside Rw = TL.WAKE x sight (core.js: the wake; Type 93 / 95
+  //     0.4, nearly wakeless; Type 91 1; USN steam 1.1) x eye (the lookouts' height: TL.EYE0 + (1 - TL.EYE0) x R.EYE)
+  //     x sqrt(cond);
+  //   cond = light (nightOps.visK: darkness against the side's nightEye, rain on the line, star shells) x sea (whitecaps:
+  //     TL.SEA0 - TL.SEA1 x WW.seaState.douglas) x doctrine.lookouts (IJN 1.15) x load (1 / (1 + AA firing + attackers + anvil)
+  //     x own fires) x a smoke screen on the line;
+  //   the drop: an aerial torpedo just released (run < TL.DROP_RUN) within R.DROP of a ship: one roll per ship, chance
+  //     TL.DROP_P x (1 - (d / R.DROP)^2) x light x lookouts x the bridge's load (1 / (1 + TL.DROP_N (n - 1)) for n planes
+  //     on their run or dive at her, an anvil from both bows x TL.ANVIL_DROP, her AA firing x TL.AA_DROP); a ship that is
+  //     not the plane's target watches it x TL.DROP_OTHER. Missed: its wake may still be seen.
+  // A sighting is the ship's own: an observation { proj, ship, x, z, h, speed, run, seenAt, firstSeenAt, hErr, spK, d,
+  // drop } with the believed heading (true + hErr: sigma TL.SIG_WAKE / SIG_DROP x (0.5 + d / TL.WAKE) / sqrt(cond),
+  // at most TL.SIG_MAX; the error shrinks x TL.FOLLOW a tick while the wake stays in sight) and speed (x spK, +-TL.SP_ERR).
+  // The side's list (torpedoes(nation)) holds one report per torpedo some ship has seen, its fields copied from the
+  // latest observation: the escorts' warning to the big ships (ai_surface.js earlyComb waits TL.REPORT s for it).
   // Pooled projectiles are reused, so a track ends on the torpedo's own events (weaponImpact when it ends,
   // weaponDropped when the pooled object is fired again), never on the pool's state: replays stay exact.
+  // Event 'torpedoSeen' { proj, ship, d, drop } at each ship's first sighting (tests/torpedo_review.js).
+  var TL = { WAKE: 85, RATE: 1.2, EYE0: 0.55, SEA0: 1.15, SEA1: 0.12, SEA_MIN: 0.45,
+             AA: 0.25, ATT: 0.2, ANVIL: 0.3, FIRE: 0.1, SMOKE: 0.25,
+             DROP_RUN: 12, DROP_P: 0.85, DROP_N: 0.35, ANVIL_DROP: 0.7, AA_DROP: 0.85, DROP_OTHER: 0.5,
+             SIG_WAKE: 0.1, SIG_DROP: 0.06, SIG_MAX: 0.4, SP_ERR: 0.12, FOLLOW: 0.85, KEEP: 1.3, REPORT: 2, AA_T: 2 };
+  var NOSEEN = [];
   function dropTrack(proj) {
     var NATIONS = WW.sides();
-    for (var n = 0; n < NATIONS.length; n++) { var T = sideOf(NATIONS[n]).torps; for (var i = T.length - 1; i >= 0; i--) if (T[i].proj === proj) T.splice(i, 1); }
+    for (var n = 0; n < NATIONS.length; n++) {
+      var S = sideOf(NATIONS[n]), L = S.torps;
+      for (var i = L.length - 1; i >= 0; i--) if (L[i].proj === proj) { unseen(S, L[i]); L.splice(i, 1); }
+      S.dropTried.delete(proj);
+    }
+  }
+  function unseen(S, e) {   // the track's observations leave their ships' lists
+    for (var k = 0; k < e.obs.length; k++) { var A = S.seen.get(e.obs[k].ship); if (A) { var j = A.indexOf(e.obs[k]); if (j >= 0) A.splice(j, 1); } }
   }
   WW.on('weaponImpact', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
   WW.on('weaponDropped', function (e) { if (e && e.kind === 'torpedo' && e.proj) dropTrack(e.proj); });
+  function seaK() { var ss = WW.seaState && WW.seaState.douglas !== undefined ? WW.seaState.douglas : 3; return WW.clamp(TL.SEA0 - TL.SEA1 * ss, TL.SEA_MIN, 1); }
+  // the lookouts' load this tick: { aa (her guns firing), n (planes on their run / dive at her), anvil, k (the wake factor) }
+  var loadC = new Map();
+  function load(s, now) {
+    var c = loadC.get(s);
+    if (c && c.t === now) return c;
+    if (!c) { c = {}; loadC.set(s, c); }
+    c.t = now; c.aa = s.aaAt > now - TL.AA_T ? 1 : 0; c.n = 0; c.anvil = 0;
+    var P = WW.world.planes, b0 = null, lo = 0, hi = 0;
+    for (var i = 0; i < P.length; i++) {
+      var p = P[i];
+      if (!p || !p.alive || !p.ordnance || p.nation === s.nation || p.target !== s) continue;
+      if (!((p.kind === 'torpedo' && p.phase === 'run') || (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive')))) continue;
+      c.n++;
+      var b = Math.atan2(p.z - s.z, p.x - s.x);
+      if (b0 === null) b0 = b; else { var df = WW.angleDiff(b0, b); if (df < lo) lo = df; if (df > hi) hi = df; }
+    }
+    c.anvil = hi - lo > 1.75 ? 1 : 0;   // attackers from both bows (or bow and quarter): the lookouts cannot watch them all
+    c.k = 1 / (1 + TL.FIRE * (s.fireN || 0)) / (1 + TL.AA * c.aa + TL.ATT * Math.max(0, c.n - 1) + TL.ANVIL * c.anvil);   // x her own fires' smoke
+    return c;
+  }
+  function lightK(s, p) { return WW.nightOps ? WW.nightOps.visK(s, p) : 0.3 + 0.7 * (WW.daylight === undefined ? 1 : WW.daylight); }
+  function lookK(n) { var D = WW.fleetCmd && WW.fleetCmd.doctrine ? WW.fleetCmd.doctrine(n) : null; return D && D.lookouts > 0 ? D.lookouts : 1; }
+  function eyeK(s) { return TL.EYE0 + (1 - TL.EYE0) * (R.EYE[s.type] || 0.8); }
+  function gauss() { return (WW.rand() + WW.rand() - 1) * 2.449; }   // ~unit sigma (triangular)
+  function relay(e, o) { e.x = o.x; e.z = o.z; e.h = o.h; e.speed = o.speed; e.run = o.run; e.seenAt = o.seenAt; e.by = o.ship; }
+  function observe(nation, S, e, s, p, now, d, cond, drop) {
+    if (!e) { e = { proj: p, firstSeenAt: now, obs: [] }; S.torps.push(e); }
+    var sig = Math.min(TL.SIG_MAX, (drop ? TL.SIG_DROP : TL.SIG_WAKE) * (0.5 + d / TL.WAKE) / Math.sqrt(Math.max(0.05, cond)));
+    var o = { proj: p, ship: s, firstSeenAt: now, seenAt: now, x: p.x, z: p.z, run: p.run, hErr: gauss() * sig, spK: 1 + TL.SP_ERR * (WW.rand() * 2 - 1), d: d, drop: !!drop, e: e };
+    o.h = p.h + o.hErr; o.speed = p.sp * o.spK;
+    e.obs.push(o);
+    var A = S.seen.get(s); if (!A) { A = []; S.seen.set(s, A); } A.push(o);
+    relay(e, o);
+    if (WW.dstat) { WW.dstat('torpSeenN', p.nation); WW.dstat('torpSeenD', p.nation, d); }
+    WW.emit('torpedoSeen', { proj: p, ship: s, d: d, drop: !!drop, nation: nation });
+    return e;
+  }
   function scanTorps(nation, now) {
-    var S = sideOf(nation), T = S.torps, act = WW.combat && WW.combat._i && WW.combat._i.active, ships = WW.world.ships, i, j;
-    for (i = T.length - 1; i >= 0; i--) if (T[i].proj.dead || T[i].proj.kind !== 'torp') T.splice(i, 1);
+    var S = sideOf(nation), TT = S.torps, act = WW.combat && WW.combat._i && WW.combat._i.active, ships = WW.world.ships, i, j, k;
+    for (i = TT.length - 1; i >= 0; i--) if (TT[i].proj.dead || TT[i].proj.kind !== 'torp') { unseen(S, TT[i]); S.dropTried.delete(TT[i].proj); TT.splice(i, 1); }
     if (!act) return;
+    var sea = seaK(), look = lookK(nation), dropR2 = R.DROP * R.DROP;
     for (i = 0; i < act.length; i++) {
       var p = act[i];
       if (p.kind !== 'torp' || p.dead || p.nation === nation) continue;
       var e = null;
-      for (j = 0; j < T.length; j++) if (T[j].proj === p) { e = T[j]; break; }
-      if (!e) {
-        // the track's wake: an oxygen torpedo (sight < 1, IJN) is seen only closer in (core.js WW.TORPEDO_NATION)
-        var rt = p.src === 'Air' && p.run < 12 ? R.DROP : R.TORP * (p.sight || 1), r2 = rt * rt, seen = false, sd = 1e9;
-        for (j = 0; j < ships.length; j++) { var s = ships[j]; if (s.nation === nation && usableShip(s)) { var q2 = WW.dist2(s.x, s.z, p.x, p.z); if (q2 < r2) { seen = true; if (q2 < sd) sd = q2; } } }
-        if (!seen) continue;
-        e = { proj: p, firstSeenAt: now }; T.push(e);
-        if (WW.dstat) { WW.dstat('torpSeenN', p.nation); WW.dstat('torpSeenD', p.nation, Math.sqrt(sd)); }
+      for (j = 0; j < TT.length; j++) if (TT[j].proj === p) { e = TT[j]; break; }
+      var dropping = p.src === 'Air' && p.run < TL.DROP_RUN, wmax = TL.WAKE * (p.sight || 1), w2 = wmax * wmax;
+      var tried = dropping ? S.dropTried.get(p) : null;
+      for (j = 0; j < ships.length; j++) {
+        var s = ships[j];
+        if (s.nation !== nation || !usableShip(s) || s.submerged) continue;
+        var q2 = WW.dist2(s.x, s.z, p.x, p.z);
+        if (q2 >= w2 && !(dropping && q2 < dropR2)) continue;
+        var o = null;
+        if (e) for (k = 0; k < e.obs.length; k++) if (e.obs[k].ship === s) { o = e.obs[k]; break; }
+        var d = Math.sqrt(q2), L = null, lt = 0, cond = 0, rw = 0;
+        if (q2 < w2) {
+          L = load(s, now); lt = lightK(s, p);
+          cond = lt * sea * look * L.k * (WW.smoke && WW.smoke.blocks(s.x, s.z, p.x, p.z) ? TL.SMOKE : 1);
+          rw = wmax * eyeK(s) * Math.sqrt(cond);
+        }
+        if (o) {   // the ship keeps the track while its wake is in sight: the believed heading firms up
+          if (d < rw * TL.KEEP) { o.hErr *= TL.FOLLOW; o.x = p.x; o.z = p.z; o.run = p.run; o.h = p.h + o.hErr; o.seenAt = now; relay(o.e, o); }
+          continue;
+        }
+        if (dropping && q2 < dropR2 && !(tried && tried.indexOf(s) >= 0)) {   // the bridge watches the plane's run
+          if (!tried) { tried = []; S.dropTried.set(p, tried); }
+          tried.push(s);
+          if (!L) { L = load(s, now); lt = lightK(s, p); }
+          var own = !!(p.owner && p.owner.target === s), dn = own ? Math.max(1, L.n) : L.n + 1;
+          var pd = TL.DROP_P * (1 - q2 / dropR2) * lt * look * (own ? 1 : TL.DROP_OTHER) / (1 + TL.DROP_N * (dn - 1)) *
+                   (L.anvil ? TL.ANVIL_DROP : 1) * (L.aa ? TL.AA_DROP : 1);
+          if (WW.rand() < pd) { e = observe(nation, S, e, s, p, now, d, Math.max(cond, lt * look), true); continue; }
+        }
+        if (d >= rw) continue;
+        var f = 1 - d / rw, rate = TL.RATE * cond * f * Math.sqrt(f);
+        if (WW.rand() < 1 - Math.exp(-rate * T.TICK)) e = observe(nation, S, e, s, p, now, d, cond, false);
       }
-      e.x = p.x; e.z = p.z; e.h = p.h; e.speed = p.sp; e.run = p.run; e.seenAt = now;
     }
   }
+  // a ship's own torpedo sightings (observations, shared array: do not modify)
+  function torpSeen(ship) { var S = ship && side[ship.nation], A = S && S.seen.get(ship); return A || NOSEEN; }
 
   function update(dt) {
     if (!WW.game || WW.game.state !== 'battle') return;
@@ -264,7 +357,9 @@ window.WW = window.WW || {};
       var c = known(nation, unit);
       return !!c && WW.time.now - c.seenAt <= (maxAge === undefined ? T.FRESH : maxAge);
     },
-    torpedoes: function (nation) { return sideOf(nation).torps; }, // enemy torpedo tracks the side has seen (shared array)
+    torpedoes: function (nation) { return sideOf(nation).torps; }, // enemy torpedo tracks some ship of the side has seen: reports (shared array)
+    torpSeen: torpSeen,                                            // a ship's own sightings: observations with its believed heading / speed
+    TL: TL,
     canSee: function (nation, unit) { return WW.intel.visible(nation, unit); }, // alias (tests/sim_behaviour.js)
     age: function (c) { return c ? WW.time.now - c.seenAt : 1e9; },
     typeOf: function (c) { return c ? c.reportedType || (c.unit && c.unit.type) : null; },   // the type the side believes (misidentification)

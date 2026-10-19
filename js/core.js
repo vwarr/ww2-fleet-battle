@@ -124,33 +124,37 @@ window.WW = window.WW || {};
   // (Yorktown dead in the water after 2 at Midway, Hornet after 2-3, Shoho 7 with 13 bombs), a battleship 5-7 (Prince
   // of Wales 6, Yamato 10+), a cruiser 2-3 (Northampton and Chicago: 2), a destroyer 1 (often broken in two), a
   // submarine 1. Before (balance pass, Oct 2026) every type took the bare warhead: a carrier needed ~8 hits.
-  WW.TORPEDO = { dmg: 220, speed: 14, vs: { carrier: 2.3, battleship: 1.8, cruiser: 2.1, destroyer: 2.8, submarine: 2.5 } };   // raw hits to sink (x HP_SCALE): CV ~3.5, BB ~6, CA ~2.8, DD 1 (Oct 2026 lethality pass)
+  WW.TORPEDO = { dmg: 220, speed: 8, vs: { carrier: 2.3, battleship: 1.8, cruiser: 2.1, destroyer: 2.8, submarine: 2.5 } };   // raw hits to sink (x HP_SCALE): CV ~3.5, BB ~6, CA ~2.8, DD 1 (Oct 2026 lethality pass)
   // Torpedoes per nation and launcher (ship = destroyer / cruiser tubes): rangeK x the type's torpedo range, speed,
-  // dud (share of hits that do not go off, rolled with WW.rand at launch), sight (x intel R.TORP: how close a ship
-  // must be to see the track; the wake). IJN Type 93 "Long Lance": oxygen-driven, long, fast and nearly wakeless;
-  // Type 95 (sub) likewise; Type 91 (aerial) an ordinary air-driven wake. USN 1942 Mk 15 / Mk 14 / Mk 13: slower,
-  // shorter, steam wakes easy to see, and the notorious exploder duds, worst in the Mk 14 (subs, 20%); the aerial
-  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds). Balance levers (AI_DESIGN §4, §8): on
-  // the 200-round gate (Oct 2026) the USN entries were worth ~10 points together at 18-28% duds (duds ~6, the wake
-  // ~4), so they sit lower; the Long Lance entries move it ~0-2.
-  // Aerial torpedoes (balance pass, Oct 2026; docs/ARCHITECTURE.md): the Type 91 ran ~42 kn and the Mk 13 ~33.5 kn,
-  // only 1.3x / 1.05x a carrier's 32 kn, so a ship that combed the track from the drop could outrun or dodge them;
-  // at 14 u/s (2.5x a carrier's 5.6) nearly every anvil hit. 10 / 8 u/s (1.8x / 1.4x) keep the drop at 80-100 u
-  // workable and the Mk 13 the slower; air torpedo hit rate 34 / 38% -> 20 / 24% (USN / IJN).
+  // dud (share of hits that do not go off, rolled with WW.rand at launch), sight (the wake: x the range at which a
+  // ship's lookouts can see the track, intel.js TL.WAKE). IJN Type 93 "Long Lance": oxygen-driven, long, fast and
+  // nearly wakeless (its exhaust is mostly CO2, which dissolves: a faint trace, 0.4); Type 95 (sub) likewise; Type 91
+  // (aerial, and the IJN PT) an ordinary air-driven wake (1). USN 1942 Mk 15 / Mk 14 / Mk 13 / Mk 8: wet-heater steam
+  // torpedoes, a clear white wake (1.1), and the notorious exploder duds, worst in the Mk 14 (subs); the aerial
+  // Mk 13's troubles were its slow, fragile run, not its exploder (no duds). Balance levers (AI_DESIGN §4, §8).
+  // Speeds (torpedo realism, 2026-10-18): every torpedo at its real 1942 speed on the ship clock, where 1 u/s is
+  // ~5.71 kn (a carrier's 32 kn = 5.6 u/s). Sources: J. Campbell, Naval Weapons of World War Two (1985), and the
+  // NavWeaps torpedo pages (navweaps.com/Weapons/WTJAP_WWII.php, WTUS_WWII.php):
+  //   Type 93 Mod 1 (IJN DD / CA): 48-50 kn for 20-22 km (36 kn for 40 km)            48 kn -> 8.4 u/s
+  //   Mk 15 (USN DD): 45 kn for 6,000 yd (26.5 kn for 15,000 yd)                     45 kn -> 7.9
+  //   Type 95 Mod 1 (IJN sub): 49-51 kn for 9,000 m                                   49 kn -> 8.6 (was 15)
+  //   Mk 14 (USN sub): 46 kn for 4,500 yd (31 kn for 9,000 yd)                        46 kn -> 8.05 (was 13.5)
+  //   Mk 8 (USN PT, 1942): 36 kn for 8,000 yd (27 kn for 16,000 yd); PTs fired inside 2,000 yd   36 kn -> 6.3 (was 13.5)
+  //   Type 91 Mod 2 (IJN aerial, and the IJN's few torpedo boats): 41-43 kn for 2,000 m   42 kn -> 7.35 (air was 10, PT 14)
+  //   Mk 13 (USN aerial, 1942): 33.5 kn for 6,300 yd                                  33.5 kn -> 5.85 (was 8)
+  // The aerial torpedoes had been sped up (10 / 8) because ships combed them with perfect, certain sightings and the
+  // nav turn rate (about twice the real one); with the lookouts' real odds (intel.js) and the real turn while
+  // combing (ships.js combR), they run at their real speed. GER (Normandy, out of scope) is unchanged.
   // dmgK: the warhead, x WW.TORPEDO.dmg (balance pass, Oct 2026): Type 93 490 kg against the Mk 15's 374 kg (1.31x),
   // Type 95 405 kg against the Mk 14's 230 kg (1.76x; here 1.5x), Type 91 Mod 2 204 kg against the 1942 Mk 13's 182 kg
   // (1.12x), Mk 8 (PT) 211 kg; set about the old common 220 so a torpedo hit stays as deadly on average.
-  // Ship torpedo speeds (balance pass 2, Oct 2026): the Type 93 ran 48 kn and the Mk 15 45 kn, 1.5x / 1.4x a carrier's
-  // 32 kn = 8.4 / 7.9 u/s on the ship clock (was 16 / 13.5, 2.9x / 2.4x: a 130 u Long Lance shot was a near-certain
-  // hit). Ship torpedo hit rate 32 / 25% -> 19 / 16% (USN / IJN; torpedo_review.js), USN +6.5 +- 6.6 (200 mirrored
-  // rounds). Subs (Type 95 / Mk 14) and PT boats were not changed.
-  // USN duds (balance pass): Mk 15 0.1 -> 0.2 and Mk 14 0.2 -> 0.3, nearer the 1942 record (the Mk 6 exploder both
-  // carried; the Mk 14's failures were only fixed in 1943); they had been set low when the USN was the weaker side.
+  // USN duds (balance pass): Mk 15 0.2 and Mk 14 0.3, nearer the 1942 record (the Mk 6 exploder both carried; the
+  // Mk 14's failures were only fixed in 1943).
   WW.TORPEDO_NATION = {
-    IJN: { ship: { rangeK: 1.4, speed: 8.4, dud: 0, sight: 0.7, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 15, dud: 0, sight: 0.7, dmgK: 1.2 },
-           pt: { rangeK: 1, speed: 14, dud: 0, sight: 1, dmgK: 1 }, air: { rangeK: 1, speed: 10, dud: 0, sight: 1, dmgK: 1.1 } },
-    USN: { ship: { rangeK: 0.95, speed: 7.9, dud: 0.2, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 13.5, dud: 0.3, sight: 1.1, dmgK: 0.8 },
-           pt: { rangeK: 1, speed: 13.5, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 8, dud: 0, sight: 1.1, dmgK: 1 } },
+    IJN: { ship: { rangeK: 1.4, speed: 8.4, dud: 0, sight: 0.4, dmgK: 1.2 }, submarine: { rangeK: 1.2, speed: 8.6, dud: 0, sight: 0.4, dmgK: 1.2 },
+           pt: { rangeK: 1, speed: 7.35, dud: 0, sight: 1, dmgK: 1 }, air: { rangeK: 1, speed: 7.35, dud: 0, sight: 1, dmgK: 1.1 } },
+    USN: { ship: { rangeK: 0.95, speed: 7.9, dud: 0.2, sight: 1.1, dmgK: 0.9 }, submarine: { rangeK: 1, speed: 8.05, dud: 0.3, sight: 1.1, dmgK: 0.8 },
+           pt: { rangeK: 1, speed: 6.3, dud: 0.1, sight: 1.1, dmgK: 0.9 }, air: { rangeK: 1, speed: 5.85, dud: 0, sight: 1.1, dmgK: 1 } },
     // Normandy (scenario.js): S-boat G7a / G7e, 44 kn and 30 kn, 280 kg warheads, reliable by 1944
     GER: { pt: { rangeK: 1.2, speed: 12, dud: 0.03, sight: 0.9, dmgK: 1.15 } }
   };
