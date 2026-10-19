@@ -16,7 +16,7 @@
 // Conditions: name=hz/vsyncs-per-frame(cycled, '+')/time scale/slow motion, e.g. 120o=120/2+3/1/1 (a 120 Hz display
 // whose frame overruns a vsync every other time). The 60 fps cap (main.js) applies, as on a real display.
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=... node tests/cam_jitter.js --who pby [--conds all|name,...]
-//   [--frames 150] [--q cam=forecast|nointerp] [--tod day|dusk|night|n] [--at s|end] [--seed 1] [--sheet dir] [--json out.json]
+//   [--frames 150] [--q cam=forecast|nointerp] [--tod day|dusk|night|n] [--at s|end] [--seed 1] [--sheet dir [--every 15]] [--json out.json]
 const fs = require('fs'), path = require('path');
 const { chromium } = require('playwright');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -131,7 +131,8 @@ const condNames = (arg('--conds', 'all') === 'all' ? (DIRECTOR ? ['60', '120o', 
     await p.evaluate(() => { __rec.length = 0; __recOn = true; });
     const fr = DIRECTOR ? FRAMES * 4 : FRAMES;
     if (SHEET && name === condNames[0]) {
-      for (let i = 0; i < fr; i += 15) { await p.evaluate(() => { __tick(14); __render = true; __tick(1); __render = false; }); await p.screenshot({ path: path.join(SHEET, WHO + '_' + String(i / 15).padStart(3, '0') + '.png') }); }
+      const EV = +arg('--every', 15);   // a frame in every EV (1: consecutive frames)
+      for (let i = 0; i < fr; i += EV) { await p.evaluate(k => { if (k > 1) __tick(k - 1); __render = true; __tick(1); __render = false; }, EV); await p.screenshot({ path: path.join(SHEET, WHO + '_' + String(i / EV).padStart(3, '0') + '.png') }); }
     } else await run(fr);
     if (WHO === 'pan') await p.keyboard.up('ArrowRight');
     const rec = await p.evaluate(() => { __recOn = false; return __rec.splice(0); });
