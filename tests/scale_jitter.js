@@ -6,7 +6,7 @@
 //   size  the subject's on-screen span (px, median): how much of the frame the plane fills
 // Frames of a cut (the first 4 of a shot) are left out. Frame times: FRAME ms (default 16.67, 60 fps); UNEVEN=1
 // alternates 13 / 20.3 ms (a browser's uneven frames: the sim's fixed 1/120 s steps then fall 1 or 2 to a frame).
-// Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/cam_jitter.js [shots=chase,dive,ots,takeoff] [secs=8] [seed=2] [query]
+// Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=<headless shell> node tests/scale_jitter.js [shots=chase,dive,ots,takeoff] [secs=8] [seed=2] [query]
 const { chromium } = require('playwright');
 const WHICH = (process.argv[2] || 'chase,dive,ots,takeoff').split(','), SECS = +(process.argv[3] || 8), SEED = +(process.argv[4] || 2), Q = process.argv[5] || '';
 const FRAME = +(process.env.FRAME || 1000 / 60), UNEVEN = !!+process.env.UNEVEN;
@@ -49,7 +49,7 @@ const FRAME = +(process.env.FRAME || 1000 / 60), UNEVEN = !!+process.env.UNEVEN;
       if (!q) return null; window.__subj = q; WW.cam.film({ kind: 'chase', subj: q, dur: 60 }); return 'fighter ' + q.nation + ' transit';
     },
     dive: () => {
-      const q = until(() => WW.world.planes.find(q => q.alive && q.kind === 'dive' && q.state === 'attack' && q.ordnance && q.target && (q.phase === 'dive' || q.phase === 'roll' || !q.phase) && q.hd(q.target) < 60), 500);
+      const q = until(() => WW.world.planes.find(q => q.alive && q.kind === 'dive' && !q.level && q.state === 'attack' && q.ordnance && q.target && q.hd(q.target) < 90), 900);
       if (!q) return null; window.__subj = q; WW.cam.film({ kind: 'chase', subj: q, dur: 60 }); return 'dive bomber ' + (q.phase || 'approach');
     },
     ots: () => {

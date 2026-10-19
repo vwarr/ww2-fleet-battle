@@ -22,6 +22,7 @@ window.WW = window.WW || {};
   const ORDER = { warm: 0, taxi: 1, hold: 2, lineup: 3, roll: 4, stopped: 2, climb: 5 };
   const SHIP = { carrier: 'carriers', battleship: 'battleships', cruiser: 'cruisers', destroyer: 'destroyers' };
   const PFK = WW.cfg.PLANE_FRAME || 1;   // camera.js: plane framing distances close in with the plane size
+  const CK = () => (WW.baseLifeLayout && WW.baseLifeLayout.CAMP_K) || 1;   // the camp at true size: the orbit over it closes in
   let S = null, sid = 0, struck = false;
   const ST = { seqs: 0, beats: {}, lapsed: 0 };
   const base = () => (WW.islandBase && WW.islandBase.base) || null;
@@ -62,14 +63,14 @@ window.WW = window.WW || {};
     if (k === 'camp') {
       const C = (b.decor || []).filter(d => d.kind === 'hut' || d.kind === 'tent' || d.kind === 'mess');
       const fx = C.length ? C.reduce((s, d) => s + d.x, 0) / C.length : b.x, fz = C.length ? C.reduce((s, d) => s + d.z, 0) / C.length : b.z;
-      const r = C.length ? 22 : 42, w = (Math.random() < 0.5 ? -1 : 1) * 0.05;
+      const r = C.length ? 22 * CK() + 5 : 42, w = (Math.random() < 0.5 ? -1 : 1) * 0.05;
       return { kind: 'field', subj: { x: fx, z: fz, y: 0, diorama: true }, ring: { r, w, hgt: 0.22, a0: clearArc(b, fx, fz, r, w * CAMP) }, dur: CAMP + 1, max: CAMP };
     }
     if (k === 'line') { // a fighter starting up in its revetment: the pilot running to it, the prop spinning up, the exhaust
       const A = outbound(b, false), F = A.filter(p => p.rwPh === 'warm'), sl = (b.slots || []).filter(s => s.spot && VAR()[s.v] && VAR()[s.v].kind === 'fighter' && s.state === 'parked');
       if (!F.length) return A.length || !sl.length ? 'skip' : null;   // (all out of their revetments: on to the scramble; none starting up yet: wait - at dusk nothing launches and the beat lapses)
       const q = F[F.length - 1];   // a fighter starting up in its revetment
-      return { kind: 'orbit', subj: { x: q.x, z: q.z, y: padH(b), diorama: true }, r: 14 * PFK + 5, dur: LINE[1] + 1, max: LINE[1], min: LINE[0], w: 0.07, hgt: 0.35 };
+      return { kind: 'orbit', subj: { x: q.x, z: q.z, y: padH(b), diorama: true }, r: 14 * PFK + 2.5, dur: LINE[1] + 1, max: LINE[1], min: LINE[0], w: 0.07, hgt: 0.35 };
     }
     if (k === 'scramble' || k === 'strike') {
       const P = outbound(b, k === 'strike').filter(q => q.rwPh !== 'climb');   // (one already lifting off is gone before the cut lands)
@@ -162,7 +163,7 @@ window.WW = window.WW || {};
       const h = shot.hS = shot.hS === undefined ? p.heading : shot.hS + WW.angleDiff(shot.hS, p.heading) * (1 - Math.exp(-rdt * 1.2));
       const fx = Math.cos(h), fz = Math.sin(h), back = 11 * PFK, lat = (shot.side || 1) * 6 * PFK;
       _r.x = -fz; _r.z = fx;
-      gP.set(p.x - fx * back + _r.x * lat, g + 3.4 * PFK + 1.2, p.z - fz * back + _r.z * lat);
+      gP.set(p.x - fx * back + _r.x * lat, g + 3.4 * PFK + 0.7, p.z - fz * back + _r.z * lat);
       gL.set(p.x + fx * 5 * PFK, g + 0.6, p.z + fz * 5 * PFK);
     }
     shot.aim = (shot.aim || new THREE.Vector3()).set(p.x, py, p.z);
