@@ -251,3 +251,117 @@ dived (n/a), seeds 5-10 90% (9 / 10) PASS; action_cam errors 0, max view rotatio
 final run), min hull clearance 4.5 (a deck camera is now measured by its height over its own deck; the old -6.4 was the
 deck AA shot standing on its own carrier). Tests that call fastForward (story_cam, action_cam) desync the look-ahead and
 so exercise the forecast fallback.
+
+## Flying-boat jitter (2026-10-18)
+Report: "the camera is super jumpy and jittery now when following the flying boats". Measured with tests/cam_jitter.js
+(render mode on a fake rAF clock; the subject's screen position, the camera position and look direction each frame; the
+shake is the distance from a quadratic fitted in time through the 5 frames around each one, so smooth motion and
+steady turns score 0 and a sawtooth scores its amplitude; cuts left out). Main against this branch, same seed.
+
+Cause: camera5's fixed live step (LIVE_STEP 1/120 sim s = 1/60 real s at 1x) had no render interpolation. At 1x on a
+steady 60 Hz clock it is one step a frame and nothing shakes (0.00 px). Wherever frames and steps do not line up
+(the director's slow motion: 0 / 1 steps a frame; a 120 Hz display whose frame overruns a vsync: 1 / 2; a 144 Hz
+display under the 60 cap: 0 / 1 now and then; the slow-motion ramps) every plane, ship and shell moved a whole step on
+some frames and stood still on others, while the camera eased on frame time: the subject shook on screen, 1-3.8 px p95
+in slow motion. Not specific to the flying boats (every subject does it, a dive bomber worst) and not the director
+(?cam=forecast measures the same); the PBYs are what the director films in the dawn patrol at the start of every round.
+A second, smaller one: the camera's eases (P.lerp toward the goal at 1 - exp(-k dt)) treat the goal's motion over the
+frame as a jump at its start, so the lag behind a moving subject depends on the frame's length (~v dt / 2): an uneven
+frame clock shook a steady chase by that difference (0.2-0.4 px at 120 Hz with overruns).
+
+Fix (visual only; the sim, determinism and the look-ahead trace untouched): js/render_interp.js keeps the pose before
+each live step and draws every moving thing (ships and a broken stern, planes, projectiles) at the pose where the
+frame's time lies (alpha = acc / LIVE_STEP + SNAP), and poses the sim objects' x / y / z / heading the same way while the
+frame's visuals run (camera, crew, audio), all restored bit for bit before the next step. Particles and lifeboats age on
+the frame's sim time in the live game. camera.js easeTo (also the free camera's follow): the exact step of
+dV/dt = k (g - V) for a goal moving linearly over the frame, the same lag at any frame rate. ?nointerp turns the
+interpolation off.
+
+First measurement (on the pre-sea, pre-true-scale main; the final numbers are below). Shake of the subject on screen, p95 px at 960x540, main > branch (150 frames per cell; 120o: 120 Hz with every other
+frame overrunning a vsync; slow: the director's 0.5x held; ramp: 0.75x):
+
+| case | 60 Hz | 120o | 144 | slow 60 | slow 120o | ramp | 2x 120o | 4x 120o |
+|---|---|---|---|---|---|---|---|---|
+| PBY patrol (chase) | 0.00 > 0.00 | 0.18 > 0.00 | 0.71 > 0.00 | 1.03 > 0.00 | 1.00 > 0.00 | 0.72 > 0.00 | 0.04 > 0.00 | 0.04 > 0.00 |
+| SBD transit | 0.00 > 0.00 | 0.32 > 0.00 | 1.01 > 0.00 | 1.27 > 0.00 | 1.26 > 0.00 | 1.18 > 0.00 | 0.08 > 0.00 | 0.13 > 0.00 |
+| dive bomber attack | 0.01 > 0.01 | 0.40 > 0.01 | 2.17 > 0.00 | 2.55 > 0.00 | 1.10 > 0.01 | 1.59 > 0.00 | 0.33 > 0.24 | 0.19 > 0.03 |
+| torpedo run | 0.00 > 0.03 | 0.27 > 0.00 | 1.09 > 0.03 | 1.80 > 0.00 | 1.52 > 0.00 | 1.06 > 0.00 | 0.06 > 0.01 | 0.25 > 0.07 |
+| fighter in a dogfight | 0.00 > 0.00 | 0.36 > 0.00 | 1.12 > 0.00 | 1.03 > 0.00 | 0.96 > 0.01 | 2.15 > 0.01 | 0.17 > 0.01 | 0.28 > 0.03 |
+| scout floatplane | 0.00 > 0.00 | 0.19 > 0.00 | 0.86 > 0.00 | 1.05 > 0.00 | 0.97 > 0.00 | 0.73 > 0.00 | 0.03 > 0.00 | 0.20 > 0.02 |
+| deck take-off | 0.00 > 0.00 | 0.04 > 0.00 | 0.03 > 0.00 | 1.02 > 0.00 | 0.48 > 0.00 | 0.22 > 0.00 | 0.06 > 0.00 | 0.24 > 0.00 |
+| carrier landing | 0.00 > 0.00 | 0.52 > 0.00 | 0.94 > 0.00 | 1.99 > 0.00 | 1.39 > 0.03 | 0.96 > 0.04 | 0.11 > 0.00 | 0.26 > 0.19 |
+| base runway plane | 0.00 > 0.00 | 0.02 > 0.05 | 0.00 > 0.00 | 0.10 > 0.07 | 0.04 > 0.10 | 0.05 > 0.15 | 0.01 > 0.00 | 0.02 > 0.02 |
+| destroyer (orbit) | 0.00 > 0.00 | 0.04 > 0.00 | 0.13 > 0.00 | 0.32 > 0.00 | 0.11 > 0.00 | 0.25 > 0.00 | 0.00 > 0.00 | 0.01 > 0.00 |
+| PT boat | 0.00 > 0.00 | 0.10 > 0.00 | 0.21 > 0.00 | 0.59 > 0.00 | 0.69 > 0.00 | 0.31 > 0.00 | 0.01 > 0.00 | 0.04 > 0.00 |
+| turning ship | 0.00 > 0.00 | 0.02 > 0.00 | 0.17 > 0.00 | 0.18 > 0.00 | 0.17 > 0.00 | 0.13 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 |
+| sinking ship | 0.00 > 0.00 | 0.01 > 0.00 | 0.06 > 0.00 | 0.10 > 0.00 | 0.10 > 0.00 | 0.13 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 |
+| free camera following a DD | 0.00 > 0.00 | 0.02 > 0.00 | 0.07 > 0.00 | 0.31 > 0.00 | 0.27 > 0.00 | 0.19 > 0.00 | 0.01 > 0.00 | 0.01 > 0.00 |
+| F (follow toggle) | 0.00 > 0.00 | 0.02 > 0.02 | 0.02 > 0.00 | 0.23 > 0.00 | 0.08 > 0.00 | 0.32 > 0.00 | 0.08 > 0.00 | 0.04 > 0.01 |
+| director, round start (dawn patrol) | 0.00 > 0.00 | 0.23 > 0.00 | | 3.75 > 0.00 | | | | |
+| director, 60 / 150 / 250 s | 0.00 > 0.00 | 0.42 / 0.28 / 0.38 > 0.00 | | 2.34 / 2.12 / 2.17 > 0.00 | | | | |
+| director, dusk strikes / finale | 0.00 > 0.00 | 0.03 / 0.16 > 0.00 | | 0.11 / 0.13 > 0.00 | | | | |
+| director ?cam=forecast, 150 s | 0.00 > 0.00 | 0.21 > 0.00 | | 2.12 > 0.00 | | | | |
+
+2x and 4x at 60 Hz (2 and 4 whole steps a frame) were already smooth and stay so (all <= 0.1 px but the 4x landing,
+0.61 > 0.99, and the 4x torpedo run, 0.17 > 0.11: hard manoeuvres sampled at 15 Hz of sim time, not a sawtooth). The
+camera's look direction shook up to 0.46 mrad p95 on main (dive, 2x 120o), <= 0.21 on the branch; its position <= 0.02 u
+on both. The free camera panning, blends between shots: no shake on either. The Dumbo (rescue Catalina) did not fly
+in the seeded window; it is the same FlyingBoat class as the patrol and the PBY on the water at the ramp (director, round
+start) is covered.
+Rebased on pacific-sea (the ships, the decks' planes and the floating things ride a visual sea: ship_swell.js). The
+order is: render_interp unposes last and poses first, so the sea pose goes on top of the interpolated sim pose and comes
+off before it; nothing posed is ever fed back to the sim. With ?sea=rough the same table (main with the sea > branch):
+slow motion 60 Hz: destroyer 0.13 > 0.00, PT boat 0.66 > 0.00, turning ship 0.15 > 0.00, sinking ship 0.10 > 0.00,
+deck take-off 0.16 > 0.00, carrier landing 1.37 > 0.00, PBY 1.03 > 0.00, dive 1.35 > 0.00, director (start / 60 / 150 /
+250 s) 3.74 / 1.71 / 2.10 / 2.16 > 0.00; 120o: every case <= 0.05 on the branch (main up to 0.52); F at 4x 2.82 > 0.08.
+Left: the 4x carrier landing (0.78 > 0.99) and 4x PT boat (0.11 > 0.17) are the hook / slam motions themselves at 4x,
+not a step sawtooth (the same with and without interpolation at whole steps a frame). The Dumbo did not fly in the
+seeded window (no aircrew in the water early enough); it is the same FlyingBoat class as the patrol boats measured.
+
+Final numbers, rebased on true-scale (ad7fe8a: planes at 0.41, closer plane shots, the plane follow rate PLANE_KP 1.8),
+pacific-sea and flak-sky. Subject shake p95 px, main > branch (u14: uneven 14 / 19.3 ms frames, under the cap):
+
+| case | 120o | 144 | slow 60 | slow 120o | ramp | 2x 120o | 4x 60 | 4x 120o |
+|---|---|---|---|---|---|---|---|---|
+| PBY patrol | 0.28 > 0.00 | 1.16 > 0.00 | 1.82 > 0.00 | 1.76 > 0.00 | 1.21 > 0.00 | 0.04 > 0.00 | 0.00 > 0.00 | 0.05 > 0.00 |
+| SBD transit | 0.55 > 0.00 | 1.70 > 0.00 | 2.20 > 0.00 | 2.64 > 0.01 | 1.42 > 0.00 | 0.05 > 0.00 | 0.01 > 0.00 | 0.15 > 0.01 |
+| dive bomber attack | 0.33 > 0.00 | 1.22 > 0.00 | 86 > 0.00 | 1.60 > 0.03 | 1.06 > 0.00 | 0.17 > 0.01 | 0.07 > 0.06 | 0.18 > 0.13 |
+| torpedo run | 0.72 > 0.00 | 2.23 > 0.00 | 1.46 > 0.00 | 1.84 > 0.01 | 1.83 > 0.00 | 2.04 > 0.04 | 1.15 > 0.28 | 0.14 > 0.13 |
+| fighter, dogfight | 0.56 > 0.00 | 2.33 > 0.00 | 3.19 > 0.00 | 5.22 > 0.02 | 2.38 > 0.02 | 0.18 > 0.07 | 0.37 > 0.00 | 0.35 > 0.02 |
+| scout floatplane | 0.31 > 0.00 | 1.42 > 0.00 | 1.87 > 0.00 | 1.78 > 0.00 | 1.21 > 0.00 | 0.04 > 0.00 | 0.01 > 0.01 | 0.25 > 0.01 |
+| deck take-off | 0.04 > 0.00 | 0.03 > 0.00 | 1.02 > 0.00 | 1.25 > 0.00 | 1.00 > 0.00 | 0.05 > 0.01 | 0.02 > 0.01 | 0.01 > 0.01 |
+| carrier landing | 0.39 > 0.00 | 1.11 > 0.00 | 1.48 > 0.00 | 2.18 > 0.01 | 1.25 > 0.01 | 0.17 > 0.01 | 0.09 > 0.08 | 0.10 > 0.03 |
+| base runway plane | 0.03 > 0.01 | 0.00 > 0.00 | 0.08 > 0.00 | 0.03 > 0.00 | 0.03 > 0.00 | 0.01 > 0.00 | 0.01 > 0.03 | 0.04 > 0.05 |
+| destroyer | 0.02 > 0.00 | 0.15 > 0.00 | 0.37 > 0.00 | 0.34 > 0.00 | 0.22 > 0.00 | 0.00 > 0.00 | 0.02 > 0.02 | 0.03 > 0.03 |
+| PT boat | 0.13 > 0.01 | 0.32 > 0.00 | 0.72 > 0.00 | 0.63 > 0.00 | 0.54 > 0.00 | 0.04 > 0.05 | 0.14 > 0.27 | 0.19 > 0.16 |
+| turning ship | 0.01 > 0.00 | 0.20 > 0.00 | 0.16 > 0.00 | 0.07 > 0.00 | 0.08 > 0.00 | 0.00 > 0.00 | 0.01 > 0.01 | 0.02 > 0.02 |
+| sinking ship | 0.01 > 0.00 | 0.03 > 0.00 | 0.08 > 0.00 | 0.13 > 0.00 | 0.05 > 0.00 | 0.00 > 0.02 | 0.00 > 0.00 | 0.01 > 0.01 |
+| free camera on a DD | 0.03 > 0.00 | 0.11 > 0.00 | 0.24 > 0.00 | 0.23 > 0.00 | 0.17 > 0.00 | 0.01 > 0.00 | 0.02 > 0.01 | 0.03 > 0.03 |
+| F (follow toggle) | 0.02 > 0.00 | 0.02 > 0.00 | 0.28 > 0.00 | 0.38 > 0.00 | 0.37 > 0.00 | 0.01 > 0.00 | 0.32 > 0.21 | 0.07 > 0.02 |
+| free camera panning | 0.00 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 | 0.00 > 0.00 |
+
+At 60 Hz, 1x, 2x and 4x (whole steps a frame) both are smooth (<= 0.03, but the 4x torpedo run / PT boat above: their
+own manoeuvres at 4x). The director, 120o / slow 60: round start (the dawn patrol) 0.21 > 0.00 / 0.25 > 0.00; 60 s
+0.30 > 0.00 / 2.08 > 0.00; 150 s 0.20 > 0.01 / 0.29 > 0.00 (?cam=forecast the same); 250 s 5.77 > 0.04 / 0.11 > 0.00;
+dusk strikes 0.21 > 0.00 / 0.99 > 0.00; finale 0.04 > 0.00 / 0.33 > 0.00. Blends between shots: no oscillation;
+the look direction's shake in the 40 frames after a cut is <= 0.6 mrad but for one blend onto a landing chase (one frame,
+6.3 mrad on main > 4.3 on the branch) and a 4x over-the-shoulder at round start (2.0 on both): the director's own
+moves, not the step. (The director picks shots with Math.random, so its main / branch runs film different shots; at 4x
+its per-shot numbers are a few dozen frames each, e.g. that 4x over-the-shoulder 3.5 > 7.0 px, a fighter weaving on a
+flying boat's tail, under the swiftshader step budget's uneven 2-4 steps a frame.)
+- Uneven frames: the dogfight at u14 1.93 > 0.015 px (its frame-to-frame velocity change 5.9 > 0.16 px), the deck
+  take-off 0.058 > 0.000. tests/scale_jitter.js UNEVEN=1 (13 / 20.3 ms) reads the same on both (ots p95 4.7 / 5.7 px,
+  take-off 0.47 / 0.52): its 13 ms frames fall under the 60 fps cap's 13.67 ms floor and are skipped, so the drawn frames
+  are an even 33.3 ms with 4 whole steps each (no step sawtooth to remove), and its plain second difference measures
+  the dogfight's own manoeuvring at 30 fps (4x its 60 fps value: 1.32 / 1.39 at UNEVEN=0).
+- The follow rate: easeTo is the exact solution for any rate, so PLANE_KP 1.8 composes with it (the plane rows above).
+- A per-frame visual that writes a pose after the interpolation (base_ground_fx.js sets a runway plane's height on the
+  paving) keeps its own component; the rest of the sim's pose is still restored (it had left the drawn x / z for the
+  next step's capture: a 0.7 px sawtooth on the runway "field" shots, now 0.01).
+- The flak puffs (combat_aa.js) advanced their uTime in whole steps (0 / 8.3 ms a frame at 0.5x); they now draw on the
+  frame's own time (render_interp lag()), 4.17 ms every frame.
+- Not covered: the catapult scouts' one-step jump at the end of the rail (a sim speed change, not this mechanism; the
+  scout rows are airborne), the Dumbo (no rescue flew in the seeded windows; same FlyingBoat class as the patrol rows).
+
+Frame strip: docs/flyingboat_jitter_sheet.png (a PBY chase in the director slow motion, 8 consecutive 60 Hz frames, main above:
+the plane bobs against the red cross-hair every other frame; the branch below: steady).

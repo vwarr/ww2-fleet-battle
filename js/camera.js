@@ -17,6 +17,22 @@ window.WW = window.WW || {};
   let camera = null, mapDist = 500, mapTz = H / 2;
   const P = new THREE.Vector3(), L = new THREE.Vector3();        // current camera position / look point
   const gP = new THREE.Vector3(), gL = new THREE.Vector3();      // goals for this frame
+  const gP0 = new THREE.Vector3(), gL0 = new THREE.Vector3();    // last frame's goals (easeTo(): the goal's motion over the frame)
+  let g0ok = false;
+  // easeTo(V, g0, g1, k, dt): V eased toward a MOVING goal at rate k over a frame of dt s in which the goal went from g0 to
+  // g1: the exact step of dV/dt = k (g - V) with g moving linearly over the frame. The plain V.lerp(g1, 1 - exp(-k dt))
+  // treats the goal's move as a jump at the frame's start, so the camera's lag behind a moving subject depends on the
+  // frame's length (about v dt / 2 more): an uneven frame clock (a 120 Hz display that overruns a vsync now and then,
+  // a 144 Hz one under the 60 fps cap) made a steady chase shake by that difference. This one is the same at any frame
+  // rate (a still goal: the same as the lerp). Shared with freecam.js (WW.cam.easeTo).
+  function easeTo(V, g0, g1, k, dt) {
+    if (!(dt > 0)) return V;
+    const e = Math.exp(-k * dt), r = k * dt > 1e-6 ? (1 - e) / (k * dt) : 1;
+    V.x = g1.x + (V.x - g0.x) * e - (g1.x - g0.x) * r;
+    V.y = g1.y + (V.y - g0.y) * e - (g1.y - g0.y) * r;
+    V.z = g1.z + (V.z - g0.z) * e - (g1.z - g0.z) * r;
+    return V;
+  }
   const _c = new THREE.Vector3(), _f = new THREE.Vector3();
   let manual = false, shot = null, lastKind = '', lastSubj = null, recent = [], recentCls = [], shotCount = 0, snapNext = true, forced = null, lastWide = -9, lastSunk = null;
 
@@ -495,22 +511,25 @@ window.WW = window.WW || {};
         if (shot.kind !== 'wide' && !shot.noCompose && (shot.aim || shot.last)) compose(shot.aim || shot.last);
       }
       if (snapNext && fade && !fadeReady && rdt > 0 && !first) { fadeWant = true; } // grab the old frame first (afterRender)
-      else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; }
+      else if (snapNext) { P.copy(gP); L.copy(gL); snapNext = false; fadeReady = false; first = false; g0ok = false; }
       else {
         // heavy easing for the director, crisp for the user; action shots set their own (crisper) rates
         const soft = manual && WW.freecam.soft ? WW.freecam.soft() : 1; // eased right after the user takes over
         if (!manual) _d0.copy(L).sub(P);
-        P.lerp(gP, 1 - Math.exp(-rdt * (manual ? 7 * soft : (shot && shot.kP) || (shot && shot.subj && shot.subj.pt ? PLANE_KP : 0.9))));
-        L.lerp(gL, 1 - Math.exp(-rdt * (manual ? 9 * soft : (shot && shot.kL) || 1.3)));
+        if (!g0ok) { gP0.copy(gP); gL0.copy(gL); g0ok = true; }   // (after a snap: the goal's motion counts from here)
+        easeTo(P, gP0, gP, manual ? 7 * soft : (shot && shot.kP) || (shot && shot.subj && shot.subj.pt ? PLANE_KP : 0.9), rdt);
+        easeTo(L, gL0, gL, manual ? 9 * soft : (shot && shot.kL) || 1.3, rdt);
         if (!manual && rdt > 0) capTurn(rdt); // smooth moves, never snaps: the view turns at most TURN_MAX rad/s
         // the eased camera lags its goal: ease it out of a hull's no-go circle too (a soft pull, no jolt)
         if (!manual && !cam.isOverview() && P.y < 14) { _c.copy(P); clearHulls(_c, 14, shot && shot.deck ? shot.subj : null); P.lerp(_c, (1 - Math.exp(-rdt * 6)) * Math.min(1, (14 - P.y) / 4)); }
         if (!cam.isOverview() && ((shot && shot.nd) || (manual && WW.camNormandy && WW.camNormandy.on()))) WW.camNormandy.floor(P); // the eased camera never dips under the sand or the sea
       }
+      if (rdt > 0) { gP0.copy(gP); gL0.copy(gL); }
       camera.position.copy(P);
       camera.lookAt(L);
       camera.updateMatrixWorld();
-    }
+    },
+    easeTo
   };
   WW.cam = cam;
 })(window.WW);

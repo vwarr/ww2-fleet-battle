@@ -16,7 +16,8 @@ window.WW = window.WW || {};
   const IDLE = 20, FOLLOW_IDLE = 10, CLICK_IDLE = 25, MIN_D = 22, MAX_D = 900, MIN_P = 0.12, MAX_P = 1.25, MARGIN = 120;
   const W = () => WW.cfg.MAP_W, H = () => WW.cfg.MAP_H;
   let lastInput = -1e9, on = false, follow = null, drag = null, idle = IDLE, takeT = -1e9, rel = true, hS = 0, fT = 0;
-  const T = new THREE.Vector3(), goalT = new THREE.Vector3();
+  const T = new THREE.Vector3(), goalT = new THREE.Vector3(), goalT0 = new THREE.Vector3();
+  let g0ok = false;   // goalT0: the followed point last frame (WW.cam.easeTo)
   let yaw = 0, pitch = 0.3, dist = 120, gYaw = 0, gPitch = 0.3, gDist = 120;
   const keys = {};
   const now = () => performance.now() / 1000;
@@ -47,6 +48,7 @@ window.WW = window.WW || {};
   }
   // follow o from where the camera is now: the offset is measured from the subject, so the camera does not move
   function setFollow(o, how) {
+    g0ok = false;
     if (!followable(o)) return false;
     if (!on) { on = true; takeT = now(); }
     lastInput = now();
@@ -62,7 +64,7 @@ window.WW = window.WW || {};
     pitch = gPitch = WW.clamp(Math.asin(WW.clamp(d.y / len, -1, 1)), minP(), MAX_P);
     return true;
   }
-  function stop() { on = false; follow = null; drag = null; for (const k in keys) keys[k] = false; }
+  function stop() { g0ok = false; on = false; follow = null; drag = null; for (const k in keys) keys[k] = false; }
   function unfollow() { // keep the camera where it is, world-fixed, without a subject
     if (!follow) return;
     yaw = worldYaw(yaw); gYaw = worldYaw(gYaw); follow = null; T.y = 0; goalT.copy(T); idle = IDLE;
@@ -157,7 +159,7 @@ window.WW = window.WW || {};
     // follow o relative to it now (Tab / story hand-offs); how: 'click' | 'inherit' | 'user'
     follow(o, how) { return setFollow(o, how || 'user'); },
     // hand over to a new subject in place (a story's next leader), keeping the user's offset
-    retarget(o) { if (!followable(o) || !follow) return false; const y = worldYaw(gYaw), y0 = worldYaw(yaw); follow = o; hS = o.heading || 0; if (rel) { gYaw = y - base(hS); yaw = y0 - base(hS); } return true; },
+    retarget(o) { if (!followable(o) || !follow) return false; const y = worldYaw(gYaw), y0 = worldYaw(yaw); follow = o; g0ok = false; hS = o.heading || 0; if (rel) { gYaw = y - base(hS); yaw = y0 - base(hS); } return true; },
     release() { stop(); }, // hand the camera back to the director now (key F, Esc)
     // key O: heading-relative <-> world-fixed offsets, without a jump
     toggleRel() {
@@ -190,9 +192,11 @@ window.WW = window.WW || {};
       if (follow) {
         fT += dt;
         hS += WW.angleDiff(hS, follow.heading || 0) * (1 - Math.exp(-dt * 1.5)); // calm: the camera swings round slowly
+        if (!g0ok) { goalT0.set(follow.x, subjY(follow), follow.z); g0ok = true; }
         goalT.set(follow.x, subjY(follow), follow.z);
-        T.lerp(goalT, 1 - Math.exp(-dt * (3 + 9 * Math.min(1, fT / 1.5)))); // tight once settled: no lag behind a fast plane
-      } else T.lerp(goalT, k);
+        WW.cam.easeTo(T, goalT0, goalT, 3 + 9 * Math.min(1, fT / 1.5), dt); // tight once settled: no lag behind a fast plane (eased toward the moving point: the same lag at any frame rate, camera.js easeTo)
+        goalT0.copy(goalT);
+      } else { T.lerp(goalT, k); g0ok = false; }
       yaw += (gYaw - yaw) * k; pitch += (gPitch - pitch) * k; dist += (gDist - dist) * k;
       const ly = follow ? T.y : 1.5, wy = worldYaw(yaw);
       gL.set(T.x, ly, T.z);

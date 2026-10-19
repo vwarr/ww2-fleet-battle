@@ -96,7 +96,7 @@ const SEED = +(process.argv[2] || 3), SECS = +(process.argv[3] || 150), WHICH = 
   const log1 = await p.evaluate(() => WW.camStory.log.splice(0));
   const t0 = log1.length ? log1[0].at : 0;
   console.log('[story] sequence:');
-  for (const e of log1) console.log('   ' + (e.at - t0).toFixed(1).padStart(6) + 's  ' + (e.start ? 'START ' + e.lead + ' (' + e.mission + ')' : e.end ? 'END' : e.fall ? 'FALL ' + e.fall : e.handoff ? 'HANDOFF -> ' + e.handoff : `${e.sk.padEnd(8)} ${e.phase.padEnd(8)} ${e.dur}s ${e.hard ? 'hard cut' : 'fade'}  ${e.lead || ''}`));
+  for (const e of log1) console.log('   ' + (e.at - t0).toFixed(1).padStart(6) + 's  ' + (e.start ? 'START ' + e.lead + ' (' + e.mission + ')' : e.end ? 'END' : e.fall ? 'FALL ' + e.fall : e.handoff ? 'HANDOFF -> ' + e.handoff : !e.sk ? JSON.stringify(Object.assign({}, e, { at: undefined })) : `${e.sk.padEnd(8)} ${e.phase.padEnd(8)} ${e.dur}s ${e.hard ? 'hard cut' : 'fade'}  ${e.lead || ''}`));
   kinds = new Set(log1.filter(e => e.sk).map(e => e.sk));
   }
 
