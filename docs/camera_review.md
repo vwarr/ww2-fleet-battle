@@ -362,3 +362,6 @@ flying boat's tail, under the swiftshader step budget's uneven 2-4 steps a frame
   frame's own time (render_interp lag()), 4.17 ms every frame.
 - Not covered: the catapult scouts' one-step jump at the end of the rail (a sim speed change, not this mechanism; the
   scout rows are airborne), the Dumbo (no rescue flew in the seeded windows; same FlyingBoat class as the patrol rows).
+
+Frame strip: docs/flyingboat_jitter_sheet.png (a PBY chase in the director slow motion, 8 consecutive 60 Hz frames, main above:
+the plane bobs against the red cross-hair every other frame; the branch below: steady).
