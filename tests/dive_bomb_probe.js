@@ -6,6 +6,8 @@
 //                  half-beam 0.12 L): hit, near miss (close aboard, <= NEAR u), or miss, by the opposition the bomber
 //                  flew into (air_intercept.js pressure at the release: light < 0.2 <= medium < 0.5 <= heavy) and by
 //                  target (carrier undefended / defended: other ships' AA within 60, destroyer, other)
+//   manoeuvring    the target at the release: evading (ships_ai.js airEvade episode on), turning (|turn rate| > 0.03
+//                  rad/s) or steady; and its swing over the bomb's fall (heading change, deg)
 //   near misses    ship damage from bomb near misses (shipHit kind 'near') per round
 //   lethality      bomb and torpedo hits taken by each ship sunk, by type (a ship with neither is not counted), and
 //                  the round winners
@@ -31,7 +33,8 @@ function install(NEAR) {
     let esc = 0; for (const s of WW.world.ships) if (s !== t && s.alive && !s.sinking && s.nation === t.nation && s.stats && s.stats.aa && Math.hypot(s.x - t.x, s.z - t.z) < 60) esc += s.stats.aa.dps;
     const pr = WW.intercept && WW.intercept.pressure ? WW.intercept.pressure(p, t) : 0;
     const V = p.dropV;
-    S.proj.set(b, { t, type: t.type, def: esc > 3, lvl: pr < 0.2 ? 'light' : pr < 0.5 ? 'medium' : 'heavy', ang: deg(b.vx, b.vy, b.vz, V.x, V.y, V.z), y: b.y, res: null, d: null });
+    S.proj.set(b, { t, type: t.type, def: esc > 3, lvl: pr < 0.2 ? 'light' : pr < 0.5 ? 'medium' : 'heavy', ang: deg(b.vx, b.vy, b.vz, V.x, V.y, V.z), y: b.y, res: null, d: null,
+      ev: !!(t.ai && t.ai.airEv && WW.time.now <= t.ai.airEv.until + 0.01), turn: Math.abs(t.turnRate || 0) > 0.03, h0: t.heading, sw: null });
   });
   WW.on('shipHit', e => {
     if (!e || !e.ship) return;
@@ -43,7 +46,7 @@ function install(NEAR) {
     if (!e || e.kind !== 'bomb') return;
     const D = S.proj.get(e.proj); if (!D) return;
     S.proj.delete(e.proj);
-    const t = D.t; D.t = null;
+    const t = D.t; D.t = null; D.sw = Math.abs(WW.angleDiff(D.h0, t.heading || 0)) * 57.3;
     if (e.ship) { D.res = e.ship === t ? 'hit' : 'other'; D.d = 0; S.done.push(D); return; }
     const L = Math.max(5, (t.stats && t.stats.length) || 10), c = Math.cos(t.heading || 0), s = Math.sin(t.heading || 0), dx = e.x - t.x, dz = e.z - t.z;
     const al = Math.abs(dx * c + dz * s) - L / 2, ac = Math.abs(-dx * s + dz * c) - L * 0.12;
@@ -66,6 +69,11 @@ function report(rounds) {
     console.log(`${lab.padEnd(22)}  ${String(X.length).padStart(5)}  ${pc(H.length / X.length).padStart(4)}  ${pc(N.length / X.length).padStart(10)}  ${pc((X.length - H.length - N.length) / X.length).padStart(5)} | ` + B.map(([a, b]) => String(M.filter(d => d.d >= a && d.d < b).length).padStart(5)).join(' '));
   };
   row('all', A);
+  row('target evading', A.filter(d => d.ev));
+  row('target turning', A.filter(d => d.turn));
+  row('target steady', A.filter(d => !d.ev && !d.turn));
+  row('carrier evading', A.filter(d => d.ev && d.type === 'carrier'));
+  console.log(`swing of the target over the fall (deg) p50/p90: evading ${qs(A.filter(d => d.ev && d.sw !== null).map(d => d.sw), 0.5)} / ${qs(A.filter(d => d.ev && d.sw !== null).map(d => d.sw), 0.9)}, all ${qs(A.filter(d => d.sw !== null).map(d => d.sw), 0.5)} / ${qs(A.filter(d => d.sw !== null).map(d => d.sw), 0.9)}`);
   for (const L of ['light', 'medium', 'heavy']) row(L, A.filter(d => d.lvl === L));
   row('carrier, undefended', A.filter(d => d.type === 'carrier' && !d.def));
   row('carrier, defended', A.filter(d => d.type === 'carrier' && d.def));
