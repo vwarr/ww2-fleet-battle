@@ -28,7 +28,7 @@ window.WW = window.WW || {};
     radio: [3.7, 0.95, 50, 8.6, 1], water: [1.2, 1.2, 60, 6.4, 1], cp: [1.75, 1.45, 120, 1.6, 1], flag: [0.35, 0.35, 400, 7, 1],
     mg: [1.3, 1.3, 50, 0.9, 0], trench: [3.1, 1.15, 400, 0.3, 0], drums: [1.0, 0.8, 25, 1, 1], light: [0.8, 0.8, 40, 1.6, 1],
     truck: [0.75, 0.36, 30, 1.0, 1], fire: [0.75, 0.36, 30, 1.0, 1], jeep: [0.55, 0.33, 20, 0.7, 1], laundry: [2.0, 0.3, 10, 1.5, 0], table: [0.35, 0.35, 10, 0.6, 1],
-    drill: [3.6, 2.6, 1e9, 0, 0], yard: [3.8, 1.1, 1e9, 0, 0],   // yard: the motor pool's forecourt (kept clear)
+    drill: [3.6, 2.6, 1e9, 0, 0], yard: [3.8, 1.1, 1e9, 0, 0],   // yard: the motor pool's forecourt and its ends (kept clear: a jeep pulling out swung through a hut packed against it)
     // the flight line's clutter (roof 0: no low-plane floor; models_base_life.js): a bomb dump in its sandbag U, fuel
     // drums on their sides on log rails, a crate stack, Marston-mat stacks (IJN: a lumber pile), an open-sided
     // maintenance tent over an engine stand, the line shack (operations hut, windsock, sortie board)
@@ -61,7 +61,7 @@ window.WW = window.WW || {};
     ['tents', ['tents'], [['tent', -3.9, 0, H], ['tent', -1.3, 0, H], ['tent', 1.3, 0, H], ['tent', 3.9, 0, H], ['tent', 6.5, 0, H], ['tent', 9.1, 0, H]]],
     ['huts', ['tents', 'huts'], [['hut', -3.4, 0, H], ['hut', 0, 0, H], ['hut', 3.4, 0, H]]],
     ['cp', ['huts', 'mess'], [['cp', 0, 0, 0], ['flag', 0, 2.8, 0]]],
-    ['motor', ['huts', 'mess'], [['yard', 0.5, 2.6, 0], ['yard', 0.5, -2.6, 0], ['fire', -2.6, 0, H], ['truck', -1.3, 0, H], ['truck', 0, 0, H], ['truck', 1.3, 0, H], ['jeep', 2.5, 0, H], ['jeep', 3.6, 0, H]]],
+    ['motor', ['huts', 'mess'], [['yard', 0.5, 2.6, 0], ['yard', 0.5, -2.6, 0], ['yard', -5.2, 0, H], ['yard', 6.2, 0, H], ['fire', -2.6, 0, H], ['truck', -1.3, 0, H], ['truck', 0, 0, H], ['truck', 1.3, 0, H], ['jeep', 2.5, 0, H], ['jeep', 3.6, 0, H]]],
     ['radio', ['tents', 'huts'], [['radio', 0, 0, 0]]],
     ['water', ['huts', 'mess'], [['water', 0, 0, 0]]],
     ['drill', ['huts', 'tents'], [['drill', 0, 0, 0]]],
