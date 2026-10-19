@@ -1,0 +1,27 @@
+Catapult scout launch, per live step (1/120 s) around the end of the rail: phase, p.speed, ground speed along heading, speed relative to the ship (takeoff_probe.js, seed 1)
+
+BEFORE (main b067042) USN scout off southdakota
+step phase sp gs rel
+-6 catapult 1.679 10.765 9.776
+-5 catapult 1.679 11.014 10.022
+-4 catapult 1.679 11.263 10.269
+-3 catapult 1.679 11.512 10.516
+-2 catapult 1.679 11.761 10.763
+-1 catapult 1.679 12.01 11.01
+0 transit 19.856 1.851 0.848
+1 transit 19.923 19.923 18.909
+2 transit 19.99 19.99 18.964
+3 transit 20.056 20.056 19.019
+
+AFTER USN scout off southdakota
+step phase sp gs rel
+-6 catapult 15.2 15.628 14.678
+-5 catapult 15.952 16.382 15.43
+-4 catapult 16.704 17.136 16.182
+-3 catapult 17.456 17.89 16.934
+-2 catapult 18.208 18.644 17.686
+-1 catapult 18.961 19.398 18.437
+0 transit 18.963 19.777 18.814
+1 transit 19.03 19.03 18.056
+2 transit 19.096 19.096 18.111
+3 transit 19.163 19.163 18.167
