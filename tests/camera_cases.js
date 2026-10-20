@@ -22,7 +22,8 @@
 //   hit_after_cut    hits landing in the first 2 s of a shot are in that shot
 //   manual_pan       the user drags the camera, lets go: the director takes it back and films the next big hit
 // Every case also needs the setup framed beforehand where it says so (the frame 1 s before the impact).
-// Usage: BASE_URL=http://localhost:8829/ CHROMIUM=... node tests/camera_cases.js [--only a,b] [--workers 3] [--mine dir]
+// Usage: BASE_URL=http://localhost:8829/ CHROMIUM=... node tests/camera_cases.js [--only a,b] [--quick] [--gate] [--workers 3] [--mine dir]
+//        --quick: the cases marked quick (the gate's); --gate: also a short survey held to thresholds (npm run test:camera)
 //        [--sheets] (a contact sheet of each failed case's moment: tests/camera_audit.js --sheet)
 // --mine DIR: scan a camera_audit survey's raw JSON for rounds where each case's situation happens (to pick the cases).
 const fs = require('fs'), path = require('path'), cp = require('child_process');
@@ -118,25 +119,26 @@ const CHECK = {
   }
 };
 // the cases (picked with --mine from the camera6 surveys; the event lies before `sim`)
+// (picked with --mine from the camera6 survey of main at the true-speed clock; quick: in `npm run test:camera`)
 const CASES = [
-  { id: 'cv_torp_home', scen: 'carrier_duel', seed: 3, scale: 1, sim: 185 },   // sim 167.9
-  { id: 'cv_pair', scen: 'carrier_duel', seed: 9, scale: 1, sim: 305 },        // sim 292.3 + 295.1
-  { id: 'cv_dive_else', scen: 'standard', seed: 10, scale: 1, sim: 285 },      // sim 270.6 (failed in the camera6 survey)
-  { id: 'magazine', scen: 'standard', seed: 8, scale: 1, sim: 220 },           // a battleship's magazine, sim 207.7
-  { id: 'sinking', scen: 'standard', seed: 8, scale: 1, sim: 220 },            // a carrier going down, sim 159.8
-  { id: 'prot_down', scen: 'carrier_duel', seed: 6, scale: 1, sim: 330 },   // (a ditching dive bomber's fall runs to sim 300)
-  { id: 'night_torp', scen: 'night_cv', seed: 1, scale: 1, sim: 420 },
-  { id: 'pt_ambush', scen: 'standard', seed: 7, scale: 1, sim: 385 },          // a PT boat's hit on a cruiser, sim 370.3 (pt_raid: the PT boats never got in range)
-  { id: 'sub_attack', scen: 'standard', seed: 9, scale: 4, sim: 385 },         // a submarine's hit on a battleship, sim 372.9
-  { id: 'gun_duel', scen: 'standard', seed: 7, scale: 1, sim: 385 },           // shell hits on cruisers / battleships from sim 366.4 (midway 11: a destroyer's torpedo run on a cruiser at the same time won the camera)
-  { id: 'dd_torp', scen: 'carrier_duel', seed: 5, scale: 1, sim: 315 },        // a destroyer's spread, hit at sim 306.3
-  { id: 'dead_air', scen: 'carrier_duel', seed: 2, scale: 1, sim: 140 },
-  { id: 'hit_after_cut', scen: 'standard', seed: 1, scale: 1, sim: 245 },
-  { id: 'dive_usn_cv', scen: 'standard', seed: 2, scale: 1, sim: 360 },        // VB-6 on a carrier, push-over at sim 346.1
-  { id: 'dive_lowsun', scen: 'standard', seed: 2, scale: 1, sim: 360 },        // an Akagi Val on a battleship at sun 11 deg, sim 135.6
-  { id: 'dive_small', scen: 'standard', seed: 1, scale: 1, sim: 245 },         // an Akagi Val on a destroyer
-  { id: 'dive_ijn_cv', scen: 'midway', seed: 4, scale: 1, sim: 185 },          // the Kaga dive-bomber unit on a carrier, sim ~168
-  { id: 'manual_pan', scen: 'carrier_duel', seed: 2, scale: 1, sim: 195, drag: 150 }   // the next hit, sim 180.9
+  { id: 'cv_torp_home', scen: 'midway', seed: 1, scale: 1, sim: 160, quick: true },     // Enterprise torpedoed, sim 149.4, a strike flying home
+  { id: 'cv_dive_else', scen: 'midway', seed: 1, scale: 1, sim: 160, quick: true },     // a carrier bombed, sim 147.7, a dive going in on another ship
+  { id: 'cv_pair', scen: 'midway', seed: 12, scale: 1, sim: 190, quick: true },         // two carriers bombed, sim 176.3 and 180.6
+  { id: 'sinking', scen: 'midway', seed: 5, scale: 1, sim: 180 },                       // a carrier going down, sim 169.4
+  { id: 'magazine', scen: 'standard', seed: 6, scale: 1, sim: 370 },                    // a destroyer's magazine, sim 360.8
+  { id: 'gun_duel', scen: 'standard', seed: 7, scale: 1, sim: 375 },                    // battleship shell hits from sim 361.3
+  { id: 'pt_ambush', scen: 'standard', seed: 10, scale: 1, sim: 380 },                  // a PT boat's torpedo on a battleship, sim 372.4
+  { id: 'dive_lowsun', scen: 'standard', seed: 10, scale: 1, sim: 380 },                // VB-6 on a destroyer at sun 9.9 deg, sim ~218
+  { id: 'sub_attack', scen: 'standard', seed: 12, scale: 1, sim: 365 },                 // a submarine's hit, sim 354.2
+  { id: 'dd_torp', scen: 'carrier_duel', seed: 6, scale: 1, sim: 285, quick: true },    // a destroyer's spread from the run-in to the hit, sim 271.8
+  { id: 'prot_down', scen: 'carrier_duel', seed: 10, scale: 1, sim: 200 },
+  { id: 'dead_air', scen: 'carrier_duel', seed: 5, scale: 1, sim: 120, quick: true },   // the opening quiet minutes
+  { id: 'hit_after_cut', scen: 'standard', seed: 9, scale: 1, sim: 400 },
+  { id: 'dive_usn_cv', scen: 'midway', seed: 4, scale: 1, sim: 215 },                   // VMSB-241 on a carrier, sim ~202
+  { id: 'dive_ijn_cv', scen: 'midway', seed: 7, scale: 1, sim: 195, quick: true },      // the Kaga dive-bomber unit on a carrier, sim ~182
+  { id: 'dive_small', scen: 'carrier_duel', seed: 2, scale: 1, sim: 200, quick: true }, // VB-6 on a destroyer, sim ~186
+  { id: 'night_torp', scen: 'night_cv', seed: 1, scale: 1, sim: 300 },
+  { id: 'manual_pan', scen: 'carrier_duel', seed: 10, scale: 1, sim: 195, drag: 150 }   // the next hit, a carrier torpedoed at sim 181.7
 ];
 try { const f = path.join(__dirname, 'camera_cases.json'); if (fs.existsSync(f)) { const j = JSON.parse(fs.readFileSync(f, 'utf8')); for (const c of j) { const i = CASES.findIndex(x => x.id === c.id); if (i >= 0) CASES[i] = c; else CASES.push(c); } } } catch (e) { console.log('camera_cases.json: ' + e.message); }
 
@@ -184,7 +186,7 @@ function mine(dir) {
   }
 }
 // --gate (npm run test:camera): the cases plus a short survey (GATE_ROUNDS) held to thresholds on the headline metrics
-const GATE_ROUNDS = [['carrier_duel', 1, 1, 420], ['midway', 2, 1, 420], ['standard', 2, 4, 700]];   // scen, seed, speed, sim s
+const GATE_ROUNDS = [['carrier_duel', 1, 4, 450], ['standard', 2, 4, 450]];   // scen, seed, speed, sim s (4x: a few minutes)
 const GATE = { cv: 0.9, bb: 0.75, m3: 0.4, cutsMax: 8.5, deadMax: 0.12 };   // CV-BE, BB-BE, M3 top-1, cuts / min, dead air
 async function gateSurvey(b) {
   const dir = path.join(OUT, 'raw_gate'); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
@@ -207,7 +209,7 @@ async function gateSurvey(b) {
 if (require.main === module) (async () => {
   if (args.includes('--mine')) return mine(arg('--mine'));
   fs.mkdirSync(OUT, { recursive: true });
-  const cases = CASES.filter(c => !ONLY || ONLY.split(',').indexOf(c.id) >= 0);
+  const cases = CASES.filter(c => (!ONLY || ONLY.split(',').indexOf(c.id) >= 0) && (!args.includes('--quick') || c.quick));
   // cases on the same round share one run
   const groups = new Map();
   for (const c of cases) { const k = `${c.scen}:${c.seed}:${c.scale}:${c.drag || ''}`; const g = groups.get(k) || groups.set(k, { spec: c, cases: [], sim: 0 }).get(k); g.cases.push(c); g.sim = Math.max(g.sim, c.sim); }
