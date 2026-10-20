@@ -10,7 +10,7 @@
 window.WW = window.WW || {};
 (function (WW) {
   const V = () => new THREE.Vector3();
-  const _f = V(), _r = V(), _c = V(), _t = V();
+  const _f = V(), _r = V(), _c = V(), _t = V(), _v = V();
   const ok = p => p && !p.removed && p.alive;
   const FK = WW.cfg.PLANE_FRAME || 1;   // single-plane framing distances (written at the 1.7 plane scale) close in with the plane size (ship_classes.js)
   const airborne = p => ok(p) && p.state !== 'takeoff' && p.state !== 'rollout' && p.state !== 'landing';
@@ -179,8 +179,13 @@ window.WW = window.WW || {};
     shot.aim = shot.aim || V();
     const T = tgtOf(L), diving = L.kind === 'dive' && (L.phase === 'roll' || L.phase === 'dive') && T;
     if (diving) { // the dive: above and behind the bomber along its dive line, looking down at the deck (plane and ship in frame)
+      // (camera6: the dive line as flown: the bomber's own motion over the frame (speed and vy gave a line too shallow for a
+      // 70 deg dive, and the ship fell out of the bottom of the frame); the heading and sink rate until it has moved)
       _f.set(Math.cos(L.heading) * Math.max(1, L.speed || 10), Math.min(-2, L.vy || 0), Math.sin(L.heading) * Math.max(1, L.speed || 10)).normalize();
-      if (!shot.dS) shot.dS = _f.clone(); else shot.dS.lerp(_f, 1 - Math.exp(-rdt * 2)).normalize();
+      let moved = false;
+      if (shot.dLp) { _v.set(L.x - shot.dLp.x, ly - shot.dLp.y, L.z - shot.dLp.z); if (_v.lengthSq() > 1e-4) { _f.copy(_v.normalize()); moved = true; } }
+      if (!shot.dLp || moved) (shot.dLp = shot.dLp || V()).set(L.x, ly, L.z);
+      if (!shot.dS) shot.dS = _f.clone(); else if (moved) shot.dS.lerp(_f, 1 - Math.exp(-rdt * 2)).normalize();   // (a frame with no sim step: the line held)
       // (camera6: closer, over the shoulder down the dive line: the bomber big in the lower frame, brakes out, the ship ahead
       // beyond it. The survey's sheets: from 16 u back and composed on a point 30% toward the ship the camera looked straight
       // down at the deck and the bomber was a speck at the frame's edge or out of it (in frame 42% of a dive's frames))
