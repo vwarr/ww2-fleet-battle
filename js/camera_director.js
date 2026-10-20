@@ -145,7 +145,7 @@ window.WW = window.WW || {};
   // The arc picker, the arcs' climaxes and the brace candidates read ONLY this list, so another source (a look-ahead
   // sim's event log) can replace forecast() behind it.
   function events() {
-    if (WW.camLook && WW.camLook.active()) return WW.camLook.events().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
+    if (WW.camLook && WW.camLook.active()) return WW.camLook.events().filter(e => WW.camLook.prefOk(e.s)).map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
       x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));   // camera5: the look-ahead's known future (camera_lookahead.js)
     return forecast().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
       x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));

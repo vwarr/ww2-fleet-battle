@@ -209,6 +209,7 @@ window.WW = window.WW || {};
         if ((id(it.target) === pref.tg || id(it.subj) === pref.tg || (pref.src && id(it.subj) === pref.src)) && nc >= (pref.n0 || 0) && nc <= (pref.n1 === undefined ? 1e12 : pref.n1)) { it.value *= 4; it.cv = true; it.pref = true; }
       }
     }
+    if (pref) { const keep = items.filter(it => it.pref); items.length = 0; items.push(...keep); }   // (the clip's arcs only)
     items.sort((a, b) => b.value - a.value);
     return (plCache = items);
   }
@@ -354,6 +355,12 @@ window.WW = window.WW || {};
     if (shot && shot.user && !shot.fkey) return;
     const st = S() && S().story();
     if ((st && st.user) || (D().userArc && D().userArc())) return;
+    // the after-battle reel: an arc not about the clip's ship is closed at once (the clip's arc opens next)
+    if (pref && arcRunning() && !(cur && cur.it.pref && mineRunning()) && !(shot && shot.stage)) {
+      if (st && st.begun && S().supersede) S().supersede(); else if (D().endShipArc) D().endShipArc('superseded');
+      cur = null; ST.prefCut = (ST.prefCut || 0) + 1;
+    }
+    if (pref && shot && !shot.stage && shot.kind === 'brace' && !WW.camLook.prefOk(shot.subj) && shot.t > 0.2) shot.dur = Math.min(shot.dur, shot.t);   // (a brace on another ship: over)
     if (guard(shot, st)) return;
     // a planned story that never got the camera (night_fx.js refused it, the lead lost before its first shot): that strike
     // rests 30 s (no re-planning it every tick)
