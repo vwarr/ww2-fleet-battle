@@ -22,6 +22,7 @@ window.WW = window.WW || {};
   const ALL_MODULES = ['fx', 'combat', 'air', 'ships'];
 
   // ---------- renderer / scene / camera ----------
+  const qv = k => { const m = new RegExp('[?&]' + k + '=([\\w.]+)').exec(location.search); return m ? m[1] : null; };   // a ?k=v URL value
   let renderer, scene, camera;
   const VFOV = 38;
 
@@ -52,6 +53,8 @@ window.WW = window.WW || {};
     call('post', 'resize');
   }
   WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; },
+    battery: () => battery,
+    setBattery(on) { battery = !!on; try { localStorage.setItem('ww.battery', battery ? '1' : '0'); } catch (e) { /* storage blocked */ } if (renderer) resize(); return battery; },
     dyn: () => ({ on: DYN, scale: DYN_STEPS[dynLvl], ratio: dynRatio(), changes: dynChanges, log: dynLog.slice() }) };
   // Adaptive render scale (perf6): on a high-DPI screen the frame is drawn at up to 2 pixels per CSS pixel, and the
   // fragment work (the sea's per-pixel waves, the post passes) grows with that pixel count. When the frames come late
@@ -65,7 +68,13 @@ window.WW = window.WW || {};
   const DYN = !/[?&]fullres\b/.test(location.search), DYN_STEPS = [1, 0.85, 0.72, 0.6], DYN_WIN = 1500;   // (window: ms of frames)
   let dynLvl = 0, dynChanges = 0, dynN = 0, dynIv = 0, dynCb = 0, dynGood = 0, dynTry = null, dynNoDown = 0;
   const dynWait = DYN_STEPS.map(() => 0), dynBack = DYN_STEPS.map(() => 0), dynLog = [];   // dynWait: windows before a level may be tried again
-  function dynRatio() { const d = Math.min(window.devicePixelRatio || 1, 2); return d <= 1 ? d : Math.max(1, d * DYN_STEPS[dynLvl]); }
+  // Battery saver (power, the panel's toggle, remembered; ?battery=1 / 0): the battle drawn at 30 fps (60 while the user
+  // drives the camera) and the frame at 0.75 of the device ratio (about half the pixels: a little softer, see
+  // docs/power_audit.md). Off by default: both show. ?rs=k: a fixed render scale (measuring).
+  let battery = (() => { const q = qv('battery'); if (q !== null) return q === '1'; try { return localStorage.getItem('ww.battery') === '1'; } catch (e) { return false; } })();
+  const RS0 = WW.clamp(+(qv('rs') || 1), 0.5, 1), BATT_RS = 0.75;
+  const RS = () => (battery ? Math.min(RS0, BATT_RS) : RS0);
+  function dynRatio() { const d = Math.min(window.devicePixelRatio || 1, 2); return d <= 1 ? d : Math.max(1, d * RS() * DYN_STEPS[dynLvl]); }
   function dynSet(l, mi) {
     const r0 = dynRatio(), l0 = dynLvl; dynLvl = l; if (dynRatio() === r0) return;
     dynChanges++; dynLog.push([Math.round(performance.now() / 100) / 10, DYN_STEPS[l0], DYN_STEPS[l], Math.round(mi * 10) / 10]); if (dynLog.length > 12) dynLog.shift();
@@ -447,14 +456,20 @@ window.WW = window.WW || {};
   // step size already follows the frame rate; the tests drive __sim.fastForward and never see this). The 3 ms slack
   // keeps a 60 cap on a 120 Hz display at every other vsync instead of alternating 8 / 16 ms. A hidden tab gets no
   // rAF at all (the browser stops it; audio.js mutes on visibilitychange): the background beat steps it then (bgBeat). ?nocap: uncapped (fps / stress tests).
-  const FPS_CAP = 60, FPS_IDLE = 30, IDLE_AFTER = 1500, NO_CAP = /[?&]nocap\b/.test(location.search);
+  const FPS_CAP = 60, FPS_IDLE = +(qv('idlefps') || 20), IDLE_AFTER = 1500, NO_CAP = /[?&]nocap\b/.test(location.search);
   let lastInput = -1e9;
   const touched = () => { lastInput = performance.now(); };
   ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'].forEach(k => window.addEventListener(k, touched, { passive: true }));
   WW.frames = { drawn: 0, skipped: 0 };
+  // Battery saver's frame rate (power, 2026-10-20): FPS_SLOW in the battle unless the user is driving the camera. Not
+  // gated on screen motion: the director's camera drifts at a median ~135 CSS px/s at 1x (p10 45-80), so a motion
+  // threshold low enough to be invisible at 30 fps (~24 px/s) never held, and one high enough to hold often (240) still
+  // drew a busy battle at 51 fps (docs/power_audit.md).
+  const FPS_SLOW = 30;
   function frameCap(t) {
     if (NO_CAP) return 0;
     if (game.state === 'setup' && t - lastInput > IDLE_AFTER) return FPS_IDLE;
+    if (battery && t - lastInput > IDLE_AFTER && !(WW.freecam && WW.freecam.active && WW.freecam.active())) return FPS_SLOW;
     return FPS_CAP;
   }
   // A low camera rides a little above the local sea: never under a crest. A soft floor (the sea's own smooth motion),
