@@ -83,7 +83,7 @@ async function run(b, seed, sheet) {
             }
           }
           const s = WW.cam._shot();
-          out.push({ n, inF, vis, has, shot: s ? (s.story ? 'story' : s.kind) : '-' });
+          out.push({ n, inF, vis, has, shot: s ? (s.story ? 'story' : s.kind) + (s.subj && s.subj.stats ? ':' + (WW.lookahead.idOf(s.subj) || '') + (m.keys.includes(WW.lookahead.idOf(s.subj)) ? '*' : '') : '') : '-' });   // (* the clip's own subject)
         }
       }
       return out;

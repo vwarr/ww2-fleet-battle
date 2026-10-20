@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   'use strict';
   if (WW.simOnly) return;
   const HSTEP = 120, GAP = 40, SLICE = 40;   // live steps between hashes; sim s between two episodes on one ship; ms of fast-forward per slice
-  const MIN_LEAD_AIR = 24, MIN_LEAD = 16, LEAD_AIR = 34, LEAD_SHIP = 18, LEAD_SINK = 14, LEAD_DOWN = 12, TAIL = 9, MAX_HITS_R = 12, SINK_R = 30;   // real s
+  const MIN_LEAD_AIR = 24, MIN_LEAD = 16, LEAD_AIR = 34, LEAD_SHIP = 18, LEAD_SINK = 14, LEAD_DOWN = 12, TAIL = 7, MAX_HITS_R = 12, SINK_R = 30;   // real s
   const MAX_CLIP = 52, BUDGET = 230, BUDGET_MAX = 270, MIN_N = 6, MAX_N = 9;   // real s of reel; clips
   const CLASS = { carrier: 3, battleship: 1.8, cruiser: 1.3, destroyer: 0.9, submarine: 0.5, pt: 0.5, base: 1.3 };
   const CODE = { carrier: 'CV', battleship: 'BB', cruiser: 'CA', destroyer: 'DD', submarine: 'SS', pt: 'PT' };
@@ -151,7 +151,11 @@ window.WW = window.WW || {};
       // (the clip opens a short beat before the first kill: the fight, not the scramble or the long approach before it;
       // its climax is the second kill, the fight under way)
       const k2 = grp[1], ord = grp.filter(e => e.ord).length;
-      const ep = { kind: 'air', tg: k2.p, climax: k2.n, first: grp[0].n, last: grp[grp.length - 1].n, downs: grp, value: 0.3 * grp.length + (ord >= 3 ? 0.6 : 0) };
+      // what the downed planes were attacking (their attack runs and drops): the director is pointed at it (prefer())
+      const ids = new Set(grp.map(e => e.p)), tgs = new Map();
+      for (const e of ev) if ((e.k === 'phase' || e.k === 'drop') && ids.has(e.p) && e.tg && e.tg[0] !== 'p' && e.n <= grp[grp.length - 1].n) tgs.set(e.tg, (tgs.get(e.tg) || 0) + 1);
+      const ptg = [...tgs.entries()].sort((a, b) => b[1] - a[1])[0];
+      const ep = { kind: 'air', tg: k2.p, ptg: ptg ? ptg[0] : null, climax: k2.n, first: grp[0].n, last: grp[grp.length - 1].n, downs: grp, value: 0.3 * grp.length + (ord >= 3 ? 0.6 : 0) };
       cands.push(clip(ep, grp[0].n - R(LEAD_DOWN), Math.min(grp[grp.length - 1].n, grp[0].n + R(30)) + R(6), k2.p));
     }
     // the lead-in never opens on another fight's aftermath: a hit, a sinking or a magazine that is not this arc's, inside
@@ -186,7 +190,7 @@ window.WW = window.WW || {};
     for (const c of chosen) c.caption = caption(c, info);
     return chosen.map(c => ({ kind: c.kind, key: c.key, n0: c.n0, n1: c.n1, climax: c.climax, value: c.value, real: +realLen(c).toFixed(1),
       title: c.caption.title, sub: c.caption.sub, clock: c.caption.clock, src: c.caption.src || null, last: !!c.ep.lastSunk,
-      keys: c.kind === 'air' ? c.ep.downs.map(e => e.p) : [c.key], w0: c.kind === 'air' ? c.ep.first : c.climax, w1: c.kind === 'air' ? Math.min(c.ep.last, c.n1) : c.climax }));
+      keys: c.kind === 'air' ? c.ep.downs.map(e => e.p) : [c.key], ptg: c.ep.ptg || null, w0: c.kind === 'air' ? c.ep.first : c.climax, w1: c.kind === 'air' ? Math.min(c.ep.last, c.n1) : c.climax }));
   }
 
   // ---------- captions ----------
@@ -391,15 +395,28 @@ body.hl-reel #film .caption,body.hl-reel #follow-label,body.hl-reel #diary{displ
     WW.time.scale = 1;
     if (WW.freecam && WW.freecam.release) WW.freecam.release();
     if (WW.cam) WW.cam.mode = 'director';
-    if (WW.camLook && WW.camLook.prefer && c.kind !== 'air') WW.camLook.prefer({ tg: c.key, src: c.src || undefined, n0: c.n0, n1: c.n1 });
+    const ptg = c.kind === 'air' ? c.ptg : c.key;   // (an air battle: what its planes were attacking, when they were)
+    if (WW.camLook && WW.camLook.prefer && ptg) WW.camLook.prefer({ tg: ptg, src: c.src || undefined, n0: c.n0, n1: c.n1 });
     if (WW.cam && WW.cam.snap) WW.cam.snap();
     ui.capT.textContent = c.title; ui.capS.textContent = c.sub || '';
     ui.num.textContent = (i + 1) + ' / ' + M.length;
     reel.state = 'play'; reel.played++;
     WW.time.hold = false; audioPause(false);
+    await settle(c, ptg, tok); if (tok.dead || !reel) return;   // (the fade-in waits for the director's first shot of the clip)
     cls('dark', false);
     setTimeout(() => { if (reel && reel.token === tok) ui.cap.classList.add('on'); }, 400);
     setTimeout(() => { if (reel && reel.token === tok) ui.cap.classList.remove('on'); }, 9000);
+  }
+  // the director's first shot after the cut is often a stop-gap (the island base's flight line, a wide): the fade-in waits
+  // (at most SETTLE ms of real time) for a shot about the clip: a story, an arc, or one whose subject is the clip's
+  const SETTLE = 1500;
+  async function settle(c, ptg, tok) {
+    const LA = WW.lookahead, t0 = Date.now(), want = new Set(c.keys.concat(ptg ? [ptg] : []));
+    while (Date.now() - t0 < SETTLE && !tok.dead) {
+      const s = WW.cam && WW.cam._shot && WW.cam._shot();
+      if (s && s.kind !== 'field' && s.kind !== 'base' && (s.story || s.arc || (s.subj && LA && want.has(LA.idOf(s.subj))))) return;
+      await sleep(50);
+    }
   }
   function endClip() {   // (afterStep: the clip's last step)
     if (!reel || reel.state !== 'play') return;
