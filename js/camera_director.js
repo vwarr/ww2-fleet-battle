@@ -204,7 +204,7 @@ window.WW = window.WW || {};
   // ---------- the brace shot ----------
   function fillR(len, f) { const c = WW.camera; return len / (f * 2 * Math.tan(c.fov * Math.PI / 360) * c.aspect); }
   const _P = { x: 0, y: 0, z: 0 }, _L = { x: 0, y: 0, z: 0 };
-  const _ip = { x: 0, y: 0, z: 0, obj: null };
+  const _ip = { x: 0, y: 0, z: 0, obj: null }, _dp = { x: 0, y: 0, z: 0, obj: null };
   function bracePts(s, e) {
     const L = s.stats.length, h = s.heading || 0, fx = Math.cos(h), fz = Math.sin(h), top = (TOP[s.type] || 4) * 0.6;
     const pts = [{ x: s.x + fx * L * 0.45, y: top, z: s.z + fz * L * 0.45, w: 1, need: true, obj: s }, { x: s.x - fx * L * 0.45, y: top, z: s.z - fz * L * 0.45, w: 1, need: true, obj: s },
@@ -226,10 +226,14 @@ window.WW = window.WW || {};
     const side0 = Math.sign(Math.cos(th) * (cam.z - s.z) - Math.sin(th) * (cam.x - s.x)) || 1;   // the side of the source -> target line the camera is on
     const pts = bracePts(s, e), look = braceLook(s, e, _L), high = e.kind === 'dive' || e.kind === 'bomb';
     let best = null;
+    const so = e.src && e.src.obj, duelSrc = so && so.stats && !so.removed && WW.dist(so.x, so.z, s.x, s.z) < 320 ? so : null;
     for (const dd of [55, 80, 105, 135, 160]) for (const sd of [1, -1]) for (const R of [fillR(len, 0.6) + 6, fillR(len, 0.42) + 8]) for (const hk of high ? [0.08, 0.2] : [0.12, 0.26]) {
       const az = th + sd * dd * Math.PI / 180;
       _P.x = s.x + Math.cos(az) * R; _P.z = s.z + Math.sin(az) * R; _P.y = Math.max(3.5, R * hk + 2);
       let sc = frameCheck(_P, look, pts, s);
+      // (camera6: a ship trading hits with her (a gun duel, two destroyers' spreads): her waterline must not hide the
+      // other's, whose hits come next; the survey's battleship duels braced over one hull with the other's hits behind it)
+      if (duelSrc) { _dp.x = duelSrc.x; _dp.y = 2; _dp.z = duelSrc.z; _dp.obj = duelSrc; if (!sight(_P, _dp, null)) sc -= 2.5; }
       if (sd === side0) sc += 0.8;                              // no flip across the line of action
       sc += 1.5 * Math.abs(Math.sin(az - (s.heading || 0)));    // the hull broadside, not bow-on (a small ship reads)
       if (depth(_P.x, _P.z) < 2) sc -= 3;                        // over the shoals: keepSane would lift it
@@ -254,7 +258,8 @@ window.WW = window.WW || {};
     if (shot.ev && (shot.reposeT = (shot.reposeT || 0) - (rdt || 0)) <= 0) {
       shot.reposeT = 0.4;
       _ip.x = s.x + shot.ev.ox; _ip.y = 2; _ip.z = s.z + shot.ev.oz; _ip.obj = s;
-      if (!sight(gP, _ip, s) && (shot.reposes || 0) < 3 && shot.doneAt === undefined) {
+      const cp = WW.camera && WW.camera.position;   // (the goal, or where the eased camera actually is: either hidden)
+      if ((!sight(gP, _ip, s) || (cp && shot.t > 1 && !sight(cp, _ip, s))) && (shot.reposes || 0) < 4 && shot.doneAt === undefined) {
         shot.reposes = (shot.reposes || 0) + 1; ST.reposes = (ST.reposes || 0) + 1;
         start(shot); P = shot.pose; a = P.az + 0.02 * shot.side * shot.t;
         gP.set(s.x + Math.cos(a) * P.R, P.y, s.z + Math.sin(a) * P.R);
