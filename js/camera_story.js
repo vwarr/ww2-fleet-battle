@@ -53,7 +53,7 @@ window.WW = window.WW || {};
     if (m && WW.cam.locked && WW.cam.locked() && !onDiver(m)) return null;
     return m;
   }
-  function onDiver(m) { const sh = WW.cam._shot(); return !!(sh && !sh.stage && sh.kind === 'ots' && (sh.subj === m || sh.plane === m)); }
+  function onDiver(m) { const sh = WW.cam._shot(); return !!(sh && !sh.stage && (sh.kind === 'ots' || sh.sk === 'ots') && (sh.subj === m || sh.plane === m)); }
   const diving = m => ok(m) && (m.phase === 'roll' || m.phase === 'dive');
 
   // ---------- arcs ----------

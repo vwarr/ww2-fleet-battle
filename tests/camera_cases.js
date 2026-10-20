@@ -132,6 +132,10 @@ const CASES = [
   { id: 'dd_torp', scen: 'carrier_duel', seed: 5, scale: 1, sim: 315 },        // a destroyer's spread, hit at sim 306.3
   { id: 'dead_air', scen: 'carrier_duel', seed: 2, scale: 1, sim: 140 },
   { id: 'hit_after_cut', scen: 'standard', seed: 1, scale: 1, sim: 245 },
+  { id: 'dive_usn_cv', scen: 'standard', seed: 2, scale: 1, sim: 360 },        // VB-6 on a carrier, push-over at sim 346.1
+  { id: 'dive_lowsun', scen: 'standard', seed: 2, scale: 1, sim: 360 },        // an Akagi Val on a battleship at sun 11 deg, sim 135.6
+  { id: 'dive_small', scen: 'standard', seed: 1, scale: 1, sim: 245 },         // an Akagi Val on a destroyer
+  { id: 'dive_ijn_cv', scen: 'midway', seed: 4, scale: 1, sim: 185 },          // the Kaga dive-bomber unit on a carrier, sim ~168
   { id: 'manual_pan', scen: 'carrier_duel', seed: 2, scale: 1, sim: 195, drag: 150 }   // the next hit, sim 180.9
 ];
 try { const f = path.join(__dirname, 'camera_cases.json'); if (fs.existsSync(f)) { const j = JSON.parse(fs.readFileSync(f, 'utf8')); for (const c of j) { const i = CASES.findIndex(x => x.id === c.id); if (i >= 0) CASES[i] = c; else CASES.push(c); } } } catch (e) { console.log('camera_cases.json: ' + e.message); }
