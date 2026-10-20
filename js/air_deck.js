@@ -18,7 +18,8 @@ window.WW = window.WW || {};
   const LIFT = 13, LIFT_REL = 6, CLIMB_A = 3;
   const WIND_FOE = 600, HOLD_FOE = 400;   // a known enemy gun ship this close on the wind bearing: launch and recover on the course held
   const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
-  const DEEP = 6, LQ_DEEP = 15, RW_DEEP = 12, LW_DEEP = 35;            // a deep stack: the launch window yields sooner, the recovery window runs longer
+  const DEEP = 6, LQ_DEEP = 15, RW_DEEP = 12, LW_DEEP = 90;            // a deep stack: the launch window yields sooner, the recovery window runs longer
+  // (LW_DEEP 35 -> 90, balance19: since speedcal's real pattern speeds a trap takes ~8-10 s, so 35 s cut a deep stack's window after ~4 traps)
   // Re-spotting (1942 practice): a mode change only marks where the parked planes should be (D.spot: 'aft', spotted
   // for launch, or 'fwd', the forward park clear of the wires). The deck handlers then push them one at a time from the
   // free end (to the bow: the foremost first; aft: the rearmost first), the next starting once the last has rolled a

@@ -32,6 +32,12 @@ window.WW = window.WW || {};
   // placed to go in: far enough astern for its offset from the wake to turn up the groove without overshooting (a
   // plane out on a quarter oval waits for the aft end of its track)
   const placed = (c, D, lx, lz) => lx < gate(c) - 10 - 0.8 * Math.max(0, Math.abs(lz - D.run) - 10);
+  // Approach sequencing (balance19): seconds from a carrier-local point to the gate on the approach leg (V_APP, less
+  // most of the ship's way along the wake), SEP_S apart at the gate, at most APP_N on the leg; a stack of DEEP_Q or
+  // more clears any of its first PICK_N placed planes. ~8-10 s a trap in a deep stack: Enterprise and Yorktown ran
+  // ~30-40 s a plane in 1942, / 3.2 on the ship clock.
+  const SEP_S = 4, APP_N = 4, DEEP_Q = 6, PICK_N = 3;
+  const etaGate = (c, D, lx, lz) => Math.hypot(Math.max(0, gate(c) - lx), lz - D.run) / Math.max(4, V_APP - 0.7 * c.speed);
   // Pattern speeds (speedcal, 2026-10-19; u/s on the ship clock, 1 u/s ~ 5.71 kn): the marshal ovals at ~110 kn, the
   // approach leg at ~100 kn, the final closing on the deck at CLOSE (u/s over the ship's way: 9 at the ramp ~ 51 kn over
   // the deck, a 1942 ~75 kn approach into ~25-30 kn of wind over the deck; the real ~6-8 is kept a little quicker so the
@@ -155,15 +161,25 @@ window.WW = window.WW || {};
     switch (p.deckPh) {
       case 'marshal': default: { // hold a level of the stack astern; the lowest waiting plane is cleared first
         p.deckPh = 'marshal';
-        let lvl = 0, ahead = null, inApp = false, first = true;   // first: no plane below it in the stack is placed to go in
+        // a deep stack (balance19): any of the first PICK_N placed planes may go in, so the one at the aft end of its oval
+        // goes while the head of the queue swings round the far end of a distant one
+        const pickN = D.lq.length >= DEEP_Q ? PICK_N : 1;
+        let lvl = 0, ahead = null, inApp = false, nPlaced = 0;   // nPlaced: planes before it in the queue placed to go in
         for (const q of D.lq) {
           if (q === p) break;
-          if (q.deckPh === 'marshal') { const Q = toLocal(c, q.x, q.z); if (placed(c, D, Q[0], Q[1])) first = false; if (q.mTrack === p.mTrack) lvl++; }   // the first in the queue placed astern goes first; levels per track
-          else if (q.deckPh === 'app') inApp = true;
+          if (q.deckPh === 'marshal') { const Q = toLocal(c, q.x, q.z); if (placed(c, D, Q[0], Q[1])) nPlaced++; if (q.mTrack === p.mTrack) lvl++; }   // the first in the queue placed astern goes first; levels per track
           else if (q.deckPh === 'final') ahead = q;
         }
-        let nApp = 0;   // at most two on the approach leg, never two side by side
-        for (const q of D.lq) if (q !== p && q.deckPh === 'app') { nApp++; if (nApp >= 2 || WW.dist(q.x, q.z, p.x, p.z) < 35 || toLocal(c, q.x, q.z)[0] < gate(c) - 40) inApp = true; }
+        const first = nPlaced < pickN;
+        // Sequenced by the time to the gate (balance19): it goes in when it would reach the gate SEP_S after or before
+        // every plane already on the approach leg (at most APP_N there, never two side by side). Before, a second plane
+        // waited until the first was within 40 u of the gate: from the outer ovals one trap took 20-40 s, and a returning
+        // deck-load strike circled for minutes (a 50-plane stack, ~70 planes aloft over one deck).
+        let nApp = 0; const myEta = etaGate(c, D, lx, lz);
+        for (const q of D.lq) if (q !== p && q.deckPh === 'app') {
+          nApp++; const Q = toLocal(c, q.x, q.z);
+          if (nApp >= APP_N || WW.dist(q.x, q.z, p.x, p.z) < 35 || myEta < etaGate(c, D, Q[0], Q[1]) + SEP_S) inApp = true;
+        }
         if (p.mTrack === undefined) p.mTrack = 0;
         // well back in a long queue: another deck of the side clearly sooner takes it (its place by p.qKey goes with it)
         p.dvT = (p.dvT || 0) - dt;
