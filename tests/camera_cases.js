@@ -43,7 +43,7 @@ function torpBy(R, srcOk) {
   for (const d of R.stor || []) { if (!d.hits || !d.s || !srcOk(d.s.c)) continue; const h = d.hits[0], e = (R.be || []).find(x => x.k === 'torpedo' && x.id === h.id && Math.abs(x.sim - h.sim) < 1.5); if (e && !out.some(o => o.w === e.w)) out.push(Object.assign({}, e, { fire: d })); }
   return out.sort((a, b) => a.w - b.w);
 }
-function dives(R, f) { return (R.dives || []).filter(d => d.n >= 30 && d.p && f(d)); }
+function dives(R, f) { return (R.dives || []).filter(d => d.n >= 30 && d.drop !== undefined && d.p && f(d)); }
 // a dive that reads as a dive: the target in frame most of it, not side-on or flat, the plane not a speck, no flip, the
 // bomb's impact in frame (the cut held to it)
 function diveCheck(R, E) {

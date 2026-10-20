@@ -178,21 +178,21 @@ window.WW = window.WW || {};
     const L = shot.subj, ly = L.y || 0;
     shot.aim = shot.aim || V();
     const T = tgtOf(L), diving = L.kind === 'dive' && (L.phase === 'roll' || L.phase === 'dive') && T;
-    if (diving) { // the dive: above and behind the bomber along its dive line, looking down at the deck (plane and ship in frame)
-      // (camera6: the dive line as flown: the bomber's own motion over the frame (speed and vy gave a line too shallow for a
-      // 70 deg dive, and the ship fell out of the bottom of the frame); the heading and sink rate until it has moved)
-      _f.set(Math.cos(L.heading) * Math.max(1, L.speed || 10), Math.min(-2, L.vy || 0), Math.sin(L.heading) * Math.max(1, L.speed || 10)).normalize();
-      let moved = false;
-      if (shot.dLp) { _v.set(L.x - shot.dLp.x, ly - shot.dLp.y, L.z - shot.dLp.z); if (_v.lengthSq() > 1e-4) { _f.copy(_v.normalize()); moved = true; } }
-      if (!shot.dLp || moved) (shot.dLp = shot.dLp || V()).set(L.x, ly, L.z);
-      if (!shot.dS) shot.dS = _f.clone(); else if (moved) shot.dS.lerp(_f, 1 - Math.exp(-rdt * 2)).normalize();   // (a frame with no sim step: the line held)
-      // (camera6: closer, over the shoulder down the dive line: the bomber big in the lower frame, brakes out, the ship ahead
-      // beyond it. The survey's sheets: from 16 u back and composed on a point 30% toward the ship the camera looked straight
-      // down at the deck and the bomber was a speck at the frame's edge or out of it (in frame 42% of a dive's frames))
-      const d = shot.dS, back = 10 * FK; _r.set(-d.z, 0, d.x).normalize();
-      gP.set(L.x - d.x * back + _r.x * shot.side * 4 * FK, Math.max(ly - d.y * back + 2.5 * FK, 6), L.z - d.z * back + _r.z * shot.side * 4 * FK);
-      gL.set(WW.lerp(L.x, T.x, 0.65), WW.lerp(ly, 1, 0.65), WW.lerp(L.z, T.z, 0.65));
-      shot.aim.set(L.x, ly, L.z);
+    if (diving) { // the dive: above and behind the bomber, the ship below beyond it (plane and ship in frame)
+      // (camera6: on the line from the ship up through the bomber, a little past it and to the side: the ship below at the
+      // composition point, the bomber big above it with its brakes out, through the push-over and the dive alike. The
+      // survey: from 16 u back along the flight path (level in the push-over) and composed on the plane, the ship fell
+      // out of the 38 deg frame (in frame 41-53% of a dive's frames) or the camera looked straight down and lost the
+      // bomber (in frame 42%). Eased: the line turns as the bomber pushes over)
+      _f.set(L.x - T.x, ly - 1, L.z - T.z).normalize();   // ship -> bomber
+      if (!shot.dS) shot.dS = _f.clone(); else shot.dS.lerp(_f, 1 - Math.exp(-rdt * 3)).normalize();
+      const u = shot.dS, back = 11 * FK;
+      _r.set(-u.z, 0, u.x);   // (the side: held once the line is near vertical over the ship, so it cannot spin round)
+      if (_r.lengthSq() > 0.04 || !shot.dR) (shot.dR = shot.dR || V()).copy(_r.lengthSq() > 1e-6 ? _r.normalize() : _r.set(1, 0, 0));
+      _r.copy(shot.dR);
+      gP.set(L.x + u.x * back + _r.x * shot.side * 4 * FK, Math.max(ly + u.y * back + 1.5 * FK, 6), L.z + u.z * back + _r.z * shot.side * 4 * FK);
+      gL.set(WW.lerp(L.x, T.x, 0.6), WW.lerp(ly, 1, 0.6), WW.lerp(L.z, T.z, 0.6));
+      shot.aim.set(WW.lerp(L.x, T.x, 0.75), WW.lerp(ly, 1, 0.75), WW.lerp(L.z, T.z, 0.75));
       return;
     }
     const h = smoothH(shot, L.heading, rdt, 1.3);

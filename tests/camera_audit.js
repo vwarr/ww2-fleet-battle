@@ -529,7 +529,7 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
   // plane in frame, side-on, flat, the plane small; flips; the bomb's impact in frame
   M.dv = { n: 0, f: 0, tIn: 0, pIn: 0, side: 0, flat: 0, small: 0, flips: 0, held: 0, cases: [] };
   for (const r of R.dives || []) {
-    if (r.n < 30) continue;
+    if (r.n < 30 || r.drop === undefined) continue;   // (a dive that ends in a release: a crippled bomber going down in its dive is a fall)
     M.dv.n++; M.dv.f += r.n; for (const k of ['tIn', 'pIn', 'side', 'flat', 'small', 'flips']) M.dv[k] += r[k];
     const d = r.drop !== undefined ? R.drops[r.drop] : null, held = !!(d && d.imp && d.imp.on); if (held) M.dv.held++;
     M.dv.cases.push({ w: Math.round(r.w0 - (R.shots[0] ? R.shots[0].w0 : 0)), p: r.p, t: r.t, n: r.n, tIn: +(r.tIn / r.n).toFixed(2), side: +(r.side / r.n).toFixed(2), flat: +(r.flat / r.n).toFixed(2), small: +(r.small / r.n).toFixed(2), flips: r.flips, held, shots: r.shots.length, elev: r.elev });
