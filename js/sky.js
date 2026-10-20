@@ -7,6 +7,26 @@ window.WW = window.WW || {};
   const C = h => WW.pastel ? WW.pastel(h, 0.1) : new THREE.Color(h);
   const HORIZON = 0xc4dcf2, ZENITH = 0x3f7fd6, SUN_SIDE = 0xffc89a, AWAY = 0xb4d2f2, SUN_GLOW = 0xffe0b0, FOG = 0xc4dcf2;
   let dome = null, sun = null, hemi = null, clouds = null;
+  const qv = k => { const m = typeof location !== 'undefined' && new RegExp('[?&]' + k + '=([\\w.,-]+)').exec(location.search); return m ? m[1] : null; };
+
+  // The sun's received shadow follows N.L (hullshadow). A face the sun only grazes (a hull side, the flank of a rounded
+  // turret or deckhouse) shadowed itself unevenly: across one shadow texel (0.12 u) its depth changes by more than the
+  // bias, and the lofted hull's stations, each a little differently flared, came out in PCF-softened light / dark
+  // vertical stripes, the rounded turrets in smudges; the pattern hung on the texel grid, so it differed on every load.
+  // Raising normalBias (0.15, 0.3 tried) did not clear it. So a face's shadow term is also multiplied by
+  // smoothstep(SNL[0], SNL[1], N.L) (the shading normal): faces turned away from the sun or edge-on to it are always
+  // out of the sun, smoothly, whatever the map says. That is also what keeps it consistent: the toon ramp used to give a
+  // face turned away ~0.7 of the sun unless a cast shadow happened to cover it (an away face could be lit next to a
+  // shadowed one facing the sun: inverted blotches), now the sun reaches only faces that face it. Faces that do keep
+  // every cast shadow (decks, turret tops, the island's lee). Every lit material that receives shadows shares the chunk
+  // (ships, the land: Lambert, where the change is only the grazing band). ?snl=0: the old shadows, for A/B.
+  const SNL = (qv('snl') || '-0.1,0.2').split(',').map(Number);
+  if (SNL[0] || SNL[1]) {
+    const ch = THREE.ShaderChunk, G = 'getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] )';
+    const k = 'directLight.color *= ( directLight.visible && receiveShadow ) ? ' + G + ' : 1.0;';
+    if (ch.lights_fragment_begin.indexOf(k) >= 0) ch.lights_fragment_begin = ch.lights_fragment_begin.replace(k, 'directLight.color *= ( directLight.visible && receiveShadow ) ? ' + G +
+      ' * smoothstep( ' + SNL[0].toFixed(3) + ', ' + SNL[1].toFixed(3) + ', dot( geometry.normal, directLight.direction ) ) : 1.0;');
+  }
 
   function init() {
     const scene = WW.scene;
