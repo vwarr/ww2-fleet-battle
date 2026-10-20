@@ -52,12 +52,13 @@ function diveCheck(R, E) {
   const n = d.n, r = k => d[k] / n, drop = d.drop !== undefined ? R.drops[d.drop] : null, held = !!(drop && drop.imp && drop.imp.on);
   const bad = [];
   if (r('tIn') < 0.6) bad.push('target in frame ' + (100 * r('tIn')).toFixed(0) + '%');
+  if (r('pIn') < 0.5) bad.push('bomber in frame ' + (100 * r('pIn')).toFixed(0) + '%');
   if (r('side') > 0.4) bad.push('side-on ' + (100 * r('side')).toFixed(0) + '%');
   if (r('flat') > 0.3) bad.push('flat ' + (100 * r('flat')).toFixed(0) + '%');
   if (r('small') > 0.4) bad.push('plane small ' + (100 * r('small')).toFixed(0) + '%');
   if (d.flips) bad.push(d.flips + ' flips');
   if (!held) bad.push('impact not in frame');
-  return { pass: !bad.length, why: `${d.p.n} ${d.p.sq || 'dive'} on a ${d.t ? d.t.c : '?'} (sun ${d.elev} deg, ${(n / 30).toFixed(1)} s on screen, ${d.shots.length} shots): ` + (bad.length ? bad.join(', ') : 'target ' + (100 * r('tIn')).toFixed(0) + '%, side-on ' + (100 * r('side')).toFixed(0) + '%, flat ' + (100 * r('flat')).toFixed(0) + '%, impact in frame'), w: d.w0 };
+  return { pass: !bad.length, why: `${d.p.n} ${d.p.sq || 'dive'} on a ${d.t ? d.t.c : '?'} (sun ${d.elev} deg, ${(n / 30).toFixed(1)} s on screen, ${d.shots.length} shots): ` + (bad.length ? bad.join(', ') : 'target ' + (100 * r('tIn')).toFixed(0) + '%, bomber ' + (100 * r('pIn')).toFixed(0) + '%, side-on ' + (100 * r('side')).toFixed(0) + '%, flat ' + (100 * r('flat')).toFixed(0) + '%, impact in frame'), w: d.w0 };
 }
 // the situations, as selectors over a round's record R (camera_audit.js survey JSON) -> the events of interest
 const SEL = {
