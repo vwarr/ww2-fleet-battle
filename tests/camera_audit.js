@@ -45,11 +45,12 @@ const SCEN = {
   pt_raid: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: rep('pt', 6) },          // camera6: a PT ambush on a carrier group
   sub_raid: { A: ['carrier', 'battleship', 'destroyer'], B: rep('submarine', 3) }               // camera6: a submarine attack
 };
+const WX = arg('--wx', null);   // camera7: pin the round's weather (weather.js kinds: clear, cumulus, ... typhoon; it draws the same WW.rand values whatever the kind)
 const SCALE = +arg('--scale', 1);   // camera6: the game speed (1, 2, 4: the speed buttons); the sim is the same, the director's real-time choices differ
 function specOf(name, seed) {
   const s = SCEN[name]; if (!s) throw new Error('unknown scenario ' + name);
-  if (s.odd) { const o = ODD[(seed - 1) % ODD.length]; return { name, seed, A: o[1], B: o[2], odd: o[0], aNation: seed % 2 ? 'USN' : 'IJN', fast: FAST, scale: SCALE }; }
-  return Object.assign({ name, seed, aNation: s.aFixed || (seed % 2 ? 'USN' : 'IJN'), fast: FAST, scale: SCALE }, s);
+  if (s.odd) { const o = ODD[(seed - 1) % ODD.length]; return { name, seed, A: o[1], B: o[2], odd: o[0], aNation: seed % 2 ? 'USN' : 'IJN', fast: FAST, scale: SCALE, wx: WX }; }
+  return Object.assign({ name, seed, aNation: s.aFixed || (seed % 2 ? 'USN' : 'IJN'), fast: FAST, scale: SCALE, wx: WX }, s);
 }
 
 // ---------------- page side ----------------
@@ -99,7 +100,7 @@ function install(cfg) {
   if (cfg.random) comp = G.randomComposition();
   else { comp = []; placeFleet(cfg.A, cfg.aNation, comp); placeFleet(cfg.B, WW.enemyOf(cfg.aNation), comp); }
   if (WW.dayNight) WW.dayNight.force = cfg.tod || null;
-  if (WW.weather) WW.weather.force = null;
+  if (WW.weather) WW.weather.force = cfg.wx || null;
   if (WW.aces) WW.aces.reset();
   WW.seedRandom(cfg.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
   G.baseChoice = cfg.base || null; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;

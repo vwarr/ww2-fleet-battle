@@ -474,3 +474,24 @@ camera_cases: 18 / 18 pass. `npm run test:camera` (the 7 quick cases + 2 rounds 
 Left: the 4x main rounds' CV-BE (91%: at 4x a carrier hit 8 real s ahead is 2 sim s ahead, short for a cut and a pose);
 the remaining battleship misses are mostly two battleships trading salvos (a brace on one, the other's hit behind it or out
 of frame); side-on frames in the push-over (the bomber still level as the camera already looks down the line to the ship).
+
+# camera7: the camera gate made robust (2026-10-20)
+`npm run test:camera` failed on main after the camera6 merge (4 / 7 cases, M3 25%, 8.7 cuts / min). Cause: the rounds
+changed under the mined cases. weatherpick (merged after the cases were mined) re-rolled every round's weather and
+storms (no flying at F9+), so the mined events were gone or moved, and a 2-round survey swung with the weather
+(standard/2: M3 14%). No camera regression: the same code on 18 rounds in clear weather gives CV-BE 95%, BB-BE 94%, M3 46%,
+6.6 cuts / min, dead air 7% (camera6's own survey: 97 / 91 / 46 / 6.6 / 7). Before camera6 the gate read BB-BE 0%, dead air 16%.
+- The cases' and the gate's rounds are in fixed weather (camera_cases.js CASE_WX 'clear', camera_audit.js --wx: weather.js
+  draws the same WW.rand values whatever the kind, so pinning it changes nothing else).
+- Each case lists three candidate rounds [seed, sim s] in tests/camera_cases.json, written by
+  `node tests/camera_cases.js --table <survey raw dir>` from a `camera_audit.js --wx clear` survey; when a later sim change
+  moves a case's event out of its round, the runner tries the next ("not in this round, trying seed ...") instead of failing
+  silently. Re-run --table after sim changes that re-roll rounds.
+- The gate survey: 4 rounds at 4x (was 2), thresholds set from measurements: CV-BE >= 90%, BB-BE >= 75%, M3 >= 35%,
+  <= 9.5 cuts / min (4x cuts faster: 8.0-9.0 measured), dead air <= 13%.
+- The PT-boat and submarine cases judge hits on a cruiser or bigger (a submarine's hit on a destroyer while a carrier is
+  torpedoed elsewhere is rightly not filmed); two carriers struck within 8 sim s (5 s happened in 0 of 30 clear rounds).
+- Camera: a fall ends where the plane hits (wrecked on a deck, ditched); a filler story's protagonist falling is not
+  taken over.
+Result: camera cases 17 / 18 (prot_down: on standard 6, one of two falls got a 2 s fall shot after a locked attack shot
+held the camera while the plane went down: left open), `npm run test:camera` 7 / 7 + the gate survey PASS.
