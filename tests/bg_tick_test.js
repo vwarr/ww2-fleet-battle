@@ -43,6 +43,7 @@ async function main(b) {
   await p.waitForTimeout(4000);
   const snap = () => p.evaluate(() => ({ now: WW.time.now, n: WW.game.stepN, round: WW.stats.round, drawn: WW.frames.drawn, wall: performance.now(), base: WW.time.base, state: WW.game.state, bg: Object.assign({}, WW.bgTick) }));
   let fail = 0;
+  const a0base = await p.evaluate(() => WW.time.base);
   const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fail++; };
   for (const scale of [1, 4]) {
     await p.evaluate(s => __sim.setScale(s), scale);
@@ -61,10 +62,11 @@ async function main(b) {
     check(v.drawn - h.drawn >= Math.max(2, base * 0.5), `frames resume (${v.drawn - h.drawn} drawn in 2.5 s, ${base} before hiding)`);
     check(v.bg.beats === h.bg.beats || v.bg.beats - h.bg.beats <= 1, 'the beat stops stepping once visible');
   }
-  // a round that ends while hidden: auto mode rolls into the next one (VICTORY_TIME 9 sim s: 4.5 wall s at 4x)
+  // a round that ends while hidden: auto mode rolls into the next one (VICTORY_TIME 9 sim s: 7.4 wall s at 4x and
+  // WW.time.base 0.306; 4.5 s at the old 0.5)
   {
     const r0 = await p.evaluate(() => { __sim.setScale(4); __setHidden(true); WW.game.endRound('USN', 'kill'); return WW.stats.round; });
-    await p.waitForTimeout(7000);
+    await p.waitForTimeout(Math.round(1000 * (9 / (4 * (a0base || 0.5)) + 2.5)));
     const r1 = await p.evaluate(() => ({ round: WW.stats.round, state: WW.game.state }));
     await p.evaluate(() => { __setHidden(false); __sim.setScale(1); });
     check(r1.round === r0 + 1 && r1.state === 'battle', `a round ended while hidden rolls on (round ${r0} -> ${r1.round}, ${r1.state})`);

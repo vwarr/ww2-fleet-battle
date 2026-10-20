@@ -96,3 +96,32 @@ deck cycle is still compressed (a trap every few sim seconds, against 30-40 s re
 | 500 lb (level bombers) | 0.36 x 0.084 -> 1.4 x 0.33 | 1.45 x 0.36 | ok |
 | dropped bomb / falling torpedo | the hung geometry at the plane's scale | | no size jump at release |
 | torpedo in the water (all types) | a 2.0 x 0.3 u box: 19 m x 2.9 m | 4.1-9 m x 0.45-0.61 m | **4-5x: now scaled per type (Mk 13 4.1 m ... Type 93 9 m)** |
+
+## Before / after (main 1879870 vs speedcal; node sim, 6 seeds x standard / carrier_duel / midway)
+
+The BASE_SPEED change is display only, so these shifts come from the sim fixes (deck, pattern, runway, catapult,
+DD / PT speed, B5N runK):
+
+| measure | before | after |
+|---|---|---|
+| round length median (flight_review, 18 rounds) | 576 s | 495 s |
+| winners USN / IJN (18 rounds, noisy) | 11 / 7 | 5 / 13 |
+| landing pattern time per recovered sortie p50 / p90 | 36 / 114 s | 54 / 168 s |
+| carrier sorties recovered (landed) | 1183 | 821 (more end the round airborne: 462 -> 673) |
+| strike sorties / drops per carrier round | 75.4 / 38.7 | 64.5 / 35.2 |
+| first -> second strike's first drop p50 | 123 s | 102 s |
+| USN / IJN dive hit rate (flight_review) | 24 / 16% | 29 / 14% |
+| dive bombs hitting a ship (dive_bomb_probe) | 21% | 25% |
+| USN / IJN aerial torpedo hit rate (torpedo_review, all) | 24 / 14% | 22 / 26% |
+| USN ship torpedo hit rate | 15% | 25% |
+| AA share of USN / IJN strike planes shot down | 32 / 10% | 28 / 11% |
+| behaviour suite (15 scenarios x 6 seeds) | FAIL 1 (pt_pen_med, mirror) | FAIL 1 (the same check) |
+
+The biggest shift is the deck cycle: the pattern at real speeds makes each recovery ~50% longer, so fewer sorties
+come back aboard before the round ends. If that needs to be won back, the levers are `CLOSE` and `GROOVE`
+(air_recovery.js: more planes in the groove at once), not the speeds. Side balance is left to the end-of-batch pass.
+
+VQA strips (real 1x timing, fixed camera beside the path, a frame every 0.5 s real): scratchpad
+speedcal/strip_before and strip_after (sheet_ots, sheet_ship, sheet_torp, sheet_dive, sheet_takeoff). Before, a
+fighter closed ~1 km and passed in ~2 s, and a ship crossed the frame in 1.5 s. After, the same pass takes ~4 s and
+a destroyer at 37 kn moves at a ship's pace. The bow waves and wakes (seastreak's) read right at the new speed.
