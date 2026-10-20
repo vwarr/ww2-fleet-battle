@@ -3,7 +3,13 @@ window.WW = window.WW || {};
 (function (WW) {
   const W = WW.cfg.MAP_W, H = WW.cfg.MAP_H;
   const STEP = 0.05;          // max sim step
-  const BASE_SPEED = 0.5;     // calm pace: the UI's 1x runs the simulation at half speed
+  // True speed at 1x (speedcal, 2026-10-19, the user's choice): the sim's speeds are on the ship clock (1 u/s = 32 / 5.6
+  // = 5.714 kn real: a carrier's 32 kn is 5.6 u/s) and 1 u = 1 / U_PER_M = 9.6 m, so a real second carries
+  // 5.714 x 0.51444 x 0.104 = 0.3057 sim s: a ship, a plane or a torpedo moves at its real knots on screen. It was 0.5
+  // (1.63x real at 1x). Display only: the sim steps are the same; a round is ~39 min real at 1x (was 24). WW.time.base
+  // exposes it (camera, audio and the director read it instead of a hard 0.5).
+  const BASE_SPEED = (WW.cfg.KN_PER_U || 32 / 5.6) * 0.51444 * (WW.cfg.U_PER_M || 0.104);
+  WW.time.base = BASE_SPEED;
   const VICTORY_TIME = 9;     // sim seconds the banner shows
   const SUB_STALL = 60;       // see updateGame
   const SUB_CLOSE = 150;      // ... and starts this long after first contact (time to close: a sub makes 3.5 u/s)

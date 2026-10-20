@@ -9,8 +9,8 @@ window.WW = window.WW || {};
   const GUN = { big: 'gun.big', med: 'gun.med', small: 'gun.small', mg: 'gun.mg' };
   const SPLASH = { big: 1.4, med: 1, small: 0.7, mg: 0.35 };
   const lenOf = s => (s && s.stats && s.stats.length) || 12;
-  // sim seconds per real second: the engine's measured rate (includes main.js BASE_SPEED and slow frames)
-  const simRate = () => (A.simRate > 0.05 && A.simRate < 64 ? A.simRate : 0.5 * (WW.time.scale || 1) * (WW.time.warp || 1));
+  // sim seconds per real second: the engine's measured rate (includes main.js BASE_SPEED, WW.time.base, and slow frames)
+  const simRate = () => (A.simRate > 0.05 && A.simRate < 64 ? A.simRate : (WW.time.base || 0.5) * (WW.time.scale || 1) * (WW.time.warp || 1));
 
   // ---------- guns: the barrels of one ship firing in the same frame are one salvo, one play ----------
   const salvo = [];

@@ -20,7 +20,11 @@ window.WW = window.WW || {};
   var STRIKE_WAIT = 75, STREAM_V = 0.5, TOKEN_PI = 2, TAXI = 5.5, TAXI_FAST = 8, TAXI_RWY = 7, LAND_SEP = 45, TURN_WAIT = 18, PIVOT = 1.8, GAP = 0.6, FOLLOW = 2.4, WARM = 4, WARM_FAST = 1.5, TOW_T = 45, SHUT_T = 25;
   var BLAST_K = 0.9;          // a parked plane inside BLAST_K x the blast radius (+ its own size) is wrecked (was 0.6: ~4 u for a 14-inch shell)
   var SPREAD_T = 8, SPREAD_P = 0.35, SPREAD_GAP = 2.5;   // a burning wreck sets a neighbour within SPREAD_GAP of it alight after SPREAD_T s (fuel, ammunition), with SPREAD_P
-  var REARM = 22, ROLL_A = 7, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
+  // ROLL (speedcal, 2026-10-19), by parking class: the take-off roll's acceleration (u/s^2) and lift-off speed (u/s on the
+  // ship clock, 1 u/s ~ 5.71 kn): fighters / dive bombers ~74 kn in ~250 m, the B-26 ~120 kn and the B-17 / G4M ~100 kn
+  // in ~900-1,100 m. Was a flat 7 u/s^2 to 0.78x the plane's speed (a fighter lifting off at ~170 kn).
+  var ROLL = { S: { a: 3.5, v: 13 }, M: { a: 2.2, v: 21 }, L: { a: 1.8, v: 18 } };
+  var REARM = 22, ROLL_GAP = 2.4, WRECK_T = 40, TOWOUT = 20, FOUL_T = 25;
   var SMASH_V = 4, SMASH_K = 1.4, REPAIR_T = 90, WRECK_GAP = 3;   // a wreck meeting a plane on the ground (wing reach: x SMASH_K the clearance radii): a skid
   // at SMASH_V u/s or more (about 25 mph) or a falling wreck wrecks it (fuel, ammunition: it burns); a slower skid
   // stoves in a wing or the tail: towed to its spot, repaired for REPAIR_T s
@@ -178,8 +182,9 @@ window.WW = window.WW || {};
     if (ph === 'roll' || ph === 'stopped') { // speed + integrate (aircraft.js) move it down the runway
       var blockedAhead = aheadGap(p, b) < (p.rollV || 0) * (p.rollV || 0) / 24 + 3;   // something on the runway ahead: abort (12/s2 brakes)
       if (!opsOpen(b) || blockedAhead) { p.speed = Math.max(0, (p.rollV || 0) - (blockedAhead ? 12 : 9) * dt); p.rollV = p.speed; if (ph === 'roll') { ST.aborts++; p.rwPh = 'stopped'; } pin(p, b); return; }
-      p.rwPh = 'roll'; p.turn = 0; p.rollV = Math.min(p.pt.speed * 0.95, (p.rollV || 0) + ROLL_A * dt); p.speed = p.rollV;
-      if (p.speed < p.pt.speed * 0.78) { pin(p, b); return; }
+      var R = ROLL[cls(p.variant)] || ROLL.S;
+      p.rwPh = 'roll'; p.turn = 0; p.rollV = Math.min(p.pt.speed * 0.95, (p.rollV || 0) + R.a * dt); p.speed = p.rollV;
+      if (p.speed < Math.min(R.v, p.pt.speed * 0.78)) { pin(p, b); return; }
       p.rwPh = 'climb'; return;
     }
   }
@@ -445,7 +450,7 @@ window.WW = window.WW || {};
   function reset() { for (var k in ST) if (k !== 'slots' && k !== 'capped') ST[k] = 0; obsT = -1; }
   WW.on('roundStart', reset);
 
-  WW.landGround = { plan: plan, setup: setup, sync: sync, ready: ready, take: take, launched: launched, out: out, touchdown: touchdown,
+  WW.landGround = { ROLL: ROLL, liftV: function (p) { return (ROLL[cls(p.variant)] || ROLL.S).v; }, plan: plan, setup: setup, sync: sync, ready: ready, take: take, launched: launched, out: out, touchdown: touchdown,
     inbound: inbound, crash: crash, update: update, groundHit: groundHit, smash: smash, fallWreck: fallWreck, crossFouled: crossFouled, opsOpen: opsOpen, fouled: fouled, onGround: onGround, rad: rad, finalPlane: finalPlane,
     carrierGroup: carrierGroup, MIX: MIX, stats: ST, towLog: TOWLOG };
 })();

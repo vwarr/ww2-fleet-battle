@@ -29,7 +29,9 @@ window.WW = window.WW || {};
   // at the 1.7 scale) x this. It is linear in the plane size from the 0.82 scale's framing (PLANE_K^0.6 = 0.645 there),
   // so a true-size plane fills the frame as a 2x one did (0.32 at 0.41).
   var PFK = Math.pow(0.82 / PS_REF, 0.6) * PS / 0.82;
-  Object.assign(WW.cfg, { L: L, U_PER_M: U, PLANE_SCALE: PS, PLANE_SCALE_TRUE: PS_TRUE, PLANE_K: PS / PS_REF, DECK_K: DK, PLANE_FRAME: PFK });
+  // KN_PER_U: the ship clock (docs/speed_calibration.md): 1 u/s of sim speed is this many real knots (a carrier's 32 kn =
+  // 5.6 u/s); main.js BASE_SPEED shows it at true speed at 1x
+  Object.assign(WW.cfg, { KN_PER_U: 32 / 5.6, L: L, U_PER_M: U, PLANE_SCALE: PS, PLANE_SCALE_TRUE: PS_TRUE, PLANE_K: PS / PS_REF, DECK_K: DK, PLANE_FRAME: PFK });
 
   // Type baselines at true size (the class table below overrides per ship).
   var BASE_LEN = { carrier: 26, battleship: 23, cruiser: 19.5, destroyer: 12, submarine: 10.5, pt: 2.5 };

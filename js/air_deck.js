@@ -12,6 +12,10 @@ window.WW = window.WW || {};
   // REF: the reference deck these were tuned on (a model without deckDims).
   const REF = { stern: -13.55, bow: 12.85, aftFront: 0.6, barrier: -1.5, launchX: 3.2, tdX: -9.5, elevX: -5.5, lane: 1 };
   const GAP = 0.2, TAXI = 4, FOLD = 1.75;          // spacing between parked planes, taxi speed, fold angle
+  // Take-off (speedcal): LIFT the lift-off ground speed (u/s on the ship clock, 1 u/s ~ 5.71 kn: ~74 kn, a 1942 carrier
+  // plane's ~70-80 kn airspeed less a light natural wind), at least LIFT_REL over the deck; CLIMB_A the climb-out's gain
+  // in speed (u/s^2) until it is clear of the deck and the flight model takes it on
+  const LIFT = 13, LIFT_REL = 6, CLIMB_A = 3;
   const WIND_FOE = 600, HOLD_FOE = 400;   // a known enemy gun ship this close on the wind bearing: launch and recover on the course held
   const LQ_MAX = 40, RW_N = 3, LW_MAX = 10, LW_MIN = 8, LW_RELIEF = 30; // launch window yields to planes held this long (after LW_MIN s); recovery window: traps / launch wait s (strike, CAP relief)
   const DEEP = 6, LQ_DEEP = 15, RW_DEEP = 12, LW_DEEP = 35;            // a deep stack: the launch window yields sooner, the recovery window runs longer
@@ -396,19 +400,23 @@ window.WW = window.WW || {};
           p.fold = Math.max(0, p.fold - 2.5 * dt);
           const h = intoWind();
           if (c.deckOut || D.launchers.some(q => q !== p && q.deckPh === 'run' && q.lx < D.k.launchX + 4)) break;
-          if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 5)) { p.deckPh = 'run'; p.rel = 0; }
+          if (p.fold <= 0 && (h === null || Math.abs(WW.angleDiff(c.heading, h)) < 0.35 || p.deckT > 5)) { p.deckPh = 'run'; p.rel = 0; p.runA = 0; }
           break;
         }
         case 'run':
-          p.rel += 21 * dt; p.lx += p.rel * dt;
+          // the deck run (speedcal, 2026-10-19): a steady push to the lift-off speed relative to the deck, LIFT less the
+          // carrier's way (the wind over the deck), over the deck ahead of it: ~0.25 g on the ship clock, a 2.5-3 s run
+          // (it was a flat 21 u/s^2 to ~20 u/s over the deck, 2.5x a real lift-off, in under a second)
+          if (!(p.runA > 0)) { const vr = Math.max(LIFT_REL, LIFT - Math.max(0, c.speed)); p.runA = vr * vr / (2 * Math.max(2, D.k.bow - p.lx)); }
+          p.rel += p.runA * dt; p.lx += p.rel * dt;
           // Off the bow at the take-off speed (the carrier's speed into the wind plus the run), and free from this step on:
           // integrate() carries it on at that speed, level (vy 0), from where the last deck step left it. (It used to fall
           // through to onDeck() below with the phase already 'climb', so rel 0: one step at the CARRIER's speed, then a
           // 1-2 s crawl back up at speedTo's 8 u/s^2, the nose dropping ~10 deg and the prop back to blades: air_fx.js.)
-          if (p.lx >= D.k.bow) { p.deckPh = 'climb'; p.deckT = 0; p.speed = c.speed + p.rel; p.vy = 0; p.turn = 0; return; }
+          if (p.lx >= D.k.bow) { p.deckPh = 'climb'; p.deckT = 0; p.speed = c.speed + p.rel; p.vy = 0; p.turn = 0; p.runA = 0; return; }
           break;
         case 'climb': // off the bow: settle a little, then climb away, never slower than it left the deck
-          p.turn = 0; p.speedTo(Math.max(p.speed, p.pt.speed * 0.9), dt);
+          p.turn = 0; p.speed += WW.clamp(p.pt.speed * 0.9 - p.speed, 0, CLIMB_A * dt);   // building speed in the climb-out, not snapping to cruise
           if (p.deckT < 0.6) p.vy += WW.clamp(-1.2 - p.vy, -6 * dt, 6 * dt);
           else p.vy += WW.clamp(5 - p.vy, -6 * dt, 6 * dt);
           if (p.y < 1.2) { p.y = 1.2; p.vy = Math.max(0, p.vy); }

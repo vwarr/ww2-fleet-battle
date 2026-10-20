@@ -5,7 +5,7 @@ window.WW = window.WW || {};
   // 1942 when the carrier forces never sighted each other: the battle opens with an air war while the fleets are out of
   // sight, and the surface forces close later (fleet_cmd.js air-war hold). Ships keep their size; the sea grows.
   // REF_W: the old width, for the few tactical distances that were written as a share of it (fleet_formation vanguard).
-  // ROUND_TIMEOUT sim s (x2 real at 1x, BASE_SPEED 0.5): see docs/ARCHITECTURE.md "Time" for how it was picked.
+  // ROUND_TIMEOUT sim s (x3.27 real at 1x, BASE_SPEED 0.306 = true speed: WW.time.base): see docs/ARCHITECTURE.md "Time" for how it was picked.
   WW.cfg = { MAP_W: 2400, MAP_H: 1350, REF_W: 960, CELL: 2, ROUND_TIMEOUT: 720 /* sim seconds */ };
   // Sim-only mode (index.html?sim, headless tests): the full simulation with no rendering, no visuals and no
   // render loop (main.js boot). Results are bit-identical to normal mode (tests/determinism.js --cross).
@@ -102,16 +102,19 @@ window.WW = window.WW || {};
     cruiser:    { name: 'Cruiser',    hp: 650, speed: 5.5, turn: 0.35, length: 18, minDepth: 5, tons: 12000,
                   guns: [{ cal: 'med', count: 3, range: 120, reload: 5 }], aa: { range: 42, dps: 8 },
                   planes: null, torpedoes: { count: 4, range: 110, reload: 40 }, depthCharges: false },
-    destroyer:  { name: 'Destroyer',  hp: 300, speed: 7.5, turn: 0.6, length: 12, minDepth: 3, tons: 2000,
+    destroyer:  { name: 'Destroyer',  hp: 300, speed: 6.5, turn: 0.6, length: 12, minDepth: 3, tons: 2000,
                   guns: [{ cal: 'small', count: 2, range: 70, reload: 2.5 }], aa: { range: 30, dps: 3 },
                   planes: null, torpedoes: { count: 4, range: 100, reload: 30 }, depthCharges: true },
     submarine:  { name: 'Submarine',  hp: 200, speed: 3.5, turn: 0.4, length: 10, minDepth: 9, tons: 1500,
                   guns: [], aa: null, planes: null, torpedoes: { count: 2, range: 120, reload: 25 }, depthCharges: false },
-    pt:         { name: 'PT Boat',    hp: 80,  speed: 11,  turn: 1.2, length: 5,  minDepth: 1.5, tons: 50,
+    pt:         { name: 'PT Boat',    hp: 80,  speed: 7.2, turn: 1.2, length: 5,  minDepth: 1.5, tons: 50,
                   guns: [{ cal: 'mg', count: 1, range: 35, reload: 0.4 }], aa: { range: 20, dps: 1 },
                   planes: null, torpedoes: { count: 2, range: 70, reload: 35 }, depthCharges: false }
   };
 
+  // Speeds on the ship clock (1 u/s ~ 5.71 kn, docs/speed_calibration.md): carrier 5.6 = 32 kn, cruiser 5.5 = 31, battleship
+  // 4.2 = 24 (class mods up to ~27), submarine 3.5 = 20 surfaced, destroyer 6.5 = 37 (Fletcher 36.5, Kagero 35.5, Fubuki
+  // 38; was 7.5 = 43), PT 7.2 = 41 (Elco 80 ft; was 11 = 63, faster than its own 36 kn Mk 8 torpedo) (speedcal, 2026-10-19).
   // Ship HP scale: tuned so a round at 1x lasts about 3-4 minutes.
   const HP_SCALE = 2.0;
   for (const k in WW.SHIP_TYPES) WW.SHIP_TYPES[k].hp = Math.round(WW.SHIP_TYPES[k].hp * HP_SCALE);
@@ -214,7 +217,7 @@ window.WW = window.WW || {};
   // TBD-1 Devastator slow (110 kt cruise), B5N2 Kate faster; A6M2 faster and nimbler than the F4F-4 Wildcat.
   WW.PLANE_NATION = {
     IJN: { fighter: { hp: 11, speed: 42, cruise: 33, turn: 2.05, climb: 8.5, dive: 47, gun: 0.8, style: 'turn' },
-           dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23, bombK: 0.75 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.8 } },
+           dive: { hp: 26, speed: 30, alt: 50, push: 52, ang: 1.0, brake: 23, bombK: 0.75 }, torpedo: { hp: 27, speed: 27, alt: 36, runK: 0.9 } },
     USN: { fighter: { hp: 28, speed: 39, cruise: 30, turn: 1.55, climb: 6, dive: 57, gun: 1.15, style: 'slash' },
            dive: { hp: 30, speed: 27, alt: 56, push: 66, ang: 1.2, brake: 23, bombK: 1 }, torpedo: { hp: 33, speed: 23, alt: 30, runK: 0.75 } }
   };

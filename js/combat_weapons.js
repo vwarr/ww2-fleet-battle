@@ -29,13 +29,13 @@ window.WW = window.WW || {};
       if (WW.dstat) WW.dstat('torpFired' + p.src, nation);
       p.range = range || 100; p.run = 0; p.wakeT = 0; p.under = null;
       p.dmg = ((WW.TORPEDO && WW.TORPEDO.dmg) || 220) * (q.dmgK || 1) * I.rr(0.9, 1.1);   // the nation's warhead (core.js TORPEDO_NATION dmgK)
-      p.fall = !!(drop && drop.y > 0);
+      p.fall = !!(drop && drop.y > 0); p.size = torpSize(nation, owner);
       if (p.fall) {
         p.y = drop.y; p.vy = Math.min(0, drop.vy || 0); p.vh = drop.v || p.sp;
         airLook(p, owner);
         I.place(p, x, p.y, z); I.orient(p, Math.cos(p.h) * p.vh, p.vy - 1, Math.sin(p.h) * p.vh);   // nose a little down
       } else {
-        I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
+        waterLook(p); I.place(p, x, -0.2, z); I.orient(p, Math.cos(p.h), 0, Math.sin(p.h));
         I.fx('splash', x, z, 0.8);
       }
       I.stat('torpedoesFired');
@@ -73,9 +73,21 @@ window.WW = window.WW || {};
     var k = (WW.cfg && WW.cfg.PLANE_SCALE) || 0.82;
     p.mesh.geometry = geo; p.mesh.material = I.M.ord; p.mesh.scale.set(k, k, k);
   }
+  // The running torpedo's body at its real size (speedcal, 2026-10-19; the run mesh is a 2.0 x 0.3 x 0.3 u box, which
+  // was drawn as is: a 19 m x 2.9 m torpedo, ~4x a Mk 13 and ~5x the one that had just left the plane). Length, diameter
+  // in m by nation and launcher: Mk 13 4.1 x 0.57, Type 91 5.3 x 0.45, Mk 15 7.3 x 0.53, Type 93 9.0 x 0.61, Mk 14 6.25 x
+  // 0.53, Type 95 7.15 x 0.53, Mk 8 (PT) 6.25 x 0.53, G7a 7.2 x 0.53.
+  var TORP_M = { USN: { air: [4.1, 0.57], ship: [7.3, 0.53], submarine: [6.25, 0.53], pt: [6.25, 0.53] },
+                 IJN: { air: [5.3, 0.45], ship: [9.0, 0.61], submarine: [7.15, 0.53], pt: [5.3, 0.45] },
+                 GER: { pt: [7.2, 0.53] } };
+  function torpSize(nation, owner) {
+    var N = TORP_M[nation] || TORP_M.USN, t = owner && owner.stats ? owner.type : 'air';
+    return N[t === 'destroyer' || t === 'cruiser' ? 'ship' : t] || N.air || [5, 0.53];
+  }
   function waterLook(p) {
     if (!p.mesh) return;
-    p.mesh.geometry = I.G.torp; p.mesh.material = I.M.torp; p.mesh.scale.set(1, 1, 1);
+    var U = (WW.cfg && WW.cfg.U_PER_M) || 0.104, z = p.size || [5, 0.53];
+    p.mesh.geometry = I.G.torp; p.mesh.material = I.M.torp; p.mesh.scale.set(z[0] * U / 2.0, z[1] * U / 0.3, z[1] * U / 0.3);
   }
   function updateTorp(p, dt) {
     var c = Math.cos(p.h), s = Math.sin(p.h);

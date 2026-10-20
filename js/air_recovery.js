@@ -32,6 +32,11 @@ window.WW = window.WW || {};
   // placed to go in: far enough astern for its offset from the wake to turn up the groove without overshooting (a
   // plane out on a quarter oval waits for the aft end of its track)
   const placed = (c, D, lx, lz) => lx < gate(c) - 10 - 0.8 * Math.max(0, Math.abs(lz - D.run) - 10);
+  // Pattern speeds (speedcal, 2026-10-19; u/s on the ship clock, 1 u/s ~ 5.71 kn): the marshal ovals at ~110 kn, the
+  // approach leg at ~100 kn, the final closing on the deck at CLOSE (u/s over the ship's way: 9 at the ramp ~ 51 kn over
+  // the deck, a 1942 ~75 kn approach into ~25-30 kn of wind over the deck; the real ~6-8 is kept a little quicker so the
+  // compressed deck cycle holds). They were 0.7x / 1x the plane's combat speed: a fighter in the groove at ~220 kn.
+  const V_PATTERN = 19, V_APP = 17, CLOSE = [9, 14];
   const RS = { flakSteps: 0, flakDetours: 0, stackDiverts: 0, diverts: 0, waveoffs: 0, bolters: 0, marshal: 0, keptPlace: 0, steps: 0, why: {} };
 
   // ---------- the way home and the divert ----------
@@ -169,7 +174,7 @@ window.WW = window.WW || {};
           if (k >= 0) { p.mTrack = k; RS.flakSteps++; }
         } else if (p.mTrack > 0) stepIn(p, D);
         const m = stackAt(c, D, p.mTrack), u = lx - m[0], v = (lz - m[1]) * ps, t = trackPoint(u, v, 22, RT);
-        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS_MAX - 1), p.pt.speed * 0.7, 1.5);
+        to(m[0] + t[0], m[1] + t[1] * ps, STACK0 + STACK_DY * Math.min(lvl, LEVELS_MAX - 1), Math.min(p.pt.speed * 0.7, V_PATTERN), 1.5);
         const groove = !ahead || (D.k.tdX - toLocal(c, ahead.x, ahead.z)[0]) < GROOVE;   // the plane ahead is well into its final
         // the lowest plane placed to go in (a wave-off still up ahead lets the next one through first)
         // (not while the handlers are still pushing the deck spot out of the landing area: air_deck.js D.blk: no more than its crews can have under way at once, clear within the approach)
@@ -178,7 +183,7 @@ window.WW = window.WW || {};
       }
       case 'app': // straight in from astern (the stack lies behind the gate) onto the centreline, descending to the groove
         if (D.mode !== 'recover') { p.deckPh = 'marshal'; p.phT = 0; break; }
-        to(Math.min(lx + Math.max(30, 1.3 * Math.abs(lz - D.run)), D.k.tdX - 12), D.run, 7, p.pt.speed * (lx < gate(c) - 15 ? 1 : 0.85), 1.8);        // a point up the centreline ahead of it
+        to(Math.min(lx + Math.max(30, 1.3 * Math.abs(lz - D.run)), D.k.tdX - 12), D.run, 7, Math.min(p.pt.speed, V_APP) * (lx < gate(c) - 15 ? 1 : 0.85), 1.8);        // a point up the centreline ahead of it
         if (lx > D.k.tdX - 15) { p.deckPh = 'marshal'; p.phT = 0; RS.why.overshoot = (RS.why.overshoot || 0) + 1; break; }          // overshot the groove: round again from the stack
         if ((lx > gate(c) && lx < D.k.tdX - 15 && Math.abs(lz - D.run) < 6 && Math.abs(WW.angleDiff(p.heading, c.heading)) < 0.6) || p.phT > 25) { RS.appT = (RS.appT || 0) + p.phT; RS.appN = (RS.appN || 0) + 1; p.deckPh = 'final'; p.phT = 0; p._lz = undefined; }
         break;
@@ -187,7 +192,7 @@ window.WW = window.WW || {};
         p.turnTo(c.heading - WW.clamp((lz - D.run) * 0.15 + vlz * 0.12, -0.8, 0.8), dt, 2.2);
         const togo = D.k.tdX - lx, ty = D.dy + P().deckY + WW.clamp(togo * 0.13, 0, 8);
         const slow = togo < 30 && togo > 8 && !clearAft(D);                                     // deck still foul: ease off, the LSO waits
-        p.speed += WW.clamp(c.speed + (slow ? 7 : WW.clamp(togo * 0.35, 10, 19)) - p.speed, -8 * dt, 8 * dt);
+        p.speed += WW.clamp(c.speed + (slow ? 7 : WW.clamp(togo * 0.35, CLOSE[0], CLOSE[1])) - p.speed, -8 * dt, 8 * dt);
         p.vy = WW.clamp((ty - p.y) * 2.5 - 0.13 * (p.speed - c.speed), -6, 4);
         const tw = c.toWorld(D.k.tdX, D.run), dh = WW.dist(p.x, p.z, tw[0], tw[1]), b = Math.atan2(tw[1] - p.z, tw[0] - p.x);
         let wave = false;
@@ -204,7 +209,7 @@ window.WW = window.WW || {};
         return;
       }
       case 'waveoff': // go around: power on, climb out ahead to the disengaged side, then back to the head of the stack
-        to(lx + 40, ps * 12, 12, p.pt.speed, 1.2);
+        to(lx + 40, ps * 12, 12, Math.min(p.pt.speed, V_APP + 4), 1.2);
         if (p.phT > 3 || lx > 25) {
           p.deckPh = 'marshal'; p.phT = 0;
           const i = D.lq.indexOf(p); if (i > 0) { D.lq.splice(i, 1); D.lq.unshift(p); }
