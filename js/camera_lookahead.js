@@ -391,7 +391,7 @@ window.WW = window.WW || {};
       const quiet = ph === 'transit' || ph === 'form' || ph === 'home' || ph === 'launch' || ph === 'after' || ph === 'ship';
       // (camera6: a story nobody planned that is not a strike (a CAP fight, a flying boat, an ace) is filler: any planned
       // arc whose window opens takes over in any phase (they held 55% of the camera time while ships were struck))
-      const filler = !!(st && st.begun && st.mission !== 'strike');
+      const filler = !!(st && st.begun && st.mission !== 'strike') && !(shot.story && shot.sk === 'fall');   // (camera7: not while its protagonist falls: followed to the water)
       const b = P.find(it => it.openR <= 0 && it.lateR > 0 && it.value >= (filler ? MINV : SUPER) && !runningAbout(it));
       if (b && filler) {
         if (S().supersede) S().supersede();

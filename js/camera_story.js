@@ -423,7 +423,8 @@ window.WW = window.WW || {};
     // the fall shot: held until the plane is in the water (or wrecked on a deck, the island), then a 2 s beat
     if (WW.camDirector && shot && shot.story && shot.sk === 'fall' && shot.wetT === undefined) {
       const L = shot.subj;
-      if (!L || L.removed || (L.y || 0) <= 0.8 || (L.state !== 'falling' && !L.deathMode && !L.alive)) { shot.wetT = shot.t; shot.dur = Math.min(shot.dur, shot.t + 2.2); ST.fallsWet = (ST.fallsWet || 0) + 1; }
+      // (camera7: or its fall is over where it hit: wrecked on a deck or the island, ditched, sliding to a stop)
+      if (!L || L.removed || (L.y || 0) <= 0.8 || (L.state !== 'falling' && !L.deathMode && !L.alive) || L.state === 'wrecked' || L.state === 'ditched' || L.state === 'slide') { shot.wetT = shot.t; shot.dur = Math.min(shot.dur, shot.t + 2.2); ST.fallsWet = (ST.fallsWet || 0) + 1; }
       // (camera6: still in the air: held to the water whatever the clock (at the true-speed 1x a fall from a dive's height
       // outlasts FALL_MAX real s), up to FALL_CAP)
       else if (shot.t < FALL_CAP && !shot.stage) shot.dur = Math.max(shot.dur, shot.t + 0.5);
