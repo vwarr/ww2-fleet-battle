@@ -42,6 +42,8 @@ window.WW = window.WW || {};
   // the interrupts: a ship going down or blowing up cuts in at once (the lock decides whether the running shot allows it)
   function interrupt(c) {
     if (!WW.cam || !WW.cam.interrupt) return;
+    // (the after-battle reel, WW.camLook.prefer(): about its clip's ship, or a carrier / battleship going down or blowing up)
+    if (WW.camLook && WW.camLook.prefOk && !WW.camLook.prefOk(c.subj, c.subj && (c.subj.type === 'carrier' || c.subj.type === 'battleship') && c.pr >= 10)) return;
     const now = wall();
     if (c.pr < 11 && now - lastInt < 15) return;        // at most one interrupt per 15 s, unless it is the biggest kind
     if (WW.cam.interrupt(c)) { lastInt = now; ST.interrupts++; }

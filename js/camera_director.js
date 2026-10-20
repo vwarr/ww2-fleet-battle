@@ -153,8 +153,9 @@ window.WW = window.WW || {};
   // the candidates (camera.js candidates(), WW.camHooks): a brace on each ship with an impact due
   (WW.camHooks = WW.camHooks || []).push(add => {
     if (!(WW.game && WW.game.state === 'battle') || (WW.camNormandy && WW.camNormandy.on())) return;
+    const pk = WW.camLook && WW.camLook.prefOk;   // (the after-battle reel: braces on its clip's ship only)
     for (const v of events()) {
-      if (v.t > 30) continue;
+      if (v.t > 30 || (pk && !pk(v.target))) continue;
       const e = v._f;
       add(e.pr, 'brace', v.target, { ev: e, hold: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 14), why: v.kind, label: labelOf(e) });
     }

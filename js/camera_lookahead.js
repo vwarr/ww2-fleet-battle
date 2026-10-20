@@ -423,6 +423,10 @@ window.WW = window.WW || {};
     // camera_director.js / camera_story.js: the look-ahead chooses the arcs (their own pickers stand down)
     owns,
     // the after-battle reel: prefer({ tg: 's12' | 'base', src: 's4' (optional), n0, n1 (live steps) }) or prefer(null)
-    prefer(spec) { pref = spec || null; plCache = null; }
+    prefer(spec) { pref = spec || null; plCache = null; },
+    preferred: () => pref,   // (camera_director.js braces, camera_scenes.js interrupts: kept to the clip's ship while set)
+    // while prefer() is set, may the camera be taken by something about o? (its ship only; a carrier / battleship going
+    // down or blowing up still may: big)
+    prefOk: (o, big) => !pref || !!big || !!(o && WW.lookahead.idOf(o) === pref.tg)
   };
 })(window.WW);
