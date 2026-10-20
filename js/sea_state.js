@@ -196,59 +196,8 @@ window.WW = window.WW || {};
       }
       return r * a;
     }`;
-  // The water's fragment shader only (not compiled into ride() materials):
-  //  seaGradW(p, pc, d, sp, cw, cs): seaGrad (sp < 0 only) with the swell (0-2) at p, its slope x cs, and the wind sea (3-7) at pc, its slope x cw (the
-  //    heights stay the ridden surface's; the chop's crests are bent a little by a warped lookup pc)
-  //  seaDetail(p, fp): the short trade-wind chop as a slope only (no height: nothing rides it), DETAIL components from
-  //    1.2x down to ~0.06x the wind sea's wavelength at a ratio of 0.81 (non-commensurate), their directions scattered
-  //    about the wind by the golden ratio (wider for the shorter ones, a few running across it), each pair's lookup
-  //    domain-warped differently so the crests are short and curved, not long straight trains. Real dispersion on the
-  //    sea's clock. Cut at 5-12 pixel footprints fp (no shimmer, no fine stipple).
-  const DETAIL = 14;
-  const detailGLSL = (() => {
-    let s = '', L = 1.2;
-    for (let i = 0; i < DETAIL; i++) {
-      const f = i / (DETAIL - 1), spread = 0.45 + 1.15 * f, u = ((i * 0.6180339887 + 0.31) % 1) * 2 - 1;
-      const off = spread * u + (i % 5 === 3 ? 1.9 : 0), A = 0.18 * Math.pow(L, 1.2), ph = (i * 2.399) % 6.283;
-      const k = 2 * Math.PI / L, w = Math.sqrt(G * k), ws = i % 3 === 0 ? 'wa' : i % 3 === 1 ? 'wb' : 'wc';
-      // per component: direction (cos, sin of the offset about the wind), L / Lw, A / Aw, phase
-      s += `      seaDet(g, p + ${ws}, R * vec2(${Math.cos(off).toFixed(4)}, ${Math.sin(off).toFixed(4)}), ${(k).toFixed(4)} / L0, ${w.toFixed(4)} * inversesqrt(L0), ${(A).toFixed(4)} * A0, ${L.toFixed(4)} * L0, ${ph.toFixed(3)}, fp);\n`;
-      L *= 0.81;
-    }
-    return s;
-  })();
-  const GLSL_FRAG = `
-    vec3 seaGradW(vec2 p, vec2 pc, float d, float sp, float cw, float cs) {
-      float a = seaAmpK(d) * uSeaAmp;
-      vec3 r = vec3(0.0);
-      if (a <= 0.0) return r;
-      for (int i = 0; i < ${N}; i++) {
-        vec4 K = uSeaK[i], P = uSeaP[i];
-        // (the wind sea faded out sooner than seaGrad does: a wave train ~5 pixels long reads as a fine grid)
-        float res = i < 3 ? smoothstep(-3.0 * sp, -6.0 * sp, P.w) : smoothstep(-5.0 * sp, -11.0 * sp, P.w);
-        if (res <= 0.0) continue;
-        vec2 q = i < 3 ? p : pc;
-        float ph = K.z * dot(K.xy, q) - K.w * uSeaT + P.z, sn = sin(ph), cs0 = cos(ph), qq = 0.5 + 0.5 * sn;
-        float qp = pow(max(qq, 1e-4), P.y - 1.0);
-        r.x += P.x * res * (2.0 * qp * qq - 1.0 + (P.y - 1.0) * 0.18);
-        r.yz += P.x * res * P.y * qp * cs0 * K.z * K.xy * (i < 3 ? cs : cw);
-      }
-      return r * a;
-    }
-    void seaDet(inout vec2 g, vec2 q, vec2 dir, float k, float w, float A, float L, float ph0, float fp) {
-      float res = smoothstep(5.0 * fp, 12.0 * fp, L);
-      if (res <= 0.0) return;
-      float ph = k * dot(dir, q) - w * uSeaT + ph0;
-      g += dir * (A * k * res * cos(ph));
-    }
-    // n1, n2: two smooth noises in [0,1] at the caller's low frequency (the warp); the slope of the short chop
-    vec2 seaDetail(vec2 p, float fp, vec2 n1, vec2 n2) {
-      float L0 = max(uSeaP[3].w, 0.3), A0 = uSeaP[3].x / max(0.45, 1e-3);
-      vec2 wd = uSeaWind; mat2 R = mat2(wd.x, wd.y, -wd.y, wd.x);
-      vec2 wa = (n1 - 0.5) * L0 * 1.6, wb = (n2 - 0.5) * L0 * 1.6, wc = vec2(wa.y, -wb.x);
-      vec2 g = vec2(0.0);
-${detailGLSL}      return g;
-    }`;
+  // (the water's fragment shader no longer sums waves per pixel: it shades with the vertex's wave normal and baked
+  // chop textures, water.js)
   // depth lookup for materials other than the water (same texture and extent as water.js)
   const GLSL_DEPTH = `
     uniform sampler2D depthTex; uniform vec4 extent;
@@ -307,7 +256,7 @@ ${detailGLSL}      return g;
   WW.sea = {
     update, height, slope, ride, set: (s) => { forced = s; rolled = ''; }, enable: (v) => { want = v !== false; },
     grad: (x, z) => (on() ? pacGrad(x, z) : (_g.h = height(x, z), _g.x = 0, _g.z = 0, _g)),
-    depth, ampK, uniforms: U, GLSL, GLSL_FRAG, N, HEIGHT_EXAG, NORMAL_EXAG,
+    depth, ampK, uniforms: U, GLSL, N, SHOAL, HEIGHT_EXAG, NORMAL_EXAG,
     hull, meshSp, GRID,
     get active() { return on() || (normandy() && !!(WW.waves && WW.waves.active)); },
     get pacific() { return on(); },
