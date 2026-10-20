@@ -96,12 +96,13 @@ window.WW = window.WW || {};
   // light-space basis, for snapping the shadow frustum to whole texels (no shimmer as the camera moves)
   // (the light direction moves at dusk: sky_time.js lowers the sun, then swaps it for the moon; the basis follows)
   // The shadow's light direction is quantised (SH): sky_time.js turns SUN_DIR a little every frame (the sun crosses the
-  // sky over a round), and a basis that turns every frame slides the texel grid under the scene (a point d u from the
-  // origin moves d * dtheta in light space: ~1 texel every few frames at d ~500), so every shadow edge on every ship,
-  // deck and island crawled and flickered. SH only follows SUN_DIR once it is SH_Q degrees off: the grid holds still
-  // between steps, and a step is far too small to see. The dome, the water's glitter etc. keep the continuous SUN_DIR.
-  // The box's depth along the light (w) snaps to whole units too: a continuous w re-quantised every depth in the map each
-  // frame the camera's target moved, and the surfaces near the bias threshold (decks, hull sides) shimmered.
+  // sky over a round, ~0.0004 deg a frame at 1x, faster at 2x / 4x), and a light that turns every frame re-rasterises
+  // every shadow edge from a new angle and slides the texel grid under the scene (a point d u from the origin moves
+  // d * dtheta in light space: a texel every ~30 frames at d ~500 at 1x), so shadow edges crawled and flickered.
+  // SH only follows SUN_DIR once it is Q.deg off (every ~6 s at 1x): the grid holds still between steps, and a step
+  // (well under a texel on most edges) is too small to see. The dome, the water's glitter etc. keep the continuous SUN_DIR.
+  // The box's depth along the light (w) snaps to whole units too (a small measured gain): a continuous w re-quantises
+  // every depth in the map each frame the camera's target moves.
   // WW.sky.shadowQ: { deg, w } (0 = the old continuous behaviour, for A/B).
   const UP = new THREE.Vector3(0, 1, 0), R = new THREE.Vector3(), U = new THREE.Vector3();
   const tgt = new THREE.Vector3(), SH = new THREE.Vector3(), Q = { deg: 0.15, w: 1 };
