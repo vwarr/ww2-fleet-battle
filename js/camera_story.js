@@ -399,9 +399,9 @@ window.WW = window.WW || {};
     if (S.mission === 'strike') {
       diveWatch(rdt);
       const m = !S.fall && !S.ending ? diveCue() : null;
-      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && (!locked || onDiver(m)) && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); }
+      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && (!locked || onDiver(m)) && shot.t > 0.3) { if (onDiver(m)) shot.reframe = true; shot.dur = Math.min(shot.dur, shot.t); } }
       // (the cue came while the shot was too fresh to cut: an over-the-shoulder still on the diver gives way now)
-      else if (S.dive && !S.dive.shown && diving(S.dive.m) && shot && onDiver(S.dive.m) && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); // cut now (not a bomb / torpedo hand-off, not a locked attack)
+      else if (S.dive && !S.dive.shown && diving(S.dive.m) && shot && onDiver(S.dive.m) && shot.t > 0.3) { shot.reframe = true; shot.dur = Math.min(shot.dur, shot.t); } // cut now (not a bomb / torpedo hand-off, not a locked attack)
     }
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
       S.regroupT = 2; const g = groupOf(S.lead);

@@ -53,7 +53,8 @@ window.WW = window.WW || {};
         if (!rel && !runSoon(s, shot)) return null;
         return { why: 'run', release: rel };
       }
-      if (s.kind === 'dive' && (s.phase === 'roll' || s.phase === 'dive') && s.ordnance) return { why: 'dive', release: true };
+      // (camera6: an over-the-shoulder the story reframes to the dive chase (shot.reframe) is let go for that cut)
+      if (s.kind === 'dive' && (s.phase === 'roll' || s.phase === 'dive') && s.ordnance) return shot.reframe ? null : { why: 'dive', release: true };
       if (s.kind === 'torpedo' && s.phase === 'out' && s.ordnance && (s.phaseT || 0) > 0) return { why: 'abort', release: false }; // the beat after an aborted run
       return null;
     }
