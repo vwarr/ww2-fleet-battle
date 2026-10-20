@@ -45,20 +45,25 @@ window.WW = window.WW || {};
     call('cam', 'resize');
     call('post', 'resize');
   }
-  WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; }, dyn: () => ({ on: DYN, scale: DYN_STEPS[dynLvl], ratio: dynRatio(), changes: dynChanges }) };
+  WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; },
+    dyn: () => ({ on: DYN, scale: DYN_STEPS[dynLvl], ratio: dynRatio(), changes: dynChanges, log: dynLog.slice() }) };
   // Adaptive render scale (perf6): on a high-DPI screen the frame is drawn at up to 2 pixels per CSS pixel, and the
   // fragment work (the sea's per-pixel waves, the post passes) grows with that pixel count. When the frames come late
-  // while the frame's own JS is short (the GPU is the bottleneck: 1.5 s averaging under ~48 fps with the callback under
-  // 60% of the interval), the drawing buffer steps down (DYN_STEPS of the device ratio, never under 1 CSS pixel), and
-  // steps back up after a few smooth windows (a level that failed waits longer each time). Only on a ratio over 1, in
-  // the battle at the full frame cap, not in pixel mode. ?fullres: off (fixed 2x, as before).
+  // while the frame's own JS is short (the GPU looks like the bottleneck: a 1.5 s window averaging under ~48 fps with
+  // the callback under 60% of the interval), the drawing buffer steps down (DYN_STEPS of the device ratio, never under
+  // 1 CSS pixel); if the next window is not at least 10% faster the GPU was not the problem: the step is undone and no
+  // step down is tried for a minute. After a few smooth windows it steps back up (a level that failed waits longer
+  // each time). Only on a ratio over 1, in the battle at the full frame cap, not in pixel mode. Each switch
+  // reallocates the drawing buffer and post.js's targets (one ~30-40 ms frame at 3200x1800), hence the hysteresis.
+  // ?fullres: off (the full ratio, as before).
   const DYN = !/[?&]fullres\b/.test(location.search), DYN_STEPS = [1, 0.85, 0.72, 0.6], DYN_WIN = 1500;   // (window: ms of frames)
-  let dynLvl = 0, dynChanges = 0, dynN = 0, dynIv = 0, dynCb = 0, dynGood = 0;
-  const dynWait = DYN_STEPS.map(() => 0), dynBack = DYN_STEPS.map(() => 0);   // windows to wait before trying a level again (it failed before)
+  let dynLvl = 0, dynChanges = 0, dynN = 0, dynIv = 0, dynCb = 0, dynGood = 0, dynTry = null, dynNoDown = 0;
+  const dynWait = DYN_STEPS.map(() => 0), dynBack = DYN_STEPS.map(() => 0), dynLog = [];   // dynWait: windows before a level may be tried again
   function dynRatio() { const d = Math.min(window.devicePixelRatio || 1, 2); return d <= 1 ? d : Math.max(1, d * DYN_STEPS[dynLvl]); }
-  function dynSet(l) {
-    const r0 = dynRatio(); dynLvl = l; if (dynRatio() === r0) return;
-    dynChanges++; renderer.setPixelRatio(dynRatio()); renderer.setSize(window.innerWidth, window.innerHeight, false); call('post', 'resize');
+  function dynSet(l, mi) {
+    const r0 = dynRatio(), l0 = dynLvl; dynLvl = l; if (dynRatio() === r0) return;
+    dynChanges++; dynLog.push([Math.round(performance.now() / 100) / 10, DYN_STEPS[l0], DYN_STEPS[l], Math.round(mi * 10) / 10]); if (dynLog.length > 12) dynLog.shift();
+    renderer.setPixelRatio(dynRatio()); renderer.setSize(window.innerWidth, window.innerHeight, false); call('post', 'resize');
   }
   // per drawn battle frame: iv the interval since the last drawn frame, cb the last frame callback's own ms
   function dynFrame(iv, cb) {
@@ -67,10 +72,15 @@ window.WW = window.WW || {};
     if (dynIv < DYN_WIN) return;
     const mi = dynIv / dynN, mc = dynCb / dynN; dynN = 0; dynIv = 0; dynCb = 0;
     for (let i = 0; i < dynWait.length; i++) if (dynWait[i] > 0) dynWait[i]--;
-    if (mi > 21 && mc < 0.6 * mi && dynLvl < DYN_STEPS.length - 1) {
+    if (dynNoDown > 0) dynNoDown--;
+    if (dynTry) {   // the window after a step down: did it help?
+      const tr = dynTry; dynTry = null;
+      if (mi > 0.9 * tr.mi) { dynSet(tr.from, mi); dynNoDown = 40; dynGood = 0; return; }
+    }
+    if (mi > 21 && mc < 0.6 * mi && dynLvl < DYN_STEPS.length - 1 && !dynNoDown) {
       dynBack[dynLvl] = Math.min(40, dynBack[dynLvl] ? dynBack[dynLvl] * 2 : 4); dynWait[dynLvl] = dynBack[dynLvl];   // (~6 s, doubling to ~60 s)
-      dynGood = 0; dynSet(dynLvl + 1);
-    } else if (mi < 17.6) { if (++dynGood >= 3 && dynLvl > 0 && !dynWait[dynLvl - 1]) { dynGood = 0; dynSet(dynLvl - 1); } }
+      dynGood = 0; dynTry = { from: dynLvl, mi }; dynSet(dynLvl + 1, mi);
+    } else if (mi < 17.6) { if (++dynGood >= 3 && dynLvl > 0 && !dynWait[dynLvl - 1]) { dynGood = 0; dynSet(dynLvl - 1, mi); } }
     else dynGood = 0;
   }
 
