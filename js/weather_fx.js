@@ -77,7 +77,7 @@ window.WW = window.WW || {};
   }
   function rainUpdate(W, k) {
     const cam = WW.camera; if (!cam) return;
-    const here = W.rain(cam.position.x, cam.position.z), low = 1 - WW.clamp((cam.position.y - 60) / 140, 0, 1);
+    const here = W.rain(cam.position.x, cam.position.z), low = 1 - WW.clamp((cam.position.y - 30) / 80, 0, 1);   // (from high up the streaks read as spindrift)
     const a = here * low * (WW.cam && WW.cam.isOverview && WW.cam.isOverview() ? 0 : 1);
     if (a < 0.02) { if (rainMesh) rainMesh.visible = false; return; }
     if (!rainMesh) buildRain();

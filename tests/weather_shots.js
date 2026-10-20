@@ -86,7 +86,7 @@ const want = n => !ONLY || ONLY.includes(n);
     }
   }
   if (want('strip')) {
-    for (const [nm, k, bf] of [['gale', 'line', 8], ['typhoon', 'typhoon', 11]]) {
+    for (const [nm, k, bf] of [['gale', 'line', 8], ['typhoon', 'typhoon', 11]].filter(c => !process.env.STRIP || process.env.STRIP === c[0])) {   // STRIP=typhoon: that sea only
       await p.evaluate(a => round(a[0], a[1], a[2]), [SEED, k, bf]);
       for (const [t, view, d, h, brg] of [['destroyer', 'side', 45, 3, Math.PI / 2], ['destroyer', 'bow', 45, 5, 0.6], ['carrier', 'side', 110, 6, Math.PI / 2], ['carrier', 'bow', 110, 10, 0.6]]) {
         if (!await p.evaluate(a => look(a[0], a[1], a[2], a[3], 2), [t, d, h, brg])) continue;
