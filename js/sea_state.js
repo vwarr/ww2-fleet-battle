@@ -1,8 +1,8 @@
 // sea_state.js - WW.sea: the Pacific's sea state (visual only: the sim never reads it; Math.random / WW.rand never
 // drawn, the round's sea comes from a hash of the round's map seed and number). A 1942 South / Central Pacific sea at
 // the game's scale (1 u = 9.6 m):
-//  - a long ocean swell from one direction: 1.0-2.5 m high, 10-12.5 s, 150-245 m long (three components close in
-//    direction and length, so the sets come and go)
+//  - a long ocean swell from one direction: 1.0-2.5 m high, 10-12.5 s, 150-245 m long (three components spread
+//    +-0.3 rad in direction and 0.8-1.3x in length: short crests, the sets come and go)
 //  - the trade-wind sea on top from the round's wind (WW.wind: the direction it blows toward): 0.1 m (a glassy calm,
 //    Midway's morning of 4 June 1942) up to ~1.7 m of short chop (fresh trades, Beaufort 5, squalls: Coral Sea / Santa
 //    Cruz), 2.5-5.5 s, its crests peaked as the wind gets up (five components spread about the wind)
@@ -87,10 +87,13 @@ window.WW = window.WW || {};
     const aw = wind.a !== undefined ? wind.a : Math.atan2(wind.z, wind.x);
     const as = aw + (r() - 0.5) * 2.2;                                      // the swell: from a distant storm, off the wind
     const As = Hs / 2 / M * HEIGHT_EXAG, Aw = Hw / 2 / M * HEIGHT_EXAG, pw = 1 + 0.9 * s;
+    // the swell's three: one main train and two at +-0.26-0.31 rad, 0.79 / 1.27 its length, nearly as strong: the crests
+    // short (~3 wavelengths), in sets that come and go (the old three, +-0.12-0.18 rad and 0.83 / 1.21 under a dominant
+    // first, read as one train of ruled parallel lines over the whole sea: corduroy from above).
     // the wind sea's five: wavelengths at non-commensurate ratios (no two within ~20%, so no pair beats into a regular
     // lattice) and directions spread unevenly about the wind (the short chop is drawn per pixel only: water.js
     // seaDetail). The old set (1, 0.72, 0.55, 1.35, 0.4 at +-0.45-0.5 rad) crossed into a diamond grid in the shading.
-    const spec = [[Ls, As * 0.62, as, 1, 0], [Ls * 0.83, As * 0.3, as + 0.18, 1, 0], [Ls * 1.21, As * 0.22, as - 0.12, 1, 0],
+    const spec = [[Ls, As * 0.52, as, 1, 0], [Ls * 0.79, As * 0.34, as + 0.31, 1, 0], [Ls * 1.27, As * 0.3, as - 0.26, 1, 0],
       [Lw, Aw * 0.45, aw, pw, 1], [Lw * 0.71, Aw * 0.3, aw + 0.61, pw, 1], [Lw * 1.31, Aw * 0.32, aw - 0.37, pw, 1],
       [Lw * 0.53, Aw * 0.2, aw - 1.03, pw, 1], [Lw * 1.67, Aw * 0.22, aw + 0.23, pw, 1]];
     W.length = 0;
@@ -116,17 +119,37 @@ window.WW = window.WW || {};
   }
   // the Pacific surface (no Normandy delegation): h, dh/dx, dh/dz at (x, z)
   const _g = { h: 0, x: 0, z: 0 };
-  function pacGrad(x, z, d) {
+  // sp > 0: each component weighted as the water mesh draws it there (seaGrad's sp: dropped when shorter than ~3 grid
+  // samples sp apart); Lh > 0: and as a hull Lh long answers it (waves much shorter than the hull cancel along it: no
+  // heave, pitch or roll from them). Neither: the full surface.
+  function pacGrad(x, z, d, sp, Lh) {
     if (d === undefined) d = depth(x, z);
     const a = ampK(d);
     let h = 0, gx = 0, gz = 0;
     if (a > 0) for (let i = 0; i < W.length; i++) {
-      const c = W[i], ph = c.k * (c.dx * x + c.dz * z) - c.w * T + c.ph, sn = Math.sin(ph), q = 0.5 + 0.5 * sn;
-      if (c.p === 1) { h += c.A * sn; const dd = c.A * Math.cos(ph) * c.k; gx += dd * c.dx; gz += dd * c.dz; }
-      else { const qp = Math.pow(q, c.p - 1); h += c.A * (2 * qp * q - 1 + (c.p - 1) * 0.18); const dd = c.A * c.p * qp * Math.cos(ph) * c.k; gx += dd * c.dx; gz += dd * c.dz; }
+      const c = W[i];
+      let r = 1;
+      if (sp > 0) r *= sm(2.5 * sp, 4.0 * sp, c.L);
+      if (Lh > 0) r *= sm(0.35 * Lh, 0.9 * Lh, c.L);
+      if (r <= 0) continue;
+      const A = c.A * r, ph = c.k * (c.dx * x + c.dz * z) - c.w * T + c.ph, sn = Math.sin(ph), q = 0.5 + 0.5 * sn;
+      if (c.p === 1) { h += A * sn; const dd = A * Math.cos(ph) * c.k; gx += dd * c.dx; gz += dd * c.dz; }
+      else { const qp = Math.pow(q, c.p - 1); h += A * (2 * qp * q - 1 + (c.p - 1) * 0.18); const dd = A * c.p * qp * Math.cos(ph) * c.k; gx += dd * c.dx; gz += dd * c.dz; }
     }
     _g.h = h * a; _g.x = gx * a; _g.z = gz * a;
     return _g;
+  }
+  // The water mesh (water.js): rings about the camera, GRID.SEGS segments round, the finest GRID.R_MIN_SP apart; the
+  // grid spacing at (x, z) is ~ its distance from the camera x 2 pi / SEGS (what the vertex shader's aSp is there)
+  const GRID = { SEGS: 192, R_MIN_SP: 0.4 };
+  function meshSp(x, z) {
+    const C = WW.camera; if (!C) return GRID.R_MIN_SP;
+    return Math.max(GRID.R_MIN_SP, Math.hypot(x - C.position.x, z - C.position.z) * 2 * Math.PI / GRID.SEGS);
+  }
+  // the surface a hull Lh long rides at (x, z): as the mesh draws it there, less the waves too short to move the hull
+  function hull(x, z, Lh) {
+    if (normandy() || !on()) { const g = { h: height(x, z), x: 0, z: 0 }, sl = slope(x, z); g.x = sl.x; g.z = sl.z; return g; }
+    return pacGrad(x, z, undefined, meshSp(x, z), Lh);
   }
   const normandy = () => WW.isScn && WW.isScn('normandy');
   function on() { return want && !WW.simOnly && !normandy(); }
@@ -174,7 +197,7 @@ window.WW = window.WW || {};
       return r * a;
     }`;
   // The water's fragment shader only (not compiled into ride() materials):
-  //  seaGradW(p, pc, d, sp, cw): seaGrad (sp < 0 only) with the swell (0-2) at p and the wind sea (3-7) at pc, its slope x cw (the
+  //  seaGradW(p, pc, d, sp, cw, cs): seaGrad (sp < 0 only) with the swell (0-2) at p, its slope x cs, and the wind sea (3-7) at pc, its slope x cw (the
   //    heights stay the ridden surface's; the chop's crests are bent a little by a warped lookup pc)
   //  seaDetail(p, fp): the short trade-wind chop as a slope only (no height: nothing rides it), DETAIL components from
   //    1.2x down to ~0.06x the wind sea's wavelength at a ratio of 0.81 (non-commensurate), their directions scattered
@@ -195,7 +218,7 @@ window.WW = window.WW || {};
     return s;
   })();
   const GLSL_FRAG = `
-    vec3 seaGradW(vec2 p, vec2 pc, float d, float sp, float cw) {
+    vec3 seaGradW(vec2 p, vec2 pc, float d, float sp, float cw, float cs) {
       float a = seaAmpK(d) * uSeaAmp;
       vec3 r = vec3(0.0);
       if (a <= 0.0) return r;
@@ -205,10 +228,10 @@ window.WW = window.WW || {};
         float res = i < 3 ? smoothstep(-3.0 * sp, -6.0 * sp, P.w) : smoothstep(-5.0 * sp, -11.0 * sp, P.w);
         if (res <= 0.0) continue;
         vec2 q = i < 3 ? p : pc;
-        float ph = K.z * dot(K.xy, q) - K.w * uSeaT + P.z, sn = sin(ph), cs = cos(ph), qq = 0.5 + 0.5 * sn;
+        float ph = K.z * dot(K.xy, q) - K.w * uSeaT + P.z, sn = sin(ph), cs0 = cos(ph), qq = 0.5 + 0.5 * sn;
         float qp = pow(max(qq, 1e-4), P.y - 1.0);
         r.x += P.x * res * (2.0 * qp * qq - 1.0 + (P.y - 1.0) * 0.18);
-        r.yz += P.x * res * P.y * qp * cs * K.z * K.xy * (i < 3 ? 1.0 : cw);
+        r.yz += P.x * res * P.y * qp * cs0 * K.z * K.xy * (i < 3 ? cs : cw);
       }
       return r * a;
     }
@@ -234,27 +257,33 @@ ${detailGLSL}      return g;
       float d = texture2D(depthTex, clamp(uv, 0.0, 1.0)).r * 32.0 - 4.0;
       if (uv.x <= 0.0 || uv.x >= 1.0 || uv.y <= 0.0 || uv.y >= 1.0) d = max(d, 18.0);
       return d;
-    }`;
+    }
+    // the water mesh's grid spacing at p (meshSp): what rides the sea takes the waves the mesh draws there, no others
+    float seaMeshSp(vec2 p) { return max(${GRID.R_MIN_SP.toFixed(2)}, length(p - cameraPosition.xz) * ${(2 * Math.PI / GRID.SEGS).toFixed(5)}); }`;
   // ride(material, mode): the material's vertices are lifted onto the sea in world space.
   //   'conform': every vertex by the height under it (foam, slicks, contact shadows lie on the waves)
   //   'origin': by the height under the object's / instance's origin, fading out above 1.5-6 u (a splash column rises
   //   from where the water is; smoke and flak high up are untouched)
-  function ride(mat, mode) {
+  // cell (optional): the material's own vertex spacing in object units (x its object's x scale): waves shorter than ~3
+  // cells are left out too (a coarse sheet sampling the short chop aliases: its shading and the shadows on it crawl)
+  function ride(mat, mode, cell) {
     if (!mat || mat.userData.seaRide) return mat;
     mat.userData.seaRide = mode || 'conform';
+    const uCell = { value: cell || 0 };
     const prev = mat.onBeforeCompile;
     mat.onBeforeCompile = function (sh, r) {
       if (prev) prev.call(this, sh, r);
       for (const k in U) sh.uniforms[k] = U[k];
+      sh.uniforms.uRideCell = uCell;
       const origin = mat.userData.seaRide === 'origin';
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + GLSL + GLSL_DEPTH);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + GLSL + GLSL_DEPTH + `\n    uniform float uRideCell;\n    float seaRideSp(vec2 p) { return max(seaMeshSp(p), uRideCell * length(modelMatrix[0].xyz)); }`);
       if (origin) sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `
           vec4 seaW = vec4(transformed, 1.0), seaO = vec4(0.0, 0.0, 0.0, 1.0);
           #ifdef USE_INSTANCING
             seaW = instanceMatrix * seaW; seaO = instanceMatrix * seaO;
           #endif
           seaW = modelMatrix * seaW; seaO = modelMatrix * seaO;
-          seaW.y += seaGrad(seaO.xz, seaDepth(seaO.xz), 0.0).x * (1.0 - smoothstep(1.5, 6.0, seaO.y));
+          seaW.y += seaGrad(seaO.xz, seaDepth(seaO.xz), seaRideSp(seaO.xz)).x * (1.0 - smoothstep(1.5, 6.0, seaO.y));
           vec4 mvPosition = viewMatrix * seaW;
           gl_Position = projectionMatrix * mvPosition;`);
       // conform: the local vertex itself is lifted (so the shadow / world-position chunks after it agree); assumes the
@@ -266,7 +295,7 @@ ${detailGLSL}      return g;
               seaW = instanceMatrix * seaW;
             #endif
             seaW = modelMatrix * seaW;
-            transformed.y += seaGrad(seaW.xz, seaDepth(seaW.xz), 0.0).x;
+            transformed.y += seaGrad(seaW.xz, seaDepth(seaW.xz), seaRideSp(seaW.xz)).x;
           }`);
     };
     const pkey = prev ? prev.toString() : '';
@@ -279,6 +308,7 @@ ${detailGLSL}      return g;
     update, height, slope, ride, set: (s) => { forced = s; rolled = ''; }, enable: (v) => { want = v !== false; },
     grad: (x, z) => (on() ? pacGrad(x, z) : (_g.h = height(x, z), _g.x = 0, _g.z = 0, _g)),
     depth, ampK, uniforms: U, GLSL, GLSL_FRAG, N, HEIGHT_EXAG, NORMAL_EXAG,
+    hull, meshSp, GRID,
     get active() { return on() || (normandy() && !!(WW.waves && WW.waves.active)); },
     get pacific() { return on(); },
     get time() { return T; }, get state() { return S; }, get info() { return info; }, get waves() { return W; }

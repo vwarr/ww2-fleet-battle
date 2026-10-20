@@ -9,7 +9,7 @@ window.WW = window.WW || {};
 (function (WW) {
   const TEX_STEP = 2;           // units per depth texel
   const D_MIN = -4, D_MAX = 28; // depth range stored in the texture (sea_state.js seaDepth reads it the same way)
-  const SEGS = 192, R_MIN_SP = 0.4, R_MAX = 7000;   // the grid: angular segments, finest spacing (u), radius
+  const SEGS = WW.sea.GRID.SEGS, R_MIN_SP = WW.sea.GRID.R_MIN_SP, R_MAX = 7000;   // the grid: angular segments, finest spacing (u) (sea_state.js: meshSp), radius
   const CATCH = 300, CATCH_N = 150;                // the shadow catcher: size (u) and cells a side (2 u)
   let mesh = null, mat = null, tex = null, t = 0, catcher = null;
   const SU = () => WW.sea.uniforms;
@@ -63,8 +63,10 @@ window.WW = window.WW || {};
       if (!inside) d = max(d, 18.0);
       // smooth depth gradient
       vec3 col = mix(cShallow, cMid, smoothstep(0.0, 4.0, d));
-      col = mix(col, cDeep, smoothstep(3.0, 11.0, d));
-      col = mix(col, cAbyss, smoothstep(10.0, 22.0, d));
+      // (to the abyss colour by ~13 u, 125 m: below that the sea floor no longer shows in the water's colour, so its
+      // relief 100-270 m down does not paint soft dark blotches over the open sea)
+      col = mix(col, cDeep, smoothstep(3.0, 8.0, d));
+      col = mix(col, cAbyss, smoothstep(6.5, 13.0, d));
       float alpha = mix(0.62, 0.92, smoothstep(0.0, 10.0, d));
       // fade to fully opaque deep water toward the edge of the sea-floor mesh (no visible seam)
       float edge = max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0;
@@ -86,16 +88,24 @@ window.WW = window.WW || {};
       vec2 n1 = vec2(vnoise(rq * (0.37 / L0) + 1.7), vnoise(rq * (0.37 / L0) - 4.2));
       vec2 n2 = vec2(vnoise(vWorld.xz * (0.23 / L0) + 8.3), vnoise(vWorld.xz * (0.23 / L0) + 2.9));
       vec2 wpc = vWorld.xz + (wk + L0 * 0.9) * wn + (n1 - 0.5) * L0 * 0.7;
-      vec2 gq = vWorld.xz * 0.018 - uSeaWind * time * 0.25;
-      float gust = 0.45 + 1.1 * smoothstep(0.2, 0.85, vnoise(gq) * 0.65 + vnoise(gq * 2.7 + 5.0) * 0.35);
-      vec3 sg = seaGradW(wp2, wpc, d, -fp, 0.5 * gust * mix(0.6, 1.0, smoothstep(1.0, 6.0, d)));
+      // (gusts: cat's-paws drawn out downwind, a gentle range: a 3x swing on round blobs read as stains on the sea)
+      vec2 gw = vec2(dot(vWorld.xz, uSeaWind), dot(vWorld.xz, vec2(-uSeaWind.y, uSeaWind.x)));
+      vec2 gq = gw * vec2(0.007, 0.02) - vec2(time * 0.006, 0.0);
+      float gust = 0.72 + 0.56 * smoothstep(0.2, 0.85, vnoise(gq) * 0.65 + vnoise(gq * 2.7 + 5.0) * 0.35);
+      // the swell's slope in the shading eases off with the pixel footprint: seen from high up, a 1-2 m swell 150-250 m
+      // long is a faint undulation in the glitter, not lines ruled across the whole sea (the corduroy)
+      float swK = mix(1.0, 0.35, smoothstep(0.15, 1.2, fp));
+      vec3 sg = seaGradW(wp2, wpc, d, -fp, 0.5 * gust * mix(0.6, 1.0, smoothstep(1.0, 6.0, d)), swK);
       sg.yz += seaDetail(vWorld.xz, fp, n1, n2) * gust * seaAmpK(d) * uSeaAmp;
       vec3 n = normalize(vec3(-sg.y * uSeaN, 1.0, -sg.z * uSeaN));
       float hN = sg.x / max(1e-3, uSeaP[0].x + uSeaP[1].x + uSeaP[3].x + uSeaP[4].x);   // ~-1 (trough) .. 1 (crest)
       vec3 sd = normalize(sunDir);
       col *= clamp(1.0 + 0.9 * (dot(n, sd) - sd.y), 0.82, 1.14);
-      col *= mix(0.92, 1.05, smoothstep(-0.9, 0.9, hN));
-      col = mix(col, cShallow * vec3(0.96, 1.06, 1.02), smoothstep(0.3, 1.0, hN) * 0.14 * smoothstep(3.0, 10.0, d));   // the light through a crest
+      // crests a little lighter, troughs deeper, and the light through a crest: only close in (low over the water, a
+      // crest against the sky behind it); from higher up a wave's height does not show, only its slope (the sheen)
+      float hK = 1.0 - smoothstep(0.06, 0.45, fp);
+      col *= 1.0 + hK * mix(-0.05, 0.035, smoothstep(-0.9, 0.9, hN));
+      col = mix(col, cShallow * vec3(0.96, 1.06, 1.02), smoothstep(0.3, 1.0, hN) * 0.14 * hK * smoothstep(3.0, 10.0, d));
       float far0 = smoothstep(120.0, 900.0, length(cameraPosition - vWorld));
       // whitecaps: broken patches on the steep wind-sea crests from Beaufort 4 (none in a calm), wind streaks of old foam
       float capK = smoothstep(0.38, 0.95, uSeaS) * smoothstep(1.5, 5.0, d);
@@ -118,7 +128,13 @@ window.WW = window.WW || {};
       float shore = (1.0 - smoothstep(0.12, 0.42, d + wob)) * 0.9;
       float ringPos = 1.3 + 0.45 * sin(time * 0.8 + vWorld.x * 0.02);
       // world-space depth slope: rings only where the seabed really shelves (flat tops would give blocky contours)
-      float slope = length(vec2(dFdx(d), dFdy(d))) / max(length(vec2(dFdx(vWorld.x), dFdy(vWorld.x))) + length(vec2(dFdx(vWorld.z), dFdy(vWorld.z))), 1e-3);
+      // (from the depth texture a texel either side, not the screen derivatives of d: the 8-bit texture's filtered depth
+      // moves in steps, so dFdx(d) flickered between 0 and a step from pixel to pixel at low angles and the surf and
+      // rings that key on the slope came out as a dotted moire over the reef)
+      vec2 te = vec2(${TEX_STEP.toFixed(1)}) / extent.zw;
+      float dgx = texture2D(depthTex, clamp(uv + vec2(te.x, 0.0), 0.0, 1.0)).r - texture2D(depthTex, clamp(uv - vec2(te.x, 0.0), 0.0, 1.0)).r;
+      float dgz = texture2D(depthTex, clamp(uv + vec2(0.0, te.y), 0.0, 1.0)).r - texture2D(depthTex, clamp(uv - vec2(0.0, te.y), 0.0, 1.0)).r;
+      float slope = length(vec2(dgx, dgz)) * ${((D_MAX - D_MIN) / (2 * TEX_STEP) * 0.5).toFixed(3)};   // ~ half the seabed gradient (what the old screen-space form gave)
       float ring = (1.0 - smoothstep(0.0, 0.18, abs(d + wob * 0.6 - ringPos))) * 0.55 * (1.0 - smoothstep(1.2, 2.4, d)) * smoothstep(0.08, 0.2, slope);
       // the surf: lines of breaking white running in over the reef edge with the swell, lacy foam behind each,
       // stronger in a bigger swell (uSeaP[0].x: the main swell's amplitude)
@@ -209,7 +225,7 @@ window.WW = window.WW || {};
     // (sea_state.js ride), so it covers the sun's shadow box (sky.js: +-120 u about what the camera looks at, +-520 in
     // the overview) and follows it; in Normandy it is the old flat sheet over the map.
     const sg = new THREE.PlaneGeometry(CATCH, CATCH, CATCH_N, CATCH_N); sg.rotateX(-Math.PI / 2);
-    catcher = new THREE.Mesh(sg, WW.sea.ride(new THREE.ShadowMaterial({ color: 0x3a3f6a, opacity: 0.24, depthWrite: false }), 'conform'));
+    catcher = new THREE.Mesh(sg, WW.sea.ride(new THREE.ShadowMaterial({ color: 0x3a3f6a, opacity: 0.24, depthWrite: false }), 'conform', CATCH / CATCH_N));
     catcher.position.set(WW.cfg.MAP_W / 2, 0.06, WW.cfg.MAP_H / 2);
     catcher.receiveShadow = true; catcher.renderOrder = 2; catcher.frustumCulled = false;
     WW.scene.add(catcher);
@@ -277,7 +293,7 @@ window.WW = window.WW || {};
     if (!WW.scene || typeof document === 'undefined') return;
     if (!blobGeo) {
       blobGeo = new THREE.PlaneGeometry(1, 1, 8, 3); blobGeo.rotateX(-Math.PI / 2);
-      blobMat = WW.sea.ride(new THREE.MeshBasicMaterial({ color: 0x1c2a4a, alphaMap: blobTexture(), transparent: true, opacity: 0.32, depthWrite: false }), 'conform');   // lies on the waves
+      blobMat = WW.sea.ride(new THREE.MeshBasicMaterial({ color: 0x1c2a4a, alphaMap: blobTexture(), transparent: true, opacity: 0.32, depthWrite: false }), 'conform', 1 / 8);   // lies on the waves (the long ones: 8 cells along a hull)
     }
     let n = 0;
     for (const s of WW.world.ships) {
