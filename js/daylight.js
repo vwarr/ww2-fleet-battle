@@ -45,7 +45,7 @@ window.WW = window.WW || {};
     morning: function () { var h = ((D.hour % 24) + 24) % 24; return h < 11 ? 1 : h < 13 ? (13 - h) / 2 : 0; }, // 1 before 11:00, 0 after 13:00
     roundT: function () { return WW.time.now - D.t0; },
     dark: function () { return 1 - WW.daylight; },
-    canFly: function () { return WW.daylight >= FLY_MIN; },
+    canFly: function () { return WW.daylight >= FLY_MIN && !(WW.weather && WW.weather.noFly); },   // a gale / typhoon grounds everything (weather.js)
     // s of flying light left (until daylight falls below RECALL), Infinity when it will not fail this round (the
     // planner's sunset: air_boss.js orderStrike ETA, ai_carrier.js capWanted lands the CAP before dark)
     lightLeft: function () {
@@ -245,7 +245,7 @@ window.WW = window.WW || {};
     }
     if (D._fly || wasFly) for (var j = 0; j < WW.world.planes.length; j++) WW.world.planes[j].nightSeen = true;
     D.lastLaunched = WW.stats.planesLaunched;
-    if (WW.daylight < RECALL) { if (!D.recalled) D.recalled = true; recall(); }
+    if (WW.daylight < RECALL || (WW.weather && WW.weather.noFly)) { if (!D.recalled) D.recalled = true; recall(); }
     if (DECK_GATE && !D._fly) strikeBelow();
   }
   // night torpedo attacks (metrics): ship-fired spreads (one per ship per 2 s) while daylight < 0.35

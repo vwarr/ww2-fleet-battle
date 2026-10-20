@@ -48,10 +48,77 @@ window.WW = window.WW || {};
       m.position.set(Math.cos(a) * d, (Math.random() - 0.3) * 12, Math.sin(a) * d); m.scale.set(s, s * 0.55, s);
     });
   }
+  // ---- rain round the camera (a typhoon everywhere; inside a squall): one draw of short streaks in a box that
+  // follows the camera, falling and slanting with the wind in the vertex shader (wrapped, so nothing is updated per drop)
+  const RN = 2600, BOX = new THREE.Vector3(150, 90, 150);
+  let rainMesh = null;
+  const RV = `uniform vec3 cam, box, drift; uniform float time; attribute float tip; varying float vA;
+    void main(){
+      vec3 p = position + drift * time;   // position: a random point in [0, box); drift: wind + fall (u/s)
+      p = mod(p - cam + box * 0.5, box) - box * 0.5;   // wrapped round the camera
+      p += normalize(drift) * tip * 3.2;               // the streak's other end, along the fall
+      vec3 w = cam + p;
+      vA = 1.0 - smoothstep(0.25, 0.5, length(p.xz) / box.x);
+      gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+    }`;
+  const RF = `uniform vec3 col; uniform float op; varying float vA; void main(){ gl_FragColor = vec4(col, op * vA); }`;
+  function buildRain() {
+    const pos = new Float32Array(RN * 6), tip = new Float32Array(RN * 2);
+    for (let i = 0; i < RN; i++) {
+      const x = Math.random() * BOX.x, y = Math.random() * BOX.y, z = Math.random() * BOX.z;
+      pos.set([x, y, z, x, y, z], i * 6); tip[i * 2 + 1] = 1;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('tip', new THREE.BufferAttribute(tip, 1));
+    rainMesh = new THREE.LineSegments(g, new THREE.ShaderMaterial({
+      uniforms: { cam: { value: new THREE.Vector3() }, box: { value: BOX }, drift: { value: new THREE.Vector3(0, -40, 0) }, time: { value: 0 }, col: { value: new THREE.Color(0.75, 0.78, 0.82) }, op: { value: 0 } },
+      vertexShader: RV, fragmentShader: RF, transparent: true, depthWrite: false, fog: false }));
+    rainMesh.frustumCulled = false; rainMesh.renderOrder = 5; rainMesh.visible = false; WW.scene.add(rainMesh);
+  }
+  function rainUpdate(W, k) {
+    const cam = WW.camera; if (!cam) return;
+    const here = W.rain(cam.position.x, cam.position.z), low = 1 - WW.clamp((cam.position.y - 60) / 140, 0, 1);
+    const a = here * low * (WW.cam && WW.cam.isOverview && WW.cam.isOverview() ? 0 : 1);
+    if (a < 0.02) { if (rainMesh) rainMesh.visible = false; return; }
+    if (!rainMesh) buildRain();
+    const u = rainMesh.material.uniforms, wd = WW.wind || { x: 0, z: 0 }, s = W.kind === 'typhoon' ? 26 : 12;
+    rainMesh.visible = true; u.cam.value.copy(cam.position); u.time.value = t;
+    u.drift.value.set(wd.x * s, -45, wd.z * s); u.op.value = 0.38 * a * (0.35 + 0.65 * k);
+  }
+  // ---- lightning (thunderstorm cells; a typhoon's rain bands now and then): a jagged bolt from the cloud to the sea,
+  // a sky flash (sky_time.js reads flash()) and the thunder after it (audio_amb.js amb.thunder)
+  let bolt = null, fl = 0, nextFl = 3, boltT = 0;
+  function buildBolt() {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(14 * 3), 3));
+    bolt = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xeef2ff, transparent: true, fog: false }));
+    bolt.frustumCulled = false; bolt.visible = false; bolt.renderOrder = 6; WW.scene.add(bolt);
+  }
+  function strike(c) {
+    if (!bolt) buildBolt();
+    const a = Math.random() * 6.283, d = Math.random() * c.r * 0.6, x0 = c.x + Math.cos(a) * d, z0 = c.z + Math.sin(a) * d;
+    const P = bolt.geometry.attributes.position, n = P.count;
+    let x = x0, z = z0;
+    for (let i = 0; i < n; i++) { const y = H + 2 - (H + 2) * i / (n - 1); P.setXYZ(i, x, y, z); x += (Math.random() - 0.5) * 9; z += (Math.random() - 0.5) * 9; }
+    P.needsUpdate = true; bolt.visible = true; boltT = 0.18; fl = 1;
+    const cam = WW.camera, dist = cam ? Math.hypot(cam.position.x - x0, cam.position.z - z0) : 300;
+    if (WW.audio && WW.audio.play) setTimeout(() => { try { WW.audio.play('amb.thunder', { x: x0, y: 40, z: z0, vol: WW.clamp(1.3 - dist / 1200, 0.35, 1) }); } catch (e) { /* audio off */ } }, Math.min(5000, dist * 6));
+  }
+  function lightning(W, rdt) {
+    fl = Math.max(0, fl - (rdt || 0) * 5); if (fl > 0.35 && fl < 0.55 && Math.random() < 0.3) fl = 0.8;   // a flicker
+    if (bolt && bolt.visible && (boltT -= rdt || 0) <= 0) bolt.visible = false;
+    if ((W.kind !== 'thunder' && W.kind !== 'typhoon') || !W.cells.length) return;
+    if ((nextFl -= rdt || 0) > 0) return;
+    nextFl = W.kind === 'thunder' ? 2 + Math.random() * 7 : 6 + Math.random() * 14;
+    strike(W.cells[Math.floor(Math.random() * W.cells.length)]);
+  }
   function update(rdt) {
     if (WW.simOnly || !WW.scene) return;
-    const cells = WW.weather ? WW.weather.cells : [];
-    if (!built) { if (!cells.length) return; build(); }
+    const W = WW.weather, cells = W ? W.cells : [];
+    if (W) {
+      rainUpdate(W, WW.daylight === undefined ? 1 : WW.daylight);
+      lightning(W, rdt);
+    }
+    if (!built) { if (!cells.length) { t += rdt || 0; return; } build(); }
     t += rdt || 0;
     const k = WW.daylight === undefined ? 1 : WW.daylight, ov = WW.cam && WW.cam.isOverview && WW.cam.isOverview();
     cloudMat.color.copy(CNIGHT).lerp(CDAY, k); cloudMat.emissive.setRGB(0.1 + 0.07 * k, 0.12 + 0.07 * k, 0.2 + 0.08 * k);
@@ -64,5 +131,5 @@ window.WW = window.WW || {};
       layout(g, c); g.position.set(c.x, H + 4, c.z);
     }
   }
-  WW.weatherFx = { update };
+  WW.weatherFx = { update, flash: () => fl };
 })(window.WW);

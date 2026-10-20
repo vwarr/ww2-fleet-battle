@@ -38,6 +38,7 @@ window.WW = window.WW || {};
       vec4 wp = modelMatrix * vec4(position, 1.0);
       vH = 0.0; vG = vec2(0.0); vRes = 0.0;
       if (aSp < 0.0) {
+        vRes = -1.0;   // (the fragment shader: no glitter on the skirt's wall)
         if (uSeaAmp > 0.0) wp.y = cameraPosition.y * 0.999;   // the skirt: at the horizon (the Pacific's camera-centred grid only)
       } else {
         float d = seaDepth(wp.xz);
@@ -137,13 +138,29 @@ window.WW = window.WW || {};
         vec4 na = nz(vWorld.xz * vec2(0.9, 1.4) + time * vec2(0.25, 0.4)), nb = nz(vWorld.xz * 3.1 - time * 0.35);
         float fn = na.b * 0.6 + nb.b * 0.4;
         float steep = smoothstep(0.08, 0.3, length(sg));
-        capF = smoothstep(0.15, 0.6, hN) * smoothstep(0.56, 0.72, fn) * smoothstep(0.25, 0.55, nb.a) * mix(steep, 0.6, far0) * smoothstep(0.38, 0.95, uSeaS) * smoothstep(1.5, 5.0, d) * (1.0 - 0.5 * far0);
+        float st = uSeaStorm;   // a gale / typhoon (weather.js via sea_state.js): more and bigger caps, crests breaking
+        capF = smoothstep(mix(0.15, -0.1, st), 0.6, hN) * smoothstep(mix(0.56, 0.42, st), mix(0.72, 0.6, st), fn) * smoothstep(mix(0.25, 0.1, st), 0.55, nb.a) * mix(steep, 0.6, far0) * smoothstep(0.38, 0.95, uSeaS) * smoothstep(1.5, 5.0, d) * (1.0 - 0.5 * far0 * (1.0 - st));
+        // storm: the big crests break, a tumbling white along each swell crest with a torn edge; the spray off it
+        capF = max(capF, 0.8 * st * smoothstep(0.45, 0.85, hN) * smoothstep(0.45, 0.7, na.b * 0.5 + nb.g * 0.5) * smoothstep(0.35, 0.65, na.a) * smoothstep(1.5, 5.0, d));   // (broken: patches along the crest, not ruled lines)
       }
       if (uSeaS > 0.3 && far0 < 1.0 && d > 2.0) {
+        float st = uSeaStorm;
         float s1 = nz(vec2(wq.x * 0.05, wq.y * 0.45) + time * 0.03).a, s2 = nz(wq * vec2(0.3, 1.2) + 7.0).g;
         streak = smoothstep(0.76, 0.93, s1) * smoothstep(0.45, 0.75, s2) * smoothstep(0.3, 0.8, uSeaS) * 0.2 * (1.0 - far0) * smoothstep(2.0, 6.0, d);
+        // spindrift: dense streaks of blown foam laid along the wind, and old foam lying in broad patches; far off the
+        // whole sea goes grey-white with it
+        if (st > 0.0) {
+          // (in drifting bands ~200 u across, broken along their length: no ruled lattice)
+          float sd2 = nz(vec2(wq.x * 0.07, wq.y * 0.9) + vec2(time * 0.12, 0.0)).r, band = smoothstep(0.35, 0.7, s1);   // (s1: the long streak field, reused)
+          float spin = smoothstep(mix(0.9, 0.68, st), 0.97, sd2) * smoothstep(0.3, 0.7, s2) * band * (0.3 + 0.3 * st);
+          float oldF = smoothstep(0.55, 0.8, s1) * 0.3 * st;
+          streak = max(streak, max(spin, oldF) * mix(1.0, 0.5, far0) * smoothstep(2.0, 6.0, d));
+        }
       }
-      col = mix(col, cFoam, max(capF * 0.9, streak));
+      streak += 0.12 * uSeaStorm * far0;   // far off a storm sea is grey-white with blown foam
+      // a storm sea: greyer and darker, the light gone out of it
+      col = mix(col, vec3(dot(col, vec3(0.3, 0.55, 0.15))) * vec3(0.82, 0.9, 0.92), 0.55 * uSeaStorm);
+      col = mix(col, cFoam, min(1.0, max(capF * 0.9, streak)));
       alpha = max(alpha, capF * 0.85);
       // over the shallows only (most of the screen is deep water: a coherent branch): caustics, the swash line, the
       // breathing ring and the surf
@@ -207,12 +224,13 @@ window.WW = window.WW || {};
       // warm sun-glitter path toward the low sun: a soft sheen plus fine sparkles on a rippled normal
       // (the ripples ride the sea's own normal: the glitter runs along the swell; in a calm the sheen is a mirror)
       float calm = 1.0 - smoothstep(0.05, 0.35, uSeaS);
-      if (glit.z > 0.0) {
+      if (glit.z > 0.0 && vRes > -0.5) {
         vec2 rip = (nz(vWorld.xz * 1.4 + time * vec2(0.35, -0.3)).ra - 0.5) * mix(1.0, 0.45, calm);
         vec3 nrm = normalize(n + vec3(rip.x * 0.35, 0.0, rip.y * 0.35));
         float rs = max(dot(reflect(-v, nrm), sunDir), 0.0);
         float sheen = pow(max(dot(reflect(-v, n), sunDir), 0.0), mix(18.0, 40.0, calm)) * (1.0 + 1.5 * calm);
-        col += sunCol * (sheen * glit.x + pow(rs, glit.y) * glit.z) * smoothstep(1.0, 4.0, d) * (1.0 - foam);   // glit: day (0.1, 420, 0.35); the moon path is wider
+        col += sunCol * (sheen * glit.x + pow(rs, glit.y) * glit.z * (1.0 - smoothstep(3.0, 12.0, fp))) *   // (no sparkle on the far rim: it aliased into a row of dashes)
+           smoothstep(1.0, 4.0, d) * (1.0 - foam);   // glit: day (0.1, 420, 0.35); the moon path is wider
       }
       float fr = pow(1.0 - clamp(mix(v.y, dot(v, n), 0.7), 0.0, 1.0), 4.0);
       // the horizon colour depends on where we look: peach toward the sun, soft blue away from it
@@ -225,13 +243,14 @@ window.WW = window.WW || {};
       #include <tonemapping_fragment>
       #include <encodings_fragment>
       #ifdef USE_FOG
-        // (the haze takes the far sea only part way: the sea stays a darker band right out to the horizon line, and
-        // what floats on it far off sits on water, not in a pale band of sky)
-        float fogF = smoothstep(fogNear, fogFar, vFogDepth) * 0.6;
+        // (the haze takes the sea only part way out to the fog's far distance, 0.6: what floats there sits on water,
+        // not in a pale band of sky; beyond it the haze keeps thickening, smoothly, to the sky's own horizon colour at
+        // the grid's rim / skirt, so the sea meets the sky with no seam and no flat band of capped fog)
+        float fogF = smoothstep(fogNear, fogFar, vFogDepth) * 0.6 + smoothstep(fogFar * 0.6, min(${R_MAX.toFixed(1)}, fogFar * 2.1), vFogDepth) * 0.4;
         gl_FragColor.rgb = mix(gl_FragColor.rgb, hz, fogF);
       #endif
       // the moon's path (night, moonPath > 0): a column of glittering ripples under the moon, out to the horizon
-      if (moonPath > 0.0) {
+      if (moonPath > 0.0 && vRes > -0.5) {
         vec2 vd = normalize(vWorld.xz - cameraPosition.xz), md = normalize(sunDir.xz);
         float col0 = exp(-(1.0 - dot(vd, md)) * 130.0) * smoothstep(-0.2, 0.6, dot(vd, md));
         if (col0 > 0.002) {

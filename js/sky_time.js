@@ -88,13 +88,15 @@ window.WW = window.WW || {};
     const az = D ? D.sunAz : Math.atan2(0.36, -0.86);
     // weather near what the camera looks at (smoothed, so a cut does not pop the fog)
     let cov = 0;
-    if (WW.weather && WW.weather.cells.length && WW.camera) {
+    const Wx = WW.weather;
+    if (Wx && (Wx.cells.length || Wx.rainAll) && WW.camera) {   // rain only (an overcast deck is the grey sky below, not fog)
       const tg = WW.cam && WW.cam.target ? WW.cam.target() : null;
-      cov = Math.max(WW.weather.cover(WW.camera.position.x, WW.camera.position.z) * 0.8, tg ? WW.weather.cover(tg.x, tg.z) : 0);
+      cov = Math.max(Wx.rain(WW.camera.position.x, WW.camera.position.z) * 0.8, tg ? Wx.rain(tg.x, tg.z) : 0);
     }
     // a scenario's overcast (Normandy: the grey morning of 6 June 1944) greys and dims it as a light rain would, with
     // its haze thinner than a squall's (wr: the fog distance)
-    const oc = (WW.scn && WW.scn().overcast) || 0;
+    // the round's own grey sky (weather.js: overcast, thunderstorm, typhoon) the same way
+    const oc = Math.max((WW.scn && WW.scn().overcast) || 0, Wx ? Wx.overcast * 0.7 : 0);
     wx += (Math.max(cov, oc) - wx) * Math.min(1, (rdt || 0.016) * 1.5);
     const wr = Math.max(0, wx - oc) + oc * 0.45;
     const dim = 1 - 0.35 * wx;
@@ -148,6 +150,7 @@ window.WW = window.WW || {};
       for (let j = 0; j < 4; j++) { const c = cells[j]; if (c) wu.rainC.value[j].set(c.x, c.z, c.r, c.dens); else wu.rainC.value[j].set(0, 0, 0, 0); }
     }
     if (oc > 0) overcast(P, Math.min(1, oc / 0.7), u, wu);
+    storm(P, Wx, cov, rdt, wu);
     // bloom: night, and a warm glow round a low sun (none behind an overcast; and a greyer grade under it)
     const golden = E > -3 ? WW.clamp((12 - E) / 10, 0, 1) : 0;
     if (WW.post && WW.post.setNight) {
@@ -193,6 +196,33 @@ window.WW = window.WW || {};
       if (fog) { wu.hzAway.value.copy(fog.color); wu.hzSun.value.copy(fog.color).lerp(u.sunSide.value, 0.35); }
       L('glit', wu.sunCol.value); wu.moonPath.value *= 1 - g; wu.glit.value.set(0.05, 420, 0.12);
     }
+  }
+  // The round's weather on top (weather.js; visual): fewer fair-weather cumulus on a clear day, every one of them on a
+  // cumulus day; under a thunderstorm or a typhoon a darker light, the rain's fog closing in again after the overcast's
+  // haze (overcast() sets the fog for the deck alone), lightning (weather_fx.js flash) and, in a typhoon, rain on the
+  // sea everywhere round the camera (water.js rainC's last slot).
+  let rn = 0;
+  function storm(P, Wx, cov, rdt, wu) {
+    if (!Wx) return;
+    rn += (cov - rn) * Math.min(1, (rdt || 0.016) * 1.5);
+    const kind = Wx.kind, heavy = kind === 'thunder' || kind === 'typhoon';
+    if (P.clouds && P.clouds.visible) { const ch = P.clouds.children; for (let i = 0; i < ch.length; i++) ch[i].visible = kind !== 'clear' || i % 3 !== 0; }
+    if (heavy) {
+      const k = kind === 'typhoon' ? 0.6 : 0.72;
+      P.sun.intensity *= k; P.hemi.intensity *= k + 0.1;
+      const fog = WW.scene.fog;
+      if (fog && Wx.overcast > 0 && rn > 0.01) {
+        fog.near *= 1 - 0.85 * rn; fog.far *= 1 - 0.7 * rn;
+        if (kind === 'typhoon') {   // driving rain and spume: under a kilometre (~100 u) at sea level, a little more from high up
+          const hy = WW.camera ? WW.clamp(WW.camera.position.y, 0, 900) : 0, k = Math.min(1, rn / 0.6);
+          fog.near = WW.lerp(fog.near, 10 + hy * 0.5, k); fog.far = WW.lerp(fog.far, 240 + hy * 2.2, k);
+        }
+        if (WW.scene.background && WW.scene.background.isColor) WW.scene.background.copy(fog.color);
+      }
+    }
+    const fl = WW.weatherFx && WW.weatherFx.flash ? WW.weatherFx.flash() : 0;
+    if (fl > 0) { P.hemi.intensity += 1.6 * fl; P.dome.material.uniforms.zenith.value.offsetHSL(0, -0.1 * fl, 0.25 * fl); }
+    if (wu && Wx.rainAll > 0 && WW.camera) wu.rainC.value[3].set(WW.camera.position.x, WW.camera.position.z, 6000, Wx.rainAll);
   }
   // a toon land material (white: its vertex colours carry the albedo)
   function addLand(m) { if (!LAND.includes(m)) LAND.push(m); return m; }

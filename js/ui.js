@@ -111,6 +111,28 @@ window.WW = window.WW || {};
     el.todIn.addEventListener('input', () => setTod(el.todIn.value / 4));
     el.todIn.addEventListener('dblclick', () => setTod(null));
     el.todIn.addEventListener('keydown', e => e.stopPropagation()); // arrow keys move the slider, not the camera
+    // the weather and the wind (weather.js preview): Random shows the roll; the menu picks a kind, the slider a force
+    el.wx = $('div', 'row small tod wx', el.setup);
+    el.wxLbl = $('span', 'todlbl', el.wx);
+    el.wxSel = $('select', 'wxsel', el.wx);
+    [['', 'Random weather'], ['clear', 'Clear'], ['cumulus', 'Scattered cloud'], ['overcast', 'Overcast'], ['scatter', 'Squalls'], ['line', 'Squall line'], ['thunder', 'Thunderstorm'], ['typhoon', 'Typhoon']]
+      .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; el.wxSel.appendChild(o); });
+    el.wxSel.title = 'Weather';
+    el.wxSel.addEventListener('change', () => setWx(el.wxSel.value || null, null));
+    el.wxSel.addEventListener('keydown', e => e.stopPropagation());
+    el.wind = $('div', 'row small tod wind', el.setup);
+    el.windLbl = $('span', 'todlbl', el.wind);
+    el.windIn = $('input', 'vol tod', el.wind);
+    Object.assign(el.windIn, { type: 'range', min: 0, max: 12, step: 1, title: 'Wind force, Beaufort (double-click: random)' });
+    el.windRnd = btn(el.wind, 'Random', () => setWx(undefined, null));
+    el.windRnd.title = 'A random wind for the weather';
+    el.windIn.addEventListener('input', () => setWx(undefined, +el.windIn.value));
+    el.windIn.addEventListener('dblclick', () => setWx(undefined, null));
+    el.windIn.addEventListener('keydown', e => e.stopPropagation());
+    try {
+      const k = localStorage.getItem('ww.wxKind'), w = localStorage.getItem('ww.wxWind');
+      if (WW.weather) { if (k) WW.weather.userKind = k; if (w !== null && w !== '') WW.weather.userBf = +w; }
+    } catch (e) { /* storage blocked */ }
     try { const v = localStorage.getItem('ww.todHour'); if (v !== null && v !== '' && WW.dayNight) WW.dayNight.setUserHour(+v); } catch (e) { /* storage blocked */ }
     el.msg = $('div', 'msg', root);
 
@@ -118,6 +140,8 @@ window.WW = window.WW || {};
     el.cap = el.film.querySelector('.caption');
     el.capMain = el.cap.querySelector('.main'); el.capSub = el.cap.querySelector('.sub');
     WW.on('roundStart', () => { s0 = Object.assign({}, WW.stats); hudPeek = false; });
+    // a ship foundered in the typhoon (weather.js)
+    WW.on('swamped', e => { const s = e && e.ship; if (!s || WW.simOnly) return; const D = WW.diary; caption((D && D.nameOf ? D.nameOf(s) : s.type) + ' foundered in the ' + (e.kind === 'typhoon' ? 'typhoon' : 'storm'), 'Rolled over by the sea, beam-on in the trough', 5, false); });
     WW.on('setupStart', () => { capEnd = 0; el.cap.classList.remove('on'); setTimeout(baseLabel, 0); });
     WW.on('victory', d => {
       const a = d.winner && WW.admirals && WW.admirals.of(d.winner), sub = d.reason === 'retire' && d.loser ? d.loser + ' fleet retires' : lossLine();
@@ -151,6 +175,33 @@ window.WW = window.WW || {};
     D.setUserHour(h);
     try { if (D.userHour == null) localStorage.removeItem('ww.todHour'); else localStorage.setItem('ww.todHour', String(D.userHour)); } catch (e) { /* storage blocked */ }
     todLine();
+  }
+  // k: a kind / null (random) / undefined (unchanged); bf: a force / null (random). A new kind resets the wind to random.
+  function setWx(k, bf) {
+    const W = WW.weather; if (!W) return;
+    if (k !== undefined) { W.userKind = k || null; W.userBf = null; } else W.userBf = bf;
+    W.setUserKind(W.userKind);
+    try {
+      if (W.userKind) localStorage.setItem('ww.wxKind', W.userKind); else localStorage.removeItem('ww.wxKind');
+      if (W.userBf == null) localStorage.removeItem('ww.wxWind'); else localStorage.setItem('ww.wxWind', String(W.userBf));
+    } catch (e) { /* storage blocked */ }
+    wxLine();
+  }
+  const WX_WORD = { clear: 'Clear', cumulus: 'Scattered cloud', overcast: 'Overcast', scatter: 'Squalls', line: 'Squall line', thunder: 'Thunderstorm', typhoon: 'Typhoon' };
+  function wxLine() {
+    const W = WW.weather, o = W && W.preview && W.preview();
+    if (!el.wx) return;
+    el.wx.style.display = el.wind.style.display = o ? '' : 'none';
+    if (!o) return;
+    const bf = Math.round(o.bf), sea = W.seaOf(o.bf, o.kind);
+    const t1 = (WX_WORD[o.kind] || o.kind) + (o.random ? ' (random)' : ''), t2 = 'Wind F' + bf + ' \u00b7 ' + W.BF_NAME[bf] + ', sea ' + Math.round(sea.douglas);
+    if (el.wxLbl.textContent !== t1) el.wxLbl.textContent = t1;
+    if (el.windLbl.textContent !== t2) el.windLbl.textContent = t2;
+    const sv = W.userKind || '';
+    if (el.wxSel.value !== sv && document.activeElement !== el.wxSel) el.wxSel.value = sv;
+    if (o.windRandom || document.activeElement !== el.windIn) el.windIn.value = bf;
+    el.windIn.classList.toggle('rnd', o.windRandom);
+    el.windRnd.classList.toggle('on', o.windRandom);
   }
   const KIND_WORD = { dawn: 'dawn', day: 'day', dusk: 'dusk', night: 'night' };
   function todLine() {
@@ -242,7 +293,7 @@ window.WW = window.WW || {};
     respawnSetup(); // clearAll + respawn the remaining composition
   }
   function respawnSetup() { WW.game.enterSetup(false); }
-  function randomizeFleets() { WW.game.composition = WW.game.randomComposition(); if (WW.dayNight && WW.dayNight.rerollPreview) WW.dayNight.rerollPreview(); respawnSetup(); }
+  function randomizeFleets() { WW.game.composition = WW.game.randomComposition(); if (WW.dayNight && WW.dayNight.rerollPreview) WW.dayNight.rerollPreview(); if (WW.weather && WW.weather.rerollPreview) WW.weather.rerollPreview(); respawnSetup(); }
   function clearFleets() { WW.game.composition = []; WW.game.custom = true; respawnSetup(); }
   // a new map with new random fleets, placed and waiting (auto mode: the next battle starts at once)
   function newRound() {
@@ -279,6 +330,7 @@ window.WW = window.WW || {};
     WW.game.baseChoice = baseNow(); // the base the ready screen shows
     if (WW.admirals) WW.admirals.startFromPreview(); // the admirals shown on the panel
     if (WW.dayNight && WW.dayNight.startFromPreview) WW.dayNight.startFromPreview(); // and the start time it shows
+    if (WW.weather && WW.weather.startFromPreview) WW.weather.startFromPreview(); // and the weather
     WW.game.startRound({ keepMap: true });
   }
 
@@ -319,7 +371,7 @@ window.WW = window.WW || {};
         el.base.style.display = WW.scn().base ? 'none' : '';
       }
     }
-    if (inSetup) todLine(); // every frame: the label follows ships placed / removed and the slider live
+    if (inSetup) { todLine(); wxLine(); } // every frame: the label follows ships placed / removed and the slider live
     // HUD shows in setup; in battle it fades away (H shows it again). Infinite: the corner stays (even in fullscreen) until idle.
     const idle = g.infinite && performance.now() - lastInput > IDLE_HIDE;
     if (idle) hudPeek = false;
