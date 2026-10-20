@@ -365,3 +365,112 @@ flying boat's tail, under the swiftshader step budget's uneven 2-4 steps a frame
 
 Frame strip: docs/flyingboat_jitter_sheet.png (a PBY chase in the director slow motion, 8 consecutive 60 Hz frames, main above:
 the plane bobs against the red cross-hair every other frame; the branch below: steady).
+
+# camera6: the biggest action, sampled every second (2026-10-19/20)
+
+User: "I was watching a torpedo bomber returning home while I saw a caption that said Enterprise was hit by a torpedo.
+Sample the lookahead camera at multiple points and check what the camera is outputting versus what is actually the
+biggest action in that second." Brief: briefs/camera6_tune.md (plus: a lot more camera tests, surface actions as arcs,
+dive-bombing angles, the true-speed clock).
+
+## Tools
+- tests/camera_audit.js: the oracle now weighs the class at stake on the director's own scale (CV 3, BB 1.8, CA 1.3, DD 0.9;
+  a carrier torpedoed scores 11 and ranks top), a sinking is worth most as she goes and less as she settles (a destroyer
+  going down stays under 8), a torpedo plane's "run" that has gone 30 sim s without a drop is not an attack. BB-BE (battleship
+  hits in frame) next to CV-BE. `--misses`: every CV / BB big event not in frame with the shot, the story phase and the arc
+  running then; the spells where the oracle's top action (>= 8) was off camera, ranked by the weight missed; the captions
+  naming a CV / BB hit whose hit was not in frame. DIVES: per filmed dive (one that ends in a release), the target in frame,
+  the bomber in frame and its size, side-on (60-120 deg to the flight path), flat (looking down < 15 deg), line-of-action
+  flips (only while the bomber -> ship line is long enough to have a side), the bomb's impact in frame. Per second it also
+  logs the sim's context (strike planes flying home, dives going in, the free camera), ship torpedo spreads and their hits.
+  `--scale N` runs at game speed N (1, 4). `--sheet` replays at that speed.
+- tests/camera_cases.js (new): scripted pass / fail cases on real rounds (the sim is deterministic per seed and the camera
+  never writes it, so each case's event happens at the same sim time whatever the camera does): the user's case (a carrier
+  torpedoed while a strike flies home, hit AND the frame 1 s before), two carriers struck within 5 s, a carrier hit while a dive
+  goes in elsewhere, a magazine, a sinking, the protagonist shot down (held to the water), a night torpedo hit, a PT boat's
+  hit, a submarine's hit, a gun duel's shell hits, a destroyer's torpedo attack from the run-in to the hit, dive angles (SBD
+  and Val, on a carrier, on a small ship, at low sun), dead air (no cut storm, no snaps), hits in the first 2 s of a shot, a
+  manual pan let go. `--mine DIR` finds rounds for each case in a survey; `--sheets` makes a contact sheet of every failed
+  case. `npm run test:camera` = the cases plus a short survey held to thresholds (CV-BE >= 90%, BB-BE >= 75%, M3 >= 40%,
+  <= 8.5 cuts/min, dead air <= 12%). Needs BASE_URL (a snapshot server) and CHROMIUM like the other browser tests.
+
+## What the survey found (main, standard / carrier_duel / midway, seeds 1-12)
+Every carrier / battleship hit the camera missed was KNOWN 7-15 s ahead (the look-ahead had it): the director was
+committed elsewhere. The miss classes, by weight:
+1. **Filler stories held the camera**: CAP fights (air:cap 40% of the camera time), flying-boat snoopers and Dumbo rescues are
+   camera4 picks made when nothing was planned within 12 s; once begun they were committed arcs that only a carrier strike
+   window could break, so a battleship bombed, a ship sinking, a gun duel went unfilmed.
+2. **A stuck attack lock**: a torpedo plane on a "run" that never dropped (jockeying for a destroyer's beam) held ONE shot
+   for 190 s while a carrier sank (the run lock had no end).
+3. **The flight home**: a strike story whose lead turned for home without having attacked (an aborted run, its wave cut up)
+   flew home; the story's "ships" cutaway then filmed the carrier home while the target sank (the user's case).
+4. **No battleship priority**: only carriers broke into arcs, skipped the establishing shot, or got a late brace.
+5. **The brace occluded**: in a gun duel the shooter (another battleship) moved in front of the target's waterline during the
+   brace (BE "hull" misses).
+6. **Hand-off away from the hit**: a brace on a destroyer followed HER OWN outgoing spread (the torpedo hand-off) and missed
+   the torpedo hitting her; an arc's end cut to the establishing shot on the very hit it was braced for.
+7. **Dives**: the dive chase sat 16 u back on the flight path, composed on a point 30% toward the ship: in the push-over it
+   looked level (the ship out of the 38 deg frame), in the dive straight down at the deck with the bomber a speck or gone (in
+   frame 44% of dive frames); the story's over-the-shoulder on its own diver never showed the bomber.
+8. Ship torpedo attacks opened 16 s before the HIT, after the spread had left: the run-in was on camera 0 s of the 25 before
+   the spread in most hits.
+
+## What changed (camera / lookahead code only; the sim is untouched)
+- camera_lookahead.js: **the big impact guard**: whatever runs, a carrier hit (any weapon) or a battleship hit by bomb /
+  torpedo / heavy shell, a magazine or a sinking due in 1-8 real s gets the brace on her, unless the impact point is already in
+  frame within 380 u, or the shot is the last seconds of an attack (a carrier struck still breaks an attack on a smaller ship;
+  a battleship hit does not break the protagonist's fall). Inside a story it is an insert (the story resumes). **Filler
+  stories give way**: a story nobody planned that is not a strike yields to any planned arc whose window opens, in any phase.
+  **Ship torpedo arcs open on the run-in** (16 s before the spread). **Cripples finished off**: a ship that sinks within the
+  horizon with no arc leading to it gets an arc from her point of view. sim2real reads WW.time.base. prefer(spec) for the
+  after-battle reel (highlights): the clip's items x4 and carrier priority; while set the guard, the director's braces and
+  the event interrupts keep to the clip's ship.
+- camera_lock.js: a torpedo run is held only when its drop (or its fall) is due within 24 real s (look-ahead), else 30 s.
+- camera_story.js: with the look-ahead a strike turned for home ends (attack or not); the "ships" cutaway prefers the
+  target going down to the carrier home; a filler story waits while a surface action is on; the dive cue reframes the
+  over-the-shoulder on the diver to the dive chase (also the protagonist's own push-over after a wingman's); no ots on a
+  diver; the fall shot is held to the water at any clock (FALL_CAP 32 s).
+- camera_story_shots.js: the dive chase on the ship -> bomber line, 11 u past the bomber and 4 to the side (eased): the ship
+  below at the composition point, the bomber big above it with its brakes out, from the push-over to the release.
+- camera_director.js: the brace re-poses (at most 3 times) when the impact point is hidden from it; a ship arc does not end
+  while its brace waits for the hit; no establishing shot when a battleship hit is due in 9 s.
+- camera_action.js: no torpedo hand-off from a brace still waiting for the hit on its ship.
+- camera_finder.js: the measured rate is seeded from WW.time.base x the game speed.
+
+## Clocks
+Before speedcal 1x was 0.5 sim s per real s; now (main) 0.3057 (true speed; a round ~39 min real). The camera's real-time
+constants: LEAD_AIR [10, 34, 48] and LEAD_SHIP [5, 16, 24] real s before a climax, the brace LEAD [1.2, 9], the climax
+insert window 1.5-7 s, the hold 3.5 s, TAIL 12 s, MAXB 16 s, the guard window 1-8 s, the run lock 24 s: all real s by design
+(a shot's length is a viewer's attention, not sim action), converted from sim s through camFinder's measured rate (now
+seeded from WW.time.base) or sim2real (WW.time.base). Sim-time constants: HORIZON 75 sim s (150 real s at 0.5, 245 at 0.31),
+EV_MAX 40 sim s. One real-time constant broke at the slower clock: FALL_MAX 14 s no longer covered a fall from a dive's
+height, so the fall shot is now held to the water (FALL_CAP 32 s).
+
+## Results
+Same 6 rounds (standard + carrier_duel seeds 1-3, 700 sim s, the true-speed clock), main vs camera6
+(raw: scratchpad camera6/audit/raw_i_base, raw_i_new2):
+| metric | main | camera6 |
+|---|---|---|
+| CV-BE (carrier hit / deck / magazine / sinking in frame) | 100% of 24 | 100% of 24 |
+| BB-BE (battleship hit / sinking in frame) | 58% of 40 | **93%** of 40 |
+| M3 the oracle's top action on screen (top-3) | 43% (56%) | **49%** (61%) |
+| dead air | 10% | 8% |
+| cuts / min (recuts / min) | 6.4 (0.98) | 6.6 (1.17) |
+| arc completeness / time in arcs | 57% / 77% | 55% / 68% |
+| dives: target in frame / bomber in frame / side-on / flat / flips / impact in frame | 99% / 44% / 9% / 0% / 2 / 100% | 100% / **91%** / 18% / 3% / 0 / 100% |
+
+On main before the true-speed clock (0.5 sim s per real s), 27 rounds of standard / carrier_duel / midway, the same rounds
+compared: CV-BE 94% (91 / 97) -> 98% (94 / 96), BB-BE 80% (85 / 106) -> 91% (97 / 107).
+
+Broad survey of camera6 at the true-speed clock (one pass at the end): standard / carrier_duel / midway seeds 1-12 at 1x
+(36 rounds): CV-BE 97% of 152, BB-BE 91% of 184, M3 46% (57%), dead air 7%, 6.6 cuts / min, dives 105: target 99%,
+bomber 81%, impact in frame 99%. battle_line, night, night_cv, night_bl, dusk, carrier_duel_dusk, midway_dusk, odd,
+pt_raid, sub_raid seeds 1-4 at 1x (40 rounds): CV-BE 100% of 42, BB-BE 93% of 405, M3 64%, dead air 3%, 6.1 cuts / min.
+The main three seeds 1-4 at 4x (12): CV-BE 91% of 43, BB-BE 91% of 56, 8.2 cuts / min. The others seeds 1-2 at 4x (20):
+CV-BE 100% of 27, BB-BE 88% of 130. (The dive-chase and dive-cue changes came after the broad pass; the dive numbers above
+are from the 6-round re-run.)
+
+camera_cases: 18 / 18 pass. `npm run test:camera` (the 7 quick cases + 2 rounds at 4x): ~4 min, PASS.
+Left: the 4x main rounds' CV-BE (91%: at 4x a carrier hit 8 real s ahead is 2 sim s ahead, short for a cut and a pose);
+the remaining battleship misses are mostly two battleships trading salvos (a brace on one, the other's hit behind it or out
+of frame); side-on frames in the push-over (the bomber still level as the camera already looks down the line to the ship).

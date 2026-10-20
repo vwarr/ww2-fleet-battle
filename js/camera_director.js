@@ -145,7 +145,7 @@ window.WW = window.WW || {};
   // The arc picker, the arcs' climaxes and the brace candidates read ONLY this list, so another source (a look-ahead
   // sim's event log) can replace forecast() behind it.
   function events() {
-    if (WW.camLook && WW.camLook.active()) return WW.camLook.events().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
+    if (WW.camLook && WW.camLook.active()) return WW.camLook.events().filter(e => WW.camLook.prefOk(e.s)).map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
       x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));   // camera5: the look-ahead's known future (camera_lookahead.js)
     return forecast().map(e => ({ t: e.etaReal, tLast: e.lastReal, kind: e.kind, subject: (e.src && e.src.obj) || null, target: e.s,
       x: e.s.x + e.ox, z: e.s.z + e.oz, weight: e.raw, kill: !!e.kill, _f: e }));
@@ -153,8 +153,9 @@ window.WW = window.WW || {};
   // the candidates (camera.js candidates(), WW.camHooks): a brace on each ship with an impact due
   (WW.camHooks = WW.camHooks || []).push(add => {
     if (!(WW.game && WW.game.state === 'battle') || (WW.camNormandy && WW.camNormandy.on())) return;
+    const pk = WW.camLook && WW.camLook.prefOk;   // (the after-battle reel: braces on its clip's ship only)
     for (const v of events()) {
-      if (v.t > 30) continue;
+      if (v.t > 30 || (pk && !pk(v.target))) continue;
       const e = v._f;
       add(e.pr, 'brace', v.target, { ev: e, hold: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 14), why: v.kind, label: labelOf(e) });
     }
@@ -203,6 +204,7 @@ window.WW = window.WW || {};
   // ---------- the brace shot ----------
   function fillR(len, f) { const c = WW.camera; return len / (f * 2 * Math.tan(c.fov * Math.PI / 360) * c.aspect); }
   const _P = { x: 0, y: 0, z: 0 }, _L = { x: 0, y: 0, z: 0 };
+  const _ip = { x: 0, y: 0, z: 0, obj: null }, _dp = { x: 0, y: 0, z: 0, obj: null };
   function bracePts(s, e) {
     const L = s.stats.length, h = s.heading || 0, fx = Math.cos(h), fz = Math.sin(h), top = (TOP[s.type] || 4) * 0.6;
     const pts = [{ x: s.x + fx * L * 0.45, y: top, z: s.z + fz * L * 0.45, w: 1, need: true, obj: s }, { x: s.x - fx * L * 0.45, y: top, z: s.z - fz * L * 0.45, w: 1, need: true, obj: s },
@@ -224,10 +226,14 @@ window.WW = window.WW || {};
     const side0 = Math.sign(Math.cos(th) * (cam.z - s.z) - Math.sin(th) * (cam.x - s.x)) || 1;   // the side of the source -> target line the camera is on
     const pts = bracePts(s, e), look = braceLook(s, e, _L), high = e.kind === 'dive' || e.kind === 'bomb';
     let best = null;
+    const so = e.src && e.src.obj, duelSrc = so && so.stats && !so.removed && WW.dist(so.x, so.z, s.x, s.z) < 320 ? so : null;
     for (const dd of [55, 80, 105, 135, 160]) for (const sd of [1, -1]) for (const R of [fillR(len, 0.6) + 6, fillR(len, 0.42) + 8]) for (const hk of high ? [0.08, 0.2] : [0.12, 0.26]) {
       const az = th + sd * dd * Math.PI / 180;
       _P.x = s.x + Math.cos(az) * R; _P.z = s.z + Math.sin(az) * R; _P.y = Math.max(3.5, R * hk + 2);
       let sc = frameCheck(_P, look, pts, s);
+      // (camera6: a ship trading hits with her (a gun duel, two destroyers' spreads): her waterline must not hide the
+      // other's, whose hits come next; the survey's battleship duels braced over one hull with the other's hits behind it)
+      if (duelSrc) { _dp.x = duelSrc.x; _dp.y = 2; _dp.z = duelSrc.z; _dp.obj = duelSrc; if (!sight(_P, _dp, null)) sc -= 2.5; }
       if (sd === side0) sc += 0.8;                              // no flip across the line of action
       sc += 1.5 * Math.abs(Math.sin(az - (s.heading || 0)));    // the hull broadside, not bow-on (a small ship reads)
       if (depth(_P.x, _P.z) < 2) sc -= 3;                        // over the shoals: keepSane would lift it
@@ -245,8 +251,20 @@ window.WW = window.WW || {};
     const e = (s.alive || s.sinking) ? forecastFor(s) : null;
     if (e && shot.t < MAXB) { shot.ev = e; shot.doneAt = undefined; shot.dur = Math.max(shot.dur, Math.min(shot.t + e.lastReal + BEAT, MAXB + BEAT)); }
     else if (shot.doneAt === undefined) { shot.doneAt = shot.t; shot.dur = shot.t + BEAT; }   // the last impact (or MAXB s of them): the beat, then free
-    const P = shot.pose, a = P.az + 0.02 * shot.side * shot.t;   // a slow drift round the ship
+    let P = shot.pose, a = P.az + 0.02 * shot.side * shot.t;   // a slow drift round the ship
     gP.set(s.x + Math.cos(a) * P.R, P.y, s.z + Math.sin(a) * P.R);
+    // camera6: the impact point hidden from the pose (the ships moved since the pose was chosen; the survey found the
+    // shooter of a gun duel in front of the target's waterline at the hit): choose the pose again (at most 3 times)
+    if (shot.ev && (shot.reposeT = (shot.reposeT || 0) - (rdt || 0)) <= 0) {
+      shot.reposeT = 0.4;
+      _ip.x = s.x + shot.ev.ox; _ip.y = 2; _ip.z = s.z + shot.ev.oz; _ip.obj = s;
+      const cp = WW.camera && WW.camera.position;   // (the goal, or where the eased camera actually is: either hidden)
+      if ((!sight(gP, _ip, s) || (cp && shot.t > 1 && !sight(cp, _ip, s))) && (shot.reposes || 0) < 4 && shot.doneAt === undefined) {
+        shot.reposes = (shot.reposes || 0) + 1; ST.reposes = (ST.reposes || 0) + 1;
+        start(shot); P = shot.pose; a = P.az + 0.02 * shot.side * shot.t;
+        gP.set(s.x + Math.cos(a) * P.R, P.y, s.z + Math.sin(a) * P.R);
+      }
+    }
     braceLook(s, shot.ev, gL);
     shot.aim = (shot.aim || V3()).set(s.x + shot.ev.ox * 0.5, 2, s.z + shot.ev.oz * 0.5);
     return true;
@@ -437,7 +455,8 @@ window.WW = window.WW || {};
       else if (now - sa.act > 12 || now - sa.t0 > 75) sa.endAt = now;
     }
     const L = shot && WW.camLock && WW.camLock.state(shot);
-    if (sa.endAt && now >= sa.endAt && !(shot && (shot.stage || (L && L.release)))) {
+    // (camera6: nor while a brace still waits for its impact: the arc's end cut to the establishing shot on the hit)
+    if (sa.endAt && now >= sa.endAt && !(shot && (shot.stage || (L && L.release) || (shot.kind === 'brace' && shot.doneAt === undefined)))) {
       const out = s.alive || s.sinking ? 'complete' : 'protagonistDown';
       closeShipArc(out);
       if (shot && !shot.interrupt) shot.dur = Math.min(shot.dur, shot.t + 0.4);   // a wide establishing shot next (pickShot)
@@ -545,8 +564,8 @@ window.WW = window.WW || {};
     if (sa) { const c = arcShot(); if (c) return c; closeShipArc('complete'); }
     if (wideNext) {
       wideNext = false;
-      // (camera5: a carrier hit known to land within 9 s: no establishing shot first, the brace on her)
-      if (WW.camLook && WW.camLook.active()) for (const v of events()) if (v.target && v.target.type === 'carrier' && v.t > 1.5 && v.t < 9) { const e = v._f; return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) }; }
+      // (camera5: a carrier hit known to land within 9 s: no establishing shot first, the brace on her; camera6: a battleship too)
+      if (WW.camLook && WW.camLook.active()) for (const v of events()) if (v.target && (v.target.type === 'carrier' || v.target.type === 'battleship') && v.t > 1.5 && v.t < 9) { const e = v._f; return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) }; }
       return { kind: 'wide', dur: 6 + Math.random() * 2, pr: 2 };
     }
     return null;

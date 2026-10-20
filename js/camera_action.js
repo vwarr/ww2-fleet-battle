@@ -82,7 +82,9 @@ window.WW = window.WW || {};
         P0: cur.P.clone(), L0: cur.L.clone() });
       handFrom(shot);
     } else if (ev.kind === 'torpedo') {
-      const ship = ev.plane && ev.plane.stats && ev.plane === shot.subj && !shot.story ? ev.plane : null;   // camera4: the filmed ship's own spread (a destroyer charge)
+      // camera4: the filmed ship's own spread (a destroyer charge); camera6: not from a brace still waiting for the hit on
+      // her (two destroyers trading spreads: the hand-off followed her torpedo away and missed the one that hit her)
+      const ship = ev.plane && ev.plane.stats && ev.plane === shot.subj && !shot.story && !(shot.kind === 'brace' && shot.doneAt === undefined) ? ev.plane : null;
       if (!ship && (!ev.plane || !ev.plane.kind || !mineOrWing(ev, shot))) return; // torpedo bombers (ships have no .kind), or the filmed ship
       const h = p.h, f = V().set(Math.cos(h), 0, Math.sin(h));
       const off = V().copy(cur.P).sub(V().set(p.x, 0, p.z));   // start from where the camera is: no jump
