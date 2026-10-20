@@ -61,7 +61,7 @@ window.WW = window.WW || {};
       wing: { qc: 0.36, y: -0.17, root: 0.96, tip: 0.0, semi: 1.42, z0: 0.2, dih: 0.1, sweep: 0.0, tip_: 'ellipse', t: 0.16 },
       tail: { qc: -0.96, y: 0.1, root: 0.42, tip: 0.2, semi: 0.62, tip_: 'round' },
       fin: { qc: -1.0, y: 0.1, root: 0.62, tip: 0.22, semi: 0.52, tip_: 'round' },
-      brakes: 'slat', bomb: true, spats: true, prop: 0.52 },
+      brakes: 'slat', bomb: true, prop: 0.52 },
     'torpedo|IJN': { name: 'B5N Kate', cowlX: 0.86, exhX: 0.8,
       body: [[-1.3, 0.03, 0.05, 0.12], [-0.95, 0.1, 0.14, 0.09], [-0.3, 0.2, 0.25, 0.05], [0.3, 0.25, 0.28, 0.02], [0.82, 0.28, 0.29, 0], [1.16, 0.27, 0.27, 0], [1.26, 0.23, 0.23, 0]],
       canopy: { x0: -0.78, x1: 0.64, w: 0.13, h: 0.19, frames: 6 },
@@ -287,15 +287,10 @@ window.WW = window.WW || {};
     meshOf(b, surface(T.tail, 1, P, 0.05, true)); meshOf(b, surface(T.tail, -1, P, 0.05, true));
     var fin = surface(Object.assign({}, T.fin, { y: 0, dih: 0 }), 1, { top: P.top, belly: P.top }, 0.05, true);
     fin.rotateX(-PI / 2); fin.translate(0, T.fin.y, 0); meshOf(b, fin);
-    // exhaust stubs, Val spats
+    // exhaust stubs (the landing gear, the Val's spats included: plane_gear.js)
     var ch = hwAt(T.exhX);
     [-1, 1].forEach(function (k) {
       M._xc(b, P.lip, 0.03, 0.12, T.exhX - 0.04, ch[3] - ch[2] * 0.35, k * (ch[1] + 0.005));
-      if (T.spats) {
-        var sx = T.wing.qc - 0.02, sz = k * 0.62;
-        M._bar(b, P.top, 0.08, 0.38, 0.05, sx, -0.62, sz).rotation.x = k * 0.12;
-        meshOf(b, tube(bodyRings(smooth([[sx - 0.3, 0.02, 0.04, -0.6], [sx - 0.12, 0.08, 0.15, -0.6], [sx + 0.08, 0.08, 0.16, -0.62], [sx + 0.18, 0.04, 0.08, -0.64]], 3), 10, 2.2, twoTone(P.top, P.belly)), true, true), 0, 0, sz);
-      }
       // fuselage roundel/hinomaru, behind the wing
       var mx = T.markX || (J ? -0.48 : -0.42), ms = hwAt(mx), sl = (hwAt(mx + 0.2)[1] - hwAt(mx - 0.2)[1]) / 0.4;
       mark(b, P, nat, J ? 0.13 : T.markX ? 0.13 : 0.15, mx, ms[3] + 0.02, k * (ms[1] + 0.012), false, k * PI / 2, sl);

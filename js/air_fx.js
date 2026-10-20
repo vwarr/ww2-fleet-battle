@@ -218,6 +218,7 @@ window.WW = window.WW || {};
       var want = p.alive && p.phase === 'dive' ? 1 : 0;
       if (b.open !== want) b.set(dt > 0 ? b.open + Math.max(-dt * 2.2, Math.min(dt * 2.2, want - b.open)) : want);
     }
+    if (m.gear && WW.planeGear) WW.planeGear.sync(p, dt);   // landing gear, hook, the pose on the deck (plane_gear.js)
   }
   function clearAll() {
     for (var r = 0; r < RIB; r++) { ribbons[r].owner = null; ribbons[r].n = 0; ribbons[r].head = false; }

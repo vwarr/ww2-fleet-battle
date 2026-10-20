@@ -18,13 +18,19 @@ window.WW = window.WW || {};
     return starGeo;
   }
   var COL = { USN: { body: 0x6f8cab, belly: 0xd9dde0 }, IJN: { body: 0x8c9670, belly: 0xc9c6ae } };
-  // FLOAT_Y: bottom of the centre float in model units (y = 0 is the fuselage centre line).
+  // FLOAT_Y: bottom of the centre float in model units (y = 0 is the fuselage centre line), as the sim reads it
+  // (air_scouts.js: the height on the catapult and on the water, floatY() x its sim scale).
   var FLOAT_Y = -0.86;
+  // VIS: the drawn size against the sim scale (air_scouts.js setScale): true size at the true plane scale (models
+  // 2.45 u long; OS2U Kingfisher 10.95 m span / 10.3 m long, F1M2 Pete 11.0 m / 9.5 m, as the carrier planes at
+  // PLANE_SCALE: an F4U's 12.5 m), so the model is drawn VIS x larger than the sim's 1.5 x PLANE_K and its parts are
+  // raised by LIFT so the float still rests where the sim puts it (catapult rail, water): the sim is unchanged.
+  var VIS = { USN: 0.43 * 1.7 / (1.5 * 0.41), IJN: 0.42 * 1.7 / (1.5 * 0.41) };
 
   function buildScout(nationId) {
     var m = WW.models, box = m._box, bar = m._bar, disc = m._disc, xc = m._xc, sph = m._sph, mat = m._mat, C = m._C;
     var nat = m._nation(nationId), isJ = nat.id === 'IJN', cs = COL[nat.id] || COL.USN, col = cs.body;
-    var g = new THREE.Group(), L = 2.2, fw = 0.36, half = L / 2;
+    var g = new THREE.Group(), L = isJ ? 2.12 : 2.2, fw = 0.36, half = L / 2;
     // fuselage + tail boom
     sph(g, col, L * 0.8, fw * 1.1, fw, L * 0.06, 0, 0);
     sph(g, col, L * 0.6, fw * 0.55, fw * 0.5, -L * 0.26, 0.05, 0);
@@ -34,7 +40,7 @@ window.WW = window.WW || {};
     if (isJ) { sph(g, C.glass, 0.34, fw * 0.6, fw * 0.5, 0.2, fw * 0.42, 0); sph(g, C.glass, 0.3, fw * 0.55, fw * 0.45, -0.3, fw * 0.4, 0); }
     else sph(g, C.glass, 1.05, fw * 0.75, fw * 0.55, -0.05, fw * 0.38, 0);
     // wings: low monoplane (USN) or biplane with struts (IJN)
-    var span = isJ ? 2.5 : 2.7, wy = isJ ? -0.22 : -0.1;
+    var span = isJ ? 2.62 : 2.7, wy = isJ ? -0.22 : -0.1;
     box(g, col, 0.58, 0.07, span, 0.12, wy, 0);
     box(g, cs.belly, 0.56, 0.03, span * 0.97, 0.12, wy - 0.015, 0);
     var topY = wy + 0.07, marksY = topY + 0.005;
@@ -67,10 +73,12 @@ window.WW = window.WW || {};
     var prop = new THREE.Group(); prop.position.set(half + 0.1, 0, 0); g.add(prop);
     box(prop, C.dark, 0.05, 0.9, 0.12, 0, -0.45, 0);
     var b2 = box(prop, C.dark, 0.05, 0.9, 0.12, 0, 0, 0); b2.rotation.x = Math.PI / 2; b2.position.set(0, 0, -0.45);
+    var lift = -FLOAT_Y * (1 - 1 / (VIS[nat.id] || 1));   // the float where the sim has it at the drawn size
+    g.children.forEach(function (o) { o.position.y += lift; });
     if (m._merge) m._merge(g, 'scout|' + nat.id, [prop], []);
     if (m._shadows) m._shadows(g, false);
     return { group: g, prop: prop, payload: null };
   }
-  if (WW.models) { WW.models.buildScout = buildScout; WW.models.SCOUT_FLOAT_Y = FLOAT_Y; }
+  if (WW.models) { WW.models.buildScout = buildScout; WW.models.SCOUT_FLOAT_Y = FLOAT_Y; WW.models.SCOUT_VIS = VIS; }
   else console.error('models_scout.js must load after models.js');
 })();

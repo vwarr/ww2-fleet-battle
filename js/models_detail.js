@@ -57,8 +57,9 @@ window.WW = window.WW || {};
     bx(g, C.dark, 0.04, w * 0.42, w * 0.75, x, y + 0.18, z);
   }
   function floatplane(g, P, x, y, z, ry) {
-    var f = new THREE.Group(); f.position.set(x, y, z); f.rotation.y = ry || 0; g.add(f);
-    var col = P.id === 'IJN' ? 0x7a865c : 0x6f8cab;
+    var f = new THREE.Group(), J = P.id === 'IJN'; f.position.set(x, y, z); f.rotation.y = ry || 0; g.add(f);
+    f.scale.set(J ? 0.99 : 1.07, 0.95, J ? 0.88 : 0.876);   // true size (ship units = world u): OS2U 10.3 m long / 10.95 m span, F1M2 9.5 m / 11.0 m, as the flying scout (models_scout.js)
+    var col = J ? 0x7a865c : 0x6f8cab;
     s8(f, col, 1.0, 0.2, 0.2, 0, 0.32, 0);
     bx(f, col, 0.28, 0.04, 1.3, 0.08, 0.36, 0);
     bx(f, col, 0.2, 0.22, 0.03, -0.45, 0.3, 0);

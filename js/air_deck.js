@@ -157,6 +157,7 @@ window.WW = window.WW || {};
     e.fold = Math.min(1, e.fold + 0.8 * dt);
     setFold(e.m, e.fold);
     e.m.group.position.set(e.lx, D.top + P().deckY + e.yoff, e.lz);
+    if (e.m.gear && WW.planeGear) WW.planeGear.parked(e.m, dt);   // on its gear, three-point attitude (plane_gear.js)
     if (e.m.payload) e.m.payload.visible = e.kind !== 'fighter' && now >= e.readyAt;
   }
 

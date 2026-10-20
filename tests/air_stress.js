@@ -19,7 +19,7 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
     : { channel: 'chrome', headless: false, args: flag('vsync') ? [] : ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); else if (/^(tris per|seed )/.test(m.text())) console.log(m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (GAME ? '&wing=' + arg('wing', 1) : '') + (flag('vsync') ? '' : '&nocap') + '&v=' + Date.now());
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto' + (GAME ? '&wing=' + arg('wing', 1) : '') + (flag('vsync') ? '' : '&nocap') + '&v=' + Date.now(), { timeout: 180000 });
   await p.waitForTimeout(3000);
   if (GAME) {   // the real game: a carrier round, director camera; every STEP sim s, fps over SECS with the airborne count
     await p.evaluate(([OFF, SEED]) => { if (OFF && WW.planeRender) WW.planeRender.enabled = false; const hasCv = () => ['USN', 'IJN'].every(n => WW.world.ships.some(s => s.alive && s.nation === n && s.type === 'carrier' && !s.isBase));
@@ -128,7 +128,7 @@ const N = +arg('n', 200), PARKED = +arg('parked', 0), SECS = +arg('secs', 8), VI
         if (t - t0 < secs * 1000) requestAnimationFrame(f);
         else res({ fps: n / ((t - t0) / 1000), worst, calls: __ri.calls / Math.max(1, __ri.n), tris: __ri.tris / Math.max(1, __ri.n), cpuRender: __ri.cpu / Math.max(1, __ri.n),
           planes: WW.world.planes.filter(q => !q.removed).length, prof: Object.entries(__ri.prof).map(([k, v]) => k + ' ' + (v / Math.max(1, __ri.n)).toFixed(2)).join(', '), inst: WW.planeRender && WW.planeRender.stats ? WW.planeRender.stats() : null }); })(); }), SECS);
-    await p.screenshot({ path: 'shots/stress_' + v + (OFF ? '_off' : '') + '.png' });
+    if (!flag('noshots')) await p.screenshot({ path: 'shots/stress_' + v + (OFF ? '_off' : '') + '.png', timeout: 180000 });
     console.log(v + (OFF ? ' (off)' : ''), 'fps', r.fps.toFixed(1), 'worst ms', r.worst.toFixed(1), 'draw calls', r.calls.toFixed(0), 'tris', (r.tris / 1e6).toFixed(2) + 'M',
       'render() cpu ms', r.cpuRender.toFixed(2), 'planes', r.planes, '\n   cpu ms/frame:', r.prof, r.inst ? 'inst ' + JSON.stringify(r.inst) : '');
   }
