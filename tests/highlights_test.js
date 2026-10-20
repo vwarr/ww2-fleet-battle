@@ -37,7 +37,7 @@ async function run(b, seed, sheet) {
       terrain: WW.terrain.seed, comp: JSON.stringify(WW.game.composition), state: WW.game.state, button: !!(aar && aar.querySelector('.hl-btn')), winner: S && S.winner, reason: S && S.reason };
   });
   const R = { seed, simS: +simS.toFixed(1), ok: ok1 && before.ok, n: before.moments.length, events: before.events, endN: before.endN, winner: before.winner, reason: before.reason, moments: before.moments, clips: [], fail: [] };
-  if (!R.ok) { R.fail.push('no snapshot'); await p.close(); return R; }
+  if (!R.ok) { R.fail.push('no snapshot'); R.errs = errs.slice(0, 5); await p.close(); return R; }
   // the moments
   const M = before.moments;
   if (M.length < 3) R.fail.push('only ' + M.length + ' moments');
@@ -56,6 +56,8 @@ async function run(b, seed, sheet) {
     if (st.i !== cur) {
       if (cur >= 0) R.clips.push(clipRes(M[cur], samples));
       cur = st.i; samples = []; climaxSeen = false; lastShot = -1e9;
+      const shown = await p.evaluate(() => ['#film .caption', '#follow-label', '#diary'].filter(q => { const e = document.querySelector(q); return e && getComputedStyle(e).display !== 'none'; }));
+      if (shown.length) R.fail.push('clip ' + cur + ': the game\'s own ' + shown.join(', ') + ' showing over the reel');
     }
     const m = M[cur];
     const info = await p.evaluate(([m, wantShot]) => {
@@ -64,10 +66,13 @@ async function run(b, seed, sheet) {
         const r = WW.highlights.reel(); if (!r || r.state !== 'play') break;
         __step(1);
         const n = WW.game.stepN, spr = WW.time.base * 120;
-        if (n >= m.climax - spr * 1 && n <= m.climax + spr * 4) {
-          const o = WW.lookahead.obj(m.key), c = WW.camera;
-          let vis = false, inF = false;
-          if (o && c) {
+        // around the climax (an air battle: from its first kill to its last): any of its key subjects (the ship; the planes going down)
+        if (n >= m.w0 - spr * 1 && n <= m.w1 + spr * 4) {
+          const c = WW.camera;
+          let vis = false, inF = false, has = false;
+          for (const o of m.keys.map(k => WW.lookahead.obj(k))) {
+            if (!o || !c || (o.pt && o.removed)) continue;
+            has = true;
             // the hull's middle and ends (a plane: itself); in sight when one of them is in frame with a clear sight line
             const y = o.stats ? 3 : o.y || 0, h = o.heading || 0, l = o.stats ? o.stats.length * 0.4 : 0;
             for (const f of o.stats ? [0, 1, -1] : [0]) {
@@ -78,7 +83,7 @@ async function run(b, seed, sheet) {
             }
           }
           const s = WW.cam._shot();
-          out.push({ n, inF, vis, has: !!o, shot: s ? (s.story ? 'story' : s.kind) : '-' });
+          out.push({ n, inF, vis, has, shot: s ? (s.story ? 'story' : s.kind) : '-' });
         }
       }
       return out;

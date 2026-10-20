@@ -26,7 +26,7 @@ window.WW = window.WW || {};
   'use strict';
   if (WW.simOnly) return;
   const HSTEP = 120, GAP = 40, SLICE = 40;   // live steps between hashes; sim s between two episodes on one ship; ms of fast-forward per slice
-  const LEAD_AIR = 34, LEAD_SHIP = 18, LEAD_SINK = 14, LEAD_DOWN = 12, TAIL = 9, MAX_HITS_R = 12, SINK_R = 30;   // real s
+  const MIN_LEAD_AIR = 24, MIN_LEAD = 16, LEAD_AIR = 34, LEAD_SHIP = 18, LEAD_SINK = 14, LEAD_DOWN = 12, TAIL = 9, MAX_HITS_R = 12, SINK_R = 30;   // real s
   const MAX_CLIP = 52, BUDGET = 230, BUDGET_MAX = 270, MIN_N = 6, MAX_N = 9;   // real s of reel; clips
   const CLASS = { carrier: 3, battleship: 1.8, cruiser: 1.3, destroyer: 0.9, submarine: 0.5, pt: 0.5, base: 1.3 };
   const CODE = { carrier: 'CV', battleship: 'BB', cruiser: 'CA', destroyer: 'DD', submarine: 'SS', pt: 'PT' };
@@ -87,6 +87,7 @@ window.WW = window.WW || {};
     const spr = SPR(), cls = id => (id === 'base' ? CLASS.base : CLASS[(info.ships.get(id) || {}).type] || 1);
     const R = s => Math.round(s * spr);
     const gapN = Math.round(GAP / LS());
+    const loud = ev.filter(e => ((e.k === 'imp' && e.hit && !e.dud) || (e.k === 'sh' && e.cal === 'big' && e.hit) || e.k === 'sunk' || e.k === 'mag'));
     const cands = [];
     // per-ship episodes of impacts
     const by = new Map();
@@ -147,12 +148,22 @@ window.WW = window.WW || {};
       for (let j = i + 1; j < downs.length && downs[j].n - a.n <= W25; j++) if (!used.has(j) && Math.hypot(downs[j].x - a.x, downs[j].z - a.z) < 250) grp.push(downs[j]);
       if (grp.length < 4) continue;
       for (let j = i; j < downs.length; j++) if (grp.includes(downs[j])) used.add(j);
-      const mid = grp[Math.floor(grp.length / 2)], ord = grp.filter(e => e.ord).length;
-      const ep = { kind: 'air', tg: mid.p, climax: mid.n, first: grp[0].n, last: grp[grp.length - 1].n, downs: grp, value: 0.3 * grp.length + (ord >= 3 ? 0.6 : 0) };
-      cands.push(clip(ep, mid.n - Math.min(R(26), Math.max(R(LEAD_DOWN), mid.n - grp[0].n + R(4))), Math.min(grp[grp.length - 1].n, mid.n + R(12)) + R(6), mid.p));
+      // (the clip opens a short beat before the first kill: the fight, not the scramble or the long approach before it;
+      // its climax is the second kill, the fight under way)
+      const k2 = grp[1], ord = grp.filter(e => e.ord).length;
+      const ep = { kind: 'air', tg: k2.p, climax: k2.n, first: grp[0].n, last: grp[grp.length - 1].n, downs: grp, value: 0.3 * grp.length + (ord >= 3 ? 0.6 : 0) };
+      cands.push(clip(ep, grp[0].n - R(LEAD_DOWN), Math.min(grp[grp.length - 1].n, grp[0].n + R(30)) + R(6), k2.p));
     }
+    // the lead-in never opens on another fight's aftermath: a hit, a sinking or a magazine that is not this arc's, inside
+    // the lead-in, starts it after that (but keeps MIN_LEAD of lead-in: the director's arc window)
     function clip(ep, n0, n1, key) {
-      n0 = Math.max(HSTEP, Math.floor(n0 / HSTEP) * HSTEP);
+      const mine = new Set(ep.ev || []), tgt = ep.kind === 'air' ? null : ep.tg;
+      const late = ep.climax - R(ep.kind === 'strike' ? MIN_LEAD_AIR : MIN_LEAD);
+      let after = -1;
+      for (const e of loud) { if (e.n < n0) continue; if (e.n >= late) break; if (!mine.has(e) && (e.hit || e.s) !== tgt) after = e.n; }
+      if (after >= 0) n0 = Math.max(n0, after + R(3));
+      n0 = Math.max(HSTEP, Math.ceil(n0 / HSTEP) * HSTEP);   // (a hash at the clip's start)
+      if (n0 > ep.climax - R(4)) n0 = Math.max(HSTEP, Math.floor((ep.climax - R(4)) / HSTEP) * HSTEP);
       n1 = Math.min(endN - 2, n1);
       return { ep, kind: ep.kind, key, n0, n1, climax: ep.climax, value: +ep.value.toFixed(2) };
     }
@@ -161,7 +172,7 @@ window.WW = window.WW || {};
     // choose: the best of each third, the battle's end, then by worth
     const all = ev.length ? ev[0].n : 0, span = Math.max(1, endN - all), chosen = [];
     const realLen = c => (c.n1 - c.n0) / spr, total = () => chosen.reduce((s, c) => s + realLen(c), 0);
-    const pad = R(3), clash = c => chosen.some(o => c.n0 < o.n1 + pad && o.n0 < c.n1 + pad);
+    const pad = R(6), clash = c => chosen.some(o => c.n0 < o.n1 + pad && o.n0 < c.n1 + pad);
     const take = c => { if (!c || chosen.includes(c) || clash(c) || chosen.length >= MAX_N) return false; chosen.push(c); return true; };
     for (let k = 0; k < 3; k++) take(ok.find(c => c.value >= 1 && c.climax >= all + span * k / 3 && c.climax < all + span * (k + 1) / 3 && !clash(c)));
     take(ok.find(c => c.ep.lastSunk && !clash(c)));
@@ -174,7 +185,8 @@ window.WW = window.WW || {};
     chosen.sort((a, b) => a.n0 - b.n0);
     for (const c of chosen) c.caption = caption(c, info);
     return chosen.map(c => ({ kind: c.kind, key: c.key, n0: c.n0, n1: c.n1, climax: c.climax, value: c.value, real: +realLen(c).toFixed(1),
-      title: c.caption.title, sub: c.caption.sub, clock: c.caption.clock, src: c.caption.src || null, last: !!c.ep.lastSunk }));
+      title: c.caption.title, sub: c.caption.sub, clock: c.caption.clock, src: c.caption.src || null, last: !!c.ep.lastSunk,
+      keys: c.kind === 'air' ? c.ep.downs.map(e => e.p) : [c.key], w0: c.kind === 'air' ? c.ep.first : c.climax, w1: c.kind === 'air' ? Math.min(c.ep.last, c.n1) : c.climax }));
   }
 
   // ---------- captions ----------
@@ -246,6 +258,7 @@ window.WW = window.WW || {};
 #hl .ctl button{font:inherit;font-size:14px;color:#f1e8d0;background:rgba(10,14,20,.6);border:1px solid rgba(241,232,208,.35);padding:6px 12px;cursor:pointer}
 #hl .ctl button:hover{background:rgba(40,46,56,.8)}
 #hl .ctl em{font-style:normal;font-size:13px;opacity:.75;padding:0 6px}
+body.hl-reel #film .caption,body.hl-reel #follow-label,body.hl-reel #diary{display:none!important}
 #aar .hl-btn{display:block;margin:14px auto 0;font:inherit;font-size:15px;padding:7px 16px;background:#3a3226;color:#f4ecd8;border:0;cursor:pointer;letter-spacing:.05em}
 #aar .hl-btn:hover{background:#5a4c38}`;
     document.head.appendChild(st);
@@ -340,7 +353,7 @@ window.WW = window.WW || {};
     reel = { saved, i: -1, clip: null, state: 'ff', token: null, hashOk: 0, bad: null, starts: [], played: 0, ended: false, done: null };
     reel.done = new Promise(r => { reel.resolve = r; });
     if (WW.aar) WW.aar.hide();
-    mkUI(); cls('on', true); cls('dark', true);
+    mkUI(); cls('on', true); cls('dark', true); document.body.classList.add('hl-reel');   // (only the reel's caption: no live captions, follow label, diary)
     g.reel = true;
     goto(from || 0);
     return true;
@@ -429,7 +442,7 @@ window.WW = window.WW || {};
     g.reel = false;
     reel = null;
     WW.time.hold = false; audioPause(false);
-    cls('fin', false); cls('ff', false); cls('on', false); cls('dark', false); ui.cap.classList.remove('on');
+    cls('fin', false); cls('ff', false); cls('on', false); cls('dark', false); ui.cap.classList.remove('on'); document.body.classList.remove('hl-reel');
     if (WW.cam && WW.cam.snap) WW.cam.snap();
     if (WW.aar && snap.aar) WW.aar.show(snap.aar);
     r.ended = true; r.resolve(r);
