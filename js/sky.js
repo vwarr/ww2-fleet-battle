@@ -95,8 +95,17 @@ window.WW = window.WW || {};
   }
   // light-space basis, for snapping the shadow frustum to whole texels (no shimmer as the camera moves)
   // (the light direction moves at dusk: sky_time.js lowers the sun, then swaps it for the moon; the basis follows)
+  // The shadow's light direction is quantised (SH): sky_time.js turns SUN_DIR a little every frame (the sun crosses the
+  // sky over a round, ~0.0004 deg a frame at 1x, faster at 2x / 4x), and a light that turns every frame re-rasterises
+  // every shadow edge from a new angle and slides the texel grid under the scene (a point d u from the origin moves
+  // d * dtheta in light space: a texel every ~30 frames at d ~500 at 1x), so shadow edges crawled and flickered.
+  // SH only follows SUN_DIR once it is Q.deg off (every ~6 s at 1x): the grid holds still between steps, and a step
+  // (well under a texel on most edges) is too small to see. The dome, the water's glitter etc. keep the continuous SUN_DIR.
+  // The box's depth along the light (w) snaps to whole units too (a small measured gain): a continuous w re-quantises
+  // every depth in the map each frame the camera's target moves.
+  // WW.sky.shadowQ: { deg, w } (0 = the old continuous behaviour, for A/B).
   const UP = new THREE.Vector3(0, 1, 0), R = new THREE.Vector3(), U = new THREE.Vector3();
-  const tgt = new THREE.Vector3();
+  const tgt = new THREE.Vector3(), SH = new THREE.Vector3(), Q = { deg: 0.15, w: 1 };
   function update(rdt) {
     const cam = WW.camera;
     if (!dome || !cam) return;
@@ -114,12 +123,13 @@ window.WW = window.WW || {};
     if (WW.cam && WW.cam.target) tgt.copy(WW.cam.target()); else tgt.set(WW.cfg.MAP_W / 2, 0, WW.cfg.MAP_H / 2);
     tgt.y = 0;
     if (WW.skyTime) WW.skyTime.update(rdt);   // time of day and weather: palette, light, fog (sky_time.js)
-    R.crossVectors(UP, SUN_DIR).normalize(); U.crossVectors(SUN_DIR, R).normalize();
+    if (SH.lengthSq() === 0 || SH.dot(SUN_DIR) < Math.cos(Q.deg * Math.PI / 180)) SH.copy(SUN_DIR);
+    R.crossVectors(UP, SH).normalize(); U.crossVectors(SH, R).normalize();
     const texel = (2 * shadowSize) / sun.shadow.mapSize.x;
-    const u = Math.round(tgt.dot(R) / texel) * texel, v = Math.round(tgt.dot(U) / texel) * texel, w = tgt.dot(SUN_DIR);
-    tgt.copy(R).multiplyScalar(u).addScaledVector(U, v).addScaledVector(SUN_DIR, w);
+    const u = Math.round(tgt.dot(R) / texel) * texel, v = Math.round(tgt.dot(U) / texel) * texel, w0 = tgt.dot(SH), w = Q.w ? Math.round(w0 / Q.w) * Q.w : w0;
+    tgt.copy(R).multiplyScalar(u).addScaledVector(U, v).addScaledVector(SH, w);
     sun.target.position.copy(tgt);
-    sun.position.copy(tgt).addScaledVector(SUN_DIR, 700);
+    sun.position.copy(tgt).addScaledVector(SH, 700);
   }
-  WW.sky = { init, update, HORIZON, SUN_DIR, sunColor: () => sun && sun.color, parts: () => ({ dome, sun, hemi, clouds }) };
+  WW.sky = { init, update, HORIZON, SUN_DIR, shadowQ: Q, sunColor: () => sun && sun.color, parts: () => ({ dome, sun, hemi, clouds }) };
 })(window.WW);
