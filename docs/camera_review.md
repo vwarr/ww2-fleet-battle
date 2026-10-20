@@ -445,3 +445,32 @@ insert window 1.5-7 s, the hold 3.5 s, TAIL 12 s, MAXB 16 s, the guard window 1-
 seeded from WW.time.base) or sim2real (WW.time.base). Sim-time constants: HORIZON 75 sim s (150 real s at 0.5, 245 at 0.31),
 EV_MAX 40 sim s. One real-time constant broke at the slower clock: FALL_MAX 14 s no longer covered a fall from a dive's
 height, so the fall shot is now held to the water (FALL_CAP 32 s).
+
+## Results
+Same 6 rounds (standard + carrier_duel seeds 1-3, 700 sim s, the true-speed clock), main vs camera6
+(raw: scratchpad camera6/audit/raw_i_base, raw_i_new2):
+| metric | main | camera6 |
+|---|---|---|
+| CV-BE (carrier hit / deck / magazine / sinking in frame) | 100% of 24 | 100% of 24 |
+| BB-BE (battleship hit / sinking in frame) | 58% of 40 | **93%** of 40 |
+| M3 the oracle's top action on screen (top-3) | 43% (56%) | **49%** (61%) |
+| dead air | 10% | 8% |
+| cuts / min (recuts / min) | 6.4 (0.98) | 6.6 (1.17) |
+| arc completeness / time in arcs | 57% / 77% | 55% / 68% |
+| dives: target in frame / bomber in frame / side-on / flat / flips / impact in frame | 99% / 44% / 9% / 0% / 2 / 100% | 100% / **91%** / 18% / 3% / 0 / 100% |
+
+On main before the true-speed clock (0.5 sim s per real s), 27 rounds of standard / carrier_duel / midway, the same rounds
+compared: CV-BE 94% (91 / 97) -> 98% (94 / 96), BB-BE 80% (85 / 106) -> 91% (97 / 107).
+
+Broad survey of camera6 at the true-speed clock (one pass at the end): standard / carrier_duel / midway seeds 1-12 at 1x
+(36 rounds): CV-BE 97% of 152, BB-BE 91% of 184, M3 46% (57%), dead air 7%, 6.6 cuts / min, dives 105: target 99%,
+bomber 81%, impact in frame 99%. battle_line, night, night_cv, night_bl, dusk, carrier_duel_dusk, midway_dusk, odd,
+pt_raid, sub_raid seeds 1-4 at 1x (40 rounds): CV-BE 100% of 42, BB-BE 93% of 405, M3 64%, dead air 3%, 6.1 cuts / min.
+The main three seeds 1-4 at 4x (12): CV-BE 91% of 43, BB-BE 91% of 56, 8.2 cuts / min. The others seeds 1-2 at 4x (20):
+CV-BE 100% of 27, BB-BE 88% of 130. (The dive-chase and dive-cue changes came after the broad pass; the dive numbers above
+are from the 6-round re-run.)
+
+camera_cases: 18 / 18 pass. `npm run test:camera` (the 7 quick cases + 2 rounds at 4x): ~4 min, PASS.
+Left: the 4x main rounds' CV-BE (91%: at 4x a carrier hit 8 real s ahead is 2 sim s ahead, short for a cut and a pose);
+the remaining battleship misses are mostly two battleships trading salvos (a brace on one, the other's hit behind it or out
+of frame); side-on frames in the push-over (the bomber still level as the camera already looks down the line to the ship).
