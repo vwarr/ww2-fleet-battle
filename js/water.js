@@ -147,13 +147,21 @@ window.WW = window.WW || {};
         float st = uSeaStorm;
         float s1 = nz(vec2(wq.x * 0.05, wq.y * 0.45) + time * 0.03).a, s2 = nz(wq * vec2(0.3, 1.2) + 7.0).g;
         streak = smoothstep(0.76, 0.93, s1) * smoothstep(0.45, 0.75, s2) * smoothstep(0.3, 0.8, uSeaS) * 0.2 * (1.0 - far0) * smoothstep(2.0, 6.0, d);
-        // spindrift: dense streaks of blown foam laid along the wind, and old foam lying in broad patches; far off the
-        // whole sea goes grey-white with it
+        // spindrift (a gale / typhoon): streaks of blown foam along the wind, broken and of every length, clumped on
+        // and behind the breaking crests, rough and smoother stretches a few hundred u across, dark water between.
+        // The streak field's coordinates are warped by a slower field, so the value noise's lattice rows never line up
+        // into evenly spaced parallel stripes (the plain stretched field read as corduroy from above).
         if (st > 0.0) {
-          // (in drifting bands ~200 u across, broken along their length: no ruled lattice)
-          float sd2 = nz(vec2(wq.x * 0.07, wq.y * 0.9) + vec2(time * 0.12, 0.0)).r, band = smoothstep(0.35, 0.7, s1);   // (s1: the long streak field, reused)
-          float spin = smoothstep(mix(0.9, 0.68, st), 0.97, sd2) * smoothstep(0.3, 0.7, s2) * band * (0.3 + 0.3 * st);
-          float oldF = smoothstep(0.55, 0.8, s1) * 0.3 * st;
+          streak *= 1.0 - 0.7 * st;
+          vec4 wn = nz(wq * vec2(0.011, 0.028) + 11.0);
+          vec2 sq = vec2(wq.x * 0.055 + wn.r * 3.0, wq.y * 0.42 + (wn.g - 0.5) * 3.2 + (wn.b - 0.5) * 1.7);
+          float sA = nz(sq + vec2(time * 0.1, 0.0)).r;
+          vec4 lg = nz(wq * vec2(0.0045, 0.006) + vec2(time * 0.003, 2.0));
+          float runs = smoothstep(0.22, 0.65, nz(vec2(wq.x * 0.018, wq.y * 0.11) + vec2(5.0, wn.r * 2.0)).a);   // where a streak runs on, where it breaks
+          float crest = smoothstep(-0.15, 0.75, hN + 0.6 * (wn.a - 0.5));   // on and just behind the crests
+          float big = smoothstep(0.25, 0.75, lg.b);
+          float spin = smoothstep(mix(0.86, 0.62, st), 0.95, sA) * runs * mix(0.3, 1.0, crest) * mix(0.3, 1.0, big) * (0.45 + 0.4 * st);
+          float oldF = smoothstep(0.6, 0.85, wn.b * 0.6 + lg.r * 0.4) * crest * big * 0.24 * st;   // old foam lying in patches
           streak = max(streak, max(spin, oldF) * mix(1.0, 0.5, far0) * smoothstep(2.0, 6.0, d));
         }
       }
