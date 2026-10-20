@@ -44,7 +44,9 @@ window.WW = window.WW || {};
   // of the same attack, with the ship below in frame; the ots never showed the bomb land)
   function diveCue() {
     const L = S.lead, w = L && L.wave;
-    if (S.dive || !w || (L.kind === 'torpedo' && L.phase === 'run')) return null;
+    if (!w || (L.kind === 'torpedo' && L.phase === 'run')) return null;
+    if (S.dive && !(S.dive.m !== L && L.kind === 'dive' && L.phase === 'roll' && onDiver(L))) return null;   // (once a story, but the protagonist's own push-over is shown even after a wingman's)
+    if (S.dive && S.dive.m !== L) return L;
     let m = null;
     if (L.kind === 'dive' && L.phase === 'roll') m = L;
     else for (const q of w.members) if (ok(q) && q.kind === 'dive' && q.phase === 'roll') { m = q; break; }
@@ -212,6 +214,7 @@ window.WW = window.WW || {};
     const opts = [];
     for (const [sk, w] of (WW.camDirector && phase === 'attack' && L.kind === 'torpedo' && L.phase === 'run' ? RUN_MENU : MENU[phase] || MENU.transit)) {
       if (sk === 'ots' && phase === 'bandits') { if (L.kind === 'fighter' && ok(L.foe)) opts.push(['afots', w]); continue; }
+      if (sk === 'ots' && L.kind === 'dive' && (L.phase === 'roll' || L.phase === 'dive')) continue;   // (camera6: a dive is filmed with the bomber in frame: the chase)
       if (WW.storyShots.valid(sk, L, S.group)) opts.push([sk, w]);
     }
     if (opts.length > 1) for (let i = opts.length - 1; i >= 0; i--) if (opts[i][0] === S.last) opts.splice(i, 1); // never the same shot twice running
