@@ -246,7 +246,8 @@ window.WW = window.WW || {};
         if (vol > hv) { hv = vol; house = c; }
       });
       obj.rotation.y += (R() < 0.5 ? -1 : 1) * (0.3 + R() * 0.35);  // never written again: ships_ai skips a disabled turret
-      if (gun && gun !== house) {                                    // barrels droop about their trunnions
+      if (ts[i].t.gunG) ts[i].t.gunG.rotation.z = -(0.22 + R() * 0.12);   // barrels droop about their trunnions (models.js turret gunG; ships_ai.js no longer lays them)
+      else if (gun && gun !== house) {                               // barrels droop about their trunnions
         var bb = gun.geometry.boundingBox, px = bb.min.x, py = (bb.min.y + bb.max.y) / 2, a = -(0.22 + R() * 0.12);
         gun.rotation.z = a; gun.position.set(px - (px * Math.cos(a) - py * Math.sin(a)), py - (px * Math.sin(a) + py * Math.cos(a)), 0);
       }

@@ -28,6 +28,7 @@ window.WW = window.WW || {};
   // AA gun tub with 2 or 4 tiny barrels pointing outboard-up
   function aaTub(g, P, x, y, z, quad, ang) {
     var t = new THREE.Group(); t.position.set(x, y, z); t.rotation.y = ang || 0; g.add(t);
+    t.userData.aa = quad ? 4 : 2;   // a light AA mount: its tracers leave from here (models.js aaMounts, combat_aa.js)
     c6(t, P.super, 0.27, 0.16, 0, 0, 0);
     bx(t, P.gun, 0.2, 0.14, 0.24, -0.02, 0.12, 0);
     var n = quad ? 4 : 2;
@@ -173,7 +174,10 @@ window.WW = window.WW || {};
   function finish(type, P, s, c) {
     bind();
     var H = s._hg, key = (c ? c.key : type) + '|' + P.id, tobjs = s.turrets.map(function (t) { return t.obj; });
-    s.turrets.forEach(function (t, i) { merge(t.obj, key + '|t' + i, [], s.hullMats, 0); });
+    s.turrets.forEach(function (t, i) {   // the house, then the barrels on their own (they elevate: models.js turret gunG)
+      merge(t.obj, key + '|t' + i, t.gunG ? [t.gunG] : [], s.hullMats, 0);
+      if (t.gunG) merge(t.gunG, key + '|t' + i + 'g', [], s.hullMats, null);
+    });
     if (s.floatplane) merge(s.floatplane, key + '|fp', [], [], null);  // own mesh: the scout can hide it
     merge(s.group, key, s.floatplane ? tobjs.concat([s.floatplane]) : tobjs, s.hullMats, H ? H[2] : 0);
   }

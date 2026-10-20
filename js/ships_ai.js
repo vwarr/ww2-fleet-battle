@@ -7,6 +7,9 @@ window.WW = window.WW || {};
   const PI = Math.PI;
   const ARC = 2.5; // max turret swing either side of its rest angle
   const TURRET_RATE = { big: 0.5, med: 0.8, small: 1.6, mg: 3 };
+  // barrel elevation rate, rad per sim s (16-inch ~2 deg/s, 8-inch ~5, 5"/38 ~15 real, on the 3.3x ship clock), laid
+  // for the target's range from the range table (combat.js elevOf); drawn only (the muzzle uses the shot's own elevation)
+  const ELEV_RATE = { big: 0.12, med: 0.3, small: 0.8, mg: 2 };
 
   function bearing(a, b) { return Math.atan2(b.z - a.z, b.x - a.x); }
   function seen(ship, t) { return !WW.intel || WW.intel.visible(ship.nation, t); } // a current detection (intel.js)
@@ -214,7 +217,6 @@ window.WW = window.WW || {};
 
   function guns(ship, dt) {
     const a = ship.ai;
-    let mw = false;
     for (const ts of a.turrets) {
       ts.reload -= dt;
       if (!ts.gun || ts.disabled) continue; // knocked out by a heavy hit (WW.damage)
@@ -229,10 +231,16 @@ window.WW = window.WW || {};
       const rate = (TURRET_RATE[ts.cal] || 1) * dt;
       ts.off += WW.clamp(off - ts.off, -rate, rate);
       ts.aim = ts.rest + ts.off;
+      ts.t.aim = ts.aim;   // the sim's training, for combat.js muzzlePos (never the drawn mesh's rotation)
       const ry = -ts.aim, rot = ts.t.obj.rotation;
       if (!Object.is(rot.y, ry)) rot.y = ry; // unchanged (no target, at rest): skip the quaternion rebuild (same result)
+      const gg = ts.t.gunG;
+      if (gg) {   // lay the barrels for the range (at rest: level)
+        const elT = tgt && WW.combat.elevOf ? WW.combat.elevOf(ts.cal, Math.min(d, ts.gun.range * 1.1)) : 0, er = (ELEV_RATE[ts.cal] || 0.5) * dt;
+        const el = ts.t.el + WW.clamp(elT - ts.t.el, -er, er);
+        if (el !== ts.t.el) { ts.t.el = el; gg.rotation.z = el; }
+      }
       if (tgt && ts.reload <= 0 && d <= ts.gun.range && Math.abs(WW.angleDiff(ts.aim, rel)) < 0.12) {
-        if (!mw) { ship.group.updateMatrixWorld(true); mw = true; }
         if (!WW.supply || WW.supply.shell(ship, ts.gun, d)) WW.combat.fireShell(ship, ts.t, tgt, ts.gun.cal); // main-battery ammunition (ship_supply.js)
         ts.reload = ts.gun.reload * WW.randRange(0.9, 1.15);
       }
