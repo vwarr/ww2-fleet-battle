@@ -15,6 +15,21 @@ window.WW = window.WW || {};
   const ST = { held: 0, preempted: 0, refused: 0 };
 
   const subjectOf = shot => (shot.plane || shot.subj);
+  const RUN_SOON = 24, RUN_MAX = 30;   // real s: a drop due within RUN_SOON holds the run; without the look-ahead RUN_MAX of shot
+  let soon = new Map(), soonAt = -1;
+  function runSoon(p, shot) {
+    const LA = WW.lookahead;
+    if (WW.camLook && WW.camLook.active() && LA && LA.idOf) {
+      const id = LA.idOf(p); if (!id) return true;
+      const n = (WW.game && WW.game.stepN) || 0;
+      if (soonAt !== n) {   // (once a step: plane id -> sim s to its next drop or fall)
+        soonAt = n; soon = new Map();
+        for (const e of LA.future(0)) if ((e.k === 'drop' || e.k === 'down') && e.p && !soon.has(e.p)) soon.set(e.p, LA.dt(e));
+      }
+      return soon.has(id) && (WW.camFinder ? WW.camFinder.realS(soon.get(id)) : soon.get(id) * 2) < RUN_SOON;   // (no drop within the horizon: not held)
+    }
+    return !(shot.t > RUN_MAX);
+  }
   // what the shot is committed to right now: null, or { why, release } (release: never pre-empt)
   function state(shot) {
     if (!shot || (shot.user && !shot.fkey) || shot.pr >= 99) return null; // the user's and the tests' shots are their own business (F's pick, fkey, keeps the lock)
@@ -30,8 +45,14 @@ window.WW = window.WW || {};
     if (s.pt && s.kind) {
       if (!ok(s)) return null;
       const t = s.target;
-      if (s.kind === 'torpedo' && s.phase === 'run' && s.ordnance && t && t.alive)
-        return { why: 'run', release: WW.dist(s.x, s.z, t.x, t.z) < (s.dropR || DROP_FAR) + REL_WIN };
+      if (s.kind === 'torpedo' && s.phase === 'run' && s.ordnance && t && t.alive) {
+        const rel = WW.dist(s.x, s.z, t.x, t.z) < (s.dropR || DROP_FAR) + REL_WIN;
+        // camera6: a run that is not going to drop soon is not an attack to hold (a torpedo plane jockeying for a
+        // destroyer's beam held one 'side' shot for 190 s while a carrier sank): with the look-ahead, locked only when
+        // its drop (or its fall) is due within RUN_SOON real s; without it, a run shot is held RUN_MAX s at most
+        if (!rel && !runSoon(s, shot)) return null;
+        return { why: 'run', release: rel };
+      }
       if (s.kind === 'dive' && (s.phase === 'roll' || s.phase === 'dive') && s.ordnance) return { why: 'dive', release: true };
       if (s.kind === 'torpedo' && s.phase === 'out' && s.ordnance && (s.phaseT || 0) > 0) return { why: 'abort', release: false }; // the beat after an aborted run
       return null;

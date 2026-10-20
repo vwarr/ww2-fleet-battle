@@ -31,7 +31,9 @@ window.WW = window.WW || {};
   const TAIL = 12, TICK = 0.25, EV_MAX = 40;                // real s an arc runs past its climax (for planning); sim s of impacts events() lists
   const ST = { plans: 0, air: 0, ship: 0, cv: 0, doomed: 0, superseded: 0, hints: 0, rejected: 0, byKind: {} };
   const log = [];
-  const sim2real = s => s / Math.max(0.05, (WW.time.scale || 1) * 0.5);   // the nominal rate (the director's slow motion is a beat, not the plan)
+  // the nominal rate (the director's slow motion is a beat, not the plan): sim s per real s at 1x is main.js's BASE_SPEED
+  // (WW.time.base when exposed: 0.5 before speedcal, ~0.31 after), times the game speed
+  const sim2real = s => s / Math.max(0.05, (WW.time.scale || 1) * ((WW.time && WW.time.base) || 0.5));
   const realS = s => (WW.camFinder ? WW.camFinder.realS(s) : s * 2);
 
   // is the look-ahead in charge on this round?
@@ -116,7 +118,7 @@ window.WW = window.WW || {};
 
   // ---------- plan(): the arcs the future holds ----------
   // { kind: 'strike' | 'torpRun' | 'duel' | 'raid', subj, target, wave, climax (sim s), value, members, hits, sinks }
-  let plCache = null, plAt = -1, wk = 0;
+  let plCache = null, plAt = -1, wk = 0, pref = null;
   const waves = new WeakMap(), waveKey = w => waves.get(w) || (waves.set(w, ++wk), wk);
   function plan() {
     const n = WW.game.stepN || 0;
@@ -177,12 +179,35 @@ window.WW = window.WW || {};
       it.value = cls(T) * (it.kind === 'duel' ? 0.5 + 0.25 * Math.min(6, it.hits) + 0.2 * Math.min(4, it.big) : 0.8 + 0.9 * Math.min(3, it.hits)) + (it.sinks ? 2.5 * cls(T) : 0) + (it.hits ? 0 : -0.8);
       items.push(it);
     }
+    // camera6: a CRIPPLE FINISHED OFF: a ship that goes down within the horizon with no arc above leading to it (shells, a
+    // destroyer's torpedoes, the last of her flooding): her last minutes from her own deck / an orbit, the sinking the climax
+    for (const [tid, dt] of sunk) {
+      if (dt < 3) continue;
+      const T = WW.lookahead.obj(tid); if (!isShip(T) || !T.alive || T.type === 'pt' || T.type === 'submarine') continue;
+      if (items.some(it => it.target === T && it.sinks)) continue;
+      items.push({ kind: 'finish', target: T, subj: T, climax: dt, sinks: true, hits: 1, value: cls(T) * 1.6 });
+    }
     for (const it of items) {
       it.climaxR = sim2real(it.climax);
       const L = it.kind === 'strike' ? LEAD_AIR : LEAD_SHIP;
       it.openR = it.climaxR - L[1]; it.lateR = it.climaxR - L[0]; it.earlyR = it.climaxR - L[2];
+      // camera6: a ship's torpedo attack is told from the RUN-IN: the arc opens before the spread leaves (the survey: the
+      // run-in was on camera 0 s of the 25 before the spread in most hits), and runs to the hits
+      if ((it.kind === 'torpRun' || it.kind === 'charge') && it.fire !== undefined && it.hits) {
+        const fR = sim2real(it.fire);
+        it.openR = Math.min(it.openR, fR - LEAD_SHIP[1]); it.earlyR = Math.min(it.earlyR, fR - LEAD_SHIP[2]);
+      }
       it.endR = it.climaxR + TAIL + (it.sinks ? 6 : 0);
       it.cv = it.target && it.target.type === 'carrier' && (it.hits > 0 || it.kind === 'strike');
+    }
+    // the after-battle reel (highlights): prefer(spec) points the director at a known clip: the items about its ship with
+    // a climax inside its live-step window are worth x4 and take a carrier arc's priority (nothing changes while unset)
+    if (pref) {
+      const h = (window.__sim && window.__sim.LIVE_STEP) || 1 / 120, n = WW.game.stepN || 0;
+      for (const it of items) {
+        const id = o => WW.lookahead.idOf(o), nc = n + Math.round(it.climax / h);
+        if ((id(it.target) === pref.tg || id(it.subj) === pref.tg || (pref.src && id(it.subj) === pref.src)) && nc >= (pref.n0 || 0) && nc <= (pref.n1 === undefined ? 1e12 : pref.n1)) { it.value *= 4; it.cv = true; it.pref = true; }
+      }
     }
     items.sort((a, b) => b.value - a.value);
     return (plCache = items);
@@ -245,7 +270,8 @@ window.WW = window.WW || {};
       okd = S() && S().plan ? S().plan({ lead: pr.p, mission, item: { la: true }, target: it.target }, { doom: pr.doom, loss: pr.loss, value: it.value, climaxR: it.climaxR, target: it.target.type }) : false;
       if (okd) { ST.air++; if (pr.doom) ST.doomed++; }
     } else {
-      const b = { kind: it.kind === 'cvraid' ? 'raid' : it.kind, subj: it.kind === 'cvraid' ? it.target : it.subj, target: it.kind === 'cvraid' ? null : it.target, promise: 8 + it.value, struck: it.cv };
+      const pov = it.kind === 'cvraid' || it.kind === 'finish';   // (the target's point of view: her raid, her last minutes)
+      const b = { kind: pov ? 'raid' : it.kind, subj: pov ? it.target : it.subj, target: pov ? null : it.target, promise: 8 + it.value, struck: it.cv };
       okd = D().startShipArc(b);
       if (okd) ST.ship++;
     }
@@ -275,6 +301,48 @@ window.WW = window.WW || {};
     shot.dur = Math.max(shot.dur, shot.t + e.etaReal + 1.8); ST.holds = (ST.holds || 0) + 1;
   }
   const _hv = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
+  // ---------- the big impact guard (camera6) ----------
+  // The survey (docs/camera_review.md, camera6) found every carrier / battleship hit the camera missed was KNOWN 7-15 s
+  // ahead: the director was committed elsewhere (a CAP or snooper story, a flight home, a wide establishing shot, an arc
+  // on another ship). Whatever runs, a carrier hit (any weapon) or a battleship hit by a bomb / torpedo / heavy shell, a
+  // magazine or a sinking due in GUARD_WIN real s gets the brace on her, unless the camera already shows her (the impact
+  // point in frame and near), or the running shot is the last seconds of an attack (a carrier struck still breaks into an
+  // attack on a smaller ship). Inside a story the brace is an insert (the story resumes after); else a cut.
+  const GUARD_WIN = [1.0, 8], GUARD_K = { torp: 1, bomb: 1, dive: 1, mag: 1, sink: 1, shellbig: 1 };
+  let guarded = new WeakMap();
+  const guardStats = () => (ST.guard = ST.guard || { n: 0, insert: 0, cut: 0, inView: 0, release: 0 });
+  function inView(x, y, z, maxD) {
+    const c = WW.camera; if (!c || !_hv) return false;
+    if (Math.hypot(c.position.x - x, c.position.z - z) > maxD) return false;
+    _hv.set(x, y, z).project(c); return _hv.z < 1 && Math.abs(_hv.x) < 0.85 && Math.abs(_hv.y) < 0.8;
+  }
+  function lockTarget(shot) {
+    if (shot.tship) return shot.tship;
+    const p = shot.plane || shot.subj; if (!p) return null;
+    return p.stats ? p : p.diveTgt || p.target || null;
+  }
+  function guard(shot, st) {
+    const now = wall();
+    for (const e of evs()) {
+      const s = e.s, cv = s.type === 'carrier';
+      if (!cv && s.type !== 'battleship') continue;
+      if (!GUARD_K[e.kind] || e.etaReal < GUARD_WIN[0] || e.etaReal > GUARD_WIN[1]) continue;
+      if ((guarded.get(s) || -1e9) > now - 3) continue;                       // (no flapping: a guard brace runs to its hits and beat)
+      if (shot && shot.kind === 'brace' && shot.subj === s) continue;
+      if (inView(s.x + e.ox, 2, s.z + e.oz, 380)) { guardStats().inView++; continue; }   // already in the shot
+      const L = shot && WW.camLock && WW.camLock.state(shot);
+      if (shot && (shot.stage || (L && L.release))) {                        // the last seconds of an attack
+        const tg = lockTarget(shot);
+        if (!cv || (tg && tg.stats && (tg.type === 'carrier' || tg.type === 'battleship'))) { guardStats().release++; continue; }
+      }
+      const b = { kind: 'brace', subj: s, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(e.lastReal + 2.6, 4, 12), why: e.kind, label: D().labelOf ? D().labelOf(e) : '', guard: true };
+      guarded.set(s, now);
+      const G = guardStats(); G.n++;
+      if (st && st.begun && S().insert && !(shot && shot.stage) && S().insert(b)) { G.insert++; return true; }
+      if (WW.cam.take(b, { steal: true })) { G.cut++; return true; }
+    }
+    return false;
+  }
   function tick(rdt) {
     if (active() && _hv) { try { hold(); } catch (e) { /* never break the camera */ } }
     if ((tk -= rdt) > 0) return;
@@ -284,6 +352,7 @@ window.WW = window.WW || {};
     if (shot && shot.user && !shot.fkey) return;
     const st = S() && S().story();
     if ((st && st.user) || (D().userArc && D().userArc())) return;
+    if (guard(shot, st)) return;
     // a planned story that never got the camera (night_fx.js refused it, the lead lost before its first shot): that strike
     // rests 30 s (no re-planning it every tick)
     if (cur && cur.arc && cur.arc.t1 && cur.arc.never && !cur.banned) { cur.banned = true; ban.set(cur.it.wave || cur.it.target, wall() + 30); ST.never = (ST.never || 0) + 1; }
@@ -311,7 +380,15 @@ window.WW = window.WW || {};
     if (busy && !mineRunning() && shot && !shot.stage && !(L && L.release)) {
       const ph = st && st.begun ? (S()._dbg() || {}).phase : 'ship';
       const quiet = ph === 'transit' || ph === 'form' || ph === 'home' || ph === 'launch' || ph === 'after' || ph === 'ship';
-      const b = P.find(it => it.openR <= 0 && it.lateR > 0 && it.value >= SUPER && !runningAbout(it));
+      // (camera6: a story nobody planned that is not a strike (a CAP fight, a flying boat, an ace) is filler: any planned
+      // arc whose window opens takes over in any phase (they held 55% of the camera time while ships were struck))
+      const filler = !!(st && st.begun && st.mission !== 'strike');
+      const b = P.find(it => it.openR <= 0 && it.lateR > 0 && it.value >= (filler ? MINV : SUPER) && !runningAbout(it));
+      if (b && filler) {
+        if (S().supersede) S().supersede();
+        if (startItem(b, 'take-over')) ST.superseded++;
+        return;
+      }
       if (b && quiet) {
         if (st && S().supersede) S().supersede(); else if (D().endShipArc) D().endShipArc('superseded');
         if (startItem(b, 'take-over')) ST.superseded++;
@@ -337,11 +414,13 @@ window.WW = window.WW || {};
     if (late) startItem(late.kind === 'strike' && protagonist(late) ? late : cvRaid(late), 'cv-late');
   }
   if (WW.cam && WW.cam.update) { const u = WW.cam.update; WW.cam.update = function (rdt) { try { tick(rdt || 0); } catch (e) { console.error('camLook', e); } return u.apply(this, arguments); }; }
-  WW.on('roundStart', () => { cur = null; tk = 0; ban = new WeakMap(); evCache = plCache = null; evAt = plAt = -1; });
+  WW.on('roundStart', () => { cur = null; tk = 0; ban = new WeakMap(); guarded = new WeakMap(); evCache = plCache = null; evAt = plAt = -1; });
 
   WW.camLook = {
     active, storyBrace, handoffLetGo, holdAim, events: evs, forecastFor: s => evs().find(e => e.s === s) || null, plan, protagonist, successorHint, stats: ST, log,
     // camera_director.js / camera_story.js: the look-ahead chooses the arcs (their own pickers stand down)
-    owns
+    owns,
+    // the after-battle reel: prefer({ tg: 's12' | 'base', src: 's4' (optional), n0, n1 (live steps) }) or prefer(null)
+    prefer(spec) { pref = spec || null; plCache = null; }
   };
 })(window.WW);

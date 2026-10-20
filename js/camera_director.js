@@ -203,6 +203,7 @@ window.WW = window.WW || {};
   // ---------- the brace shot ----------
   function fillR(len, f) { const c = WW.camera; return len / (f * 2 * Math.tan(c.fov * Math.PI / 360) * c.aspect); }
   const _P = { x: 0, y: 0, z: 0 }, _L = { x: 0, y: 0, z: 0 };
+  const _ip = { x: 0, y: 0, z: 0, obj: null };
   function bracePts(s, e) {
     const L = s.stats.length, h = s.heading || 0, fx = Math.cos(h), fz = Math.sin(h), top = (TOP[s.type] || 4) * 0.6;
     const pts = [{ x: s.x + fx * L * 0.45, y: top, z: s.z + fz * L * 0.45, w: 1, need: true, obj: s }, { x: s.x - fx * L * 0.45, y: top, z: s.z - fz * L * 0.45, w: 1, need: true, obj: s },
@@ -245,8 +246,19 @@ window.WW = window.WW || {};
     const e = (s.alive || s.sinking) ? forecastFor(s) : null;
     if (e && shot.t < MAXB) { shot.ev = e; shot.doneAt = undefined; shot.dur = Math.max(shot.dur, Math.min(shot.t + e.lastReal + BEAT, MAXB + BEAT)); }
     else if (shot.doneAt === undefined) { shot.doneAt = shot.t; shot.dur = shot.t + BEAT; }   // the last impact (or MAXB s of them): the beat, then free
-    const P = shot.pose, a = P.az + 0.02 * shot.side * shot.t;   // a slow drift round the ship
+    let P = shot.pose, a = P.az + 0.02 * shot.side * shot.t;   // a slow drift round the ship
     gP.set(s.x + Math.cos(a) * P.R, P.y, s.z + Math.sin(a) * P.R);
+    // camera6: the impact point hidden from the pose (the ships moved since the pose was chosen; the survey found the
+    // shooter of a gun duel in front of the target's waterline at the hit): choose the pose again (at most 3 times)
+    if (shot.ev && (shot.reposeT = (shot.reposeT || 0) - (rdt || 0)) <= 0) {
+      shot.reposeT = 0.4;
+      _ip.x = s.x + shot.ev.ox; _ip.y = 2; _ip.z = s.z + shot.ev.oz; _ip.obj = s;
+      if (!sight(gP, _ip, s) && (shot.reposes || 0) < 3 && shot.doneAt === undefined) {
+        shot.reposes = (shot.reposes || 0) + 1; ST.reposes = (ST.reposes || 0) + 1;
+        start(shot); P = shot.pose; a = P.az + 0.02 * shot.side * shot.t;
+        gP.set(s.x + Math.cos(a) * P.R, P.y, s.z + Math.sin(a) * P.R);
+      }
+    }
     braceLook(s, shot.ev, gL);
     shot.aim = (shot.aim || V3()).set(s.x + shot.ev.ox * 0.5, 2, s.z + shot.ev.oz * 0.5);
     return true;
@@ -545,8 +557,8 @@ window.WW = window.WW || {};
     if (sa) { const c = arcShot(); if (c) return c; closeShipArc('complete'); }
     if (wideNext) {
       wideNext = false;
-      // (camera5: a carrier hit known to land within 9 s: no establishing shot first, the brace on her)
-      if (WW.camLook && WW.camLook.active()) for (const v of events()) if (v.target && v.target.type === 'carrier' && v.t > 1.5 && v.t < 9) { const e = v._f; return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) }; }
+      // (camera5: a carrier hit known to land within 9 s: no establishing shot first, the brace on her; camera6: a battleship too)
+      if (WW.camLook && WW.camLook.active()) for (const v of events()) if (v.target && (v.target.type === 'carrier' || v.target.type === 'battleship') && v.t > 1.5 && v.t < 9) { const e = v._f; return { kind: 'brace', subj: v.target, ev: e, hold: e.raw, pr: e.raw, dur: WW.clamp(v.tLast + BEAT, 4, 12), why: v.kind, label: labelOf(e) }; }
       return { kind: 'wide', dur: 6 + Math.random() * 2, pr: 2 };
     }
     return null;

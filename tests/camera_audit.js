@@ -41,12 +41,15 @@ const SCEN = {
   dusk: { random: true, tod: 120 },
   carrier_duel_dusk: { A: ['carrier', 'destroyer', 'destroyer'], B: ['carrier', 'destroyer', 'destroyer'], tod: 120 },
   midway_dusk: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: ['carrier', 'carrier', 'battleship', 'cruiser', 'destroyer', 'destroyer'], aFixed: 'USN', base: 'USN', tod: 120 },
-  odd: { odd: true }
+  odd: { odd: true },
+  pt_raid: { A: ['carrier', 'cruiser', 'destroyer', 'destroyer'], B: rep('pt', 6) },          // camera6: a PT ambush on a carrier group
+  sub_raid: { A: ['carrier', 'battleship', 'destroyer'], B: rep('submarine', 3) }               // camera6: a submarine attack
 };
+const SCALE = +arg('--scale', 1);   // camera6: the game speed (1, 2, 4: the speed buttons); the sim is the same, the director's real-time choices differ
 function specOf(name, seed) {
   const s = SCEN[name]; if (!s) throw new Error('unknown scenario ' + name);
-  if (s.odd) { const o = ODD[(seed - 1) % ODD.length]; return { name, seed, A: o[1], B: o[2], odd: o[0], aNation: seed % 2 ? 'USN' : 'IJN', fast: FAST }; }
-  return Object.assign({ name, seed, aNation: s.aFixed || (seed % 2 ? 'USN' : 'IJN'), fast: FAST }, s);
+  if (s.odd) { const o = ODD[(seed - 1) % ODD.length]; return { name, seed, A: o[1], B: o[2], odd: o[0], aNation: seed % 2 ? 'USN' : 'IJN', fast: FAST, scale: SCALE }; }
+  return Object.assign({ name, seed, aNation: s.aFixed || (seed % 2 ? 'USN' : 'IJN'), fast: FAST, scale: SCALE }, s);
 }
 
 // ---------------- page side ----------------
@@ -55,6 +58,8 @@ function install(cfg) {
   const wall = () => performance.now() / 1000;
   const G = WW.game, W = WW.cfg.MAP_W, H = WW.cfg.MAP_H, PI = Math.PI;
   const VALUE = { carrier: 1.6, battleship: 1.4, cruiser: 1.1, destroyer: 0.8, submarine: 0.6, pt: 0.4 };
+  // camera6: the class at stake on the oracle's scale (the user: CV >> BB > CA > DD > PT; a carrier torpedoed must rank top)
+  const CLS = { carrier: 3, battleship: 1.8, cruiser: 1.3, destroyer: 0.9, submarine: 0.5, pt: 0.5 }, cw = s => (s && CLS[s.type]) || 1;
   let aid = 0, sid = 0, wid = 0;
   const idOf = o => !o ? null : o.stats ? 's' + o.id : (o.pt || o.kind) ? 'p' + (o.__aid || (o.__aid = ++aid)) : o.isBase ? 'base' : 'd';
   const cls = o => !o ? '' : o.stats ? o.type : o.kind ? o.kind : o.isBase ? 'base' : 'diorama';
@@ -98,6 +103,7 @@ function install(cfg) {
   if (WW.aces) WW.aces.reset();
   WW.seedRandom(cfg.seed * 7919 + 1); WW.time.now = 0; WW.time.warp = 1;
   G.baseChoice = cfg.base || null; G.composition = comp; G.startRound({ keepMap: true }); G.composition = null; G.baseChoice = null;
+  WW.time.scale = cfg.scale || 1;
   // --fast: no pixels are drawn, so skip the per-frame visual work the camera never reads (particles, crews, water, decals,
   // base props, audio). Not the default: those modules' event handlers draw on Math.random (the camera's dice) according
   // to the state their update builds, so a stubbed round takes other shots (and other slow-motion beats, so other sim
@@ -135,6 +141,14 @@ function install(cfg) {
   WW.on('deckHit', e => { if (e && e.ship) { latch.set(e.ship, { w: wall(), why: 'deck' }); A.ev.push({ k: 'deckHit', w: wall(), s: ref(e.ship), shot: shotNow(), on: filming(e.ship) || inFrame(e.ship.x, 2, e.ship.z, 300) }); } });
   WW.on('baseEvent', e => { if (!e) return; if (e.kind === 'bombard') baseBomb = wall(); if (e.kind === 'alarm') baseAlarm = wall(); A.ev.push({ k: 'base:' + e.kind, w: wall(), shot: shotNow(), on: inFrame(e.x, 2, e.z, 350) }); });
   WW.on('planeKill', e => { if (e && e.victim) A.ev.push({ k: 'kill', w: wall(), p: ref(e.victim), by: ref(e.shooter), shot: shotNow(), on: filming(e.shooter) || filming(e.victim) || inFrame(e.victim.x, e.victim.y, e.victim.z, 200) }); });
+  // camera6: ship torpedoes (a destroyer / cruiser / PT boat / submarine spread): fired, and each one's impact (tests/camera_cases.js)
+  const A_st = A.stor = [], sprj = new Map();
+  WW.on('weaponDropped', e => {
+    const o = e && e.plane; if (!e || !e.proj || !o || !o.stats || e.kind !== 'torpedo') return;
+    const d = { w: wall(), sim: +WW.time.now.toFixed(1), s: ref(o), tg: ref(o.target), on: filming(o) || inFrame(o.x, 2, o.z, 300) };
+    A_st.push(d); sprj.set(e.proj, d);
+  });
+  WW.on('weaponImpact', e => { const d = e && sprj.get(e.proj); if (!d) return; sprj.delete(e.proj); if (e.ship && !e.dud) (d.hits = d.hits || []).push({ w: wall(), sim: +WW.time.now.toFixed(1), id: 's' + e.ship.id, c: e.ship.type }); });
   WW.on('weaponDropped', e => {
     if (!e || !e.proj || !e.plane || !e.plane.kind) return; // planes only (ship torpedoes have no .kind)
     const p = e.plane, t = e.kind === 'bomb' ? (e.target || p.diveTgt || p.target) : (p.target || p.outTgt);
@@ -166,10 +180,11 @@ function install(cfg) {
     for (const o of WW.world.ships) {
       if (o === own || o.removed || o.submerged) continue;
       const t = ((o.x - P.x) * dx + (o.z - P.z) * dz) / L2; if (t <= 0.04 || t >= 0.96) continue;
-      if (Math.hypot(o.x - (P.x + dx * t), o.z - (P.z + dz * t)) < o.stats.length * 0.35 && WW.lerp(P.y, y, t) < 7) return 'hull';
+      if (Math.hypot(o.x - (P.x + dx * t), o.z - (P.z + dz * t)) < o.stats.length * 0.35 && WW.lerp(P.y, y, t) < 7) { lastHull = (o.isLand ? 'land ' : '') + o.type + (o.alive ? '' : o.sinking ? ' sinking' : ' dead') + ' t' + t.toFixed(2); return 'hull'; }
     }
     return 'ok';
   }
+  let lastHull = '';
   function beAt(w) { let b = null; for (const r of ring) if (r.w <= w) b = r; return b || ring[0]; }
   // judged on the frame 4 frames (0.13 s) after the event (the impact's flash and column last longer than that: a cut made
   // on the event itself, which shows after its cross-fade frame, counts) and on the frame 1 s before the event
@@ -178,7 +193,7 @@ function install(cfg) {
   function bigEvent(k, x, y, z, own, extra) {
     if (G.state !== 'battle' || !ring.length) return;
     extra = Object.assign({ arcIn: own ? arcAb(own) : null }, extra || {});
-    bePend.push({ k, x, y, z, own, extra, w: wall(), n: 0 });
+    bePend.push({ k, x, y, z, own, extra: Object.assign({ sim: +WW.time.now.toFixed(1) }, extra), w: wall(), n: 0 });
   }
   function beResolve() {
     if (!bePend.length) return;
@@ -188,17 +203,18 @@ function install(cfg) {
     for (let i = bePend.length - 1; i >= 0; i--) if (bePend[i].n >= 4) bePend.splice(i, 1);
   }
   function beJudge(k, x, y, z, own, extra, now, pre, s, w0) {
-    BE.push(Object.assign({ k, w: w0, x: Math.round(x), z: Math.round(z), now: beSee(now, x, y, z, own), pre: beSee(pre, x, y, z, own), shot: s ? (s.story ? 'story/' + s.sk : s.kind) + (s.stage ? ':' + s.stage : '') : '-', fc: own && fcSeen.has(own) ? +(wall() - fcSeen.get(own).w).toFixed(1) : null, fcPr: own && fcSeen.has(own) ? fcSeen.get(own).pr : null, fcLead: own && fcSeen.has(own) ? +(wall() - fcSeen.get(own).first).toFixed(1) : null, sPr: s && s.pr !== undefined ? +(+s.pr).toFixed(1) : null, sT: s ? +s.t.toFixed(1) : null, lock: s && WW.camLock ? (WW.camLock.state(s) || {}).why || '' : '' }, extra || {}));
+    lastHull = '';
+    BE.push(Object.assign({ k, w: w0, x: Math.round(x), z: Math.round(z), now: beSee(now, x, y, z, own), hullBy: lastHull || undefined, pre: beSee(pre, x, y, z, own), shot: s ? (s.story ? 'story/' + s.sk : s.kind) + (s.stage ? ':' + s.stage : '') : '-', fc: own && fcSeen.has(own) ? +(wall() - fcSeen.get(own).w).toFixed(1) : null, fcPr: own && fcSeen.has(own) ? fcSeen.get(own).pr : null, fcLead: own && fcSeen.has(own) ? +(wall() - fcSeen.get(own).first).toFixed(1) : null, sPr: s && s.pr !== undefined ? +(+s.pr).toFixed(1) : null, sT: s ? +s.t.toFixed(1) : null, lock: s && WW.camLock ? (WW.camLock.state(s) || {}).why || '' : '' }, extra || {}));
   }
   WW.on('shipHit', e => {
     const s = e && e.ship; if (!s || !s.stats || s.isLand || s.isBase) return;
     const k = e.kind === 'bomb' ? 'bomb' : e.kind === 'torpedo' ? 'torpedo' : e.kind === 'shell' && e.cal === 'big' ? 'shell' : null; if (!k) return;
     const key = s.id + k, t = wall(); if (t - (beLast.get(key) || -9) < 2) return; beLast.set(key, t);
-    bigEvent(k, e.x !== undefined ? e.x : s.x, 2, e.z !== undefined ? e.z : s.z, s, { c: s.type });
+    bigEvent(k, e.x !== undefined ? e.x : s.x, 2, e.z !== undefined ? e.z : s.z, s, { c: s.type, id: 's' + s.id, n: s.nation });
   });
-  WW.on('shipSunk', s => { if (s && s.stats && !s.isLand) bigEvent('sunk', s.x, 2, s.z, s, { c: s.type }); });
-  WW.on('magazine', e => { if (e && e.ship) bigEvent('magazine', e.ship.x, 4, e.ship.z, e.ship, { c: e.ship.type }); });
-  WW.on('deckHit', e => { if (e && e.ship) bigEvent('deck', e.x !== undefined ? e.x : e.ship.x, 3, e.z !== undefined ? e.z : e.ship.z, e.ship, { c: e.ship.type }); });
+  WW.on('shipSunk', s => { if (s && s.stats && !s.isLand) bigEvent('sunk', s.x, 2, s.z, s, { c: s.type, id: 's' + s.id, n: s.nation }); });
+  WW.on('magazine', e => { if (e && e.ship) bigEvent('magazine', e.ship.x, 4, e.ship.z, e.ship, { c: e.ship.type, id: 's' + e.ship.id, n: e.ship.nation }); });
+  WW.on('deckHit', e => { if (e && e.ship) bigEvent('deck', e.x !== undefined ? e.x : e.ship.x, 3, e.z !== undefined ? e.z : e.ship.z, e.ship, { c: e.ship.type, id: 's' + e.ship.id, n: e.ship.nation }); });
   // a plane shot down (AA or fighters): a BIG event when it belongs to an arc or a raid (a bomber / torpedo plane within
   // 400 u of the ship or base it attacks, or a plane of the running arc); any other kill near ships is 'killFar' (a
   // dogfight away from the action), reported apart from the BE headline
@@ -216,24 +232,28 @@ function install(cfg) {
   WW.ui.caption = function (a, b, secs, small) { A.caps.push({ w: wall(), sim: WW.time.now, t: (a || '') + (b ? ' | ' + b : ''), small: !!small, shot: shotNow() }); return uc.apply(this, arguments); };
 
   // ---- the oracle: what is the best action going on right now (independent of camera_finder.js) ----
+  const runT = new WeakMap();
   function oracle(now) {
-    const out = [], add = (kind, score, s, t, x, z, y) => out.push({ kind, score: +score.toFixed(2), s: idOf(s), t: idOf(t), x: Math.round(x), z: Math.round(z), y: y || 2, _s: s, _t: t });
+    const out = [], add = (kind, score, s, t, x, z, y) => out.push({ kind, score: +score.toFixed(2), s: idOf(s), t: idOf(t), c: cls(s.stats ? s : t && t.stats ? t : s), x: Math.round(x), z: Math.round(z), y: y || 2, _s: s, _t: t });
     const torps = [];
     const act = WW.combat && WW.combat._i && WW.combat._i.active;
     if (act) for (const q of act) if (!q.dead && q.kind === 'torp') torps.push(q);
     for (const p of WW.world.planes) {
       if (!ok(p)) continue;
       const t = p.target;
-      if (p.kind === 'torpedo' && p.phase === 'run' && t && t.alive && p.ordnance) { const dh = WW.dist(p.x, p.z, t.x, t.z); add('run', 6 + 2 * (1 - WW.clamp((dh - 90) / 120, 0, 1)) + 0.5 * (VALUE[t.type] || 1), p, t, p.x, p.z, p.y); }
-      else if (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive') && p.ordnance) { const tt = p.diveTgt || t; add('dive', 7.5 + 0.5 * (tt ? VALUE[tt.type] || 1 : 1), p, tt, p.x, p.z, p.y); }
+      // (a run that has gone on 30 sim s without a drop is a plane manoeuvring for a beam, not an attack about to happen)
+      if (p.kind === 'torpedo' && p.phase === 'run' && t && t.alive && p.ordnance) { const dh = WW.dist(p.x, p.z, t.x, t.z), r0 = runT.get(p) === undefined ? (runT.set(p, WW.time.now), WW.time.now) : runT.get(p); add('run', WW.time.now - r0 > 30 ? 3.5 : 5 + 1.5 * (1 - WW.clamp((dh - 90) / 120, 0, 1)) + cw(t), p, t, p.x, p.z, p.y); }
+      else if (p.kind === 'torpedo') runT.delete(p);
+      else if (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive') && p.ordnance) { const tt = p.diveTgt || t; add('dive', 6 + 1.2 * (tt && tt.stats ? cw(tt) : 1.3), p, tt, p.x, p.z, p.y); }
       else if (p.kind === 'dive' && p.state === 'attack' && !p.phase && p.ordnance && t && t.alive && p.wing === 0) add('wheel', 3.5, p, t, p.x, p.z, p.y);
       else if (p.kind === 'fighter' && p.state === 'attack' && ok(p.foe) && Math.hypot(p.foe.x - p.x, p.foe.y - p.y, p.foe.z - p.z) < 40) add('dogfight', 3 + (p.foe.kind !== 'fighter' ? 1 : 0), p, p.foe, p.x, p.z, p.y);
     }
     for (const s of WW.world.ships) {
       if (s.removed) continue;
-      if (s.sinking && (s.sinkT || 0) < 12) { add('sinking', 8 + 0.5 * (VALUE[s.type] || 1), s, null, s.x, s.z); continue; }
+      // (the going down is the moment: worth less as she settles; a destroyer or smaller going down stays under 8)
+      if (s.sinking && (s.sinkT || 0) < 12) { add('sinking', 6 + 1.6 * cw(s) - Math.max(0, (s.sinkT || 0) - 3) * 0.3, s, null, s.x, s.z); continue; }
       if (!s.alive) continue;
-      const L = latch.get(s); if (L && now - L.w < 15) add(L.why, 9, s, null, s.x, s.z);
+      const L = latch.get(s); if (L && now - L.w < 15) add(L.why, 7.5 + 1.5 * cw(s), s, null, s.x, s.z);
       // torpedoes in the water that will cross this hull
       let best = 1e9, nt = 0;
       for (const q of torps) {
@@ -242,8 +262,8 @@ function install(cfg) {
         if (along < 0 || along > 160 || Math.abs(dx * fz - dz * fx) > s.stats.length * 0.6 + 5) continue;
         nt++; best = Math.min(best, along / (q.speed || 12));
       }
-      if (nt) add('torps', 6.5 + 1.5 * (1 - WW.clamp(best / 15, 0, 1)) + 0.3 * Math.min(3, nt), s, null, s.x, s.z);
-      const h = hitAny.get(s); if (h && now - h.w < 4) add('hit', 4.5 + (VALUE[s.type] || 1) + (h.k === 'torpedo' ? 1.5 : h.k === 'bomb' ? 1 : 0), s, null, s.x, s.z);
+      if (nt) add('torps', 5 + cw(s) + 1.5 * (1 - WW.clamp(best / 15, 0, 1)) + 0.3 * Math.min(3, nt), s, null, s.x, s.z);
+      const h = hitAny.get(s); if (h && now - h.w < 4) add('hit', (h.k === 'torpedo' || h.k === 'bomb' ? 5 + 1.5 * cw(s) : 3.5 + (VALUE[s.type] || 1)) + (h.k === 'torpedo' ? 1.5 : h.k === 'bomb' ? 1 : 0), s, null, s.x, s.z);
       const f = fire.get(s), hl = hits.get(s), sl = strad.get(s);
       const recentHits = hl ? hl.filter(w => now - w < 10).length : 0, recentStrad = sl ? sl.filter(w => now - w < 8).length : 0;
       if (f && now - f.w < 6 && f.tg && f.tg.alive && !f.tg.isBase) add('gunfire', 3.5 + (VALUE[s.type] || 1) + (recentHits ? 1 : 0), s, f.tg, s.x, s.z);
@@ -286,9 +306,33 @@ function install(cfg) {
     _f.set(0, 0, -1).applyQuaternion(c.quaternion);
     if (lastDir) { const ang = Math.acos(Math.min(1, lastDir.dot(_f))) * 30; if (ang > maxRot) maxRot = ang; if (ang > 1.2) snaps++; }
     lastDir = (lastDir || new THREE.Vector3()).copy(_f);
-    beFrame(c); beResolve(); beKills();
+    beFrame(c); beResolve(); beKills(); diveFrame(s, c);
     if (frames % 30 === 0) sample(now, s);
   };
+  // ---- camera6: DIVE ANGLES. Every frame the shot's subject is a dive bomber in its push-over or dive: the target in
+  // frame, the plane in frame and its size on screen, the camera's angle to the plane's flight path (side-on: 60-120 deg,
+  // the dive reads shallow), the camera's look-down (flat: under 15 deg), line-of-action flips (the plane -> target line),
+  // the shots it took. Judged per dive (A.dives); the bomb's impact in frame comes from the drop record (d.imp.on).
+  const dives = A.dives = [], dvBy = new Map(), _dp = new THREE.Vector3(), _dv = new THREE.Vector3();
+  function diveFrame(sh, c) {
+    const p = sh && (sh.plane || sh.subj);
+    if (!p || !p.pt || p.kind !== 'dive' || !ok(p) || (p.phase !== 'roll' && p.phase !== 'dive') || G.state !== 'battle') return;
+    let r = dvBy.get(p);
+    if (!r || r.end) { r = { p: ref(p), t: ref(p.diveTgt || p.target), w0: wall(), sim0: +WW.time.now.toFixed(1), dl: WW.daylight === undefined ? 1 : +WW.daylight.toFixed(2), elev: WW.skyTime && WW.skyTime.elev ? +WW.skyTime.elev().toFixed(1) : 20, n: 0, tIn: 0, pIn: 0, side: 0, flat: 0, small: 0, flips: 0, shots: [], _lp: null, _sg: 0 }; dvBy.set(p, r); dives.push(r); }
+    r.n++; r.w1 = wall();
+    if (r.shots.indexOf(sh.__sid) < 0) r.shots.push(sh.__sid);
+    const T = p.diveTgt || p.target;
+    if (T && inFrame(T.x, 2, T.z, 1e9)) r.tIn++;
+    if (inFrame(p.x, p.y, p.z, 1e9)) r.pIn++;
+    const d = Math.hypot(c.position.x - p.x, c.position.y - p.y, c.position.z - p.z), px = 6 / (d * 2 * Math.tan(c.fov * Math.PI / 360)) * 540;   // (~6 u of span on a 540 px frame)
+    if (px < 10) r.small++;
+    _f.set(0, 0, -1).applyQuaternion(c.quaternion);
+    if (r._lp) { _dv.set(p.x - r._lp.x, p.y - r._lp.y, p.z - r._lp.z); const L = _dv.length(); if (L > 1e-3) { const ang = Math.acos(WW.clamp(_dv.dot(_f) / L, -1, 1)) * 180 / Math.PI; if (ang > 60 && ang < 120) r.side++; } }
+    r._lp = { x: p.x, y: p.y, z: p.z };
+    if (-_f.y < 0.26) r.flat++;
+    if (T) { const sg = Math.sign((T.x - p.x) * (c.position.z - p.z) - (T.z - p.z) * (c.position.x - p.x)); if (sg && r._sg && sg !== r._sg && sh.__sid === r._sid) r.flips++; if (sg) { r._sg = sg; r._sid = sh.__sid; } }
+  }
+  WW.on('weaponDropped', e => { const p = e && e.plane, r = p && dvBy.get(p); if (r && !r.end && e.kind === 'bomb') { r.end = true; r.drop = A.drops.length - 1; } });
   // ---- per second ----
   const seen = new WeakMap(); // plane -> last phase seen (runs / aborts / dive starts)
   function sample(now, s) {
@@ -368,7 +412,15 @@ function install(cfg) {
       else if (subj) scls = 'plane';
     }
     if (cur && !cur.cls) cur.cls = scls;
-    A.rec.push({ w: Math.round(now), sim: Math.round(WW.time.now), dl: WW.daylight === undefined ? 1 : +WW.daylight.toFixed(2), elev, sun,
+    // camera6 (tests/camera_cases.js): the sim's context this second: strike planes flying home (by nation), the dives under
+    // way and their targets, the free camera
+    const ctx = { ret: {}, dv: [], fc: !!(WW.freecam && WW.freecam.active()) };
+    for (const p of WW.world.planes) {
+      if (!ok(p) || !p.pt || p.kind === 'fighter') continue;
+      if (p.state === 'return') ctx.ret[p.nation] = (ctx.ret[p.nation] || 0) + 1;
+      if (p.kind === 'dive' && (p.phase === 'roll' || p.phase === 'dive') && (p.diveTgt || p.target)) { const t = idOf(p.diveTgt || p.target); if (ctx.dv.indexOf(t) < 0) ctx.dv.push(t); }
+    }
+    A.rec.push({ w: Math.round(now), sim: Math.round(WW.time.now), ctx, dl: WW.daylight === undefined ? 1 : +WW.daylight.toFixed(2), elev, sun,
       shot: s ? { sid: s.__sid, kind: s.kind, sk: s.sk || '', stage: s.stage || '', t: +s.t.toFixed(1), dur: +s.dur.toFixed(1), story: !!s.story, phase: (WW.camStory._dbg() || {}).phase || '' } : null,
       cls: scls, subj: ref(subj), tgt: ref(tgt), q, top, on1: onIdx === 0, on3: onIdx >= 0 && onIdx < 3, onAny: onIdx >= 0,
       label, promise, finder, rot: +maxRot.toFixed(2), snaps, warp: +(WW.time.warp || 1).toFixed(2) });
@@ -451,11 +503,12 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     for (const it of r.finder) if (it.eta >= 3 && it.eta <= 60 && it.s && it.kind !== 'danger' && !it.v) judge(it, r.w, M.fin); // (a vague item shows no number)
   }
   // big events on camera
-  M.be = { n: 0, ok: 0, pre: 0, byKind: {}, why: {}, arcN: 0, arcOk: 0, cvN: 0, cvOk: 0, cvPre: 0, farN: 0, farOk: 0 };   // BE: the big events' impacts in frame and clear
+  M.be = { n: 0, ok: 0, pre: 0, byKind: {}, why: {}, arcN: 0, arcOk: 0, cvN: 0, cvOk: 0, cvPre: 0, bbN: 0, bbOk: 0, farN: 0, farOk: 0 };   // BE: the big events' impacts in frame and clear
   for (const e of R.be || []) {
     if (e.k === 'killFar') { M.be.farN++; if (e.now === 'ok') M.be.farOk++; continue; }   // a dogfight away from the action: apart
     if (e.arcIn) { M.be.arcN++; if (e.now === 'ok') M.be.arcOk++; }
     if (e.c === 'carrier' && e.k !== 'kill') { M.be.cvN++; if (e.now === 'ok') { M.be.cvOk++; if (e.pre === 'ok') M.be.cvPre++; } }
+    if (e.c === 'battleship' && e.k !== 'kill') { M.be.bbN++; if (e.now === 'ok') M.be.bbOk++; }
     const k = M.be.byKind[e.k] = M.be.byKind[e.k] || { n: 0, ok: 0, pre: 0 }; M.be.n++; k.n++; if (e.now === 'ok') { M.be.ok++; k.ok++; if (e.pre === 'ok') { M.be.pre++; k.pre++; } } else M.be.why[e.now] = (M.be.why[e.now] || 0) + 1; }
   // ARCS (any director logging WW.cam.arcs): completeness = the share of the battle's camera time inside arcs filmed from
   // setup to outcome without a cut away (outcome complete or protagonistDown); early cuts per minute (recuts)
@@ -469,6 +522,15 @@ function analyse(R) { // one round's record -> its metrics and its worst cases
     const k = a.kind.replace(/^air:/, 'air:'); M.arc.byKind[k] = (M.arc.byKind[k] || 0) + 1;
   }
   M.early = R.early || 0;
+  // dive angles (camera6): per filmed dive (>= 1 s of it on screen), the share of its frames with the target in frame, the
+  // plane in frame, side-on, flat, the plane small; flips; the bomb's impact in frame
+  M.dv = { n: 0, f: 0, tIn: 0, pIn: 0, side: 0, flat: 0, small: 0, flips: 0, held: 0, cases: [] };
+  for (const r of R.dives || []) {
+    if (r.n < 30) continue;
+    M.dv.n++; M.dv.f += r.n; for (const k of ['tIn', 'pIn', 'side', 'flat', 'small', 'flips']) M.dv[k] += r[k];
+    const d = r.drop !== undefined ? R.drops[r.drop] : null, held = !!(d && d.imp && d.imp.on); if (held) M.dv.held++;
+    M.dv.cases.push({ w: Math.round(r.w0 - (R.shots[0] ? R.shots[0].w0 : 0)), p: r.p, t: r.t, n: r.n, tIn: +(r.tIn / r.n).toFixed(2), side: +(r.side / r.n).toFixed(2), flat: +(r.flat / r.n).toFixed(2), small: +(r.small / r.n).toFixed(2), flips: r.flips, held, shots: r.shots.length, elev: r.elev });
+  }
   for (const e of R.ev) { const on = e.on || e.on2, key = e.k === 'sunk' ? 'sunk:' + (e.s ? e.s.c : '?') : e.k; M.ev.n++; if (on) M.ev.on++; const k = M.ev.byKind[key] = M.ev.byKind[key] || { n: 0, on: 0 }; k.n++; if (on) k.on++; }
   return M;
 }
@@ -488,13 +550,15 @@ function merge(all) { // sum the per-round metrics
     for (const k in M.q.att) { const a = T.q.att[k] = T.q.att[k] || { n: 0, tIn: 0 }; a.n += M.q.att[k].n; a.tIn += M.q.att[k].tIn; }
     for (const k in M.q.flipsBy) { const a = T.q.flipsBy[k] = T.q.flipsBy[k] || { n: 0, f: 0 }; a.n += M.q.flipsBy[k].n; a.f += M.q.flipsBy[k].f; }
     T.ev.n += M.ev.n; T.ev.on += M.ev.on;
-    T.be = T.be || { n: 0, ok: 0, pre: 0, byKind: {}, why: {}, arcN: 0, arcOk: 0, cvN: 0, cvOk: 0, cvPre: 0, farN: 0, farOk: 0 };
-    for (const f of ['n', 'ok', 'pre', 'arcN', 'arcOk', 'cvN', 'cvOk', 'cvPre', 'farN', 'farOk']) T.be[f] += M.be[f];
+    T.be = T.be || { n: 0, ok: 0, pre: 0, byKind: {}, why: {}, arcN: 0, arcOk: 0, cvN: 0, cvOk: 0, cvPre: 0, bbN: 0, bbOk: 0, farN: 0, farOk: 0 };
+    for (const f of ['n', 'ok', 'pre', 'arcN', 'arcOk', 'cvN', 'cvOk', 'cvPre', 'bbN', 'bbOk', 'farN', 'farOk']) T.be[f] += M.be[f];
     T.arc = T.arc || { secs: 0, done: 0, n: 0, byOut: {}, byKind: {}, logged: false };
     T.arc.secs += M.arc.secs; T.arc.done += M.arc.done; T.arc.n += M.arc.n; T.arc.logged = T.arc.logged || M.arc.logged;
     for (const k in M.arc.byOut) T.arc.byOut[k] = (T.arc.byOut[k] || 0) + M.arc.byOut[k];
     for (const k in M.arc.byKind) T.arc.byKind[k] = (T.arc.byKind[k] || 0) + M.arc.byKind[k];
     T.early = (T.early || 0) + M.early;
+    T.dv = T.dv || { n: 0, f: 0, tIn: 0, pIn: 0, side: 0, flat: 0, small: 0, flips: 0, held: 0 };
+    for (const k of ['n', 'f', 'tIn', 'pIn', 'side', 'flat', 'small', 'flips', 'held']) T.dv[k] += (M.dv && M.dv[k]) || 0;
     for (const k in M.be.byKind) { const a = T.be.byKind[k] = T.be.byKind[k] || { n: 0, ok: 0, pre: 0 }; for (const f of ['n', 'ok', 'pre']) a[f] += M.be.byKind[k][f]; }
     for (const k in M.be.why) T.be.why[k] = (T.be.why[k] || 0) + M.be.why[k];
     for (const k in M.ev.byKind) { const a = T.ev.byKind[k] = T.ev.byKind[k] || { n: 0, on: 0 }; a.n += M.ev.byKind[k].n; a.on += M.ev.byKind[k].on; }
@@ -517,9 +581,11 @@ function report(T, title) {
   const be = T.be || { n: 0, ok: 0, pre: 0, byKind: {}, why: {} }, ar = T.arc || { secs: 0, done: 0, n: 0, byOut: {}, byKind: {} };
   L.push(`ARCS: completeness ${ar.logged ? pct(ar.done, tot) : 'n/a (no arc log)'} of the camera time in arcs filmed setup -> outcome without a cut away (${ar.logged ? pct(ar.secs, tot) : '-'} in arcs at all; ${ar.n} arcs: ` +
     Object.keys(ar.byOut).map(k => `${k} ${ar.byOut[k]}`).join(', ') + `; ` + Object.keys(ar.byKind).map(k => `${k} ${ar.byKind[k]}`).join(', ') + `); early cuts (recuts) ${(60 * (T.early || 0) / tot).toFixed(2)}/min (${T.early || 0})`);
-  L.push(`BE in arcs (the arc's own impacts / kills in frame): ${be.arcN ? pct(be.arcOk, be.arcN) + ' of ' + be.arcN : 'n/a'}; CV-BE (carrier hit, deck, magazine, sinking in frame): ${pct(be.cvOk, be.cvN)} of ${be.cvN} (framed 1 s before too ${pct(be.cvPre, be.cvN)}); far dogfight kills (not in BE): ${be.farOk}/${be.farN}`);
+  L.push(`BE in arcs (the arc's own impacts / kills in frame): ${be.arcN ? pct(be.arcOk, be.arcN) + ' of ' + be.arcN : 'n/a'}; CV-BE (carrier hit, deck, magazine, sinking in frame): ${pct(be.cvOk, be.cvN)} of ${be.cvN} (framed 1 s before too ${pct(be.cvPre, be.cvN)}); BB-BE ${pct(be.bbOk, be.bbN)} of ${be.bbN}; far dogfight kills (not in BE): ${be.farOk}/${be.farN}`);
   L.push(`BE big-event coverage (impact in the safe frame, < 420 u, unoccluded): ${pct(be.ok, be.n)} of ${be.n}; framed 1 s before AND at the impact ${pct(be.pre, be.n)}; by kind ` +
     Object.keys(be.byKind).map(k => `${k} ${be.byKind[k].ok}/${be.byKind[k].n} (pre ${be.byKind[k].pre})`).join(', ') + `; misses: ` + Object.keys(be.why).map(k => `${k} ${be.why[k]}`).join(', '));
+  const dv = T.dv || { n: 0, f: 0 };
+  L.push(`DIVES (camera6; frames of the filmed dives): ${dv.n} dives, target in frame ${pct(dv.tIn, dv.f)}, plane in frame ${pct(dv.pIn, dv.f)}, side-on ${pct(dv.side, dv.f)}, flat camera ${pct(dv.flat, dv.f)}, plane small ${pct(dv.small, dv.f)}, ${dv.flips} line-of-action flips, the bomb's impact in frame ${pct(dv.held, dv.n)}`);
   L.push(`Big events on camera: ${pct(T.ev.on, T.ev.n)} of ${T.ev.n}: ` + Object.keys(T.ev.byKind).map(k => `${k} ${T.ev.byKind[k].on}/${T.ev.byKind[k].n}`).join(', '));
   return L.join('\n');
 }
@@ -570,8 +636,9 @@ async function survey(b, spec, dir) {
   const { p, errs, comp } = await openRound(b, spec);
   const t0 = Date.now();
   let t = 0;
-  while (true) { await p.evaluate(WAIT); t = await p.evaluate(() => { __step(300); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }); if (t < 0 || t > SIM) break; }
-  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null, la: WW.lookahead && WW.lookahead.on ? { checks: WW.lookahead.checks, diverged: WW.lookahead.diverged, mismatch: WW.lookahead.mismatch, steps: WW.lookahead.stepsRun, bootMs: WW.lookahead.bootMs, errs: WW.lookahead.errs.slice(0, 5) } : null, look: WW.camLook && WW.camLook.active ? { stats: WW.camLook.stats, log: WW.camLook.log } : null }; });
+  const CH = Math.round(300 / (spec.scale || 1));   // (a chunk of 5 sim s: the worker waited for stays ahead of the director at any speed)
+  while (true) { await p.evaluate(WAIT); t = await p.evaluate(CH => { __step(CH); return WW.game.state === 'battle' ? WW.game.roundTime : -1; }, CH); if (t < 0 || t > (spec.sim || SIM)) break; }
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, tod: A.tod, comp: A.comp, rec: A.rec, ev: A.ev, drops: A.drops, shots: A.shots, caps: A.caps, runs: A.runs, be: A.be, stor: A.stor, dives: A.dives.map(r => Object.assign({}, r, { _lp: undefined })), early: A.early || 0, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, score: WW.camScore ? { stats: WW.camScore.stats, log: WW.camScore.log } : null, story: WW.camStory ? WW.camStory.stats : null, dir: WW.camDirector ? { stats: WW.camDirector.stats, log: WW.camDirector.log } : null, la: WW.lookahead && WW.lookahead.on ? { checks: WW.lookahead.checks, diverged: WW.lookahead.diverged, mismatch: WW.lookahead.mismatch, steps: WW.lookahead.stepsRun, bootMs: WW.lookahead.bootMs, errs: WW.lookahead.errs.slice(0, 5) } : null, look: WW.camLook && WW.camLook.active ? { stats: WW.camLook.stats, log: WW.camLook.log } : null }; });
   R.errs = errs.slice(0, 5);
   fs.writeFileSync(path.join(dir, `${spec.name}_${spec.seed}.json`), JSON.stringify(R));
   const M = analyse(R);
@@ -584,7 +651,7 @@ async function sheet(b, specTxt) {
   const dir = path.join(OUT, 'sheets', `${name}_${seed}_${from}-${to}`); fs.mkdirSync(dir, { recursive: true });
   const { p } = await openRound(b, spec);
   const f0 = Math.round(+from * 30);
-  for (let left = f0; left > 0;) { await p.evaluate(WAIT); const k = Math.min(300, left); const go = await p.evaluate(k => { __step(k); return WW.game.state === 'battle'; }, k); left -= k; if (!go) break; }
+  for (let left = f0; left > 0;) { await p.evaluate(WAIT); const k = Math.min(Math.round(300 / (spec.scale || 1)), left); const go = await p.evaluate(k => { __step(k); return WW.game.state === 'battle'; }, k); left -= k; if (!go) break; }
   const frames = [], FKEY = +arg('--fkey', 0); let fDone = !FKEY;   // --fkey W: press F (camera_follow.js f()) at wall W of the window
   for (let w = +from; w <= +to; w += EV) {
     if (!fDone && w >= FKEY) { fDone = true; console.log('  F at ' + w + ': ' + await p.evaluate(() => WW.camFollow.f())); }
@@ -638,12 +705,58 @@ function windows(dir) {
     if (out.length) console.log(`## ${f}\n  ` + out.join('\n  '));
   }
 }
-module.exports = { install, INIT, specOf, openRound, analyse, merge, report, SCEN, windows };
+// --misses (camera6): what the camera showed against the biggest action, per round: (1) every carrier / battleship hit,
+// deck, magazine or sinking NOT in frame, with the shot, the story phase and the arc running then; (2) spells of seconds
+// where the oracle's top action (score >= 8: a big ship struck, a run or dive on a big ship, a sinking) was off camera,
+// ranked by the weight missed (the sum of the top scores); (3) the captions naming a hit on a carrier / battleship whose
+// hit was not in frame
+const BIGCAP = /takes a torpedo|hit by bombs|blows up|magazine|sinks|Torpedo hit|Direct hit|flight deck|hangar/;
+function misses(dir, quiet) {
+  const out = { be: [], spells: [], caps: [], capN: 0 };
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort()) {
+    const R = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')), tag = f.replace('.json', '').replace(/_(\d+)$/, ':$1'), t0 = R.shots[0] ? R.shots[0].w0 : 0;
+    const recAt = w => { let b = null; for (const r of R.rec) { if (r.w > w + 0.5) break; b = r; } return b; };
+    const arcAt = w => (R.arcs || []).filter(a => a.t0 <= w && (!a.t1 || a.t1 >= w)).map(a => a.kind + (a.who ? ' ' + a.who : '') + (a.target ? '>' + a.target : '') + (a.plan && a.plan.target ? '>' + a.plan.target : '')).join(',');
+    const ph = r => r && r.shot ? (r.shot.story ? 'story/' + r.shot.sk + '/' + r.shot.phase : r.shot.kind) + (r.shot.stage ? ':' + r.shot.stage : '') : '-';
+    for (const e of R.be || []) {
+      if (e.k === 'kill' || e.k === 'killFar' || (e.c !== 'carrier' && e.c !== 'battleship') || e.now === 'ok') continue;
+      const r = recAt(e.w);
+      out.be.push({ tag, w: Math.round(e.w - t0), sim: e.sim, k: e.k, c: e.c, now: e.now, hullBy: e.hullBy, pre: e.pre, shot: e.shot, ph: ph(r), subj: r && r.subj ? r.subj.c + (r.subj.sq ? ' ' + r.subj.sq : '') + (r.q && r.q.ph ? '/' + r.q.ph : '') : '-', arc: arcAt(e.w), fc: e.fc, fcLead: e.fcLead });
+    }
+    let sp = null;
+    for (const r of R.rec) {
+      const top = r.top[0];
+      if (top && top.score >= 8 && !top.on) {
+        if (!sp || r.w - sp.w1 > 1.5) { sp = { tag, w: Math.round(r.w - t0), w1: r.w, n: 0, wt: 0, top: top.kind + ' ' + (top.c || '') + ' ' + top.score, ph: ph(r), subj: r.subj ? r.subj.c + (r.q && r.q.ph ? '/' + r.q.ph : '') : '-', arc: arcAt(r.w) }; out.spells.push(sp); }
+        sp.n++; sp.wt += top.score; sp.w1 = r.w;
+      } else sp = null;
+    }
+    for (const c of R.caps || []) {
+      const part = c.t.indexOf(' | ') >= 0 ? c.t.split(' | ')[1].split(' · ')[0] : c.t;   // ("Direct hit | Augusta · Akagi dive-bomber unit": the ship is Augusta)
+      if (!BIGCAP.test(c.t) || !/carrier|battleship|Enterprise|Yorktown|Hornet|Saratoga|Lexington|Wasp|Akagi|Kaga|Soryu|Hiryu|Shokaku|Zuikaku|Carolina|Washington|Dakota|Massachusetts|Indiana|Alabama|Kirishima|Haruna|Hiei|Kongo|Nagato|Mutsu/.test(part)) continue;
+      out.capN++;
+      const be = (R.be || []).filter(e => (e.c === 'carrier' || e.c === 'battleship') && e.k !== 'kill' && e.w <= c.w + 0.5 && e.w >= c.w - 6);
+      if (!be.some(e => e.now === 'ok')) out.caps.push({ tag, w: Math.round(c.w - t0), t: c.t, be: be.map(e => e.k + '/' + e.c + ':' + e.now).join(' '), shot: c.shot ? (c.shot.story ? 'story/' + c.shot.sk : c.shot.kind) + (c.shot.stage ? ':' + c.shot.stage : '') : '-' });
+    }
+  }
+  out.spells.sort((a, b) => b.wt - a.wt);
+  if (!quiet) {
+    console.log(`## CV / BB big events NOT in frame: ${out.be.length}`);
+    for (const e of out.be) console.log(`  ${e.tag} @${e.w}s sim ${e.sim} ${e.k} ${e.c} ${e.now}${e.hullBy ? '[' + e.hullBy + ']' : ''} (pre ${e.pre}) shot ${e.shot} [${e.ph}] subj ${e.subj} arc ${e.arc || '-'} fc ${e.fc} lead ${e.fcLead}`);
+    console.log(`## Spells with the oracle's top (>= 8) off camera, by weight (first 40 of ${out.spells.length}; ${out.spells.reduce((a, s) => a + s.n, 0)} s)`);
+    for (const s of out.spells.slice(0, 40)) console.log(`  ${s.tag} @${s.w}s ${s.n}s w ${s.wt.toFixed(0)} top ${s.top} on [${s.ph}] subj ${s.subj} arc ${s.arc || '-'}`);
+    console.log(`## Captions of a CV / BB hit whose hit was not in frame: ${out.caps.length} of ${out.capN}`);
+    for (const c of out.caps) console.log(`  ${c.tag} @${c.w}s "${c.t}" [${c.shot}] be ${c.be || 'none'}`);
+  }
+  return out;
+}
+module.exports = { survey, WAIT, misses, install, INIT, specOf, openRound, analyse, merge, report, SCEN, windows };
 if (require.main === module) (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const dir = path.join(OUT, 'raw_' + TAG); fs.mkdirSync(dir, { recursive: true });
   if (SUMMARIZE) return summarize(dir);
   if (args.includes('--windows')) return windows(dir);
+  if (args.includes('--misses')) return misses(dir);
   const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   if (SHEET) { for (const s of SHEET.split(',')) await sheet(b, s); await b.close(); return; }
   const jobs = []; for (const sc of SCENS) for (const sd of SEEDS) jobs.push(specOf(sc, sd));

@@ -27,7 +27,9 @@ window.WW = window.WW || {};
   // carries bombs and level-bombs whatever its sk / phase say) is never labelled a dive or torpedo attack
   const level = p => !!(p.level || (p.kind === 'torpedo' && p.target && p.target.isBase));
   const sq = p => (p && p.squadron ? p.squadron.short : p && p.nation === 'IJN' ? 'IJN strike' : 'Strike');
-  let cache = [], cacheAt = -1e9, cacheSim = -1e9, rate = 0.5, rW = null, rS = 0, latched = [];
+  // (the rate's seed: main.js's base speed, WW.time.base (camera6: 0.5 before speedcal, ~0.31 after), times the game speed)
+  const nominal = () => ((WW.time && WW.time.base) || 0.5) * ((WW.time && WW.time.scale) || 1);
+  let cache = [], cacheAt = -1e9, cacheSim = -1e9, rate = nominal(), rW = null, rS = 0, latched = [];
 
   // how many sim seconds pass per real second right now (time scale x base speed x slow motion), smoothed
   function sampleRate() {
@@ -166,6 +168,6 @@ window.WW = window.WW || {};
   }
   WW.on('magazine', e => { if (e && e.ship) latched.push({ s: e.ship, t: WW.time.now, why: 'magazine explodes' }); cacheAt = -1e9; });
   WW.on('deckHit', e => { if (e && e.ship) latched.push({ s: e.ship, t: WW.time.now, why: 'flight deck ablaze' }); cacheAt = -1e9; });
-  WW.on('roundStart', () => { latched = []; cache = []; cacheAt = -1e9; cacheSim = -1e9; });
+  WW.on('roundStart', () => { latched = []; cache = []; cacheAt = -1e9; cacheSim = -1e9; rate = nominal(); rW = null; });
   WW.camFinder = { list, upcoming, about, etaText, realS, rate: () => rate, HOT };
 })(window.WW);

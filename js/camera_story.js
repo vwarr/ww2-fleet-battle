@@ -40,13 +40,18 @@ window.WW = window.WW || {};
   // once per story. A torpedo leader's story cuts away only while its own drop is still TORP_AWAY off (the dive
   // shot then ends with the dive and the story goes back to the run before the drop)
   // (the dive shot is held to the bomb's impact by the attack lock, so a torpedo leader already on its run keeps the camera)
+  // (camera6: a locked shot ON the diver itself, the over-the-shoulder in its roll, gives way to the dive chase: a reframe
+  // of the same attack, with the ship below in frame; the ots never showed the bomb land)
   function diveCue() {
     const L = S.lead, w = L && L.wave;
-    if (S.dive || !w || (L.kind === 'torpedo' && L.phase === 'run') || (WW.cam.locked && WW.cam.locked())) return null;
-    if (L.kind === 'dive' && L.phase === 'roll') return L;
-    for (const m of w.members) if (ok(m) && m.kind === 'dive' && m.phase === 'roll') return m;
-    return null;
+    if (S.dive || !w || (L.kind === 'torpedo' && L.phase === 'run')) return null;
+    let m = null;
+    if (L.kind === 'dive' && L.phase === 'roll') m = L;
+    else for (const q of w.members) if (ok(q) && q.kind === 'dive' && q.phase === 'roll') { m = q; break; }
+    if (m && WW.cam.locked && WW.cam.locked() && !onDiver(m)) return null;
+    return m;
   }
+  function onDiver(m) { const sh = WW.cam._shot(); return !!(sh && !sh.stage && sh.kind === 'ots' && (sh.subj === m || sh.plane === m)); }
   const diving = m => ok(m) && (m.phase === 'roll' || m.phase === 'dive');
 
   // ---------- arcs ----------
@@ -228,7 +233,8 @@ window.WW = window.WW || {};
   // the ship a story's transit cuts to: the strike's target, else the carrier the plane flies from (afloat ships only)
   function shipFor(p) {
     const live = s => s && s.alive && !s.removed && !s.submerged && WW.world.ships.indexOf(s) >= 0 ? s : null; // a ship, not the island base or a flying boat's home
-    return live(p.target) || live(p.wave && p.wave.target) || live(p.carrier) || null;
+    const going = s => s && s.sinking && !s.removed && WW.world.ships.indexOf(s) >= 0 ? s : null;   // (camera6: the target going down, not the carrier home)
+    return live(p.target) || live(p.wave && p.wave.target) || going(p.target) || going(p.wave && p.wave.target) || live(p.carrier) || null;
   }
   // camera4 (strict, a strike with the director): only a wingman still committed to the attack and close to where the
   // protagonist fell (it carries the story to the drop); else the arc ends with its protagonist
@@ -310,6 +316,9 @@ window.WW = window.WW || {};
     const look = !!(WW.camLook && WW.camLook.active());
     if (WW.camDirector && S.hadAttack && (S.phase === 'home' || S.phase === 'after') && now - (S.homeAt !== undefined ? S.homeAt : S.afterAt || (S.afterAt = now)) > (look ? (S.phase === 'home' ? 0 : 2) : 9)) { S.ending = look ? 2 : 1; return pick(); }
     if (age > MAX_T || (S.phase === 'home' && age > MIN_T) || (S.phase === 'home' && L.state !== 'return' && age > 20)) { S.ending = 1; return pick(); }
+    // (camera6: with the look-ahead a strike turned for home is over, attack or not (an aborted run, a wave cut to pieces):
+    // the user watched a torpedo bomber fly home while a carrier was torpedoed elsewhere)
+    if (look && !S.user && S.mission === 'strike' && S.phase === 'home' && now - S.homeAt > 3) { S.ending = 2; return pick(); }
     // a long, empty transit: every other shot cuts to the ships it is about (the target, else the carrier it guards)
     // at toy's-eye level, so the story's minutes over open sea also show the ships big
     if ((S.phase === 'transit' || S.phase === 'form' || S.phase === 'home') && S.shots >= 2 && S.last !== 'ships' && !(S.user && S.shots < 3)) {
@@ -357,6 +366,9 @@ window.WW = window.WW || {};
       // an imminent attack may start after a short rest (if it beats what the director films now: camera_score.js); anything
       // else waits for the long one
       const rest = WW.camDirector ? 12 : 40, busy = WW.camDirector && WW.camDirector.arcBusy();
+      // (camera6: with the look-ahead, a filler story (a CAP fight, a flying boat, an ace) waits while a surface action is on:
+      // a ship arc of the director's (a gun duel, a torpedo run, a ship under attack) films that instead)
+      if (a && a.mission !== 'strike' && WW.camLook && WW.camLook.active() && WW.camDirector && WW.camDirector.shipArcs) { const sb = WW.camDirector.shipArcs()[0]; if (sb && sb.promise >= 8.5) return; }
       if (a && !busy && (a.item ? now - lastEnd >= rest && (WW.camDirector || !WW.camScore || WW.camScore.beats(a.item)) : now >= nextAt && a.score >= 7)) start(a, false);
       return;
     }
@@ -384,7 +396,7 @@ window.WW = window.WW || {};
     if (S.mission === 'strike') {
       diveWatch(rdt);
       const m = !S.fall && !S.ending ? diveCue() : null;
-      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && !locked && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); } // cut now (not a bomb / torpedo hand-off, not a locked attack)
+      if (m) { S.dive = { m, shown: false }; if (shot && !shot.stage && (!locked || onDiver(m)) && shot.t > 0.3) shot.dur = Math.min(shot.dur, shot.t); } // cut now (not a bomb / torpedo hand-off, not a locked attack)
     }
     if ((S.regroupT = (S.regroupT || 0) - rdt) <= 0 && ok(S.lead)) { // the group grows as the strike forms up
       S.regroupT = 2; const g = groupOf(S.lead);
