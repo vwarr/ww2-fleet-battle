@@ -71,8 +71,9 @@ window.WW = window.WW || {};
     const ch = scene.children;
     for (let i = 0; i < ch.length; i++) { const c = ch[i]; c.matrixWorldAutoUpdate = c.visible && !c.userData.frozen; }
   }
+  const MSKIP = !/[?&]mskip=0/.test(location.search);   // ?mskip=0: every node updated every frame (A/B)
   function render(scene, camera) {
-    matrixSkip(scene);
+    if (MSKIP) matrixSkip(scene); else scene.matrixAutoUpdate = true;
     if (!enabled || !rtScene) { r.setRenderTarget(null); r.render(scene, camera); return; }
     r.getDrawingBufferSize(sz);
     if (sz.x !== rtScene.width || sz.y !== rtScene.height) resize();
