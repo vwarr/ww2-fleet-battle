@@ -208,6 +208,16 @@ window.WW = window.WW || {};
     root.add(propsGroup);
   }
 
+  // The Pacific land and its palms and huts never move: their matrices are made once here, and the scene's per-frame
+  // matrix update skips the whole tree (power2: ~400 nodes; main.js leaves the scene root itself static).
+  // propsMoved(): whoever poses a prop (easter_b29.js lays the palms flat) calls it after.
+  function freeze() {
+    root.traverse(o => { o.updateMatrix(); o.matrixAutoUpdate = false; });
+    root.updateMatrixWorld(true);
+    root.matrixWorldAutoUpdate = false; root.userData.frozen = true;   // (post.js matrixSkip)
+  }
+  function propsMoved() { if (root && !custom) freeze(); }
+
   function disposeOld() {
     if (!root) return;
     WW.scene && WW.scene.remove(root);
@@ -227,6 +237,7 @@ window.WW = window.WW || {};
       const m = new THREE.Mesh(buildFloorGeo(r[0], r[1], r[2], r[3], r[4]), shared.floorMat); m.receiveShadow = true; m.position.y = -0.05; root.add(m);
     }
     buildProps();
+    if (!custom) freeze();   // (Normandy's props are posed per frame: terrain_normandy_props.js)
     WW.scene && WW.scene.add(root);
     // the water's depth texture: the floor, and a scenario's skirts too (outside the texture the sea is deep and opaque,
     // and at a distance it would z-fight the land there)
@@ -285,5 +296,5 @@ window.WW = window.WW || {};
   WW.terrain = { init() {}, generate, depthAt, isNavigable, randomSeaPoint, update, seed: 0, landFraction: 0,
     get site() { return custom ? null : TI().site; }, padDist: (x, z) => (custom ? 1e9 : TI().padDist(x, z)), PAD_H: 1.2,
     get custom() { return custom; }, heightRaw: (x, z) => heightRaw(x, z),
-    _props: () => propsGroup };   // palms and huts (tests/base_clip.js)
+    _props: () => propsGroup, propsMoved };   // palms and huts (tests/base_clip.js)
 })(window.WW);

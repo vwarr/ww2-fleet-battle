@@ -38,6 +38,9 @@ window.WW = window.WW || {};
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft edges (VSM left a faint box-shaped tint on the seabed)
     scene = new THREE.Scene();
+    // the scene root never moves: with its matrix left alone, three's per-frame update no longer forces every node's
+    // world matrix, so the trees that opt out (hidden or frozen: post.js matrixSkip) are really skipped (power2)
+    scene.matrixAutoUpdate = false;
     camera = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1, 5000);
     WW.renderer = renderer; WW.scene = scene; WW.camera = camera;
     window.addEventListener('resize', resize);

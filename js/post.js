@@ -12,6 +12,9 @@ window.WW = window.WW || {};
   // biggest single GPU cost of the frame (render 5.0 -> 3.6 ms at 3200x1800, tests/gpu_probe.js busy) and the same-frame
   // shots are indistinguishable (mean |diff| 0.14 / 255). ?msaa=N: N samples (4: the old look; 0: none)
   const MSAA = (m => (m ? +m[1] : 2))(/[?&]msaa=(\d)/.exec(location.search));
+  // ?inval=0: the old resolve (power2 A/B; WW.post.opts.inval flips it live): the MSAA depth and stencil blitted to the
+  // resolve target too. Without them: GPU -0.25 ms a frame at 3200x1800 (busy), the frame identical to the bit
+  const O = { inval: !/[?&]inval=0/.test(location.search) };
   const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
   function mat(frag, uniforms, toneMapped) {
     return new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: frag, depthTest: false, depthWrite: false, toneMapped: !!toneMapped });
@@ -59,10 +62,24 @@ window.WW = window.WW || {};
     rtA.setSize(qw, qh); rtB.setSize(qw, qh);
   }
   function pass(m, target) { quad.material = m; r.setRenderTarget(target); r.render(qScene, qCam); }
+  // The render's matrix update (power2): a hidden top-level object (the pooled lifeboats, plane props, flak and fx
+  // pools: ~1000 nodes in a busy battle) is left out, and so is a frozen tree (userData.frozen: terrain.js, whose
+  // matrices are made once); main.js leaves the scene root's own matrix alone, so nothing forces them. One shown again
+  // is updated by this same render before it is drawn. Visual only: the sim never reads the render's matrices (the
+  // look-ahead worker and ?sim pages render nothing). scene.updateMatrixWorld 0.49 -> 0.34 ms in a busy battle.
+  function matrixSkip(scene) {
+    const ch = scene.children;
+    for (let i = 0; i < ch.length; i++) { const c = ch[i]; c.matrixWorldAutoUpdate = c.visible && !c.userData.frozen; }
+  }
+  const MSKIP = !/[?&]mskip=0/.test(location.search);   // ?mskip=0: every node updated every frame (A/B)
   function render(scene, camera) {
+    if (MSKIP) matrixSkip(scene); else scene.matrixAutoUpdate = true;
     if (!enabled || !rtScene) { r.setRenderTarget(null); r.render(scene, camera); return; }
     r.getDrawingBufferSize(sz);
     if (sz.x !== rtScene.width || sz.y !== rtScene.height) resize();
+    // nothing reads the scene's depth after the frame: the resolve blits the colour only, and the depth / stencil are
+    // invalidated (three.js's XR flag; set every frame: a resize drops the target's properties)
+    r.properties.get(rtScene).__ignoreDepthValues = O.inval;
     r.setRenderTarget(rtScene); r.render(scene, camera);
     mBright.uniforms.tex.value = rtScene.texture; pass(mBright, rtA);
     for (let i = 0; i < 2; i++) { // two separable blur rounds at quarter resolution
@@ -87,5 +104,5 @@ window.WW = window.WW || {};
   // a per-channel gain applied after the tone curve. The Pacific never sets it (0 and 1, 1, 1: the identity).
   let gSat = 0;
   function setGrade(sat, cr, cg, cb) { gSat = sat; if (mComp) mComp.uniforms.grade.value.set(cr, cg, cb); }
-  WW.post = { init, resize, render, setNight, setGrade, toggle() { enabled = !enabled; return enabled; } };
+  WW.post = { init, resize, render, setNight, setGrade, toggle() { enabled = !enabled; return enabled; }, opts: O };
 })(window.WW);
