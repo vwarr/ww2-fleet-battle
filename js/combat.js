@@ -9,7 +9,7 @@ window.WW = window.WW || {};
   // tracer: drawn in flight (light guns). len: mesh length. disp / c: dispersion (x range + constant).
   var BALLISTIC = {
     mg:    { tracer: true,  len: 1.6, disp: 0.04, c: 0.4 },
-    small: { tracer: true,  len: 1.2, disp: 0.09, c: 1.0 },
+    small: { tracer: false, len: 1.2, disp: 0.09, c: 1.0 },   // 5-inch: no tracer in 1942 (a long glowing streak ~18 s at 1x read wrong)
     med:   { tracer: false, len: 0.7, disp: 0.10, c: 1.0 },
     big:   { tracer: false, len: 0.9, disp: 0.085, c: 1.2 }
   };
@@ -50,7 +50,7 @@ window.WW = window.WW || {};
     return _bl;
   }
   function tofOf(cal, d) { return Math.max(0.15, ballistic(cal, d).T); }
-  // Big / medium shells: no tracer in 1942, and a 14-inch round in flight was all but invisible to the eye (the flash,
+  // Big / medium / 5-inch shells: no tracer in 1942, and a 14-inch round in flight was all but invisible to the eye (the flash,
   // the cordite smoke, the wait, the splashes). Default: no mesh at all for them; ?shells=visible draws them again.
   var SHELLS_VISIBLE = typeof location !== 'undefined' && /[?&]shells=visible/.test(location.search);
   var AA_INTERVAL = 0.25;
