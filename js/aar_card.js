@@ -89,9 +89,10 @@ window.WW = window.WW || {};
   function show(r) {
     if (!el) { el = document.createElement('div'); el.id = 'aar'; document.body.appendChild(el); el.addEventListener('click', hide); }
     el.innerHTML = r.nd ? WW.aarNormandy.html(r) : html(r); el.classList.add('on');
+    if (WW.highlights && !r.nd) WW.highlights.decorate(el, r);   // "Watch highlights" (highlights.js)
     hideAt = WW.game.mode === 'auto' ? performance.now() + (AUTO_HOLD - DELAY) * 1000 : 0;
   }
-  function hide() { if (el) el.classList.remove('on'); hideAt = 0; }
+  function hide() { if (el) el.classList.remove('on'); hideAt = 0; showAt = 0; }   // (a pending show goes too: the highlight reel hides the card)
   let sampleT = 0;
   function update() {
     const now = performance.now();

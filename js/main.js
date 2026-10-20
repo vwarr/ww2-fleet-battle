@@ -378,7 +378,7 @@ window.WW = window.WW || {};
       }
     } else if (game.state === 'victory') {
       game.victoryTime += dt;
-      if (game.victoryTime >= VICTORY_TIME) {
+      if (game.victoryTime >= VICTORY_TIME && !game.reel) {   // (the highlight reel's replay: highlights.js ends it itself)
         if (game.mode === 'auto') game.startRound();
         else game.enterSetup(true, !game.custom); // standalone battles: back to fleets placed and waiting on a new map
       }
@@ -468,6 +468,7 @@ window.WW = window.WW || {};
   let last = 0;
   function frame(t) {
     requestAnimationFrame(frame);
+    if (WW.time.hold) { last = t; return; }   // the highlight reel's fast-forward (highlights.js): nothing stepped or drawn
     const cap = frameCap(t);
     if (cap && last && t - last < 1000 / cap - 3) { WW.frames.skipped++; return; }
     WW.frames.drawn++;
@@ -596,7 +597,7 @@ window.WW = window.WW || {};
   WW.bgTick = { beats: 0, steps: 0, ms: 0, stepMs: 0 };   // (tests / the report: what the background ran and what it cost)
   function bgBeat() {
     const now = performance.now();
-    if (!document.hidden || game.state === 'setup') { last = now; return; }
+    if (!document.hidden || game.state === 'setup' || WW.time.hold) { last = now; return; }
     const rdt = last ? Math.min(2, (now - last) / 1000) : 0;   // (a late beat: at most 2 s of real time)
     last = now;
     call('shipSwell', 'unpose'); call('dmgVis', 'unpose'); call('renderInterp', 'unpose');   // (as stepFixed(): idempotent)
