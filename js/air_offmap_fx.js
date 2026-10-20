@@ -15,6 +15,7 @@ window.WW = window.WW || {};
     try { m = WW.models.buildPlane(KIND[kind][0], KIND[kind][1]); } catch (e) { m = WW.models.buildPlane(KIND[kind][0], 'USN'); }
     m.group.rotation.order = 'YZX'; m.group.scale.setScalar(PS * (kind === 'b24' ? 1.05 : 1));
     if (m.payload) m.payload.visible = kind !== 'spit';
+    if (WW.planeGear) WW.planeGear.stow(m);   // in flight: gear up (plane_gear.js)
     return m;
   }
   function update(rdt) {

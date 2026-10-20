@@ -55,7 +55,7 @@ window.WW = window.WW || {};
     constructor(ship, m) {
       super('scout', ship.nation, ship, null, m);
       var fp = ship.model && ship.model.floatplane, L = ship.stats.length;
-      this.ordnance = false; this.state = 'catapult'; this.t = 0; this.scale = SCALE_CAT;
+      this.ordnance = false; this.state = 'catapult'; this.t = 0; this.setScale(SCALE_CAT);   // (the group was left at scale 1)
       this.cat = fp ? { x: fp.position.x, y: fp.position.y, z: fp.position.z, ry: fp.rotation.y } : { x: -L * 0.3, y: 1, z: 0, ry: 0 };
       // the catapult trains outboard (~57 deg off the bow, on the side the plane sits) before it fires
       this.cat.ry0 = this.cat.ry; this.cat.ryL = -(this.cat.z < -0.1 ? -1 : 1) * 1.0;
@@ -65,7 +65,7 @@ window.WW = window.WW || {};
       this.onCatapult(0);
       this.sync(0);
     }
-    setScale(s) { this.scale = s; this.group.scale.setScalar(s); }
+    setScale(s) { this.scale = s; this.group.scale.setScalar(s * ((WW.models.SCOUT_VIS || {})[this.nation] || 1)); }   // drawn at true size (models_scout.js VIS); the sim keeps s
     // position along the catapult rail (local model coords of the ship), float resting on the rail
     onCatapult(along) {
       var s = this.carrier, c = this.cat, lx = c.x + Math.cos(c.ry) * along, lz = c.z - Math.sin(c.ry) * along;

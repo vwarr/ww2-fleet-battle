@@ -36,6 +36,7 @@ window.WW = window.WW || {};
     m.group.rotation.set(wreck ? 0.32 : 0, -h, wreck ? -0.12 : 0);
     if (wreck && m.payload) m.payload.visible = false;
     else m.group.position.y = gy(x, z) + 0.01 - lowOf(m.group);   // resting on its hardstand (0.01 above padH; onPaving)
+    if (m.gear && WW.planeGear) WW.planeGear.standing(m, wreck);   // on its gear in its three-point attitude; a wreck's collapsed (plane_gear.js)
   }
 
   // ---------- planes on the paving: resting on it, not sunk into it ----------
@@ -87,7 +88,7 @@ window.WW = window.WW || {};
       const gear = (p.variant && V()[p.variant].gear) || WW.air._pool.deckY, hy = p.y - pad - gear;
       if (hy > 1.5) continue;
       const want = pad + surfTop(p.x, p.z) - lowOf(p.group), k = Math.min(1, 1 - hy / 1.5);
-      p.group.position.y = p.y + (want - p.y) * k;
+      p.group.position.y = p.y + (want - p.y) * k + (p.model && p.model.gear ? p.model.gear.dyT : 0);   // + the three-point tilt's (plane_gear.js)
     }
   }
   function parkedPlanes(now) {

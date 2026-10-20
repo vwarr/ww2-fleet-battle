@@ -19,6 +19,7 @@ window.WW = window.WW || {};
       m = WW.models.buildPlane(kind, nation); m.key = k; m.group.rotation.order = 'YZX';
       m.group.scale.setScalar(PLANE_SCALE);
     }
+    if (m.gear && WW.planeGear) WW.planeGear.reset(m); // gear down, hook up (plane_gear.js)
     if (WW.scene) WW.scene.add(m.group); // real shadow maps now: no fake silhouette shadow
     if (WW.planeRender) WW.planeRender.acquire(m); // drawn as instances (air_render.js)
     return m;
