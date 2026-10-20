@@ -14,19 +14,21 @@ const MODE = pos[0] || 'std', SEED = +(pos[1] || 1), FF = +(pos[2] || 150), SECS
 const STEP_MODS = ['terrain', 'dayNight', 'weather', 'nightOps', 'intel', 'fleetCmd', 'ships', 'islandBase', 'coastDefence', 'landingCraft', 'infantry', 'offmapAir', 'endgame', 'shipFires', 'charge', 'air', 'combat', 'fx', 'lifeboats'];
 const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'normandyProps', 'waves', 'normandySky', 'normandyFleet', 'landingFx', 'infantryFx', 'beachheadFx', 'vehicleFx', 'hocFx', 'rocketBarrage', 'defenceFx', 'offmapAirFx', 'audio', 'sky', 'ui'];
 (async () => {
-  const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+  // --chrome: the installed Google Chrome in its new headless mode (the user's own browser build), else the headless shell
+  const b = await chromium.launch(Object.assign(args.includes('--chrome') ? { channel: 'chrome', headless: true } : { executablePath: process.env.CHROMIUM || undefined }, { args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] }));
   const p = await b.newPage({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: +opt('dpr', 1) });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   // the whole rAF callback (the game's frame()) timed: wrapped before the page's scripts run
   await p.addInitScript(() => {
     const raf = window.requestAnimationFrame.bind(window);
-    window.__rafT = { ms: 0, n: 0, on: false };
-    window.requestAnimationFrame = cb => raf(t => { const s = performance.now(); cb(t); if (window.__rafT.on) { window.__rafT.ms += performance.now() - s; window.__rafT.n++; } });
+    window.__rafT = { ms: 0, n: 0, on: false, fr: [] };   // fr: per drawn frame [rAF time, callback ms] (hitches)
+    window.requestAnimationFrame = cb => raf(t => { const s = performance.now(), d0 = window.WW && WW.frames ? WW.frames.drawn : 0; cb(t); const T = window.__rafT;
+      if (T.on) { const ms = performance.now() - s; T.ms += ms; T.n++; if (window.WW && WW.frames && WW.frames.drawn > d0) T.fr.push([t, ms]); } });
   });
   // --cam lookahead: the look-ahead worker runs (js/lookahead.js); the fast-forward then uses the live fixed step
   // (__sim.stepFixed), so the worker's copy stays the same round, and the worker's own cost is reported at the end
   const CAM = opt('cam', '');
-  const q = (MODE === 'normandy' ? 'scn=normandy' : MODE === 'setup' ? '' : 'auto') + (CAM ? '&cam=' + CAM : '');
+  const q = (MODE === 'normandy' ? 'scn=normandy' : MODE === 'setup' ? '' : 'auto') + (CAM ? '&cam=' + CAM : '') + (args.includes('--fullres') ? '&fullres' : '');   // --fullres: no adaptive render scale (main.js)
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?' + q + '&v=' + Date.now(), { timeout: 240000 });
   await p.waitForTimeout(4000);
   const info = await p.evaluate(([MODE, SEED, FF]) => {
@@ -64,18 +66,24 @@ const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'no
     const gl = WW.renderer.getContext(), pr = WW.post.render;
     const RI = WW.renderer.info; RI.autoReset = false; P.calls_gl = 0; P.tris = 0;
     WW.post.render = function () { RI.reset(); const t = performance.now(); pr.apply(this, arguments); gl.finish(); P.render += performance.now() - t; P.calls_gl += RI.render.calls; P.tris += RI.render.triangles; };
-    window.__rafT.on = true; window.__rafT.ms = 0; window.__rafT.n = 0;
+    window.__rafT.on = true; window.__rafT.ms = 0; window.__rafT.n = 0; window.__rafT.fr = [];
     P.d0 = WW.frames ? WW.frames.drawn : -1;
   }, [STEP_MODS, FRAME_MODS]);
   await cdp.send('Profiler.start');
+  await p.evaluate(() => { window.__rafT.fr = []; });   // (the hitch stats start after the profiler's own start-up pause)
   await p.waitForTimeout(SECS * 1000);
   const { profile } = await cdp.send('Profiler.stop');
   const r = await p.evaluate(() => { window.__rafT.on = false; const P = window.__perf; P.secs = (performance.now() - P.t0) / 1000; P.raf = window.__rafT.n; P.frames = P.d0 >= 0 ? WW.frames.drawn - P.d0 : P.raf; P.frameMs = window.__rafT.ms;
-    P.info = WW.renderer.info.render; return P; });
+    P.info = WW.renderer.info.render; P.fr = window.__rafT.fr; return P; });
   const F = r.frames || 1, fmt = v => (v / F).toFixed(3).padStart(8);
   console.log(`${MODE} ${JSON.stringify(info)}  frames drawn ${r.frames} (rAF ${r.raf}) in ${r.secs.toFixed(1)} s = ${(r.frames / r.secs).toFixed(1)} fps, steps/frame ${(r.steps / F).toFixed(2)}`);
   const simT = Object.values(r.sim).reduce((a, b) => a + b, 0), visT = Object.values(r.vis).reduce((a, b) => a + b, 0);
   console.log(`ms/frame: rAF callback ${fmt(r.frameMs)}  sim ${fmt(simT)}  visual modules ${fmt(visT)}  afterCamera ${fmt(r.after)}  render+finish ${fmt(r.render)}  (draw calls ${(r.calls_gl / F).toFixed(0)}, tris ${(r.tris / F / 1000).toFixed(0)}k per frame)`);
+  { // hitches: the drawn frames' intervals (rAF time to rAF time) and the callbacks' own ms
+    const iv = r.fr.slice(1).map((f, i) => f[0] - r.fr[i][0]).sort((a, b) => a - b), cb = r.fr.map(f => f[1]).sort((a, b) => a - b);
+    const q = (a, k) => a.length ? a[Math.min(a.length - 1, Math.floor(k * a.length))].toFixed(1) : '-';
+    console.log(`frame interval ms: p50 ${q(iv, 0.5)} p95 ${q(iv, 0.95)} p99 ${q(iv, 0.99)} max ${q(iv, 1)}  (>33 ms: ${iv.filter(x => x > 33.4).length}, >50: ${iv.filter(x => x > 50).length})   callback ms: p50 ${q(cb, 0.5)} p95 ${q(cb, 0.95)} max ${q(cb, 1)}`);
+  }
   const rows = [...Object.entries(r.sim).map(([k, v]) => ['sim', k, v]), ...Object.entries(r.vis).map(([k, v]) => ['vis', k, v])].filter(x => x[2] > 0).sort((a, b) => b[2] - a[2]);
   for (const [s, k, v] of rows) console.log(`${fmt(v)} ms/frame  ${s}  ${k}`);
   // CPU profile: self time
@@ -103,6 +111,7 @@ const FRAME_MODS = ['shipSwell', 'dmgVis', 'water', 'cam', 'crew', 'baseFx', 'no
   }
   if (opt('json')) require('fs').writeFileSync(opt('json'), JSON.stringify({ info, r, self: [...self], files: [...files] }));
   if (CAM) console.log('look-ahead worker:', JSON.stringify(await p.evaluate(() => { const L = WW.lookahead; return L ? { on: L.on, ready: L.ready, diverged: L.diverged, checks: L.checks, ahead: +((L.wn - WW.game.stepN) * __sim.LIVE_STEP).toFixed(1), busyMs: L.busyMs, simS: L.busySimS, msPerSimS: L.busySimS ? +(L.busyMs / L.busySimS).toFixed(2) : null, steady: L.steady } : null; })));
+  console.log('render scale', JSON.stringify(await p.evaluate(() => WW.view && WW.view.dyn ? WW.view.dyn() : null)));
   console.log('errors', errs.slice(0, 5));
   await b.close();
 })();

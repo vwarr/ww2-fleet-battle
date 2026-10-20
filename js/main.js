@@ -22,7 +22,10 @@ window.WW = window.WW || {};
   let pixelMode = false;     // optional retro mode (P key): low internal resolution, upscaled
   function setupRenderer() {
     const canvas = document.getElementById('game');
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    // (no MSAA on the canvas itself: post.js draws the scene into its own 4x MSAA target and only a full-screen quad
+    // reaches the canvas, so a multisampled back buffer only cost a resolve of the whole screen every frame; perf6.
+    // ?aa: the old multisampled canvas)
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: /[?&]aa\b/.test(location.search) });
     renderer.setClearColor(0xa6d6f2);
     // tone mapping is done once in post.js (a soft filmic shoulder over the whole frame)
     renderer.shadowMap.enabled = true;
@@ -35,14 +38,52 @@ window.WW = window.WW || {};
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     if (pixelMode) { renderer.setPixelRatio(1); renderer.setSize(Math.round(w * 360 / h), 360, false); }
-    else { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.setSize(w, h, false); }
+    else { renderer.setPixelRatio(dynRatio()); renderer.setSize(w, h, false); }
     renderer.domElement.classList.toggle('pixel', pixelMode);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     call('cam', 'resize');
     call('post', 'resize');
   }
-  WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; } };
+  WW.view = { togglePixel() { pixelMode = !pixelMode; resize(); return pixelMode; },
+    dyn: () => ({ on: DYN, scale: DYN_STEPS[dynLvl], ratio: dynRatio(), changes: dynChanges, log: dynLog.slice() }) };
+  // Adaptive render scale (perf6): on a high-DPI screen the frame is drawn at up to 2 pixels per CSS pixel, and the
+  // fragment work (the sea's per-pixel waves, the post passes) grows with that pixel count. When the frames come late
+  // while the frame's own JS is short (the GPU looks like the bottleneck: a 1.5 s window averaging under ~48 fps with
+  // the callback under 60% of the interval), the drawing buffer steps down (DYN_STEPS of the device ratio, never under
+  // 1 CSS pixel); if the next window is not at least 10% faster the GPU was not the problem: the step is undone and no
+  // step down is tried for a minute. After a few smooth windows it steps back up (a level that failed waits longer
+  // each time). Only on a ratio over 1, in the battle at the full frame cap, not in pixel mode. Each switch
+  // reallocates the drawing buffer and post.js's targets (one ~30-40 ms frame at 3200x1800), hence the hysteresis.
+  // ?fullres: off (the full ratio, as before).
+  const DYN = !/[?&]fullres\b/.test(location.search), DYN_STEPS = [1, 0.85, 0.72, 0.6], DYN_WIN = 1500;   // (window: ms of frames)
+  let dynLvl = 0, dynChanges = 0, dynN = 0, dynIv = 0, dynCb = 0, dynGood = 0, dynTry = null, dynNoDown = 0;
+  const dynWait = DYN_STEPS.map(() => 0), dynBack = DYN_STEPS.map(() => 0), dynLog = [];   // dynWait: windows before a level may be tried again
+  function dynRatio() { const d = Math.min(window.devicePixelRatio || 1, 2); return d <= 1 ? d : Math.max(1, d * DYN_STEPS[dynLvl]); }
+  function dynSet(l, mi) {
+    const r0 = dynRatio(), l0 = dynLvl; dynLvl = l; if (dynRatio() === r0) return;
+    dynChanges++; dynLog.push([Math.round(performance.now() / 100) / 10, DYN_STEPS[l0], DYN_STEPS[l], Math.round(mi * 10) / 10]); if (dynLog.length > 12) dynLog.shift();
+    renderer.setPixelRatio(dynRatio()); renderer.setSize(window.innerWidth, window.innerHeight, false); call('post', 'resize');
+  }
+  // per drawn battle frame: iv the interval since the last drawn frame, cb the last frame callback's own ms
+  function dynFrame(iv, cb) {
+    if (!DYN || pixelMode || (window.devicePixelRatio || 1) <= 1) return;
+    if (iv > 100) { dynN = 0; dynIv = 0; dynCb = 0; return; }   // a stall (a cut, a long task, a test's fast-forward), not the GPU: a fresh window
+    dynN++; dynIv += iv; dynCb += cb;
+    if (dynIv < DYN_WIN) return;
+    const mi = dynIv / dynN, mc = dynCb / dynN; dynN = 0; dynIv = 0; dynCb = 0;
+    for (let i = 0; i < dynWait.length; i++) if (dynWait[i] > 0) dynWait[i]--;
+    if (dynNoDown > 0) dynNoDown--;
+    if (dynTry) {   // the window after a step down: did it help?
+      const tr = dynTry; dynTry = null;
+      if (mi > 0.9 * tr.mi) { dynSet(tr.from, mi); dynNoDown = 40; dynGood = 0; return; }
+    }
+    if (mi > 21 && mc < 0.6 * mi && dynLvl < DYN_STEPS.length - 1 && !dynNoDown) {
+      dynBack[dynLvl] = Math.min(40, dynBack[dynLvl] ? dynBack[dynLvl] * 2 : 4); dynWait[dynLvl] = dynBack[dynLvl];   // (~6 s, doubling to ~60 s)
+      dynGood = 0; dynTry = { from: dynLvl, mi }; dynSet(dynLvl + 1, mi);
+    } else if (mi < 17.6) { if (++dynGood >= 3 && dynLvl > 0 && !dynWait[dynLvl - 1]) { dynGood = 0; dynSet(dynLvl - 1, mi); } }
+    else dynGood = 0;
+  }
 
   // ---------- fleets ----------
   // Realistic spacing: a carrier keeps ~70 units from any ship, big ships ~35, small craft ~20.
@@ -369,7 +410,9 @@ window.WW = window.WW || {};
   let acc = 0;
   // WW.afterStep(n): optional hook after each live step (n: the round's step count): the look-ahead worker's log, tests
   // (render_interp.js: the pose before each step, for the frame's in-between pose; a no-op on sim-only pages)
-  function stepLive() { if (WW.renderInterp) WW.renderInterp.capture(game.stepN || 0); step(LIVE_STEP); game.stepN = (game.stepN || 0) + 1; if (WW.afterStep) WW.afterStep(game.stepN); }
+  // (snap: render_interp.js keeps the pose before the step; a frame draws between its last two steps only, so a frame of
+  // several steps snaps before its last one alone (perf6: 4x, or a slow frame, otherwise paid it every step))
+  function stepLive(snap = true) { if (snap && WW.renderInterp) WW.renderInterp.capture(game.stepN || 0); step(LIVE_STEP); game.stepN = (game.stepN || 0) + 1; if (WW.afterStep) WW.afterStep(game.stepN); }
   // (SNAP: a frame within a quarter step of a whole number of steps takes that number, so the frame clock's jitter at 1x
   // never makes a 0-step frame followed by a 2-step one: the sim clock runs a hair elastic against the wall clock instead)
   const SNAP = 0.25;
@@ -385,7 +428,7 @@ window.WW = window.WW || {};
     acc -= n * LIVE_STEP;
     const t0 = performance.now();
     for (let i = 0; i < n; i++) {
-      stepLive();
+      stepLive(i === n - 1 || performance.now() - t0 > budget * 0.5);   // (near the budget: this step may be the frame's last)
       if (i < n - 1 && performance.now() - t0 > budget) { acc = Math.min(acc + (n - 1 - i) * LIVE_STEP, backlog); break; }
     }
   }
@@ -421,6 +464,8 @@ window.WW = window.WW || {};
     const cap = frameCap(t);
     if (cap && last && t - last < 1000 / cap - 3) { WW.frames.skipped++; return; }
     WW.frames.drawn++;
+    if (last && cap === FPS_CAP && game.state === 'battle') dynFrame(t - last, cbMs);
+    const t0f = performance.now();
     const rdt = last ? Math.min(0.1, (t - last) / 1000) : 1 / 60;
     last = t;
     call('shipSwell', 'unpose');   // Normandy: the swell's pose comes off first (ship_swell.js)
@@ -465,7 +510,9 @@ window.WW = window.WW || {};
     if (WW.post) WW.post.render(scene, camera); else renderer.render(scene, camera);
     call('cam', 'afterRender');
     call('renderInterp', 'unposeSim'); // the sim objects' own x / z / heading back (input handlers between frames read them)
+    cbMs = performance.now() - t0f;
   }
+  let cbMs = 0;
 
   function setScale(n) { WW.time.scale = WW.clamp(+n || 1, 0.1, 64); }
   // onStep: optional test hook, called after every sim step of fastForward
