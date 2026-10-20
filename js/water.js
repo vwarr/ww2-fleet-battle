@@ -13,7 +13,8 @@ window.WW = window.WW || {};
   const SEGS = WW.sea.GRID.SEGS, R_MIN_SP = WW.sea.GRID.R_MIN_SP, R_MAX = 4800;   // the grid: angular segments, finest spacing (u) (sea_state.js: meshSp), radius
   const NOISE_CELLS = 128, NOISE_RES = 512;        // the baked noise: lattice cells a side (its period), texels a side
   const CHOP_RES = 256, CHOP_ENC = 8, CHOP_GAIN = 0.6;   // the baked chop tile: texels a side, slope encoding range, strength
-  const CATCH = 300, CATCH_N = 150;                // the shadow catcher: size (u) and cells a side (2 u)
+  const CATCH = 300, CATCH_N = 150;
+  let FOLD = !(typeof location !== 'undefined' && /[?&]catcher=1/.test(location.search));                // the shadow catcher: size (u) and cells a side (2 u)
   let mesh = null, mat = null, tex = null, t = 0, catcher = null;
   const SU = () => WW.sea.uniforms;
 
@@ -26,8 +27,10 @@ window.WW = window.WW || {};
     attribute float aSp;
     varying vec3 vWorld; varying float vH; varying vec2 vG; varying float vRes;
     #include <fog_pars_vertex>
+    #include <shadowmap_pars_vertex>
     ${WW.sea.GLSL}
     uniform sampler2D depthTex; uniform vec4 extent;
+    uniform float catchCell, catchY;   // the shadow sheet's (power5): its cell (the waves it carries) and its lift
     float seaDepth(vec2 p) {
       vec2 uv = (p - extent.xy) / extent.zw;
       float d = texture2D(depthTex, clamp(uv, 0.0, 1.0)).r * ${(D_MAX - D_MIN).toFixed(1)} + ${D_MIN.toFixed(1)};
@@ -37,12 +40,16 @@ window.WW = window.WW || {};
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);
       vH = 0.0; vG = vec2(0.0); vRes = 0.0;
+      vec3 cw = vec3(wp.x, catchY, wp.z);   // where the old shadow sheet lay here (sea_state.js ride 'conform', its cell)
       if (aSp < 0.0) {
         vRes = -1.0;   // (the fragment shader: no glitter on the skirt's wall)
         if (uSeaAmp > 0.0) wp.y = cameraPosition.y * 0.999;   // the skirt: at the horizon (the Pacific's camera-centred grid only)
       } else {
         float d = seaDepth(wp.xz);
         vec3 g = seaGrad(wp.xz, d, aSp);
+        #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+          cw.y += seaGrad(wp.xz, d, max(aSp, catchCell)).x;
+        #endif
         float h = g.x;
         // the surf: breaker lines running in over the reef edge with the swell (drawn, not ridden)
         float bell = smoothstep(0.1, 0.5, d) * (1.0 - smoothstep(1.4, 2.6, d)) * uSeaAmp;
@@ -52,6 +59,9 @@ window.WW = window.WW || {};
         vRes = smoothstep(2.5 * aSp, 4.0 * aSp, uSeaP[3].w);   // how much of the wind sea the grid draws here
       }
       vWorld = wp.xyz;
+      #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+        vDirectionalShadowCoord[0] = directionalShadowMatrix[0] * vec4(cw + vec3(0.0, directionalLightShadows[0].shadowNormalBias, 0.0), 1.0);   // (three's shadowmap_vertex, the sheet's normal: up)
+      #endif
       vec4 mvPosition = viewMatrix * wp;
       gl_Position = projectionMatrix * mvPosition;
       #include <fog_vertex>
@@ -71,6 +81,9 @@ window.WW = window.WW || {};
     uniform vec4 rainC[4];        // rain squalls (weather.js via sky_time.js): x, z, radius, density
     varying vec3 vWorld; varying float vH; varying vec2 vG; varying float vRes;
     #include <fog_pars_fragment>
+    #include <packing>
+    #include <shadowmap_pars_fragment>
+    uniform float catchOn, catchOp; uniform vec3 catchCol; uniform vec4 catchBox;   // the shadows on the sea (power5)
     ${WW.sea.GLSL}
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     // four independent smooth value-noise fields (lattice 1, period ${NOISE_CELLS}), as the old vnoise(p) in each channel
@@ -236,7 +249,10 @@ window.WW = window.WW || {};
       // warm sun-glitter path toward the low sun: a soft sheen plus fine sparkles on a rippled normal
       // (the ripples ride the sea's own normal: the glitter runs along the swell; in a calm the sheen is a mirror)
       float calm = 1.0 - smoothstep(0.05, 0.35, uSeaS);
-      if (glit.z > 0.0 && vRes > -0.5) {
+      // (only where the mirror reflection is within ~53 deg of the sun: beyond it the sheen is under 3e-5 and the sparkle,
+      // its normal at most ~0.25 rad off n, under 1e-17: nothing at 8 bits, and most of the sea skips the noise fetch
+      // and the pows; power5)
+      if (glit.z > 0.0 && vRes > -0.5 && dot(reflect(-v, n), sunDir) > 0.6) {
         vec2 rip = (nz(vWorld.xz * 1.4 + time * vec2(0.35, -0.3)).ra - 0.5) * mix(1.0, 0.45, calm);
         vec3 nrm = normalize(n + vec3(rip.x * 0.35, 0.0, rip.y * 0.35));
         float rs = max(dot(reflect(-v, nrm), sunDir), 0.0);
@@ -272,6 +288,25 @@ window.WW = window.WW || {};
           gl_FragColor.rgb += sunCol * col0 * graze * (0.1 + 0.55 * sp) * moonPath * smoothstep(1.0, 4.0, d);
         }
       }
+      // The ships' and planes' shadows on the sea (power5). They were a separate sheet laid on the waves over the sun's
+      // shadow box (a ShadowMaterial, colour catchCol at catchOp, blended over the finished sea: a second transparent
+      // full-screen pass, ~1 ms at 3200x1800). The same lookup here, at the height the sheet lay (cw in the vertex
+      // shader), over the same square, composed as that blend was: sheet alpha s over (sea at alpha a over what is
+      // under it) is one colour at alpha 1 - (1 - s)(1 - a).
+      #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+        if (catchOn > 0.5 && abs(vWorld.x - catchBox.x) <= catchBox.z && abs(vWorld.z - catchBox.y) <= catchBox.z) {
+          DirectionalLightShadow dls = directionalLightShadows[0];
+          float s = catchOp * (1.0 - getShadow(directionalShadowMap[0], dls.shadowMapSize, dls.shadowBias, dls.shadowRadius, vDirectionalShadowCoord[0]));
+          if (s > 0.0) {
+            vec3 cc = catchCol;
+            #ifdef USE_FOG
+              cc = mix(cc, fogColor, smoothstep(fogNear, fogFar, vFogDepth));   // (the sheet's own fog: three's fog_fragment)
+            #endif
+            float a = gl_FragColor.a, A = 1.0 - (1.0 - s) * (1.0 - a);
+            gl_FragColor = vec4((s * cc + (1.0 - s) * a * gl_FragColor.rgb) / A, A);
+          }
+        }
+      #endif
     }`;
 
 
@@ -332,7 +367,8 @@ window.WW = window.WW || {};
   }
   function build() {
     mat = new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, THREE.UniformsLib.lights, {
+        catchOn: { value: 0 }, catchOp: { value: 0.24 }, catchCol: { value: new THREE.Color(0x3a3f6a) }, catchBox: { value: new THREE.Vector4() }, catchCell: { value: 2 }, catchY: { value: 0.06 },
         time: { value: 0 },
         cShallow: { value: WW.pastel(0x86e2d8, 0.05) }, cMid: { value: WW.pastel(0x4cc4d0, 0.05) },
         cDeep: { value: WW.pastel(0x2a94c4, 0.05) }, cAbyss: { value: WW.pastel(0x236ca8, 0.05) },
@@ -341,7 +377,7 @@ window.WW = window.WW || {};
         hzAway: { value: WW.pastel(0xb4d2f2, 0.1) }, hzSun: { value: WW.pastel(0xffc89a, 0.1) },
         tint: { value: new THREE.Color(1, 1, 1) }, glit: { value: new THREE.Vector3(0.1, 420, 0.35) }, moonPath: { value: 0 }, rainC: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, 0, 0)) }
       }]),
-      vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true,
+      vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true, lights: true,   // (lights: three fills the sun's shadow map and matrix in)
       extensions: { derivatives: true }
     });
     mat.uniforms.chopTex = { value: bakeChop() }; mat.uniforms.noiseTex = { value: bakeNoise() };
@@ -452,8 +488,14 @@ window.WW = window.WW || {};
       const c = !nm && WW.cam && WW.cam.target ? WW.cam.target() : { x: WW.cfg.MAP_W / 2, z: WW.cfg.MAP_H / 2 }, cell = CATCH / CATCH_N * k;
       catcher.scale.set(k, 1, k);
       catcher.position.set(Math.round(c.x / cell) * cell, 0.06, Math.round(c.z / cell) * cell);
+      // the Pacific: the sheet's shadows drawn by the sea's own shader over the same square (power5); Normandy keeps
+      // the sheet (its sea is waves.js's); ?catcher=1: the old sheet (A/B)
+      const fold = FOLD && !nm, u = mat.uniforms;
+      catcher.visible = !fold;
+      u.catchOn.value = fold ? 1 : 0; u.catchCell.value = cell; u.catchY.value = catcher.position.y;
+      u.catchBox.value.set(catcher.position.x, catcher.position.z, CATCH * k / 2, 0);
     }
     updateBlobs();
   }
-  WW.water = { setDepth, update, uniforms: () => mat && mat.uniforms, mesh: () => mesh };   // mesh: waves.js lowers it under the Normandy sea
+  WW.water = { setDepth, update, uniforms: () => mat && mat.uniforms, mesh: () => mesh, fold: v => { FOLD = !!v; update(0); } };   // fold: the A/B probes   // mesh: waves.js lowers it under the Normandy sea
 })(window.WW);
