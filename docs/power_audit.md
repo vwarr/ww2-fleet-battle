@@ -79,3 +79,38 @@ differences under ~10% are noise. Base = main ac0a227.
 - Sim `air` 0.51 ms/step: see docs/perf_audit.md "Left for later" (air_dogfight threat scan, air_ops capPick).
 
 Tools: `tests/energy_probe.js` (new), `tests/gpu_probe.js --q <params>` (new option).
+
+## Power 2 (2026-10-20, branch `power2`): the default look's cost
+
+Per-frame A/B in one page (scratchpad postab.js: the loop held, `WW.post.render` timed, readPixels sync; busy, dpr 2,
+installed Chrome):
+
+| change | GPU (held render) | render JS (CPU) | look |
+|---|---|---|---|
+| post.js: the MSAA resolve skips depth + stencil (three's `__ignoreDepthValues`; `?inval=0` the old) | -0.25 ms (3.66 -> 3.41) | 0 | bit-identical (in-page readback, busy + quiet) |
+| scene root `matrixAutoUpdate = false` + hidden top-level objects and the frozen Pacific terrain skipped by the matrix update (post.js matrixSkip; `?mskip=0` the old) + airfield posed once | ~0 | -0.2 ms (scene.updateMatrixWorld 0.49 -> 0.34; 1583 of 5031 nodes skipped) | same-frame stills = the run-to-run noise |
+
+Energy (energy_probe busy / quiet / night, --chrome, dpr 2, 10 s; load 21-34, so +-10% is noise):
+
+| scene | | main ms/s | GPU ms/s | renderer CPU % |
+|---|---|---|---|---|
+| busy | base | 248 | 506 | 33.6 |
+| | new | 231 | 478 | 31.1 |
+| quiet | base | 185 | 458 | 23.8 |
+| | new | 196 | 515 | 25.5 |
+| night | base | 164 | 389 | 20.5 |
+| | new | 164 | 373 | 20.5 |
+
+Measured and dropped:
+- Bloom skipped when nothing is bright: the bloom passes cost 0.23 ms, but by day they are not empty (quiet: max |diff|
+  69/255, 147k channels off; busy: max 6): sun glitter and foam pass the threshold. No cheap way to know a frame is dark.
+- Invalidating the MSAA colour after the resolve: +0.8 ms on ANGLE Metal (a render-pass break), not -.
+- Palm / hut instancing: terrain draws 1 call in the busy view (frustum culled, no shadow casters there); left.
+- Ship sub-mesh merge: already done (models_detail.js finish); a ship is ~60 nodes of turrets, barrels, stacks.
+
+The next levers (not mine):
+- **The shadow pass draws every ship**: per frame ~290 shadow draw calls (207 ship parts, 67 planeRender buckets) vs
+  ~120-170 in the main pass, ~0.4 ms of render CPU. Culling casters whose shadow cannot reach the view (as air_render.js
+  does for planes) is the biggest remaining CPU item (sky.js shadow light: shadowfix).
+- The remaining matrix update (0.34 ms) is planes (~1500 nodes) and ships (~1300): their groups move every frame.
+- Clouds (sky.js, 220 nodes, 187 still) could be frozen the same way.
