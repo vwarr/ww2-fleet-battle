@@ -127,3 +127,30 @@ The next levers (not mine):
   79 -> 10 in one busy view); the cloud puffs' matrices are made once (sky.js; unmeasured, correct by construction).
 - **The big one, not mine:** the busy held render is 7.1 ms on main after the weatherpick merge, against 3.3 ms on
   2a911dc (same probe, same scene): the GPU frame cost about doubled (the sea shader / storm work).
+
+## Power 4 (2026-10-20, branch `power4`): "busy GPU 3.3 -> 7.1 ms after weatherpick"
+
+Not a regression. Same scene, fixed cameras aimed the way the director aims (the shadow box and the shadow catcher on
+the view's target), installed Chrome headless, dpr 2, the sea forced so both builds draw the same sea:
+
+| build | clear, sea moderate (view 0 / 1) | clear, sea rough |
+|---|---|---|
+| 2a911dc (before weatherpick) | 9.35 / 7.51 ms, 9.37 / 7.64 | 9.24 / 7.71, 9.28 / 7.60 |
+| main | 9.42 / 7.69, 9.53 / 7.77 | 9.38 / 7.78, 9.35 / 7.77 |
+
++0.07..0.17 ms (1-2%). The 3.3 vs 7.1 came from the director's shot: on 2a911dc that round's camera was looking up at
+two planes against the sky (no sea in frame); on main the same seed plays a slightly different round (the weather
+roll draws differently: 73 planes up, not 76) and the camera looks down at the sea. The sea's fragment shader is about
+half of a sea-filled frame (a flat-colour sea: 9.4 -> 4.8 ms).
+
+Storms (main, same views): clear 8.85 / 7.00 (rolled sea S 0.25), clear S 1 9.36 / 7.76, thunder 9.32 / 7.73,
+typhoon 9.39 / 7.75. A typhoon costs the same as a rough clear sea; +0.5-0.75 ms over a calm one is the sea state.
+Its parts: the storm shader terms (caps, breaking crests, spindrift, grey) 0.2-0.25 ms; rain curtains, rain streaks,
+cloud decks, rain rings each <= 0.05 ms. Already under "+1 ms over clear".
+
+Changed: water.js's last storm terms (the breaking-crest caps, the far blown foam, the storm grey) behind a uniform test
+like the spindrift already was. Identical frames (readback max diff 1/255 in clear, thunder, typhoon); the cut test gave
+-0.12 ms in clear, the director A/B was within noise.
+
+Levers seen (not changed): the shadow catcher (ShadowMaterial sheet, 300 u, PCF soft) costs ~1.0-1.1 ms whenever it is
+under the view, in every weather; the sea's fragment shader ~4.6 ms in a sea-filled view.

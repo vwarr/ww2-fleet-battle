@@ -141,7 +141,7 @@ window.WW = window.WW || {};
         float st = uSeaStorm;   // a gale / typhoon (weather.js via sea_state.js): more and bigger caps, crests breaking
         capF = smoothstep(mix(0.15, -0.1, st), 0.6, hN) * smoothstep(mix(0.56, 0.42, st), mix(0.72, 0.6, st), fn) * smoothstep(mix(0.25, 0.1, st), 0.55, nb.a) * mix(steep, 0.6, far0) * smoothstep(0.38, 0.95, uSeaS) * smoothstep(1.5, 5.0, d) * (1.0 - 0.5 * far0 * (1.0 - st));
         // storm: the big crests break, a tumbling white along each swell crest with a torn edge; the spray off it
-        capF = max(capF, 0.8 * st * smoothstep(0.45, 0.85, hN) * smoothstep(0.45, 0.7, na.b * 0.5 + nb.g * 0.5) * smoothstep(0.35, 0.65, na.a) * smoothstep(1.5, 5.0, d));   // (broken: patches along the crest, not ruled lines)
+        if (st > 0.0) capF = max(capF, 0.8 * st * smoothstep(0.45, 0.85, hN) * smoothstep(0.45, 0.7, na.b * 0.5 + nb.g * 0.5) * smoothstep(0.35, 0.65, na.a) * smoothstep(1.5, 5.0, d));   // (broken: patches along the crest, not ruled lines)
       }
       if (uSeaS > 0.3 && far0 < 1.0 && d > 2.0) {
         float st = uSeaStorm;
@@ -165,9 +165,13 @@ window.WW = window.WW || {};
           streak = max(streak, max(spin, oldF) * mix(1.0, 0.5, far0) * smoothstep(2.0, 6.0, d));
         }
       }
-      streak += 0.12 * uSeaStorm * far0;   // far off a storm sea is grey-white with blown foam
-      // a storm sea: greyer and darker, the light gone out of it
-      col = mix(col, vec3(dot(col, vec3(0.3, 0.55, 0.15))) * vec3(0.82, 0.9, 0.92), 0.55 * uSeaStorm);
+      // (the storm terms behind a uniform test, a coherent branch: in fair weather they cost 0.12 ms a frame at 3200x1800
+      // for nothing, and with uSeaStorm 0 they change nothing; power4)
+      if (uSeaStorm > 0.0) {
+        streak += 0.12 * uSeaStorm * far0;   // far off a storm sea is grey-white with blown foam
+        // a storm sea: greyer and darker, the light gone out of it
+        col = mix(col, vec3(dot(col, vec3(0.3, 0.55, 0.15))) * vec3(0.82, 0.9, 0.92), 0.55 * uSeaStorm);
+      }
       col = mix(col, cFoam, min(1.0, max(capF * 0.9, streak)));
       alpha = max(alpha, capF * 0.85);
       // over the shallows only (most of the screen is deep water: a coherent branch): caustics, the swash line, the
