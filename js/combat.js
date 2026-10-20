@@ -6,13 +6,53 @@ window.WW = window.WW || {};
   var WW = window.WW;
 
   // ---------- tunables ----------
-  // hSpeed: horizontal speed factor of WW.SHELL[cal].speed. g: per-calibre gravity (arc look).
+  // tracer: drawn in flight (light guns). len: mesh length. disp / c: dispersion (x range + constant).
   var BALLISTIC = {
-    mg:    { hSpeed: 1.0,  g: 6,  tracer: true,  len: 1.6, disp: 0.04, c: 0.4 },
-    small: { hSpeed: 0.9,  g: 12, tracer: true,  len: 1.2, disp: 0.09, c: 1.0 },
-    med:   { hSpeed: 0.7,  g: 22, tracer: false, len: 0.7, disp: 0.10, c: 1.0 },
-    big:   { hSpeed: 0.5,  g: 26, tracer: false, len: 0.9, disp: 0.085, c: 1.2 }
+    mg:    { tracer: true,  len: 1.6, disp: 0.04, c: 0.4 },
+    small: { tracer: true,  len: 1.2, disp: 0.09, c: 1.0 },
+    med:   { tracer: false, len: 0.7, disp: 0.10, c: 1.0 },
+    big:   { tracer: false, len: 0.9, disp: 0.085, c: 1.2 }
   };
+  // ---------- exterior ballistics (gunnery, 2026-10-19) ----------
+  // Scale: 1 u = 9.6 m (WW.cfg.U_PER_M 0.104, ships at true size) and the ship clock (1 u/s = 5.71 kn, so one sim
+  // second is ~3.27 real seconds of ship motion: docs/speed_calibration.md). The gun ranges are compressed against
+  // the map's metre (a battleship's 170 u is 1.6 km in hull metres, a 1942 battle line fought at 15-25 km), so each
+  // calibre reads its table at an equivalent real range: game range x REF[cal].m / REF[cal].u, the class's main-
+  // battery range standing for that gun's typical 1942 battle range (about 117 m per u for the shells, 43 for the
+  // light automatic guns). The flight time is the real one on the ship clock (T sim = T real / SHIP_CLOCK), so a
+  // target moves as many of its own hull lengths while the shell is in the air as it did in 1942.
+  // TABLE rows: [range / REF m, elevation deg, time of flight s, angle of fall deg, horizontal speed at the fall /
+  // at the muzzle]. From a point-mass drag model (G7-like Cd(M), air density e^-h/9 km) fitted to each gun's
+  // published maximum range (Campbell, Naval Weapons of World War Two; NavWeaps):
+  //   big   16"/45 Mk 6, 1,225 kg AP at 701 m/s, 33.7 km at 45 deg      (the IJN 14"/45 is within ~10%)
+  //   med   8"/55 Mk 12, 118 kg AP at 853 m/s, 29.1 km at 41 deg        (IJN 20.3 cm/50 likewise)
+  //   small 5"/38, 25 kg AAC at 792 m/s, 16.6 km at 45 deg
+  //   mg    20 mm Oerlikon, 123 g at 835 m/s, 4.4 km at 45 deg          (the 40 mm / .50 cal streams look the same)
+  var REF = { big: { u: 170, m: 20000 }, med: { u: 120, m: 14000 }, small: { u: 70, m: 8000 }, mg: { u: 35, m: 1500 } };
+  var TABLE = {
+    big: [[0, 0, 0, 0, 1], [0.05, 0.57, 1.44, 0.60, 0.979], [0.10, 1.17, 2.91, 1.21, 0.959], [0.20, 2.42, 5.96, 2.58, 0.918], [0.30, 3.75, 9.15, 4.09, 0.879], [0.40, 5.16, 12.50, 5.79, 0.841], [0.50, 6.68, 16.01, 7.71, 0.805], [0.60, 8.30, 19.71, 9.84, 0.770], [0.70, 10.04, 23.61, 12.21, 0.738], [0.80, 11.92, 27.73, 14.83, 0.708], [0.90, 13.95, 32.09, 17.71, 0.681], [1.00, 16.14, 36.70, 20.84, 0.656], [1.15, 19.81, 44.20, 25.96, 0.623], [1.30, 24.06, 52.56, 31.63, 0.598]],
+    med: [[0, 0, 0, 0, 1], [0.05, 0.27, 0.83, 0.28, 0.967], [0.10, 0.56, 1.70, 0.59, 0.934], [0.20, 1.18, 3.52, 1.31, 0.869], [0.30, 1.87, 5.48, 2.17, 0.807], [0.40, 2.63, 7.60, 3.19, 0.749], [0.50, 3.47, 9.88, 4.45, 0.692], [0.60, 4.41, 12.36, 5.93, 0.640], [0.70, 5.47, 15.04, 7.73, 0.590], [0.80, 6.64, 17.95, 9.90, 0.544], [0.90, 7.97, 21.12, 12.45, 0.501], [1.00, 9.45, 24.55, 15.47, 0.461], [1.15, 12.02, 30.25, 20.85, 0.411], [1.30, 15.04, 36.58, 26.98, 0.375]],
+    small: [[0, 0, 0, 0, 1], [0.05, 0.18, 0.52, 0.19, 0.954], [0.10, 0.38, 1.06, 0.40, 0.909], [0.20, 0.81, 2.23, 0.94, 0.820], [0.30, 1.32, 3.53, 1.62, 0.737], [0.40, 1.90, 4.98, 2.53, 0.658], [0.50, 2.58, 6.61, 3.70, 0.586], [0.60, 3.39, 8.45, 5.25, 0.518], [0.70, 4.35, 10.53, 7.31, 0.457], [0.80, 5.50, 12.87, 9.93, 0.416], [0.90, 6.85, 15.38, 12.84, 0.394], [1.00, 8.39, 18.02, 15.93, 0.377], [1.15, 11.03, 22.22, 20.87, 0.356], [1.30, 14.05, 26.73, 26.00, 0.339]],
+    mg: [[0, 0, 0, 0, 1], [0.05, 0.02, 0.09, 0.03, 0.946], [0.10, 0.06, 0.19, 0.07, 0.884], [0.20, 0.14, 0.41, 0.17, 0.767], [0.30, 0.23, 0.66, 0.33, 0.658], [0.40, 0.35, 0.95, 0.52, 0.566], [0.50, 0.50, 1.30, 0.84, 0.473], [0.60, 0.69, 1.71, 1.28, 0.405], [0.70, 0.93, 2.18, 1.84, 0.373], [0.80, 1.22, 2.68, 2.48, 0.349], [0.90, 1.55, 3.21, 3.22, 0.328], [1.00, 1.93, 3.77, 4.02, 0.311], [1.15, 2.59, 4.68, 5.39, 0.286], [1.30, 3.35, 5.66, 7.06, 0.263]]
+  };
+  // real knots per sim u/s (the ship clock: WW.cfg.KN_PER_U, speedcal, else 5.71); ~3.27 real s of ship motion per sim s
+  function shipClock() { var c = WW.cfg || {}; return (1 / (c.U_PER_M || 0.104)) / ((c.KN_PER_U || 5.71) * 0.514444); }
+  // the table read at game range d (u) for calibre cal: { el, fall (rad), T (sim s), vxr }. Pure (sim).
+  var _bl = { el: 0, fall: 0, T: 0, vxr: 1 };
+  function ballistic(cal, d) {
+    var tb = TABLE[cal] || TABLE.small, rf = REF[cal] || REF.small, f = Math.max(0, d) / rf.u, n = tb.length;
+    var i = 1; while (i < n - 1 && tb[i][0] < f) i++;
+    var a = tb[i - 1], b = tb[i], k = (f - a[0]) / (b[0] - a[0]);   // past the last row: extrapolated along it
+    if (k > 1 && i === n - 1) k = Math.min(k, 1 + 0.6 / (b[0] - a[0]));
+    var D2R = Math.PI / 180;
+    _bl.el = (a[1] + (b[1] - a[1]) * k) * D2R; _bl.fall = (a[3] + (b[3] - a[3]) * k) * D2R;
+    _bl.T = (a[2] + (b[2] - a[2]) * k) / shipClock(); _bl.vxr = Math.max(0.2, a[4] + (b[4] - a[4]) * k);
+    return _bl;
+  }
+  function tofOf(cal, d) { return Math.max(0.15, ballistic(cal, d).T); }
+  // Big / medium shells: no tracer in 1942, and a 14-inch round in flight was all but invisible to the eye (the flash,
+  // the cordite smoke, the wait, the splashes). Default: no mesh at all for them; ?shells=visible draws them again.
+  var SHELLS_VISIBLE = typeof location !== 'undefined' && /[?&]shells=visible/.test(location.search);
   var AA_INTERVAL = 0.25;
   var BEAM_FRAC = 0.12;      // half-beam = length * BEAM_FRAC
   var SPOT_DISP = 0.85, SPOT_MIN = 60;  // target spotted by a scout floatplane (air_scouts.js): dispersion x0.85 beyond 60 units
@@ -66,8 +106,7 @@ window.WW = window.WW || {};
   }
 
   // ---------- shared geometry / materials / pool ----------
-  var G = {}, M = {}, pool = [], active = [], updaters = {};
-  var tmpV = null;
+  var G = {}, M = {}, pool = [], bare = [], active = [], updaters = {};
 
   function buildShared() {
     if (G.shell || typeof THREE === 'undefined') return;
@@ -86,11 +125,17 @@ window.WW = window.WW || {};
     M.dc = new THREE.MeshBasicMaterial({ color: 0x222222 });
     // a falling bomb or aerial torpedo: the planes' toon material (baked vertex paint; combat_weapons.js ordGeo / airLook)
     if (WW.models && WW.models._mat) M.ord = WW.models._mat(0xffffff);
-    tmpV = new THREE.Vector3();
   }
 
+  // mat === null: a projectile with no mesh at all (an unseen big / medium shell: the sim's projectile only)
   function acquire(kind, geo, mat) {
     buildShared();
+    if (mat === null) {
+      var b = bare.pop() || { mesh: null, bare: true };
+      b.kind = kind; b.dead = false; b.t = 0;
+      active.push(b);
+      return b;
+    }
     var p = pool.pop();
     if (!p) {
       p = { mesh: null };
@@ -103,6 +148,10 @@ window.WW = window.WW || {};
     p.kind = kind; p.dead = false; p.t = 0;
     if (p.mesh) {
       p.mesh.scale.set(1, 1, 1); p.mesh.rotation.set(0, 0, 0); p.mesh.visible = true;
+      // see-through rounds (shells, tracers: depthWrite off) draw after the sea (water.js renderOrder 1, also
+      // transparent): drawn before it, the sea painted over them wherever it is on screen, so a round vanished as it
+      // came down below the horizon line. Opaque ones (torpedoes, bombs) keep the depth test against the sea.
+      p.mesh.renderOrder = mat && mat.transparent ? 3 : 0;
       if (WW.scene) WW.scene.add(p.mesh);
     }
     active.push(p);
@@ -111,7 +160,7 @@ window.WW = window.WW || {};
   function release(p) {
     if (p.mesh) { p.mesh.visible = false; if (p.mesh.parent) p.mesh.parent.remove(p.mesh); }
     p.target = null; p.owner = null; p.plane = null;
-    pool.push(p);
+    (p.bare ? bare : pool).push(p);
   }
   // Point mesh +x along velocity.
   function orient(p, vx, vy, vz) {
@@ -122,14 +171,22 @@ window.WW = window.WW || {};
   function place(p, x, y, z) { if (p.mesh) p.mesh.position.set(x, y, z); }
 
   // ---------- shells ----------
-  function muzzlePos(ship, turret) {
-    try {
-      if (turret && turret.barrel && turret.barrel.getWorldPosition && tmpV) {
-        turret.barrel.getWorldPosition(tmpV);
-        if (isFinite(tmpV.x) && (tmpV.x !== 0 || tmpV.z !== 0)) return { x: tmpV.x, y: Math.max(0.5, tmpV.y), z: tmpV.z };
-      }
-    } catch (e) { /* fall through */ }
-    return { x: ship.x, y: ship.muzzleY !== undefined ? ship.muzzleY : 2, z: ship.z }; // muzzleY: a gun on land (coast_defence.js)
+  // The muzzle a round leaves from: a pure sim function of the mount layout (the model's turret: its pivot on the hull,
+  // its training as ships_ai.js sets it, the barrel's trunnion and length, the shot's elevation) and the ship's x, z,
+  // heading and depth: never the drawn barrel (the sea's swell, the roll and the render interpolation move that, and
+  // a sim-only page would differ). Ship-local +x is the bow, +z starboard; world = (x + lx cos h - lz sin h,
+  // z + lx sin h + lz cos h) (ships.js syncGroup: rotation.y = -heading). Not a ship: the shooter's own muzzle point
+  // (mx / mz / muzzleY: a battery, a casemate, a plane), else its centre at its own height.
+  function muzzlePos(ship, turret, el) {
+    var mz = turret && turret.mz;
+    if (mz && turret.obj) {
+      var o = turret.obj.position, a = turret.aim !== undefined ? turret.aim : -turret.obj.rotation.y, h = ship.heading || 0, ce = Math.cos(el || 0);
+      var r = mz.fx + mz.len * ce, lx = o.x + Math.cos(a) * r, lz = o.z + Math.sin(a) * r, ly = o.y + mz.by + Math.sin(el || 0) * mz.len;
+      var ch = Math.cos(h), sh = Math.sin(h);
+      return { x: ship.x + lx * ch - lz * sh, y: Math.max(0.3, (ship.depthY || 0) + ly), z: ship.z + lx * sh + lz * ch };
+    }
+    var y = ship.muzzleY !== undefined ? ship.muzzleY : isFinite(ship.y) && ship.y > 0 ? ship.y : 2;   // muzzleY: a gun on land (coast_defence.js, island_base.js)
+    return { x: ship.mx !== undefined ? ship.mx : ship.x, y: y, z: ship.mz !== undefined ? ship.mz : ship.z };
   }
 
   function fireShell(ship, turret, target, cal) {
@@ -138,34 +195,43 @@ window.WW = window.WW || {};
       cal = (WW.SHELL && WW.SHELL[cal]) ? cal : 'small';
       buildShared();
       var S = WW.SHELL[cal], B = BALLISTIC[cal];
-      var m = muzzlePos(ship, turret);
-      var hs = S.speed * B.hSpeed;
+      var m0 = muzzlePos(ship, turret, 0);
       var tsp = target.speed || 0, th = target.heading || 0;
       var tvx = Math.cos(th) * tsp, tvz = Math.sin(th) * tsp;
-      // lead: two passes of T estimate
-      var T = Math.max(0.15, Math.hypot(target.x - m.x, target.z - m.z) / hs);
+      // lead: two passes of the time-of-flight estimate (the range table)
+      var T = tofOf(cal, Math.hypot(target.x - m0.x, target.z - m0.z));
       var ax = target.x + tvx * T, az = target.z + tvz * T;
-      T = Math.max(0.15, Math.hypot(ax - m.x, az - m.z) / hs);
+      T = tofOf(cal, Math.hypot(ax - m0.x, az - m0.z));
       ax = target.x + tvx * T; az = target.z + tvz * T;
       // dispersion grows with range
-      var dist = Math.hypot(ax - m.x, az - m.z);
+      var dist = Math.hypot(ax - m0.x, az - m0.z);
       var r = (B.disp * dist + B.c) * Math.sqrt(rnd()), a = rnd() * Math.PI * 2;
       if (dist > SPOT_MIN && target.spottedUntil > (WW.time ? WW.time.now : 0)) r *= SPOT_DISP;
       ax += Math.cos(a) * r; az += Math.sin(a) * r;
-      T = Math.max(0.15, Math.hypot(ax - m.x, az - m.z) / hs);
+      var D = Math.hypot(ax - m0.x, az - m0.z), bl = ballistic(cal, D);
+      T = Math.max(0.15, bl.T);
+      var el = bl.el, tanF = Math.tan(bl.fall), vxr = bl.vxr;
+      if (turret && turret.gunG) { turret.el = el; turret.gunG.rotation.z = el; }   // the barrels laid for this shot (models.js turret gunG; ships_ai.js holds it)
+      var m = turret && turret.mz ? muzzlePos(ship, turret, el) : m0;
 
-      var p = acquire('shell', G.shell, B.tracer ? (ship.nation === 'IJN' ? M.tracerRed : M.tracer) : cal === 'big' ? M.shellBig : M.shell);
+      var seen = B.tracer || SHELLS_VISIBLE;
+      var p = acquire('shell', G.shell, !seen ? null : B.tracer ? (ship.nation === 'IJN' ? M.tracerRed : M.tracer) : cal === 'big' ? M.shellBig : M.shell);
       p.cal = cal; p.nation = ship.nation; p.target = target; p.owner = ship;
-      p.x0 = m.x; p.y0 = m.y; p.z0 = m.z; p.T = T; p.g = B.g;
-      p.vx = (ax - m.x) / T; p.vz = (az - m.z) / T;
+      p.x0 = m.x; p.y0 = m.y; p.z0 = m.z; p.T = T;
+      p.vx = (ax - m.x) / T; p.vz = (az - m.z) / T;   // mean horizontal velocity: x0 + vx T is the fall of shot (camera_director.js reads it)
       p.ty = target.y || 0;                    // the target's height (a casemate on the bluff top; ships: 0)
-      p.vy0 = (0.5 * B.g * T * T + p.ty - m.y) / T;  // lands at y = ty exactly at T
+      // The flight's shape (visual only; the sim needs T and the fall of shot): s(tau) = (1+q) tau - q tau^2 is the
+      // share of the range flown at tau = t / T, its slope falling from 1+q to 1-q (horizontal speed lost to drag:
+      // (1-q)/(1+q) = vxr); the height over the chord is D (A s + B s^2 + C s^3), leaving at the elevation (A = tan el)
+      // and coming down at the angle of fall (y'(1) = -tan fall), the apex past mid-range as a real shell's.
+      p.D = Math.hypot(p.vx, p.vz) * T; p.q = (1 - vxr) / (1 + vxr);
+      p.cA = Math.tan(el); p.cC = p.cA - tanF; p.cB = -2 * p.cA + tanF;
       p.dmg = S.dmg * rr(0.8, 1.2);
       if (p.mesh) {
         var k = cal === 'big' ? 0.95 : cal === 'med' ? 0.7 : cal === 'small' ? 0.6 : 0.45;
         if (B.tracer) p.mesh.scale.set(B.len * k * 1.2, k * 0.6, k * 0.6); else p.mesh.scale.set(B.len * k, k, k);
+        poseShell(p);
       }
-      place(p, m.x, m.y, m.z); orient(p, p.vx, p.vy0, p.vz);
       fx('muzzleFlash', m.x, m.y, m.z);
       if (WW.emit) WW.emit('shellFired', { ship: ship, cal: cal, x: m.x, y: m.y, z: m.z, proj: p }); // sound hook (audio_*.js)
       stat('shellsFired');
@@ -173,14 +239,18 @@ window.WW = window.WW || {};
     } catch (e) { return null; }
   }
 
+  function poseShell(p) {
+    var tau = Math.min(p.t, p.T) / p.T, s = (1 + p.q) * tau - p.q * tau * tau, ds = (1 + p.q) - 2 * p.q * tau;   // ds: d s / d tau
+    var x = p.x0 + p.vx * p.T * s, z = p.z0 + p.vz * p.T * s;
+    var y = p.y0 + (p.ty - p.y0) * s + p.D * s * (p.cA + s * (p.cB + s * p.cC));
+    var dy = (p.ty - p.y0) + p.D * (p.cA + s * (2 * p.cB + 3 * s * p.cC));      // d y / d s
+    place(p, x, y, z); orient(p, p.vx * ds, dy * ds / p.T, p.vz * ds);
+  }
   function updateShell(p, dt) {
     p.t += dt;
-    var t = Math.min(p.t, p.T);
-    var x = p.x0 + p.vx * t, z = p.z0 + p.vz * t;
-    var y = p.y0 + p.vy0 * t - 0.5 * p.g * t * t;
-    place(p, x, y, z); orient(p, p.vx, p.vy0 - p.g * t, p.vz);
+    if (p.mesh) poseShell(p);   // an unseen shell (no mesh): only its clock runs
     if (p.t < p.T) return;
-    landShell(p, x, z);
+    landShell(p, p.x0 + p.vx * p.T, p.z0 + p.vz * p.T);
     p.dead = true;
   }
 
@@ -290,6 +360,11 @@ window.WW = window.WW || {};
       if (WW.combatAA) WW.combatAA.clearAll();
     },
     fireShell: fireShell,
+    // the range table (gunnery): the barrels' elevation (rad) for a shot at game range d, the time of flight (sim s)
+    elevOf: function (cal, d) { return ballistic(cal, d).el; },
+    tofOf: tofOf,
+    ballistic: function (cal, d) { var b = ballistic(cal, d); return { el: b.el, fall: b.fall, T: b.T, vxr: b.vxr }; },
+    muzzlePos: muzzlePos,
     // internals shared with combat_weapons.js
     _i: {
       acquire: acquire, place: place, orient: orient, findHit: findHit, onHull: onHull,

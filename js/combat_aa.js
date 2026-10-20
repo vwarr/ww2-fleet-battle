@@ -348,15 +348,51 @@ window.WW = window.WW || {};
       ci.place(p, sx, sy, sz); ci.orient(p, vx, vy, vz);
     }
   }
-  // A short stream of 2-3 tracers from guns along the hull toward the lead point (visual: Math.random).
+  // ---------- where the guns are (visual) ----------
+  // The ship's light AA positions in ship-local coordinates (+x bow, +z starboard): the model's AA tubs (models.js
+  // aaMounts), the 20 mm along the deck edges (the hull loft, 6 stations a side), cached per ship.
+  function lightMounts(s) {
+    if (s._aaM) return s._aaM;
+    var m = s.model, out = [], H = m && m.hull, hu = WW.models && WW.models._hullAt;
+    if (m && m.aaMounts) for (var i = 0; i < m.aaMounts.length; i++) out.push(m.aaMounts[i]);
+    if (H && hu) for (var j = 0; j < 6; j++) {
+      var a = hu.apply(null, H.concat(0.2 + j * 0.12));
+      out.push({ x: a.x, y: a.yt + 0.2, z: a.w * 0.85 }, { x: a.x, y: a.yt + 0.2, z: -a.w * 0.85 });
+    }
+    return (s._aaM = out);
+  }
+  // a turret's muzzle in ship-local coordinates as trained now (models.js turret mz)
+  function turretTip(t) {
+    var o = t.obj.position, a = -t.obj.rotation.y, mz = t.mz, ce = Math.cos(t.el || 0), r = mz.fx + mz.len * ce;
+    return { x: o.x + Math.cos(a) * r, y: o.y + mz.by + Math.sin(t.el || 0) * mz.len, z: o.z + Math.sin(a) * r };
+  }
+  // a gun position on the side of ship s facing (tx, tz), in world coordinates. heavy: a dual-purpose 5-inch mount
+  // (the 'small' turrets) when the ship has one; light: an AA tub, a deck-edge 20 mm or an mg / 5-inch mount.
+  function gunAt(s, tx, tz, heavy, R) {
+    var h = s.heading || 0, c = Math.cos(h), sn = Math.sin(h), side = (-(tx - s.x) * sn + (tz - s.z) * c) < 0 ? -1 : 1;
+    var ts = (s.model && s.model.turrets) || [], cand = [], i, p;
+    for (i = 0; i < ts.length; i++) {
+      var t = ts[i]; if (!t.mz || (t.cal !== 'small' && (heavy || t.cal !== 'mg'))) continue;
+      p = turretTip(t); if (p.z * side > -0.3) cand.push(p);
+    }
+    if (!heavy || !cand.length) {
+      var lm = lightMounts(s);
+      for (i = 0; i < lm.length; i++) if (lm[i].z * side > -0.3) cand.push(lm[i]);
+    }
+    p = cand.length ? cand[Math.floor(R() * cand.length) % cand.length] : { x: 0, y: 2.2, z: 0 };
+    var gy = (s.group && s.group.position) ? s.group.position.y : (s.depthY || 0);
+    return { x: s.x + p.x * c - p.z * sn, y: gy + p.y, z: s.z + p.x * sn + p.z * c };
+  }
+
+  // A short stream of 2-3 tracers from one of the ship's AA mounts toward the lead point (visual: Math.random).
   function tracerStream(s, pl, hit) {
     var ci = I(); if (!ci || !V) return;
     ci.buildShared();
-    var R = Math.random, h = s.heading || 0, c = Math.cos(h), sn = Math.sin(h), L = (s.stats && s.stats.length) || 12;
+    var R = Math.random;
     var pvx = Math.cos(pl.heading || 0) * (pl.speed || 0), pvz = Math.sin(pl.heading || 0) * (pl.speed || 0), pvy = pl.vy || 0;
     var miss = hit ? 0.6 : 2.5 + R() * 3, n = 3 + (R() < 0.5 ? 1 : 0);
-    var along = (R() - 0.5) * L * 0.6, across = (R() < 0.5 ? -1 : 1) * L * 0.08;   // one gun mount per stream
-    var sx = s.x + c * along - sn * across, sz = s.z + sn * along + c * across, sy = 2.2 + R() * 0.6;
+    var gp = gunAt(s, pl.x, pl.z, false, R);   // one gun mount per stream
+    var sx = gp.x, sz = gp.z, sy = gp.y;
     for (var k = 0; k < n; k++) {
       var dx = pl.x - sx, dy = (pl.y || 5) - sy, dz = pl.z - sz, d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1, T = d / TR_SPEED;
       var ax = pl.x + pvx * T + (R() - 0.5) * miss * 2, ay = (pl.y || 5) + pvy * T + (R() - 0.5) * miss, az = pl.z + pvz * T + (R() - 0.5) * miss * 2;
@@ -396,12 +432,11 @@ window.WW = window.WW || {};
     }
     if (pending.length > dbg.peakPending) dbg.peakPending = pending.length;
     // visible muzzle flash at a heavy mount on the side facing the target (visual only)
-    var h = s.heading || 0, L = (s.stats && s.stats.length) || 12, a = (Math.random() - 0.5) * L * 0.4;
-    var sd = (-(pl.x - s.x) * Math.sin(h) + (pl.z - s.z) * Math.cos(h)) < 0 ? -1 : 1;
-    var gx = s.x + Math.cos(h) * a - Math.sin(h) * sd * L * 0.09, gz = s.z + Math.sin(h) * a + Math.cos(h) * sd * L * 0.09;
-    if (V) { V.core.spawn(gx, 3, gz, 0, 0.5, 0, 0.16, 0.9, 1.8, V.col.hot, V.col.hot2); hazePuff(gx, 3.5, gz, true, Math.random); }
-    if (WW.fx && WW.fx.muzzleFlash) try { WW.fx.muzzleFlash(gx, 3, gz); } catch (e) { /* ignore */ }
-    WW.emit('aaHeavyFired', { ship: s, x: gx, y: 3, z: gz, target: pl });   // sound (audio_aa.js)
+    // at a 5-inch mount on the side facing the target (gunAt; visual only)
+    var gp = WW.simOnly ? { x: s.x, y: 3, z: s.z } : gunAt(s, pl.x, pl.z, true, Math.random), gx = gp.x, gz = gp.z, gyy = gp.y;
+    if (V) { V.core.spawn(gx, gyy, gz, 0, 0.5, 0, 0.16, 0.9, 1.8, V.col.hot, V.col.hot2); hazePuff(gx, gyy + 0.5, gz, true, Math.random); }
+    if (WW.fx && WW.fx.muzzleFlash) try { WW.fx.muzzleFlash(gx, gyy, gz); } catch (e) { /* ignore */ }
+    WW.emit('aaHeavyFired', { ship: s, x: gx, y: gyy, z: gz, target: pl });   // sound (audio_aa.js)
   }
 
   function detonate(b, planes) {

@@ -272,6 +272,10 @@ window.WW = window.WW || {};
         return best;
       }, best => {
         f.aim = Math.atan2(best.z - f.z, best.x - f.x); f.firedAt = now0();
+        // the rounds leave the gun's muzzle (models_base.js cgun: the barrel tip 4.7 u out, 1.9 u over the emplacement
+        // floor, trained on f.aim), not the emplacement's centre at sea level
+        const gy = Math.max(base.site.padH, -WW.terrain.depthAt(f.x, f.z));
+        f.unit.mx = f.x + Math.cos(f.aim) * 4.7; f.unit.mz = f.z + Math.sin(f.aim) * 4.7; f.unit.muzzleY = gy + 1.9;
         for (let k = 0; k < BATTERY.count; k++) if (WW.combat.fireShell(f.unit, null, best, BATTERY.cal)) stats.coastalShots++;
       // the duel: a ship shelling the island draws the battery's full rate (TUNE.guns throttles the guns' reach over
       // passing ships, which used to decide battles; a bombardment is what the batteries were sited for)

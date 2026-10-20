@@ -175,12 +175,17 @@ window.WW = window.WW || {};
     box(obj, P.super, t.w * q, t.h * q, t.d * q, -t.w * q * 0.22, 0, 0);
     if ((look || cal) !== 'mg') bar(obj, P.accent, t.w * q * 0.45, 0.05 * q, t.d * q * 0.6, -t.w * q * 0.3, t.h * q - 0.02, 0); // roof stripe
     var n = nBarrels || t.n, front = t.w * q * 0.25, by = t.h * q * 0.48, sp = (n === 2 && t.sp === 0 ? 0.3 : t.sp) * q;
-    for (var i = 0; i < n; i++) xc(obj, P.gun, t.t * q / 2, t.len * q, front + t.len * q / 2, by, (i - (n - 1) / 2) * sp);
+    // the barrels on their trunnions (gunG at the house face): gunG.rotation.z is the elevation (ships_ai.js lays it
+    // for the range, combat.js range table); merged on their own (models_detail.js finish) so they still elevate
+    var gunG = new THREE.Group(); gunG.position.set(front, by, 0); obj.add(gunG);
+    for (var i = 0; i < n; i++) xc(gunG, P.gun, t.t * q / 2, t.len * q, t.len * q / 2, 0, (i - (n - 1) / 2) * sp);
     var barrel = new THREE.Object3D();
-    barrel.position.set(front + t.len * q, by, 0);
-    obj.add(barrel);
+    barrel.position.set(t.len * q, 0, 0);
+    gunG.add(barrel);
     ship.group.add(obj);
-    ship.turrets.push({ obj: obj, barrel: barrel, cal: cal });
+    // mz: the muzzle in the turret's frame, for combat.js muzzlePos (a pure sim function of the layout: never the
+    // drawn barrel's world position, which the swell and the render interpolation move)
+    ship.turrets.push({ obj: obj, barrel: barrel, gunG: gunG, cal: cal, el: 0, mz: { fx: front, by: by, len: t.len * q } });
     return obj;
   }
   // tapered funnel with accent band and dark cap; rake tilts top aft. Adds a stack Object3D at the top.
@@ -301,6 +306,14 @@ window.WW = window.WW || {};
       s.cls = c.key;
       if (type !== 'submarine') outline(s);
       if (WW.models._finish) WW.models._finish(type, P, s, c);   // models_detail.js: common detail + static-mesh merge
+      // the light AA mounts (models_detail.js aaTub) in ship-local coordinates (the group is still at the origin):
+      // combat_aa.js fires the light AA tracer streams from them (with the deck edges and the dual-purpose turrets)
+      s.aaMounts = [];
+      s.group.updateMatrixWorld(true);
+      s.group.traverse(function (o) {
+        if (!o.userData || !o.userData.aa) return;
+        var v = new THREE.Vector3(0, 0.3, 0); o.localToWorld(v); s.aaMounts.push({ x: v.x, y: v.y, z: v.z });
+      });
       var cals = gunCals(type, c);
       if (cals.length === s.turrets.length) s.turrets.forEach(function (t, i) { t.cal = cals[i]; });
       else if (window.console) console.warn('models: turret count mismatch for', c.key, cals.length, s.turrets.length);
