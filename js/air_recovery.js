@@ -9,8 +9,8 @@
 //   order: a plane short of fuel first, then the fighters (the CAP lands first), then by the time the plane first
 //   joined a stack (a divert keeps its place in the new queue). The stack moves with the ship.
 // - Groove: in recovery mode the first plane in the queue is cleared to approach (it turns up the wake from wherever
-//   it is on its track) once the plane ahead is near the gate, so two or three are in the groove at a time and traps
-//   come about every 2.5-4 s. Final: the runway centreline (PD on the drift), wave-off when the deck is foul or the ship swings,
+//   it is on its track; in a deep stack any of the first PICK_N placed), sequenced SEP_S apart by its time to the gate
+//   (etaGate), up to APP_N on the approach leg; traps come about every 6-10 s at speedcal's real pattern speeds. Final: the runway centreline (PD on the drift), wave-off when the deck is foul or the ship swings,
 //   bolter past the wires; a wave-off goes back to the head of the stack. Trap: arrestor jolt, then the deck crew
 //   taxis it forward past the barrier, folds it and rearms it (cv.rearm, aircraft.js REARM).
 window.WW = window.WW || {};
