@@ -14,8 +14,10 @@ window.WW = window.WW || {};
   var SPOT_R = WW.intel ? WW.intel.R.SPOT : 85, SPOT_HOLD = WW.intel ? WW.intel.T.SPOT_HOLD : 20, SEARCH_T = 130, ALT = 26, ARC_R = 90;   // SEARCH_T covers the ~35 s flight out on the big map
   var RELAUNCH = 50, MAX_SORTIES = 2, CAT_HOLD = 2.4, DAWN = [0.5, 6];   // DAWN: first catapult launch (s into the round)
   // the catapult stroke: the carriage runs CAT_LEN along the rail at a constant acceleration and lets the plane go at
-  // CAT_V (u/s relative to the ship, its flying speed): T = 2 CAT_LEN / CAT_V (0.2 s)
-  var CAT_LEN = 1.8, CAT_V = 18, CAT_T = 2 * CAT_LEN / CAT_V, CAT_A = CAT_V / CAT_T;
+  // CAT_V (u/s relative to the ship, its flying speed): T = 2 CAT_LEN / CAT_V (0.33 s). CAT_V 11 ~ 63 kn on the ship
+  // clock (1 u/s ~ 5.71 kn): the 1942 powder catapults threw an OS2U / F1M off at ~60-70 kn, ~3 g (speedcal; was 18,
+  // ~103 kn in 0.2 s)
+  var CAT_LEN = 1.8, CAT_V = 11, CAT_T = 2 * CAT_LEN / CAT_V, CAT_A = CAT_V / CAT_T;
   var SCALE_FLY = 1.5 * (WW.cfg.PLANE_K || 1), SCALE_CAT = Math.min(0.55, SCALE_FLY); // small on the catapult, the carrier planes' size in flight (1.5 at the 1.7 tuning scale)
   var SHIPS = { cruiser: 1, battleship: 1 };
   if (WW.PLANE_TYPES && !WW.PLANE_TYPES.scout) WW.PLANE_TYPES.scout = { hp: 16, speed: 22, range: 1000 };

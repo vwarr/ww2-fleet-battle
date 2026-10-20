@@ -206,7 +206,7 @@ window.WW = window.WW || {};
   function takeoff(p, dt) {
     const b = p.carrier;
     if (p.rwPh !== 'climb') return G().out(p, dt);
-    p.speedTo(p.pt.speed * 0.9, dt); p.turn = 0;
+    p.speed += WW.clamp(p.pt.speed * 0.9 - p.speed, 0, 3 * dt); p.turn = 0;   // building speed in the climb-out (speedcal; was speedTo's 8 u/s^2)
     p.vy += WW.clamp(Math.min(4, p.pt.climb || 4) - p.vy, -6 * dt, 6 * dt);
     if (p.y > groundY(b) + 12) { p.state = 'transit'; p.rwPh = null; }
   }
@@ -263,9 +263,12 @@ window.WW = window.WW || {};
       if (off || (!(p.cleared && p.clearedMain === R.main) && (!go || !clear))) { LH.orbit(p, b, i, dt); p.apOut = false; return; }
       p.cleared = true; p.clearedMain = R.main;
       // the approach: the outer marker (150 back) first, then the final gate (75 back), so it arrives lined up
-      if (!p.apOut) { const dm = WW.dist(p.x, p.z, ox, oz); p.fly(ox, oz, 16, dt, p.pt.speed * (dm > 120 ? 0.9 : 0.75), 1.4); if (dm < 22) p.apOut = true; return; }   // (in from the marshal at cruise, slowing near the marker)
+      // (speedcal: the pattern at real speeds, from the class's lift-off speed LV: the marker leg at most 1.6 LV, the gate
+      // leg 1.3 LV, the final 1.15 LV; they were 0.9 / 0.75 / 0.7 / 0.55x the plane's combat speed, a fighter's final ~125 kn)
+      const LV = G().liftV ? G().liftV(p) : 13;
+      if (!p.apOut) { const dm = WW.dist(p.x, p.z, ox, oz); p.fly(ox, oz, 16, dt, Math.min(p.pt.speed * (dm > 120 ? 0.9 : 0.75), 1.6 * LV), 1.4); if (dm < 22) p.apOut = true; return; }   // (in from the marshal at cruise, slowing near the marker)
       const d = WW.dist(p.x, p.z, fx, fz);
-      p.fly(fx, fz, 11, dt, p.pt.speed * 0.7, 1.4);
+      p.fly(fx, fz, 11, dt, Math.min(p.pt.speed * 0.7, 1.3 * LV), 1.4);
       if (d < 14 && Math.abs(WW.angleDiff(p.heading, R.h)) < 0.7 && (R.main ? !o.occ : !o.crossOcc)) {   // the runway free: on final (else round the gate again)
         p.rwPh = 'final'; p.rwT = 0; p.rwH = R.h; p.rwX = R.x; p.rwZ = R.z; p.emergency = !R.main;
         if (R.main) o.occ = p; else { o.crossOcc = p; if (p.useCross) ST.crossLand++; else ST.emergency++; }
@@ -283,7 +286,7 @@ window.WW = window.WW || {};
     if (Math.abs(dd) > 2.4) { p.finSign = p.finSign || Math.sign(dd) || 1; p.heading += p.finSign * 1.8 * dt; } // far off: one committed turn
     else { p.finSign = 0; p.turnTo(want, dt, 1.8); }
     const ty = groundY(b) + gearOf(p) + WW.clamp(togo * 0.12, 0, 10);
-    p.speed += WW.clamp(Math.max(p.pt.speed * 0.55, 13) - p.speed, -6 * dt, 6 * dt);
+    p.speed += WW.clamp(Math.max(Math.min(p.pt.speed * 0.55, 1.15 * (G().liftV ? G().liftV(p) : 13)), 13) - p.speed, -6 * dt, 6 * dt);
     p.vy = WW.clamp((ty - p.y) * 2.5, -6, 4);
     if (togo < 1) { // touchdown
       p.state = 'rollout'; p.y = groundY(b) + gearOf(p); p.vy = 0; p.heading = h; p.t = 0; p._cr = undefined;
