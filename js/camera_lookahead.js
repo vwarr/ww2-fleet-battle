@@ -326,6 +326,7 @@ window.WW = window.WW || {};
     for (const e of evs()) {
       const s = e.s, cv = s.type === 'carrier';
       if (!cv && s.type !== 'battleship') continue;
+      if (pref && WW.lookahead.idOf(s) !== pref.tg) continue;                  // (the after-battle reel's clip: its own ship only)
       if (!GUARD_K[e.kind] || e.etaReal < GUARD_WIN[0] || e.etaReal > GUARD_WIN[1]) continue;
       if ((guarded.get(s) || -1e9) > now - 3) continue;                       // (no flapping: a guard brace runs to its hits and beat)
       if (shot && shot.kind === 'brace' && shot.subj === s) continue;
