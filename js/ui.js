@@ -97,6 +97,17 @@ window.WW = window.WW || {};
     el.adm.style.cursor = 'pointer'; el.adm.title = 'Click for other admirals';
     el.adm.addEventListener('click', () => { if (WW.admirals) WW.admirals.reroll(); });
     WW.on('admiralsPreview', admLine);
+    // the start time (daylight.js preview): Random shows the hour the roll gives; the slider picks an hour (15 min steps)
+    el.tod = $('div', 'row small tod', el.setup);
+    el.todLbl = $('span', 'todlbl', el.tod);
+    el.todIn = $('input', 'vol tod', el.tod);
+    Object.assign(el.todIn, { type: 'range', min: 0, max: 95, step: 1, title: 'Start time (double-click: random)' });
+    el.todRnd = btn(el.tod, 'Random', () => setTod(null));
+    el.todRnd.title = 'A random start time each battle';
+    el.todIn.addEventListener('input', () => setTod(el.todIn.value / 4));
+    el.todIn.addEventListener('dblclick', () => setTod(null));
+    el.todIn.addEventListener('keydown', e => e.stopPropagation()); // arrow keys move the slider, not the camera
+    try { const v = localStorage.getItem('ww.todHour'); if (v !== null && v !== '' && WW.dayNight) WW.dayNight.setUserHour(+v); } catch (e) { /* storage blocked */ }
     el.msg = $('div', 'msg', root);
 
     el.film = document.getElementById('film');
@@ -130,6 +141,25 @@ window.WW = window.WW || {};
     const lost = n => (WW.endgame && WW.endgame.stats ? WW.endgame.stats.sunk[n] : WW.world.ships.filter(s => s.nation === n && !s.alive && !s.escaped).length); // sunk this round (escapes are not losses)
     const sh = k => k === 1 ? ' ship' : ' ships';
     return 'USN lost ' + lost('USN') + sh(lost('USN')) + '  \u00b7  IJN lost ' + lost('IJN') + sh(lost('IJN'));
+  }
+  function setTod(h) {
+    const D = WW.dayNight; if (!D) return;
+    D.setUserHour(h);
+    try { if (D.userHour == null) localStorage.removeItem('ww.todHour'); else localStorage.setItem('ww.todHour', String(D.userHour)); } catch (e) { /* storage blocked */ }
+    todLine();
+  }
+  const KIND_WORD = { dawn: 'dawn', day: 'day', dusk: 'dusk', night: 'night' };
+  function todLine() {
+    const D = WW.dayNight, o = D && D.preview && D.preview();
+    if (!el.tod) return;
+    el.tod.style.display = o ? '' : 'none';
+    if (!o) return;
+    const h = ((o.startHour % 24) + 24) % 24, m = Math.floor(h * 60 + 1e-6);
+    const txt = 'Start ' + String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') + ' \u00b7 ' + (o.predawn ? 'before dawn' : KIND_WORD[o.kind] || o.kind);
+    if (el.todLbl.textContent !== txt) el.todLbl.textContent = txt;
+    if (o.random || document.activeElement !== el.todIn) el.todIn.value = Math.round(h * 4) % 96;
+    el.todIn.classList.toggle('rnd', o.random);
+    el.todRnd.classList.toggle('on', o.random);
   }
   function admLine() {
     if (!el.adm || !WW.admirals) return;
@@ -208,7 +238,7 @@ window.WW = window.WW || {};
     respawnSetup(); // clearAll + respawn the remaining composition
   }
   function respawnSetup() { WW.game.enterSetup(false); }
-  function randomizeFleets() { WW.game.composition = WW.game.randomComposition(); respawnSetup(); }
+  function randomizeFleets() { WW.game.composition = WW.game.randomComposition(); if (WW.dayNight && WW.dayNight.rerollPreview) WW.dayNight.rerollPreview(); respawnSetup(); }
   function clearFleets() { WW.game.composition = []; WW.game.custom = true; respawnSetup(); }
   // a new map with new random fleets, placed and waiting (auto mode: the next battle starts at once)
   function newRound() {
@@ -244,6 +274,7 @@ window.WW = window.WW || {};
     if (!(WW.scn().fleetSides || WW.sides()).every(n => c.some(s => s.nation === n))) return uiError('Both sides need ships');
     WW.game.baseChoice = baseNow(); // the base the ready screen shows
     if (WW.admirals) WW.admirals.startFromPreview(); // the admirals shown on the panel
+    if (WW.dayNight && WW.dayNight.startFromPreview) WW.dayNight.startFromPreview(); // and the start time it shows
     WW.game.startRound({ keepMap: true });
   }
 
@@ -284,6 +315,7 @@ window.WW = window.WW || {};
         el.base.style.display = WW.scn().base ? 'none' : '';
       }
     }
+    if (inSetup) todLine(); // every frame: the label follows ships placed / removed and the slider live
     // HUD shows in setup; in battle it fades away (H shows it again). Infinite: the corner stays (even in fullscreen) until idle.
     const idle = g.infinite && performance.now() - lastInput > IDLE_HIDE;
     if (idle) hudPeek = false;
