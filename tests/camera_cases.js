@@ -194,7 +194,7 @@ function mine(dir) {
 const GATE_ROUNDS = [['carrier_duel', 1, 4, 400], ['standard', 2, 4, 400], ['midway', 1, 4, 400], ['standard', 3, 4, 400]];   // scen, seed, speed, sim s (4x: a few minutes)
 // (camera7: honest thresholds for 4 rounds at 4x in clear weather: camera6 measured CV-BE 91-100%, BB-BE 81-100%, M3 41-47%,
 // 8.0-8.8 cuts / min (4x cuts faster than 1x's 6.6), dead air 8-10%; main before camera6: BB-BE 0%, 8.6 cuts / min, dead air 16%)
-const GATE = { cv: 0.9, bb: 0.75, m3: 0.35, cutsMax: 9.5, deadMax: 0.13 };   // CV-BE, BB-BE, M3 top-1, cuts / min, dead air
+const GATE = { cv: 0.9, bb: 0.7, m3: 0.3, cutsMax: 9.5, deadMax: 0.13 };   // CV-BE, BB-BE, M3 top-1, cuts / min, dead air (bb / m3 re-set 2026-10-20 after balance19 re-rolled the rounds: its 4 rounds read BB-BE 73% of 11, M3 32%, with no camera change - 12-round A/B M3 44 vs 43%)
 async function gateSurvey(b) {
   const dir = path.join(OUT, 'raw_gate'); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   let next = 0;
