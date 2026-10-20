@@ -12,6 +12,9 @@ window.WW = window.WW || {};
   // biggest single GPU cost of the frame (render 5.0 -> 3.6 ms at 3200x1800, tests/gpu_probe.js busy) and the same-frame
   // shots are indistinguishable (mean |diff| 0.14 / 255). ?msaa=N: N samples (4: the old look; 0: none)
   const MSAA = (m => (m ? +m[1] : 2))(/[?&]msaa=(\d)/.exec(location.search));
+  // ?inval=0: the old resolve (power2 A/B; WW.post.opts.inval flips it live): the MSAA depth and stencil blitted to the
+  // resolve target too. Without them: GPU -0.25 ms a frame at 3200x1800 (busy), the frame identical to the bit
+  const O = { inval: !/[?&]inval=0/.test(location.search) };
   const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
   function mat(frag, uniforms, toneMapped) {
     return new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: frag, depthTest: false, depthWrite: false, toneMapped: !!toneMapped });
@@ -63,6 +66,9 @@ window.WW = window.WW || {};
     if (!enabled || !rtScene) { r.setRenderTarget(null); r.render(scene, camera); return; }
     r.getDrawingBufferSize(sz);
     if (sz.x !== rtScene.width || sz.y !== rtScene.height) resize();
+    // nothing reads the scene's depth after the frame: the resolve blits the colour only, and the depth / stencil are
+    // invalidated (three.js's XR flag; set every frame: a resize drops the target's properties)
+    r.properties.get(rtScene).__ignoreDepthValues = O.inval;
     r.setRenderTarget(rtScene); r.render(scene, camera);
     mBright.uniforms.tex.value = rtScene.texture; pass(mBright, rtA);
     for (let i = 0; i < 2; i++) { // two separable blur rounds at quarter resolution
@@ -87,5 +93,5 @@ window.WW = window.WW || {};
   // a per-channel gain applied after the tone curve. The Pacific never sets it (0 and 1, 1, 1: the identity).
   let gSat = 0;
   function setGrade(sat, cr, cg, cb) { gSat = sat; if (mComp) mComp.uniforms.grade.value.set(cr, cg, cb); }
-  WW.post = { init, resize, render, setNight, setGrade, toggle() { enabled = !enabled; return enabled; } };
+  WW.post = { init, resize, render, setNight, setGrade, toggle() { enabled = !enabled; return enabled; }, opts: O };
 })(window.WW);
