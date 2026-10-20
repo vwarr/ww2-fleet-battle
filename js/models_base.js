@@ -237,6 +237,10 @@ window.WW = window.WW || {};
       });
       im.instanceMatrix.needsUpdate = true; root.add(im); rv.push(im);
     });
+    // the airfield stands still: the root and the ground, the slipway, the revetments and the buildings get their
+    // matrices once (power2); the guns and the flag keep posing per frame, and a wrecked building is posed again (wreck)
+    root.matrixAutoUpdate = false;
+    root.children.forEach(function (o) { if (o !== null && !parts.some(function (q) { return q.gun === o || q.flag === o; })) { o.updateMatrix(); o.matrixAutoUpdate = false; } });
     return { group: root, parts: parts, strips: st, revets: rv, mat: mat };   // mat: the buildings' (the camp shares it)
   }
   // a revetment for a plane class: low grassed earth walls behind the tail and beside the wingtips (clear of them by
@@ -263,7 +267,7 @@ window.WW = window.WW || {};
     if (part.wrecked) return;
     part.wrecked = true;
     var k = part.f.kind, m = part.mesh;
-    m.material = TPL.scorch;
+    m.material = TPL.scorch; m.matrixAutoUpdate = true;   // (posed once at build: build)
     if (k === 'hangar') { m.scale.set(1, 0.42, 0.9); m.rotation.z = 0.06; }
     else if (k === 'fuel') m.scale.set(1.05, 0.35, 1.05);
     else if (k === 'tower' || k === 'barracks') m.scale.set(0.9, 0.5, 0.9);

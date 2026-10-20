@@ -113,6 +113,7 @@ window.WW = window.WW || {};
     if (sv.crewUpdate) { WW.crew.update = sv.crewUpdate; WW.crew.addFigure = sv.addFigure; }
     if (sv.lbUpdate) WW.lifeboats.update = sv.lbUpdate;
     if (sv.props) sv.props.forEach(function (p) { p.o.rotation.copy(p.r); p.o.scale.copy(p.s); p.o.visible = p.v; if (p.o.children[1]) p.o.children[1].visible = true; });
+    if (sv.props && WW.terrain.propsMoved) WW.terrain.propsMoved();   // (the props' matrices are made once: terrain.js)
     WW.time.warp = 1;
     if (WW.easterFx) WW.easterFx.stop();
     if (WW.cam && WW.cam.snap) WW.cam.snap();
@@ -202,17 +203,18 @@ window.WW = window.WW || {};
     var g = WW.terrain && WW.terrain._props && WW.terrain._props();
     if (!g) return;
     if (!r.props) { r.props = g.children.slice(); r.saved.props = []; }
-    var R2 = r.ringR * r.ringR, L = r.props;
+    var R2 = r.ringR * r.ringR, L = r.props, moved = false;
     for (var i = L.length - 1; i >= 0; i--) {
       var o = L[i], dx = o.position.x - r.gz.x, dz = o.position.z - r.gz.z;
       if (dx * dx + dz * dz > R2) continue;
-      L.splice(i, 1);
+      L.splice(i, 1); moved = true;
       r.saved.props.push({ o: o, r: o.rotation.clone(), s: o.scale.clone(), v: o.visible });
       var hut = o.children[1] && Math.abs(o.children[1].position.y - 1.5) < 1e-3;
       if (hut) { o.visible = false; continue; }
       o.rotation.set(0, -Math.atan2(dz, dx), -1.4);   // the trunk down along the blast
       if (o.children[1]) o.children[1].visible = false; // the fronds stripped
     }
+    if (moved && WW.terrain.propsMoved) WW.terrain.propsMoved();   // (the props' matrices are made once: terrain.js)
   }
 
   // ---------- the camera ----------

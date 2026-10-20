@@ -62,7 +62,17 @@ window.WW = window.WW || {};
     rtA.setSize(qw, qh); rtB.setSize(qw, qh);
   }
   function pass(m, target) { quad.material = m; r.setRenderTarget(target); r.render(qScene, qCam); }
+  // The render's matrix update (power2): a hidden top-level object (the pooled lifeboats, plane props, flak and fx
+  // pools: ~1000 nodes in a busy battle) is left out, and so is a frozen tree (userData.frozen: terrain.js, whose
+  // matrices are made once); main.js leaves the scene root's own matrix alone, so nothing forces them. One shown again
+  // is updated by this same render before it is drawn. Visual only: the sim never reads the render's matrices (the
+  // look-ahead worker and ?sim pages render nothing). scene.updateMatrixWorld 0.49 -> 0.34 ms in a busy battle.
+  function matrixSkip(scene) {
+    const ch = scene.children;
+    for (let i = 0; i < ch.length; i++) { const c = ch[i]; c.matrixWorldAutoUpdate = c.visible && !c.userData.frozen; }
+  }
   function render(scene, camera) {
+    matrixSkip(scene);
     if (!enabled || !rtScene) { r.setRenderTarget(null); r.render(scene, camera); return; }
     r.getDrawingBufferSize(sz);
     if (sz.x !== rtScene.width || sz.y !== rtScene.height) resize();
