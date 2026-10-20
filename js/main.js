@@ -68,6 +68,7 @@ window.WW = window.WW || {};
   // per drawn battle frame: iv the interval since the last drawn frame, cb the last frame callback's own ms
   function dynFrame(iv, cb) {
     if (!DYN || pixelMode || (window.devicePixelRatio || 1) <= 1) return;
+    if (iv > 100) { dynN = 0; dynIv = 0; dynCb = 0; return; }   // a stall (a cut, a long task, a test's fast-forward), not the GPU: a fresh window
     dynN++; dynIv += iv; dynCb += cb;
     if (dynIv < DYN_WIN) return;
     const mi = dynIv / dynN, mc = dynCb / dynN; dynN = 0; dynIv = 0; dynCb = 0;
