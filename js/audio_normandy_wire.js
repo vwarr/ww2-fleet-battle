@@ -37,7 +37,7 @@ window.WW = window.WW || {};
   const N = () => WW.isScn('normandy');
   const on = () => A.live && N();
   const rt = () => (WW.game ? WW.game.roundTime : 0);
-  const simRate = () => (A.simRate > 0.05 && A.simRate < 64 ? A.simRate : 0.5 * (WW.time.scale || 1) * (WW.time.warp || 1));
+  const simRate = () => (A.simRate > 0.05 && A.simRate < 64 ? A.simRate : (WW.time.base || 0.5) * (WW.time.scale || 1) * (WW.time.warp || 1));
   const gy = (x, z) => { try { return Math.max(0, WW.terrain.heightRaw(x, z)); } catch (e) { return 0; } };
   const ENG_N = 4, ENG_FAR = 140, TANK_N = 2, TANK_FAR = 90, FIGHT_N = 4, FIGHT_FAR = 260, INF_FAR = 160, FIRE_R = 70, SNAP_R = 14;
   const BRK = { L: 15, V: 3.2 }, FLIGHT = 2.6, CARPET_DT = 0.12;   // waves.js BRK, rocket_barrage.js FLIGHT (mirrored)

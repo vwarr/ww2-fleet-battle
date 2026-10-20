@@ -125,7 +125,7 @@ window.WW = window.WW || {};
   }
   function tick(dt) {
     var r = run, t = (r.t += dt), FX = WW.easterFx;
-    WW.time.warp = WW.clamp((r.ended ? END_RATE : SIM_RATE) / Math.max(0.05, WW.time.scale * 0.5), 0.05, 8);
+    WW.time.warp = WW.clamp((r.ended ? END_RATE : SIM_RATE) / Math.max(0.05, WW.time.scale * (WW.time.base || 0.5)), 0.05, 8);
     fly(r, t, dt);
     var tau = t - T_DET;
     if (!r.det && tau >= 0) { r.det = true; FX.detonate(); }

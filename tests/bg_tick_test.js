@@ -2,7 +2,7 @@
 // page draws again when it comes back. The test fakes a hidden tab: document.hidden / visibilityState read a flag and a
 // visibilitychange is dispatched; a headless page would still get rAF, so while "hidden" rAF callbacks are held back
 // (no frame() runs: only the background beat can step the sim) and flushed on return. Asserts the sim clock moved by
-// wall s x scale x 0.5 (BASE_SPEED: 60 live steps a wall s at 1x) within a tolerance, frames resume on return, the
+// wall s x scale x WW.time.base (BASE_SPEED 0.306: ~37 live steps a wall s at 1x) within a tolerance, frames resume on return, the
 // camera is sane, the look-ahead copy (idle while hidden) catches up and did not diverge, and no page errors.
 // --cost: instead, the cost of one live step mid-strike in a carrier duel (the background budget is sized from it).
 // Usage: BASE_URL=http://localhost:PORT/ CHROMIUM=... node tests/bg_tick_test.js [--cost]
@@ -41,7 +41,7 @@ async function main(b) {
   await p.addInitScript(HOLD);
   await p.goto(BASE + 'index.html?auto');
   await p.waitForTimeout(4000);
-  const snap = () => p.evaluate(() => ({ now: WW.time.now, n: WW.game.stepN, round: WW.stats.round, drawn: WW.frames.drawn, wall: performance.now(), state: WW.game.state, bg: Object.assign({}, WW.bgTick) }));
+  const snap = () => p.evaluate(() => ({ now: WW.time.now, n: WW.game.stepN, round: WW.stats.round, drawn: WW.frames.drawn, wall: performance.now(), base: WW.time.base, state: WW.game.state, bg: Object.assign({}, WW.bgTick) }));
   let fail = 0;
   const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fail++; };
   for (const scale of [1, 4]) {
@@ -52,7 +52,7 @@ async function main(b) {
     await p.waitForTimeout(8000);
     const h = await snap();
     await p.evaluate(() => __setHidden(false));
-    const wallS = (h.wall - a.wall) / 1000, simS = h.now - a.now, want = wallS * scale * 0.5;
+    const wallS = (h.wall - a.wall) / 1000, simS = h.now - a.now, want = wallS * scale * (h.base || 0.5);
     console.log(`scale ${scale}: hidden ${wallS.toFixed(1)} wall s -> ${simS.toFixed(2)} sim s (want ${want.toFixed(2)}), steps ${h.bg.steps - a.bg.steps}, beats ${h.bg.beats - a.bg.beats}, frames drawn while hidden ${h.drawn - a.drawn}, round ${a.round}->${h.round} ${h.state}`);
     check(h.drawn - a.drawn <= 1, 'no frames while hidden');
     check(simS > want * 0.85 && simS < want * 1.1, `sim clock follows the wall clock at ${scale}x`);
