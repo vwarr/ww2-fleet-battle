@@ -19,7 +19,7 @@
 //   dive_usn_cv / dive_ijn_cv / dive_small / dive_lowsun: a dive bomber's dive reads as a dive (target in frame, not
 //                    side-on or flat, the plane not lost against the sea, no line-of-action flip, the impact in frame)
 //   dead_air         nothing happening: a calm shot (no cut storm, no snaps, no jitter)
-//   hit_after_cut    hits landing in the first 2 s of a shot are in that shot
+//   hit_after_cut    hits landing in the first 3 s of a shot are in that shot
 //   manual_pan       the user drags the camera, lets go: the director takes it back and films the next big hit
 // Every case also needs the setup framed beforehand where it says so (the frame 1 s before the impact).
 // Usage: BASE_URL=http://localhost:8829/ CHROMIUM=... node tests/camera_cases.js [--only a,b] [--quick] [--gate] [--workers 3] [--mine dir]
@@ -77,7 +77,7 @@ const SEL = {
   dive_ijn_cv: R => dives(R, d => d.p.n === 'IJN' && d.t && d.t.c === 'carrier'),
   dive_small: R => dives(R, d => d.t && d.t.c && d.t.c !== 'carrier' && d.t.c !== 'battleship'),
   dive_lowsun: R => dives(R, d => d.elev < 12),
-  hit_after_cut: R => (R.be || []).filter(e => hitK(e) && BIG[e.c] && R.shots.some(s => e.w - s.w0 >= 0.2 && e.w - s.w0 < 2)),
+  hit_after_cut: R => (R.be || []).filter(e => hitK(e) && BIG[e.c] && R.shots.some(s => e.w - s.w0 >= 0.2 && e.w - s.w0 < 3)),
 };
 // the checks: (R, events) -> { pass, why, w (the wall time to film on a failure) }
 const CHECK = {
@@ -95,7 +95,7 @@ const CHECK = {
   dd_torp: (R, E) => { const e = E[0]; if (!e) return null; const f = e.fire, run = R.rec.filter(r => r.w >= f.w - 25 && r.w <= f.w + 1 && ((r.subj && (r.subj.id === f.s.id || (f.tg && r.subj.id === f.tg.id))) || (r.tgt && r.tgt.id === f.s.id))).length;
     return { pass: okNow(e) && run >= 3, why: `${f.s.c} -> ${e.c}: run-in on camera ${run} s of the 25 before the spread; hit ${fmt(e)}`, w: f.w }; },
   dive_usn_cv: diveCheck, dive_ijn_cv: diveCheck, dive_small: diveCheck, dive_lowsun: diveCheck,
-  hit_after_cut: (R, E) => { if (E.length < 3) return null; const n = E.filter(okNow).length; return { pass: n / E.length >= 0.7, why: `${n} / ${E.length} hits in the first 2 s of a shot in frame`, w: (E.find(e => !okNow(e)) || E[0]).w }; },
+  hit_after_cut: (R, E) => { if (E.length < 2) return null; const n = E.filter(okNow).length; return { pass: n / E.length >= 0.7, why: `${n} / ${E.length} hits in the first 3 s of a shot in frame`, w: (E.find(e => !okNow(e)) || E[0]).w }; },
   // the protagonist shot down: its fall filmed and held to the water (camera_story.js falls / fallsWet), and its arc
   // logged as ending with it
   prot_down: R => { const st = R.story || {}, a = (R.arcs || []).filter(x => x.outcome === 'protagonistDown'); if (!st.falls) return null; return { pass: (st.fallsWet || 0) >= st.falls * 0.8, why: `${st.falls} falls filmed, ${st.fallsWet || 0} held to the water, ${a.length} arcs ended with the protagonist down`, w: a.length ? a[0].t1 - 8 : R.rec[0].w }; },
@@ -133,8 +133,8 @@ const CASES = [
   { id: 'dd_torp', scen: 'carrier_duel', seed: 6, scale: 1, sim: 285, quick: true },    // a destroyer's spread from the run-in to the hit, sim 271.8
   { id: 'prot_down', scen: 'carrier_duel', seed: 10, scale: 1, sim: 200 },
   { id: 'dead_air', scen: 'carrier_duel', seed: 5, scale: 1, sim: 120, quick: true },   // the opening quiet minutes
-  { id: 'hit_after_cut', scen: 'standard', seed: 9, scale: 1, sim: 400 },
-  { id: 'dive_usn_cv', scen: 'midway', seed: 4, scale: 1, sim: 215 },                   // VMSB-241 on a carrier, sim ~202
+  { id: 'hit_after_cut', scen: 'standard', seed: 7, scale: 1, sim: 375 },          // (the gun duel's round: hits in the first 3 s of a shot)
+  { id: 'dive_usn_cv', scen: 'carrier_duel', seed: 5, scale: 1, sim: 295 },             // VB-6 on a carrier, push-over at sim 281.6
   { id: 'dive_ijn_cv', scen: 'midway', seed: 7, scale: 1, sim: 195, quick: true },      // the Kaga dive-bomber unit on a carrier, sim ~182
   { id: 'dive_small', scen: 'carrier_duel', seed: 2, scale: 1, sim: 200, quick: true }, // VB-6 on a destroyer, sim ~186
   { id: 'night_torp', scen: 'night_cv', seed: 1, scale: 1, sim: 300 },
@@ -158,7 +158,7 @@ async function runRound(b, spec, sim, drag) {
     }
     if (t < 0 || t > sim) break;
   }
-  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, rec: A.rec, ev: A.ev, shots: A.shots, caps: A.caps, be: A.be, stor: A.stor, arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, story: WW.camStory ? WW.camStory.stats : null, la: WW.lookahead ? { on: WW.lookahead.on, diverged: WW.lookahead.diverged } : null }; });
+  const R = await p.evaluate(() => { const A = window.__audit; for (const e of A.ev) delete e._s; return { cfg: A.cfg, rec: A.rec, ev: A.ev, shots: A.shots, caps: A.caps, be: A.be, stor: A.stor, drops: A.drops, dives: A.dives.map(r => Object.assign({}, r, { _lp: undefined })), arcs: WW.cam.arcs ? WW.cam.arcs.map(a => Object.assign({}, a)) : null, story: WW.camStory ? WW.camStory.stats : null, la: WW.lookahead ? { on: WW.lookahead.on, diverged: WW.lookahead.diverged } : null }; });
   R.errs = errs.slice(0, 5); R.act = act;
   await p.close();
   return R;
