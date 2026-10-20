@@ -238,6 +238,20 @@ window.WW = window.WW || {};
     }
   });
 
+  // amb.thunder (positional): a crack and a long rolling peal (weather_fx.js lightning)
+  A.register('amb.thunder', {
+    bus: 'ambience', ref: 400, max: 2, minGap: 0.8, reverb: 0.9, dur: 7,
+    build(ctx, out, p) {
+      const k = p.rate || 1;
+      return S.done(p, [
+        S.burst(ctx, out, p.t, { noise: 'white', type: 'bandpass', f: 1800, f1: 400, q: 0.7, a: 0.005, d: 0.35, gain: 0.22, rate: k }),
+        S.boom(ctx, out, p.t + 0.05, { f0: R(55, 75), f1: 28, dur: R(3, 4.5), gain: 0.5, body: 1, crack: 0.2, bright: 0.3, rate: k }),
+        S.burst(ctx, out, p.t + 0.3, { noise: 'brown', type: 'lowpass', f: 320, f1: 70, q: 0.5, a: 0.4, d: R(3.5, 5.5), gain: 0.42, rate: k }),
+        S.burst(ctx, out, p.t + R(1.2, 2), { noise: 'brown', type: 'lowpass', f: 220, f1: 60, q: 0.5, a: 0.6, d: R(2.5, 4), gain: 0.28, rate: k })
+      ]);
+    }
+  });
+
   // amb.gull (positional) { n calls, f base pitch }
   A.register('amb.gull', {
     bus: 'ambience', ref: 45, max: 2, minGap: 2, reverb: 0.4, dur: 3, params: { n: 0, f: 0 },

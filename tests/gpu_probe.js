@@ -5,7 +5,7 @@
 // (hidden, or the pass skipped), so each line is what that part costs. Usage:
 //   BASE_URL=http://localhost:PORT/ CHROMIUM=<chrome> node tests/gpu_probe.js [std|busy|night|lagoon] [seed=1] [ff=150] [--dpr 2] [--k 30] [--w 1600 --h 900]
 //   lagoon: std, then the camera low (4 u) over the shallows beside an island looking along the shore.
-//   night: TOD=night forced (daylight.js) at ff.
+//   night: TOD=night forced (daylight.js) at ff.  --wx KIND: the weather forced (weather.js: clear, thunder, typhoon ...).
 const { chromium } = require('playwright');
 const args = process.argv.slice(2), opt = (k, d) => { const i = args.indexOf('--' + k); return i < 0 ? d : args[i + 1]; };
 const pos = args.filter((a, i) => !a.startsWith('--') && !(args[i - 1] || '').startsWith('--'));
@@ -17,7 +17,8 @@ const MODE = pos[0] || 'std', SEED = +(pos[1] || 1), FF = +(pos[2] || 150), K = 
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&cam=forecast&fullres' + (opt('q') ? '&' + opt('q') : '') + '&v=' + Date.now(), { timeout: 240000 });
   await p.waitForTimeout(4000);
-  const info = await p.evaluate(([MODE, SEED, FF]) => {
+  const info = await p.evaluate(([MODE, SEED, FF, WX]) => {
+    if (WX && WW.weather) WW.weather.force = WX;   // --wx KIND: a forced weather (weather.js), e.g. typhoon
     const G = WW.game;
     const seeded = sd => { if (WW.aces) WW.aces.reset(); WW.terrain.generate(sd); WW.seedRandom(sd); G.seed = sd; WW.time.now = 0; G.composition = null; G.mode = 'auto'; G.startRound({ keepMap: true }); };
     const airborne = () => WW.world.planes.filter(q => q.alive && !q.removed && q.y > 3).length;
@@ -30,7 +31,7 @@ const MODE = pos[0] || 'std', SEED = +(pos[1] || 1), FF = +(pos[2] || 150), K = 
       for (let t = FF; t < FF + 300 && airborne() < 30 && G.state === 'battle'; t += 30) __sim.fastForward(30);
     } else { seeded(SEED); __sim.fastForward(FF); }
     return { seed, t: G.roundTime, state: G.state, airborne: airborne(), daylight: WW.daylight };
-  }, [MODE, SEED, FF]);
+  }, [MODE, SEED, FF, opt('wx', null)]);
   await p.waitForTimeout(3000);   // the director settles on a shot; shaders warm
   if (MODE === 'lagoon') await p.evaluate(() => {   // a low shot over the shallows beside the island nearest the fleet
     const s = WW.world.ships.find(q => q.alive) || { x: WW.cfg.MAP_W / 2, z: WW.cfg.MAP_H / 2 };

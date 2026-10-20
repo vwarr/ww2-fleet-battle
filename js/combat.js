@@ -207,6 +207,7 @@ window.WW = window.WW || {};
       var dist = Math.hypot(ax - m0.x, az - m0.z);
       var r = (B.disp * dist + B.c) * Math.sqrt(rnd()), a = rnd() * Math.PI * 2;
       if (dist > SPOT_MIN && target.spottedUntil > (WW.time ? WW.time.now : 0)) r *= SPOT_DISP;
+      if (WW.weather) r *= WW.weather.gunK(ship, target);   // a heavy sea rolls the guns off; rain hides the fall of shot (weather.js)
       ax += Math.cos(a) * r; az += Math.sin(a) * r;
       var D = Math.hypot(ax - m0.x, az - m0.z), bl = ballistic(cal, D);
       T = Math.max(0.15, bl.T);

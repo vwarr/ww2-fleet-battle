@@ -167,7 +167,7 @@ window.WW = window.WW || {};
   on('deckBack', e => e.ship && e.ship.alive && add(nameOf(e.ship) + ': flight deck patched, flying again', 1, e.ship.nation));
   on('magazine', e => e.ship && add(nameOf(e.ship) + ' blows up: magazine explosion', 3, e.ship.nation, { kind: 'damage' }));
   on('engineHit', e => e.ship && RANK[e.ship.type] >= 5 && !hitSaid.has('eng' + e.ship.id) && hitSaid.add('eng' + e.ship.id) && add(nameOf(e.ship) + ' hit in the engine room, losing way', 1, e.ship.nation));
-  on('shipSunk', s => s && s.stats && add(nameOf(s) + (s.type === 'carrier' || s.type === 'battleship' ? ' sinks' : ' sunk'), RANK[s.type] >= 5 ? 3 : RANK[s.type] >= 3 ? 2 : 1, s.nation, { kind: 'sunk', ship: s }));
+  on('shipSunk', s => s && s.stats && add(nameOf(s) + (s.swamped ? ' foundered in the ' + (WW.weather && WW.weather.kind === 'typhoon' ? 'typhoon' : 'storm') + ', rolled over by the sea' : s.type === 'carrier' || s.type === 'battleship' ? ' sinks' : ' sunk'), RANK[s.type] >= 5 ? 3 : RANK[s.type] >= 3 ? 2 : 1, s.nation, { kind: 'sunk', ship: s }));
   on('shipScuttled', s => s && s.stats && add(nameOf(s) + ' scuttled by her own escorts', 2, s.nation, { kind: 'sunk' }));
   on('shipEscaped', s => s && s.stats && add(nameOf(s) + ' breaks away and escapes ' + (s.x < WW.cfg.MAP_W / 2 ? 'west' : 'east'), 1, s.nation));
   on('escortCharge', e => e.carrier && add((e.ships || []).slice(0, 2).map(nameOf).join(' and ') + ((e.ships || []).length > 2 ? ' and others' : '') + ((e.ships || []).length > 1 ? ' charge' : ' charges') + ' to cover ' + nameOf(e.carrier), 2, e.carrier.nation));

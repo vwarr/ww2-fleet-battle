@@ -71,9 +71,10 @@ window.WW = window.WW || {};
       const slopeB = -Math.atan2(hS - hP, 2 * b) * 0.35 + -(slopeAcross(W, s, c, sn, a)) * 0.65;
       const w0 = 2 * Math.PI / T.Tr;
       o.rv += (w0 * w0 * (slopeB * T.kr - o.roll) - 2 * T.zr * w0 * o.rv) * dt; o.roll += o.rv * dt;
-      if (o.roll > ROLL_MAX) { o.roll = ROLL_MAX; o.rv = Math.min(0, o.rv); } else if (o.roll < -ROLL_MAX) { o.roll = -ROLL_MAX; o.rv = Math.max(0, o.rv); }
+      const RM = ROLL_MAX + 0.32 * ((W.info && W.info.storm) || 0);   // a gale / typhoon (sea_state.js storm): a destroyer rolls 30 deg and more
+      if (o.roll > RM) { o.roll = RM; o.rv = Math.min(0, o.rv); } else if (o.roll < -RM) { o.roll = -RM; o.rv = Math.max(0, o.rv); }
     }
-    o.hb = hb;
+    o.hb = hb; o.heave = heave;
     let pitch = o.pitch * tilt, roll = o.roll * tilt;
     if (WW.isScn('normandy')) { pitch = Math.atan2(hb - hs, 2 * a) * 0.9; roll = -Math.atan2(hS - hP, 2 * b) * 1.1; }   // Normandy: its pose as before (the Channel's short sea: no roll resonance)
     save(g);
@@ -234,5 +235,5 @@ window.WW = window.WW || {};
     }
     posed.clear();
   }
-  WW.shipSwell = { pose, unpose, mark, posedPoint, stats: () => stats, TYPE };
+  WW.shipSwell = { pose, unpose, mark, posedPoint, stats: () => stats, TYPE, motion: s => st.get(s) };   // motion: { roll, pitch, heave } (tests)
 })(window.WW);

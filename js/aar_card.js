@@ -25,6 +25,7 @@ window.WW = window.WW || {};
   on('shipSunk', v => {
     if (!v || !v.stats) return;
     if (sunk.indexOf(v) < 0) sunk.push(v);
+    if (v.swamped) return;   // the sea took her (weather.js): no one's credit
     for (const s of WW.world.ships) {
       if (!s.alive || s.nation === v.nation || s.target !== v) continue;
       const st = s.stats, r = Math.max(60, (st.guns || []).reduce((m, g) => Math.max(m, g.range), 0), st.torpedoes ? st.torpedoes.range : 0) * 1.3;
@@ -51,7 +52,7 @@ window.WW = window.WW || {};
       const A = WW.admirals && WW.admirals.of ? WW.admirals.of(n) : null;
       return {
         n, adm: A ? (A.full || A.title || A.name) : null, flag: A && A.flagName,
-        lost: lost.map(s => nm(s) + ' (' + (SHORT[s.type] || s.type) + ')'), escaped: esc, planes,
+        lost: lost.map(s => nm(s) + ' (' + (SHORT[s.type] || s.type) + (s.swamped ? ', foundered' : '') + ')'), escaped: esc, planes,
         mvp: mvp ? nm(mvp) + ' (' + (SHORT[mvp.type] || '') + '), ' + (mv >= 1 ? Math.round(mv) + ' sunk' : 'a shared sinking') : null,
         ace: ace ? ace.name + ', ' + ak + (ak === 1 ? ' kill' : ' kills') + (ace.ace ? ' (ace)' : '') : null
       };

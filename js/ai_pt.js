@@ -407,6 +407,15 @@ window.WW = window.WW || {};
     a.ownComb = L0state(a) !== 'lurk' && L0state(a) !== 'gun' && L0state(a) !== 'wait'; // combing a torpedo track would break a dash; at the lurk spot or the wait, comb
     a.ownWithdraw = true; // a crippled PT lurks at home and makes no runs (below) rather than the core's withdrawal
     mgTarget(ship);
+    // heavy weather (weather.js): a PT cannot keep the sea; she runs for the lee of home at what she can make, no runs
+    if (WW.weather && WW.weather.ptHold()) {
+      if (!L.wxHeld) { L.wxHeld = true; WW.weather.stats.ptHeld++; }
+      L.state = 'lurk'; L.tgt = null;
+      const hx = WW.cfg.MAP_W / 2 + homeX(ship) * WW.cfg.MAP_W * 0.38;
+      if (Math.abs(ship.x - hx) > 40) ship.desiredHeading = Math.atan2(WW.clamp(WW.cfg.MAP_H / 2 - ship.z, -80, 80), hx - ship.x);
+      sweep(ship); ship.throttle = 0.7;
+      return;
+    }
     const jink = Math.sin(T * 1.7 + ship.id) * 0.45;
     L.decT -= dt;
     const decide = L.decT <= 0;

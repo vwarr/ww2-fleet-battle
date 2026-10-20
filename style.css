@@ -56,6 +56,7 @@ body.idle, body.idle canvas { cursor: none; } /* infinite mode, no input for a f
 #hud input.vol.tod { width: auto; flex: 1; min-width: 70px; }
 #hud input.vol.tod.rnd { opacity: 0.55; }
 #hud .tod .btn { margin-right: 0; padding: 3px 8px; font-size: 11px; }
+#hud select.wxsel { flex: 1; min-width: 70px; font: inherit; font-size: 11px; color: #3d5a78; background: rgba(255,255,255,0.6); border: 1px solid rgba(61,90,120,0.35); border-radius: 6px; padding: 2px 4px; cursor: pointer; }
 #hud .msg { display: none; position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center;
   font-weight: 700; color: #fffaf0; text-shadow: 0 2px 10px rgba(10, 20, 30, 0.6); }
 
