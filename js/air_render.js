@@ -121,7 +121,7 @@ window.WW = window.WW || {};
     for (i = 0; i < bucketList.length; i++) {
       b = bucketList[i];
       if (!b.im) continue;
-      b.im.count = b.n;
+      b.im.count = b.n; b.im.visible = b.n > 0;   // an empty bucket is no draw call in either pass (power3)
       WW.instUsed(b.im);
       if (b.im.parent !== WW.scene) WW.scene.add(b.im);
     }

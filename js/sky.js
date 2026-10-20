@@ -79,6 +79,7 @@ window.WW = window.WW || {};
         const m = new THREE.Mesh(geo, mat), k2 = (k / (n - 1)) - 0.5, rs = s * (0.55 + r() * 0.5) * (1 - Math.abs(k2) * 0.6);
         m.scale.set(rs, rs * 0.75, rs); m.position.set(k2 * s * 2.6, (r() - 0.3) * s * 0.4, (r() - 0.5) * s * 0.9);
         c.add(m); // no shadow casting: big soft cloud shadows read as dark blots at this scale
+        m.updateMatrix(); m.matrixAutoUpdate = false;   // a puff never moves in its cloud: its matrix once (power3)
       }
       const a = r() * Math.PI * 2, d = i < 8 ? r() * 600 : 650 + r() * 1100; // a few over the map, most toward the horizon
       c.position.set(cx + Math.cos(a) * d, 110 + r() * 80, cz + Math.sin(a) * d);
