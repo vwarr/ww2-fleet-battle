@@ -268,10 +268,14 @@ window.WW = window.WW || {};
 
     syncGroup(t) {
       const g = this.group, amp = 0.35 / Math.sqrt(this.stats.length);
-      g.position.set(this.x, this.depthY + Math.sin(t * 1.1 + this.bob) * amp * 0.5, this.z);
+      // the old small bob on the sim's clock: the carrier deck's height (air_deck.js D.dy) still reads it, so it stays
+      // in the sim's pose; ship_swell.js takes it back off in the drawn pose (the hull moves to the visible sea only)
+      const by = Math.sin(t * 1.1 + this.bob) * amp * 0.5, bx = Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25, bz = Math.sin(t * 0.9 + this.bob) * amp * 0.12;
+      this.bobY = by; this.bobX = bx; this.bobZ = bz;
+      g.position.set(this.x, this.depthY + by, this.z);
       // one Euler.set: the quaternion is rebuilt once per call, not once per axis (same final values)
       const jt = t - (this.joltAt === undefined ? -9 : this.joltAt), jo = jt >= 0 && jt < 1 ? this.joltA * Math.exp(-5 * jt) * Math.sin(jt * 38) : 0;   // a torpedo hit's shudder (damage.js; visual)
-      g.rotation.set(Math.sin(t * 0.8 + this.bob * 1.3) * amp * 0.25 + this.heel + this.listRoll + this.cripList() + jo, -this.heading, Math.sin(t * 0.9 + this.bob) * amp * 0.12 + jo * 0.4);
+      g.rotation.set(bx + this.heel + this.listRoll + this.cripList() + jo, -this.heading, bz + jo * 0.4);
     }
 
     // A cripple lists heavier: flooding and lost buoyancy, on the side of its torpedo list (else its sinking side).

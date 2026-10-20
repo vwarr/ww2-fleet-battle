@@ -19,14 +19,14 @@
 window.WW = window.WW || {};
 (function (WW) {
   'use strict';
-  // kp: pitch gain; kr: roll gain on the wave slope; Tr: roll period (real s); zr: roll damping; tp: pitch lag (s);
+  // kp: pitch gain (1: the hull lies along the surface between bow and stern, the ends stay in the drawn sea); kr: roll gain on the wave slope; Tr: roll period (real s); zr: roll damping; tp: pitch lag (s);
   // spray: bow spray per unit speed; slam: bow kicks (PT boats)
   const TYPE = {
-    carrier: { kp: 2.2, kr: 0.9, Tr: 14, zr: 0.18, tp: 0.6, spray: 0.25 },
-    battleship: { kp: 1.7, kr: 1.0, Tr: 14, zr: 0.16, tp: 0.5, spray: 0.35 },
-    cruiser: { kp: 1.3, kr: 1.4, Tr: 11, zr: 0.14, tp: 0.35, spray: 0.6 },
-    destroyer: { kp: 1.4, kr: 2.4, Tr: 8, zr: 0.12, tp: 0.18, spray: 1.0 },
-    submarine: { kp: 1.2, kr: 1.8, Tr: 7, zr: 0.15, tp: 0.25, spray: 0.5 },
+    carrier: { kp: 1.0, kr: 0.9, Tr: 14, zr: 0.18, tp: 0.6, spray: 0.25 },
+    battleship: { kp: 1.0, kr: 1.0, Tr: 14, zr: 0.16, tp: 0.5, spray: 0.35 },
+    cruiser: { kp: 1.0, kr: 1.4, Tr: 11, zr: 0.14, tp: 0.35, spray: 0.6 },
+    destroyer: { kp: 1.0, kr: 2.4, Tr: 8, zr: 0.12, tp: 0.18, spray: 1.0 },
+    submarine: { kp: 1.0, kr: 1.8, Tr: 7, zr: 0.15, tp: 0.25, spray: 0.5 },
     pt: { kp: 1.0, kr: 1.4, Tr: 3, zr: 0.25, tp: 0.06, spray: 1.3, slam: true }
   };
   const ROLL_MAX = 0.24, R = Math.random;
@@ -46,9 +46,11 @@ window.WW = window.WW || {};
     const g = s.group, T = TYPE[s.type] || TYPE.cruiser, o = shipState(s);
     const h = s.heading, c = Math.cos(h), sn = Math.sin(h), L = (s.stats && s.stats.length) || 10, B = (s.stats && s.stats.beam) || L * 0.12;
     const a = L * 0.42, b = Math.max(0.5, B * 0.5);
-    const hb = W.height(s.x + c * a, s.z + sn * a), hs = W.height(s.x - c * a, s.z - sn * a);                 // bow, stern
-    const hS = W.height(s.x - sn * b, s.z + c * b), hP = W.height(s.x + sn * b, s.z - c * b);                 // starboard, port
-    const hc = W.height(s.x, s.z);
+    // the surface as drawn there (the mesh's own LOD), less the waves too short to move this hull (sea_state.js hull)
+    const H = (x, z) => W.hull(x, z, L).h;
+    const hb = H(s.x + c * a, s.z + sn * a), hs = H(s.x - c * a, s.z - sn * a);                 // bow, stern
+    const hS = H(s.x - sn * b, s.z + c * b), hP = H(s.x + sn * b, s.z - c * b);                 // starboard, port
+    const hc = H(s.x, s.z);
     // sinking: rides less and less as she settles; a submarine below: heave only
     let wt = 1, tilt = 1;
     if (s.sinking) { const k = Math.min(1, (s.sinkT || 0) / 6); wt = 1 - 0.7 * k; tilt = 0.5 * (1 - k); }
@@ -75,7 +77,9 @@ window.WW = window.WW || {};
     let pitch = o.pitch * tilt, roll = o.roll * tilt;
     if (WW.isScn('normandy')) { pitch = Math.atan2(hb - hs, 2 * a) * 0.9; roll = -Math.atan2(hS - hP, 2 * b) * 1.1; }   // Normandy: its pose as before (the Channel's short sea: no roll resonance)
     save(g);
-    g.updateMatrix(); _m0.copy(g.matrix);
+    g.updateMatrix(); _m0.copy(g.matrix);   // the sim's matrix (a world-space deck plane sits on its deck)
+    // the sim's small constant-clock bob (ships.js syncGroup) off the drawn hull: she moves to the visible sea alone
+    if (s.bobY !== undefined) { g.position.y -= s.bobY; g.rotation.x -= s.bobX; g.rotation.z -= s.bobZ; }
     _q.setFromEuler(g.rotation).multiply(_qp.setFromAxisAngle(_Z, pitch)).multiply(_qr.setFromAxisAngle(_X, roll));
     _e.setFromQuaternion(_q, g.rotation.order);
     g.position.y += heave; g.rotation.set(_e.x, _e.y, _e.z);
@@ -95,7 +99,7 @@ window.WW = window.WW || {};
   // the mean wave slope across the hull at bow, midships and stern
   function slopeAcross(W, s, c, sn, a) {
     let m = 0;
-    for (const f of [-0.6, 0, 0.6]) { const g = W.slope(s.x + c * a * f, s.z + sn * a * f); m += g.x * -sn + g.z * c; }
+    for (const f of [-0.6, 0, 0.6]) { const g = W.hull(s.x + c * a * f, s.z + sn * a * f, s.stats ? s.stats.length : 10); m += g.x * -sn + g.z * c; }
     return Math.atan(m / 3);
   }
   // white spray thrown up and out from the stem (carried on with the bow for a moment), small puffs, short-lived

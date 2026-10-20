@@ -2,21 +2,29 @@
 // clean animated foam outline around every island and shoal, soft see-through shallows and a gentle sparkle. Unlit
 // toon colours, with fog and a fresnel blend into the sky. The surface is the Pacific's sea state (sea_state.js,
 // WW.sea): a camera-centred polar grid (fine near the camera, coarse to the horizon) displaced in the vertex shader by
-// the swell and the wind sea (what the grid cannot resolve there is left flat), shaded per pixel with the full
-// surface's normal (crest light, troughs, the glitter, the fresnel), whitecaps and wind streaks by the round's wind,
-// and the surf breaking over the reef edges. In Normandy it lies flat, lowered under waves.js's Channel.
+// the swell and the wind sea (what the grid cannot resolve there is left flat), their normal from the vertex, the short
+// chop from baked mipmapped slope tiles and every noise from one baked texture (no wave sums per pixel: perf6), shaded
+// with crest light, troughs, the glitter and the fresnel, whitecaps and wind streaks by the round's wind, and the surf
+// breaking over the reef edges; a skirt carries it to the horizon. In Normandy it lies flat, under waves.js's Channel.
 window.WW = window.WW || {};
 (function (WW) {
   const TEX_STEP = 2;           // units per depth texel
   const D_MIN = -4, D_MAX = 28; // depth range stored in the texture (sea_state.js seaDepth reads it the same way)
-  const SEGS = 192, R_MIN_SP = 0.4, R_MAX = 7000;   // the grid: angular segments, finest spacing (u), radius
+  const SEGS = WW.sea.GRID.SEGS, R_MIN_SP = WW.sea.GRID.R_MIN_SP, R_MAX = 4800;   // the grid: angular segments, finest spacing (u) (sea_state.js: meshSp), radius
+  const NOISE_CELLS = 128, NOISE_RES = 512;        // the baked noise: lattice cells a side (its period), texels a side
+  const CHOP_RES = 256, CHOP_ENC = 8, CHOP_GAIN = 0.6;   // the baked chop tile: texels a side, slope encoding range, strength
   const CATCH = 300, CATCH_N = 150;                // the shadow catcher: size (u) and cells a side (2 u)
   let mesh = null, mat = null, tex = null, t = 0, catcher = null;
   const SU = () => WW.sea.uniforms;
 
+  // The vertex shader carries the waves: the swell and the wind sea (as far as the grid resolves them there, aSp: the
+  // same components and LOD the ships ride, sea_state.js hull) give the height AND its gradient per vertex, passed on
+  // as varyings (no per-pixel wave sums). The outermost ring is a skirt raised to the camera's eye height: it fills the
+  // last sliver up to the true horizon (the camera's far plane ends the grid short of it: a pale band where distant
+  // ships floated in the sky).
   const vert = `
     attribute float aSp;
-    varying vec3 vWorld; varying float vH;
+    varying vec3 vWorld; varying float vH; varying vec2 vG; varying float vRes;
     #include <fog_pars_vertex>
     ${WW.sea.GLSL}
     uniform sampler2D depthTex; uniform vec4 extent;
@@ -28,43 +36,62 @@ window.WW = window.WW || {};
     }
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);
-      float d = seaDepth(wp.xz);
-      float h = seaGrad(wp.xz, d, aSp).x;
-      // the surf: breaker lines running in over the reef edge with the swell (drawn, not ridden)
-      float bell = smoothstep(0.1, 0.5, d) * (1.0 - smoothstep(1.4, 2.6, d)) * uSeaAmp;
-      h += bell * uSeaP[0].x * 1.3 * pow(0.5 + 0.5 * sin(5.65 * d + uSeaK[0].w * uSeaT), 6.0) * step(2.5 * aSp, 6.0);
-      wp.y += h;
-      vWorld = wp.xyz; vH = h;
+      vH = 0.0; vG = vec2(0.0); vRes = 0.0;
+      if (aSp < 0.0) {
+        if (uSeaAmp > 0.0) wp.y = cameraPosition.y * 0.999;   // the skirt: at the horizon (the Pacific's camera-centred grid only)
+      } else {
+        float d = seaDepth(wp.xz);
+        vec3 g = seaGrad(wp.xz, d, aSp);
+        float h = g.x;
+        // the surf: breaker lines running in over the reef edge with the swell (drawn, not ridden)
+        float bell = smoothstep(0.1, 0.5, d) * (1.0 - smoothstep(1.4, 2.6, d)) * uSeaAmp;
+        h += bell * uSeaP[0].x * 1.3 * pow(0.5 + 0.5 * sin(5.65 * d + uSeaK[0].w * uSeaT), 6.0) * step(2.5 * aSp, 6.0);
+        wp.y += h;
+        vH = h; vG = g.yz;
+        vRes = smoothstep(2.5 * aSp, 4.0 * aSp, uSeaP[3].w);   // how much of the wind sea the grid draws here
+      }
+      vWorld = wp.xyz;
       vec4 mvPosition = viewMatrix * wp;
       gl_Position = projectionMatrix * mvPosition;
       #include <fog_vertex>
     }`;
+  // The fragment shader: the vertex's wave normal plus the short chop from two baked, mipmapped, tiling slope maps
+  // (chopTex, made once from the old per-pixel spectrum: sea_state.js bakeChop) in three rotated, scrolled layers at
+  // non-commensurate scales; the mipmaps fade the chop to its mean far off by themselves (no aliasing, no streaks at the
+  // horizon). One baked RGBA value-noise texture (noiseTex: four fields) stands in for every noise lookup. The surf,
+  // rings and caustics are drawn only over the shallows; whitecaps and streaks only when the wind is up.
   const frag = `
-    uniform sampler2D depthTex;
+    uniform sampler2D depthTex, chopTex, noiseTex;
     uniform vec4 extent;          // x0, z0, width, height
     uniform float time;
     uniform vec3 cShallow, cMid, cDeep, cAbyss, cFoam, cSky, sunDir, sunCol, hzAway, hzSun, tint;
     uniform vec3 glit;
     uniform float moonPath;            // glitter: sheen weight, sparkle sharpness, sparkle weight
     uniform vec4 rainC[4];        // rain squalls (weather.js via sky_time.js): x, z, radius, density
-    varying vec3 vWorld; varying float vH;
+    varying vec3 vWorld; varying float vH; varying vec2 vG; varying float vRes;
     #include <fog_pars_fragment>
     ${WW.sea.GLSL}
-    ${WW.sea.GLSL_FRAG}
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-    float vnoise(vec2 p) {
-      vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-      return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+    // four independent smooth value-noise fields (lattice 1, period ${NOISE_CELLS}), as the old vnoise(p) in each channel
+    vec4 nz(vec2 p) { return texture2D(noiseTex, p * ${(1 / NOISE_CELLS).toFixed(6)}); }
+    // a chop layer: slope in the world from tile coordinates q (rotation c, s about the wind frame), RG or BA
+    vec2 chopL(vec2 wq, float c, float s, float sc, vec2 scroll, bool second) {
+      vec2 q = vec2(c * wq.x - s * wq.y, s * wq.x + c * wq.y) * sc + scroll;
+      vec4 t = texture2D(chopTex, q);
+      vec2 g = (second ? t.ba : t.rg) * 2.0 - 1.0;
+      return vec2(c * g.x + s * g.y, -s * g.x + c * g.y);   // back to the wind frame
     }
     void main() {
       vec2 uv = (vWorld.xz - extent.xy) / extent.zw;
       bool inside = uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0;
       float d = texture2D(depthTex, clamp(uv, 0.0, 1.0)).r * ${(D_MAX - D_MIN).toFixed(1)} + ${D_MIN.toFixed(1)};
       if (!inside) d = max(d, 18.0);
-      // smooth depth gradient
+      if (d < -0.15) discard;          // dry land
+      // smooth depth gradient (to the abyss colour by ~13 u, 125 m: below that the sea floor no longer shows in the
+      // water's colour, so its relief 100-270 m down does not paint soft dark blotches over the open sea)
       vec3 col = mix(cShallow, cMid, smoothstep(0.0, 4.0, d));
-      col = mix(col, cDeep, smoothstep(3.0, 11.0, d));
-      col = mix(col, cAbyss, smoothstep(10.0, 22.0, d));
+      col = mix(col, cDeep, smoothstep(3.0, 8.0, d));
+      col = mix(col, cAbyss, smoothstep(6.5, 13.0, d));
       float alpha = mix(0.62, 0.92, smoothstep(0.0, 10.0, d));
       // fade to fully opaque deep water toward the edge of the sea-floor mesh (no visible seam)
       float edge = max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0;
@@ -72,67 +99,92 @@ window.WW = window.WW || {};
       col = mix(col, cAbyss, far * smoothstep(8.0, 16.0, d));
       alpha = mix(alpha, 1.0, far);
       if (!inside) alpha = 1.0;
-      // the sea's own surface (sea_state.js): the full wave set per pixel (components too short for this pixel's
-      // footprint dropped: no shimmer far off), its normal at NORMAL_EXAG, crests lighter, troughs deeper
+      float dist = length(cameraPosition - vWorld);
+      float far0 = smoothstep(120.0, 900.0, dist);
       float fp = max(max(fwidth(vWorld.x), fwidth(vWorld.z)), 0.02);
-      // the swell is exactly the ridden surface (warped a little only far off); the wind sea's lookup is bent near
-      // and far (its crests curve, no long regular trains), its slope eased and the short chop added per pixel
-      // (seaDetail: many short components, slope only). Gusts: patches of rougher and smoother sea drifting downwind.
-      float wk = smoothstep(30.0, 160.0, length(cameraPosition.xz - vWorld.xz)) * 5.0;
-      vec2 wn = vec2(vnoise(vWorld.xz * 0.045 + 3.1), vnoise(vWorld.xz * 0.045 - 7.7)) - 0.5;
-      vec2 wp2 = vWorld.xz + wk * wn;
-      float L0 = max(uSeaP[3].w, 0.3);
-      vec2 rq = mat2(0.6, 0.8, -0.8, 0.6) * vWorld.xz;   // the noise lattices turned off the map's axes
-      vec2 n1 = vec2(vnoise(rq * (0.37 / L0) + 1.7), vnoise(rq * (0.37 / L0) - 4.2));
-      vec2 n2 = vec2(vnoise(vWorld.xz * (0.23 / L0) + 8.3), vnoise(vWorld.xz * (0.23 / L0) + 2.9));
-      vec2 wpc = vWorld.xz + (wk + L0 * 0.9) * wn + (n1 - 0.5) * L0 * 0.7;
-      vec2 gq = vWorld.xz * 0.018 - uSeaWind * time * 0.25;
-      float gust = 0.45 + 1.1 * smoothstep(0.2, 0.85, vnoise(gq) * 0.65 + vnoise(gq * 2.7 + 5.0) * 0.35);
-      vec3 sg = seaGradW(wp2, wpc, d, -fp, 0.5 * gust * mix(0.6, 1.0, smoothstep(1.0, 6.0, d)));
-      sg.yz += seaDetail(vWorld.xz, fp, n1, n2) * gust * seaAmpK(d) * uSeaAmp;
-      vec3 n = normalize(vec3(-sg.y * uSeaN, 1.0, -sg.z * uSeaN));
-      float hN = sg.x / max(1e-3, uSeaP[0].x + uSeaP[1].x + uSeaP[3].x + uSeaP[4].x);   // ~-1 (trough) .. 1 (crest)
+      float aK = seaAmpK(d) * uSeaAmp;
+      vec2 wd = uSeaWind; vec2 wq = vec2(dot(vWorld.xz, wd), dot(vWorld.xz, vec2(-wd.y, wd.x)));   // the wind frame
+      // gusts: cat's-paws drawn out downwind, a gentle range (a 3x swing on round blobs read as stains on the sea)
+      float gust = 0.72 + 0.56 * smoothstep(0.25, 0.8, nz(wq * vec2(0.007, 0.02) - vec2(time * 0.006, 0.0)).r);
+      // the short chop: three layers of the baked slope tiles (6 wind-sea wavelengths a tile), turned 0 / +0.65 /
+      // -0.95 rad off the wind, at 1, 1.64 and 2.7x the frequency, each scrolled downwind at its own phase speed; a slow
+      // mask trades them off (no repeat). Where the grid no longer draws the wind sea (vRes) the chop stands in for it.
+      float L0 = max(uSeaP[3].w, 0.3), A0 = uSeaP[3].x / 0.45;
+      vec2 chop = vec2(0.0);
+      if (aK > 0.0 && fp < L0 * 1.5) {
+        vec2 wt = wq / (6.0 * L0);
+        float c0 = sqrt(${(9.81 / 9.6).toFixed(4)} * L0 / 6.2832) / (6.0 * L0) * time;   // the wind sea's phase speed, in tiles
+        float m = nz(vWorld.xz * 0.011 + 4.0).g;
+        chop = chopL(wt, 1.0, 0.0, 1.0, vec2(c0, 0.0), false) * (0.75 + 0.5 * m)
+             + chopL(wt, 0.796, 0.605, 1.64, vec2(c0 * 0.78, 0.13), true) * (1.25 - 0.5 * m) * 0.8
+             + chopL(wt, 0.582, -0.813, 2.7, vec2(c0 * 0.61, -0.37), false) * 0.55;
+        chop *= ${(CHOP_ENC * CHOP_GAIN).toFixed(3)} * A0 / L0 * gust * aK * mix(1.6, 1.0, vRes) * (1.0 - smoothstep(0.6 * L0, 1.5 * L0, fp));
+        chop = wd * chop.x + vec2(-wd.y, wd.x) * chop.y;   // the wind frame to the world's
+      }
+      vec2 sg = vG * mix(1.0, 0.35, smoothstep(0.15, 1.2, fp)) + chop;   // the swell's slope eases off from high up (no corduroy)
+      vec3 n = normalize(vec3(-sg.x * uSeaN, 1.0, -sg.y * uSeaN));
+      float hN = vH / max(1e-3, uSeaP[0].x + uSeaP[1].x + uSeaP[3].x + uSeaP[4].x);   // ~-1 (trough) .. 1 (crest)
       vec3 sd = normalize(sunDir);
       col *= clamp(1.0 + 0.9 * (dot(n, sd) - sd.y), 0.82, 1.14);
-      col *= mix(0.92, 1.05, smoothstep(-0.9, 0.9, hN));
-      col = mix(col, cShallow * vec3(0.96, 1.06, 1.02), smoothstep(0.3, 1.0, hN) * 0.14 * smoothstep(3.0, 10.0, d));   // the light through a crest
-      float far0 = smoothstep(120.0, 900.0, length(cameraPosition - vWorld));
+      // crests a little lighter, troughs deeper, and the light through a crest: only close in (low over the water, a
+      // crest against the sky behind it); from higher up a wave's height does not show, only its slope (the sheen)
+      float hK = 1.0 - smoothstep(0.06, 0.45, fp);
+      col *= 1.0 + hK * mix(-0.05, 0.035, smoothstep(-0.9, 0.9, hN));
+      col = mix(col, cShallow * vec3(0.96, 1.06, 1.02), smoothstep(0.3, 1.0, hN) * 0.14 * hK * smoothstep(3.0, 10.0, d));
       // whitecaps: broken patches on the steep wind-sea crests from Beaufort 4 (none in a calm), wind streaks of old foam
-      float capK = smoothstep(0.38, 0.95, uSeaS) * smoothstep(1.5, 5.0, d);
-      float fn = vnoise(vWorld.xz * vec2(0.9, 1.4) + time * vec2(0.25, 0.4)) * 0.6 + vnoise(vWorld.xz * 3.1 - time * 0.35) * 0.4;
-      float steep = smoothstep(0.08, 0.3, length(sg.yz));
-      float capF = smoothstep(0.15, 0.6, hN) * smoothstep(0.56, 0.72, fn) * smoothstep(0.25, 0.55, vnoise(vWorld.xz * 4.0 + time)) * mix(steep, 0.6, far0) * capK * (1.0 - 0.5 * far0);
-      vec2 wd = uSeaWind; vec2 wq = vec2(dot(vWorld.xz, wd), dot(vWorld.xz, vec2(-wd.y, wd.x)));
-      float streak = smoothstep(0.76, 0.93, vnoise(vec2(wq.x * 0.05, wq.y * 0.45) + time * 0.03)) * smoothstep(0.45, 0.75, vnoise(wq * vec2(0.3, 1.2))) * smoothstep(0.3, 0.8, uSeaS) * 0.2 * (1.0 - far0) * smoothstep(2.0, 6.0, d);
+      float capF = 0.0, streak = 0.0;
+      if (uSeaS > 0.38 && d > 1.5) {
+        vec4 na = nz(vWorld.xz * vec2(0.9, 1.4) + time * vec2(0.25, 0.4)), nb = nz(vWorld.xz * 3.1 - time * 0.35);
+        float fn = na.b * 0.6 + nb.b * 0.4;
+        float steep = smoothstep(0.08, 0.3, length(sg));
+        capF = smoothstep(0.15, 0.6, hN) * smoothstep(0.56, 0.72, fn) * smoothstep(0.25, 0.55, nb.a) * mix(steep, 0.6, far0) * smoothstep(0.38, 0.95, uSeaS) * smoothstep(1.5, 5.0, d) * (1.0 - 0.5 * far0);
+      }
+      if (uSeaS > 0.3 && far0 < 1.0 && d > 2.0) {
+        float s1 = nz(vec2(wq.x * 0.05, wq.y * 0.45) + time * 0.03).a, s2 = nz(wq * vec2(0.3, 1.2) + 7.0).g;
+        streak = smoothstep(0.76, 0.93, s1) * smoothstep(0.45, 0.75, s2) * smoothstep(0.3, 0.8, uSeaS) * 0.2 * (1.0 - far0) * smoothstep(2.0, 6.0, d);
+      }
       col = mix(col, cFoam, max(capF * 0.9, streak));
       alpha = max(alpha, capF * 0.85);
-      // soft caustic ripples over sandy shallows: reads as water over sand, not a solid surface
-      // (the two noises on rotated, warped lattices: axis-aligned value noise at two near scales read as a diamond net)
-      vec2 cq = vWorld.xz + (n2 - 0.5) * 2.5;
-      float cz = vnoise(mat2(0.8, 0.6, -0.6, 0.8) * cq * 0.3 + vec2(time * 0.08, -time * 0.06)) + vnoise(mat2(0.36, -0.93, 0.93, 0.36) * cq * 0.41 - vec2(time * 0.05, time * 0.07));
-      float caust = smoothstep(0.86, 1.0, 1.0 - abs(cz - 1.0)) * (1.0 - smoothstep(1.0, 4.0, d));
-      col = mix(col, vec3(0.95, 0.98, 0.94), caust * 0.18);   // calm, slow, faint
-      // foam: a crisp outline at the shore plus a softer ring that breathes outward
-      float wob = (vnoise(vWorld.xz * 0.25 + time * 0.15) - 0.5) * 0.35;
-      // (a narrow swash line: over a wide flat reef the old 0.75 u band painted the whole shelf white, read as white sand)
-      float shore = (1.0 - smoothstep(0.12, 0.42, d + wob)) * 0.9;
-      float ringPos = 1.3 + 0.45 * sin(time * 0.8 + vWorld.x * 0.02);
-      // world-space depth slope: rings only where the seabed really shelves (flat tops would give blocky contours)
-      float slope = length(vec2(dFdx(d), dFdy(d))) / max(length(vec2(dFdx(vWorld.x), dFdy(vWorld.x))) + length(vec2(dFdx(vWorld.z), dFdy(vWorld.z))), 1e-3);
-      float ring = (1.0 - smoothstep(0.0, 0.18, abs(d + wob * 0.6 - ringPos))) * 0.55 * (1.0 - smoothstep(1.2, 2.4, d)) * smoothstep(0.08, 0.2, slope);
-      // the surf: lines of breaking white running in over the reef edge with the swell, lacy foam behind each,
-      // stronger in a bigger swell (uSeaP[0].x: the main swell's amplitude)
-      float sAmp = clamp(uSeaP[0].x / 0.09, 0.5, 1.3) * uSeaAmp;
-      float bellF = smoothstep(0.1, 0.4, d) * (1.0 - smoothstep(1.8, 3.2, d)) * smoothstep(0.015, 0.07, slope);
-      float bp = fract(0.9 * d + uSeaK[0].w * time * 0.15915 + 0.25);
-      float lipN = vnoise(vec2(vWorld.x * 0.35 + vWorld.z * 0.21, time * 0.3)) * 0.7 + vnoise(vWorld.xz * 1.7 + time) * 0.3;
-      float lip = smoothstep(0.0, 0.06, bp) * (1.0 - smoothstep(0.16, 0.36, bp)) * smoothstep(0.2, 0.48, lipN);
-      float lace = smoothstep(0.62, 0.8, vnoise(vWorld.xz * 0.9 + vec2(0.0, time * 0.2))) * (1.0 - smoothstep(0.0, 0.45, fract(bp + 0.6)));
-      float surf = (lip * 1.0 + lace * 0.6) * bellF * sAmp * (1.0 - 0.5 * far0);
-      float foam = max(max(shore, ring), clamp(surf, 0.0, 1.0));
-      col = mix(col, cFoam, foam);
-      alpha = max(alpha, foam * 0.95);
-      if (d < -0.15) discard;          // dry land
+      // over the shallows only (most of the screen is deep water: a coherent branch): caustics, the swash line, the
+      // breathing ring and the surf
+      float foam = 0.0;
+      if (d < 4.0) {
+        // soft caustic ripples over sandy shallows, by day: reads as water over sand, not a solid surface
+        if (tint.g > 0.45) {
+          vec2 cq = vWorld.xz;
+          float cz = nz(mat2(0.8, 0.6, -0.6, 0.8) * cq * 0.3 + vec2(time * 0.08, -time * 0.06)).r + nz(mat2(0.36, -0.93, 0.93, 0.36) * cq * 0.41 - vec2(time * 0.05, time * 0.07)).g;
+          float caust = smoothstep(0.86, 1.0, 1.0 - abs(cz - 1.0)) * (1.0 - smoothstep(1.0, 4.0, d));
+          col = mix(col, vec3(0.95, 0.98, 0.94), caust * 0.18);   // calm, slow, faint
+        }
+        vec4 nw = nz(vWorld.xz * 0.25 + time * 0.15);
+        float wob = (nw.b - 0.5) * 0.35;
+        // (a narrow swash line: over a wide flat reef the old 0.75 u band painted the whole shelf white, read as white sand)
+        float shore = (1.0 - smoothstep(0.12, 0.42, d + wob)) * 0.9;
+        float ringPos = 1.3 + 0.45 * sin(time * 0.8 + vWorld.x * 0.02);
+        // the seabed's slope from the depth texture a texel either side (not the screen derivatives of d: the 8-bit
+        // texture's filtered depth moves in steps, so dFdx(d) flickered pixel to pixel at low angles and the surf and
+        // rings that key on it came out as a dotted moire over the reef)
+        vec2 te = vec2(${TEX_STEP.toFixed(1)}) / extent.zw;
+        float dgx = texture2D(depthTex, clamp(uv + vec2(te.x, 0.0), 0.0, 1.0)).r - texture2D(depthTex, clamp(uv - vec2(te.x, 0.0), 0.0, 1.0)).r;
+        float dgz = texture2D(depthTex, clamp(uv + vec2(0.0, te.y), 0.0, 1.0)).r - texture2D(depthTex, clamp(uv - vec2(0.0, te.y), 0.0, 1.0)).r;
+        float slope = length(vec2(dgx, dgz)) * ${((D_MAX - D_MIN) / (2 * TEX_STEP) * 0.5).toFixed(3)};   // ~ half the seabed gradient
+        float ring = (1.0 - smoothstep(0.0, 0.18, abs(d + wob * 0.6 - ringPos))) * 0.55 * (1.0 - smoothstep(1.2, 2.4, d)) * smoothstep(0.08, 0.2, slope);
+        // the surf: lines of breaking white running in over the reef edge with the swell, lacy foam behind each,
+        // stronger in a bigger swell (uSeaP[0].x: the main swell's amplitude)
+        float sAmp = clamp(uSeaP[0].x / 0.09, 0.5, 1.3) * uSeaAmp;
+        float bellF = smoothstep(0.1, 0.4, d) * (1.0 - smoothstep(1.8, 3.2, d)) * smoothstep(0.015, 0.07, slope);
+        float surf = 0.0;
+        if (bellF > 0.0) {
+          float bp = fract(0.9 * d + uSeaK[0].w * time * 0.15915 + 0.25);
+          float lipN = nz(vec2(vWorld.x * 0.35 + vWorld.z * 0.21, time * 0.3)).r * 0.7 + nz(vWorld.xz * 1.7 + time).g * 0.3;
+          float lip = smoothstep(0.0, 0.06, bp) * (1.0 - smoothstep(0.16, 0.36, bp)) * smoothstep(0.2, 0.48, lipN);
+          float lace = smoothstep(0.62, 0.8, nw.a) * (1.0 - smoothstep(0.0, 0.45, fract(bp + 0.6)));
+          surf = (lip * 1.0 + lace * 0.6) * bellF * sAmp * (1.0 - 0.5 * far0);
+        }
+        foam = max(max(shore, ring), clamp(surf, 0.0, 1.0));
+        col = mix(col, cFoam, foam);
+        alpha = max(alpha, foam * 0.95);
+      }
       // sparkle: rare tiny glints that twinkle
       vec2 cell = floor(vWorld.xz * 0.6);
       float h = hash(cell + floor(time * 0.7));
@@ -151,15 +203,17 @@ window.WW = window.WW || {};
       }
       col *= tint;                     // time of day (sky_time.js): dusk, the blue hour, moonlit night
       // fresnel: grazing angles take on the sky colour (soft horizon)
-      vec3 v = normalize(cameraPosition - vWorld);
+      vec3 v = (cameraPosition - vWorld) / dist;
       // warm sun-glitter path toward the low sun: a soft sheen plus fine sparkles on a rippled normal
       // (the ripples ride the sea's own normal: the glitter runs along the swell; in a calm the sheen is a mirror)
       float calm = 1.0 - smoothstep(0.05, 0.35, uSeaS);
-      vec2 rip = (vec2(vnoise(vWorld.xz * 1.4 + time * 0.35), vnoise(vWorld.xz * 1.4 - time * 0.3 + 9.0)) - 0.5) * mix(1.0, 0.45, calm);
-      vec3 nrm = normalize(n + vec3(rip.x * 0.35, 0.0, rip.y * 0.35));
-      float rs = max(dot(reflect(-v, nrm), sunDir), 0.0);
-      float sheen = pow(max(dot(reflect(-v, n), sunDir), 0.0), mix(18.0, 40.0, calm)) * (1.0 + 1.5 * calm);
-      col += sunCol * (sheen * glit.x + pow(rs, glit.y) * glit.z) * smoothstep(1.0, 4.0, d) * (1.0 - foam);   // glit: day (0.1, 420, 0.35); the moon path is wider
+      if (glit.z > 0.0) {
+        vec2 rip = (nz(vWorld.xz * 1.4 + time * vec2(0.35, -0.3)).ra - 0.5) * mix(1.0, 0.45, calm);
+        vec3 nrm = normalize(n + vec3(rip.x * 0.35, 0.0, rip.y * 0.35));
+        float rs = max(dot(reflect(-v, nrm), sunDir), 0.0);
+        float sheen = pow(max(dot(reflect(-v, n), sunDir), 0.0), mix(18.0, 40.0, calm)) * (1.0 + 1.5 * calm);
+        col += sunCol * (sheen * glit.x + pow(rs, glit.y) * glit.z) * smoothstep(1.0, 4.0, d) * (1.0 - foam);   // glit: day (0.1, 420, 0.35); the moon path is wider
+      }
       float fr = pow(1.0 - clamp(mix(v.y, dot(v, n), 0.7), 0.0, 1.0), 4.0);
       // the horizon colour depends on where we look: peach toward the sun, soft blue away from it
       vec2 az = normalize(-v.xz + 1e-5);
@@ -171,20 +225,80 @@ window.WW = window.WW || {};
       #include <tonemapping_fragment>
       #include <encodings_fragment>
       #ifdef USE_FOG
-        float fogF = smoothstep(fogNear, fogFar, vFogDepth);
+        // (the haze takes the far sea only part way: the sea stays a darker band right out to the horizon line, and
+        // what floats on it far off sits on water, not in a pale band of sky)
+        float fogF = smoothstep(fogNear, fogFar, vFogDepth) * 0.6;
         gl_FragColor.rgb = mix(gl_FragColor.rgb, hz, fogF);
       #endif
       // the moon's path (night, moonPath > 0): a column of glittering ripples under the moon, out to the horizon
       if (moonPath > 0.0) {
         vec2 vd = normalize(vWorld.xz - cameraPosition.xz), md = normalize(sunDir.xz);
         float col0 = exp(-(1.0 - dot(vd, md)) * 130.0) * smoothstep(-0.2, 0.6, dot(vd, md));
-        float rip2 = vnoise(vWorld.xz * vec2(1.9, 1.9) + vec2(time * 0.5, -time * 0.35)) * vnoise(vWorld.xz * 0.7 - time * 0.2);
-        float sp = smoothstep(0.18, 0.42, rip2);
-        float graze = 1.0 - smoothstep(0.12, 0.42, normalize(cameraPosition - vWorld).y);   // a path to the horizon, not a pool at our feet
-        gl_FragColor.rgb += sunCol * col0 * graze * (0.1 + 0.55 * sp) * moonPath * smoothstep(1.0, 4.0, d);
+        if (col0 > 0.002) {
+          float rip2 = nz(vWorld.xz * 1.9 + vec2(time * 0.5, -time * 0.35)).g * nz(vWorld.xz * 0.7 - time * 0.2).b;
+          float sp = smoothstep(0.18, 0.42, rip2);
+          float graze = 1.0 - smoothstep(0.12, 0.42, v.y);   // a path to the horizon, not a pool at our feet
+          gl_FragColor.rgb += sunCol * col0 * graze * (0.1 + 0.55 * sp) * moonPath * smoothstep(1.0, 4.0, d);
+        }
       }
     }`;
 
+
+  // a small local [0, 1) stream (never the sim's generator: these are visual only)
+  function stream(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) | 0; let q = Math.imul(s ^ (s >>> 15), 1 | s); q = (q + Math.imul(q ^ (q >>> 7), 61 | q)) ^ q; return ((q ^ (q >>> 14)) >>> 0) / 4294967296; }; }
+  function mipTex(data, n) {
+    const tx = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+    tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.magFilter = THREE.LinearFilter; tx.minFilter = THREE.LinearMipmapLinearFilter;
+    tx.generateMipmaps = true; tx.anisotropy = WW.renderer && WW.renderer.capabilities ? Math.min(8, WW.renderer.capabilities.getMaxAnisotropy()) : 1;
+    tx.needsUpdate = true; return tx;
+  }
+  // The short chop, baked once: two tiling slope fields (RG and BA), each the old per-pixel spectrum (sea_state.js's
+  // 14 components, 1.2x down to ~0.1x the wind sea's wavelength at a ratio of 0.81, spread about the wind, wider for
+  // the shorter ones, a few across it), three directions a scale, wave vectors on the tile's lattice (the tile is 6
+  // wind-sea wavelengths: it tiles exactly). Slopes per unit of the wind sea's amplitude / wavelength.
+  function bakeChop() {
+    const N = CHOP_RES, out = new Uint8Array(N * N * 4), gx = new Float32Array(N * N), gz = new Float32Array(N * N);
+    const cx = new Float32Array(N), sx = new Float32Array(N), cz = new Float32Array(N), sz = new Float32Array(N);
+    for (let f = 0; f < 2; f++) {
+      const r = stream(0xC40F + f * 977); gx.fill(0); gz.fill(0);
+      let L = 1.2;
+      for (let i = 0; i < 12; i++, L *= 0.81) {
+        const fi = i / 11, spread = 0.45 + 1.15 * fi, A = 0.18 * Math.pow(L, 1.6) / Math.sqrt(3);   // (steeper than the old L^1.2: the finest ripples no longer as steep as the wind sea's, no grain)
+        for (let j = 0; j < 3; j++) {
+          const u = (((i * 3 + j + f * 7) * 0.6180339887 + 0.31) % 1) * 2 - 1, off = spread * u + ((i + j) % 5 === 3 ? 1.9 : 0);
+          const m = 6 / L, nx = Math.round(m * Math.cos(off)), nz = Math.round(m * Math.sin(off));
+          if (!nx && !nz) continue;
+          const kk = 2 * Math.PI * Math.hypot(nx, nz) / 6, ph = r() * 6.2832, amp = A * kk / Math.hypot(nx, nz);   // slope = A k (dir), dir = n / |n|
+          for (let x = 0; x < N; x++) { const a = 2 * Math.PI * nx * x / N; cx[x] = Math.cos(a); sx[x] = Math.sin(a); }
+          for (let z = 0; z < N; z++) { const a = 2 * Math.PI * nz * z / N + ph; cz[z] = Math.cos(a); sz[z] = Math.sin(a); }
+          for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+            const c = cx[x] * cz[z] - sx[x] * sz[z], k = z * N + x;   // cos(ax + az + ph): h = A sin(.), slope = A k cos(.) dir
+            gx[k] += amp * nx * c; gz[k] += amp * nz * c;
+          }
+        }
+      }
+      for (let k = 0; k < N * N; k++) {
+        out[k * 4 + f * 2] = Math.max(0, Math.min(255, Math.round((gx[k] / CHOP_ENC * 0.5 + 0.5) * 255)));
+        out[k * 4 + f * 2 + 1] = Math.max(0, Math.min(255, Math.round((gz[k] / CHOP_ENC * 0.5 + 0.5) * 255)));
+      }
+    }
+    return mipTex(out, N);
+  }
+  // Four independent smooth value-noise fields (one a channel), lattice NOISE_CELLS a side, tiling: what vnoise(p) gave
+  // (smoothstep between random lattice values), one texture fetch for four of them
+  function bakeNoise() {
+    const N = NOISE_RES, C = NOISE_CELLS, T = N / C, out = new Uint8Array(N * N * 4), lat = new Float32Array(C * C);
+    for (let ch = 0; ch < 4; ch++) {
+      const r = stream(0x5EED + ch * 131); for (let i = 0; i < C * C; i++) lat[i] = r();
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const fx = x / T, fy = y / T, ix = Math.floor(fx), iy = Math.floor(fy);
+        let ux = fx - ix, uy = fy - iy; ux = ux * ux * (3 - 2 * ux); uy = uy * uy * (3 - 2 * uy);
+        const a = lat[iy * C + ix], b = lat[iy * C + (ix + 1) % C], c = lat[((iy + 1) % C) * C + ix], d = lat[((iy + 1) % C) * C + (ix + 1) % C];
+        out[(y * N + x) * 4 + ch] = Math.round(((a + (b - a) * ux) * (1 - uy) + (c + (d - c) * ux) * uy) * 255);
+      }
+    }
+    return mipTex(out, N);
+  }
   function build() {
     mat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
@@ -199,6 +313,7 @@ window.WW = window.WW || {};
       vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, fog: true,
       extensions: { derivatives: true }
     });
+    mat.uniforms.chopTex = { value: bakeChop() }; mat.uniforms.noiseTex = { value: bakeNoise() };
     const U = SU(); for (const k in U) mat.uniforms[k] = U[k];   // the sea's shared uniforms (sea_state.js), the depth texture among them
     if (!U.extent.value) U.extent.value = new THREE.Vector4(0, 0, 1, 1);
     mesh = new THREE.Mesh(grid(), mat);
@@ -209,7 +324,7 @@ window.WW = window.WW || {};
     // (sea_state.js ride), so it covers the sun's shadow box (sky.js: +-120 u about what the camera looks at, +-520 in
     // the overview) and follows it; in Normandy it is the old flat sheet over the map.
     const sg = new THREE.PlaneGeometry(CATCH, CATCH, CATCH_N, CATCH_N); sg.rotateX(-Math.PI / 2);
-    catcher = new THREE.Mesh(sg, WW.sea.ride(new THREE.ShadowMaterial({ color: 0x3a3f6a, opacity: 0.24, depthWrite: false }), 'conform'));
+    catcher = new THREE.Mesh(sg, WW.sea.ride(new THREE.ShadowMaterial({ color: 0x3a3f6a, opacity: 0.24, depthWrite: false }), 'conform', CATCH / CATCH_N));
     catcher.position.set(WW.cfg.MAP_W / 2, 0.06, WW.cfg.MAP_H / 2);
     catcher.receiveShadow = true; catcher.renderOrder = 2; catcher.frustumCulled = false;
     WW.scene.add(catcher);
@@ -221,12 +336,13 @@ window.WW = window.WW || {};
   function grid() {
     const rs = [0]; let r = 0;
     while (r < R_MAX) { r += Math.max(R_MIN_SP, r * 2 * Math.PI / SEGS); rs.push(Math.min(r, R_MAX)); }
+    rs.push(R_MAX);   // the skirt ring (aSp -1): the vertex shader raises it to the horizon
     const nv = 1 + (rs.length - 1) * SEGS, pos = new Float32Array(nv * 3), sp = new Float32Array(nv);
     sp[0] = R_MIN_SP;
     for (let i = 1; i < rs.length; i++) for (let j = 0; j < SEGS; j++) {
       const a = j / SEGS * 2 * Math.PI, k = 1 + (i - 1) * SEGS + j;
       pos[k * 3] = Math.cos(a) * rs[i]; pos[k * 3 + 2] = Math.sin(a) * rs[i];
-      sp[k] = Math.max(R_MIN_SP, rs[i] - rs[i - 1], rs[i] * 2 * Math.PI / SEGS);
+      sp[k] = i === rs.length - 1 ? -1 : Math.max(R_MIN_SP, rs[i] - rs[i - 1], rs[i] * 2 * Math.PI / SEGS);
     }
     const idx = [];
     for (let j = 0; j < SEGS; j++) idx.push(0, 1 + (j + 1) % SEGS, 1 + j);
@@ -277,7 +393,7 @@ window.WW = window.WW || {};
     if (!WW.scene || typeof document === 'undefined') return;
     if (!blobGeo) {
       blobGeo = new THREE.PlaneGeometry(1, 1, 8, 3); blobGeo.rotateX(-Math.PI / 2);
-      blobMat = WW.sea.ride(new THREE.MeshBasicMaterial({ color: 0x1c2a4a, alphaMap: blobTexture(), transparent: true, opacity: 0.32, depthWrite: false }), 'conform');   // lies on the waves
+      blobMat = WW.sea.ride(new THREE.MeshBasicMaterial({ color: 0x1c2a4a, alphaMap: blobTexture(), transparent: true, opacity: 0.32, depthWrite: false }), 'conform', 1 / 8);   // lies on the waves (the long ones: 8 cells along a hull)
     }
     let n = 0;
     for (const s of WW.world.ships) {
