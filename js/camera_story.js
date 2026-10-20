@@ -45,10 +45,10 @@ window.WW = window.WW || {};
   function diveCue() {
     const L = S.lead, w = L && L.wave;
     if (!w || (L.kind === 'torpedo' && L.phase === 'run')) return null;
-    if (S.dive && !(S.dive.m !== L && L.kind === 'dive' && L.phase === 'roll' && onDiver(L))) return null;   // (once a story, but the protagonist's own push-over is shown even after a wingman's)
+    if (S.dive && !(S.dive.m !== L && diving(L) && L.kind === 'dive' && onDiver(L))) return null;   // (once a story, but the protagonist's own push-over is shown even after a wingman's)
     if (S.dive && S.dive.m !== L) return L;
     let m = null;
-    if (L.kind === 'dive' && L.phase === 'roll') m = L;
+    if (L.kind === 'dive' && (L.phase === 'roll' || (L.phase === 'dive' && onDiver(L)))) m = L;   // (an ots on the diver: its dive too, the push-over is brief)
     else for (const q of w.members) if (ok(q) && q.kind === 'dive' && q.phase === 'roll') { m = q; break; }
     if (m && WW.cam.locked && WW.cam.locked() && !onDiver(m)) return null;
     return m;
