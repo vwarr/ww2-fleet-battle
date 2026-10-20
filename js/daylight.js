@@ -93,26 +93,96 @@ window.WW = window.WW || {};
 
   // kind: 'dawn' | 'day' | 'dusk' | 'night'. Always two WW.rand calls (a forced kind replays the same random sequence).
   // force: a kind, or a number n: a dusk round whose sun sets n s in (tests).
-  function roll() {
-    var r = WW.rand(), j = WW.rand(), f = D.force != null ? D.force : WW.scn && WW.scn().daylight ? WW.scn().daylight : D.force, M = CFG.MIX, kind;   // scn.daylight: Normandy's dawn
+  // The setup screen's preview (ui.js): the panel shows the time of day the battle will start at. Its two values are
+  // rolled with Math.random in setup (P; setup rounds are not replayable anyway: enterSetup's map is Math.random too,
+  // as admirals.js's preview) and the UI's Start uses them (startFromPreview): roll() still draws its two WW.rand
+  // values, so every other draw is the same, and a seeded / auto / sim-only round, which never sets the flag, is
+  // exactly as before. D.userHour (the setup slider, null = random): the round starts at that hour (the two draws are
+  // still made) and its kind follows from the hour (kindOfHour); the clock then runs on as in any round.
+  var P = null, usePreview = false, pkey = null;
+  function forced() { return D.force != null ? D.force : WW.scn && WW.scn().daylight ? WW.scn().daylight : D.force; }   // scn.daylight: Normandy's dawn
+  function scnClock() { return !!(WW.scn && (WW.scn().clock || WW.scn().daylight)); }
+  // a start hour's kind: dawn from 04:00 (a carriers-only morning before DAWN_START: a pre-dawn round, it waits for its
+  // dawn), day from 07:00, dusk once the sun sets inside the round span (SUNSET - SPAN_H), night from 19:30. A manual
+  // evening night with no night action stays a night (endgame.js may end it as both sides retire for the night).
+  function kindOfHour(h) {
+    h = ((h % 24) + 24) % 24;
+    var kind = h >= 19.5 || h < 4 ? 'night' : h < 7 ? 'dawn' : h < CFG.SUNSET - CFG.SPAN_H ? 'day' : 'dusk', pre = false;
+    if (h < CFG.DAWN_START[0] && !nightAction()) { pre = true; kind = 'dawn'; }
+    return { kind: kind, predawn: pre };
+  }
+  // the roll's outcome from its two values (pure: the preview and roll() share it)
+  function plan(r, j) {
+    var f = forced(), M = CFG.MIX, kind, o = {};
+    if (f == null && D.userHour != null && !scnClock()) {
+      var k = kindOfHour(D.userHour); o.kind = k.kind; o.predawn = k.predawn; o.startHour = D.userHour; return o;
+    }
     if (f === 'dawn' || f === 'day' || f === 'dusk' || f === 'night') kind = f;
     else if (typeof f === 'number') kind = 'dusk';
     else kind = r < M.dawn ? 'dawn' : r < M.dawn + M.day ? 'day' : r < M.dawn + M.day + M.dusk ? 'dusk' : 'night';
-    D.predawn = kind === 'night' && !nightAction(); // no night action to be fought (forced too): a pre-dawn round instead
-    if (D.predawn) kind = 'dawn';
+    o.predawn = kind === 'night' && !nightAction(); // no night action to be fought (forced too): a pre-dawn round instead
+    if (o.predawn) kind = 'dawn';
     var L = WW.cfg.ROUND_TIMEOUT, ph = D.perH();
-    if (D.predawn) D.startHour = span(CFG.PREDAWN_START, j);
-    else if (kind === 'dawn') D.startHour = span(CFG.DAWN_START, j);
-    else if (kind === 'day') D.startHour = span(CFG.DAY_START, j);
-    else if (kind === 'night') D.startHour = span(CFG.NIGHT_START, j);
-    else D.startHour = CFG.SUNSET - (typeof f === 'number' ? f : span(CFG.SUNSET_AT, j) * L) / ph;
+    if (o.predawn) o.startHour = span(CFG.PREDAWN_START, j);
+    else if (kind === 'dawn') o.startHour = span(CFG.DAWN_START, j);
+    else if (kind === 'day') o.startHour = span(CFG.DAY_START, j);
+    else if (kind === 'night') o.startHour = span(CFG.NIGHT_START, j);
+    else o.startHour = CFG.SUNSET - (typeof f === 'number' ? f : span(CFG.SUNSET_AT, j) * L) / ph;
+    o.kind = kind;
+    return o;
+  }
+  function roll() {
+    var r = WW.rand(), j = WW.rand();
+    if (usePreview && P) { r = P.r; j = P.j; }
+    usePreview = false;
+    var o = plan(r, j), kind = o.kind;
+    D.predawn = o.predawn; D.startHour = o.startHour;
     D.kind = kind;
     D.t0 = WW.time.now; D.recalled = false; D._fly = true; D._ll = null; D.lastLaunched = WW.stats.planesLaunched;
     setClock(D.pinHour != null ? D.pinHour : D.startHour);
     stats.rounds++; stats.kinds[kind]++;
   }
   WW.on('roundStart', roll);
-  WW.on('setupStart', function () { D.kind = 'day'; D.predawn = false; D.startHour = 15.5; setClock(15.5); }); // setup: the golden afternoon
+  if (WW.roundRec) WW.roundRec.add('daylight', function () { return { p: P, use: usePreview, uh: D.userHour }; },
+    function (d) { P = d.p || null; usePreview = !!d.use; D.userHour = d.uh == null ? null : d.uh; });   // the look-ahead copy rolls the same hour
+  var SETUP_H = 15.5;   // setup without a preview (sim-only, Normandy): the golden afternoon
+  var shown = null;     // the hour the setup sky shows (blends to the preview)
+  function previewOn() { return !WW.simOnly && !scnClock() && D.force == null; }
+  WW.on('setupStart', function () {
+    D.kind = 'day'; D.predawn = false; D.startHour = SETUP_H;
+    var key = (WW.terrain ? WW.terrain.seed : 0) + '|' + (WW.stats ? WW.stats.round : 0);
+    if (!P || key !== pkey) reroll();   // a new map or a new round: a new roll (a ship placed or removed keeps it)
+    pkey = key;
+    if (!previewOn()) { shown = null; setClock(SETUP_H); return; }
+    if (shown == null) { shown = D.previewHour(); setClock(shown); }   // first setup: no blend
+  });
+  function reroll(r, j) { P = { r: r == null ? Math.random() : r, j: j == null ? Math.random() : j }; }   // (r, j: tests)
+  // in setup (main.js step): the sky eases to the preview hour along the short way round the clock, on wall time
+  // (~0.6 s; setup is not sim, and previewOn() is false in sim-only pages)
+  var wall = 0;
+  function setupSky() {
+    if (!previewOn()) return;
+    var tgt = D.previewHour(), now = typeof performance !== 'undefined' ? performance.now() : 0, dt = wall ? Math.min(0.25, (now - wall) / 1000) : 0;
+    wall = now;
+    if (shown == null) shown = tgt;
+    var d = ((tgt - shown) % 24 + 36) % 24 - 12;
+    shown = Math.abs(d) < 0.02 ? tgt : shown + d * (1 - Math.exp(-6 * dt));
+    setClock(((shown % 24) + 24) % 24);
+  }
+  // main.js startRound from setup: the clock back to plain setup's state first (the spawn and the roundStart handlers
+  // before roll() see what they always saw), then roll() sets the round's hour (no frame drawn in between)
+  function preRound() { D.kind = 'day'; D.predawn = false; D.startHour = SETUP_H; setClock(SETUP_H); }
+  D.preRound = preRound; D.kindOfHour = kindOfHour; D.userHour = null;
+  // the setup panel (ui.js): the round's start the Start button gives { hour, kind, predawn, random } (null: no preview)
+  D.preview = function () {
+    if (!previewOn()) return null;
+    if (!P) reroll();
+    var o = plan(P.r, P.j); o.random = D.userHour == null; return o;
+  };
+  D.previewHour = function () { var o = D.preview(); return o ? o.startHour : SETUP_H; };
+  D.startFromPreview = function () { if (!P) reroll(); usePreview = true; };
+  D.rerollPreview = reroll;
+  D.setUserHour = function (h) { D.userHour = h == null || isNaN(+h) ? null : WW.clamp(+h, 0, 24) % 24; };
 
   // No launches after dusk: wrap WW.air.launch once (aircraft.js loads later). Callers already handle null.
   function wrapLaunch() {
@@ -163,7 +233,8 @@ window.WW = window.WW || {};
     }
   }
   function update() {
-    if (!WW.game || WW.game.state === 'setup') return;
+    if (!WW.game) return;
+    if (WW.game.state === 'setup') { setupSky(); return; }
     wrapLaunch(); wrapDeck();
     setClock(D.pinHour != null ? D.pinHour : D.hourAt(D.roundT()));   // pin / pinHour: test hooks (screenshots)
     if (WW.game.state !== 'battle') return;

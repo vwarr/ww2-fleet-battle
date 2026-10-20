@@ -142,6 +142,7 @@ window.WW = window.WW || {};
     startRound(opts) {
       opts = opts || {};
       const rec = opts.replay || null;
+      if (game.state === 'setup') call('dayNight', 'preRound'); // the setup sky's preview hour off before the spawn (daylight.js)
       if (rec) { opts.keepMap = rec.keepMap; if (WW.terrain.seed !== rec.terrain) WW.terrain.generate(rec.terrain); }
       else if (!opts.keepMap || !WW.terrain.seed) {
         game.seed = (WW.rand() * 1e9) >>> 0; // WW.rand: the round after a seeded round replays too
