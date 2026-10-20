@@ -154,3 +154,20 @@ like the spindrift already was. Identical frames (readback max diff 1/255 in cle
 
 Levers seen (not changed): the shadow catcher (ShadowMaterial sheet, 300 u, PCF soft) costs ~1.0-1.1 ms whenever it is
 under the view, in every weather; the sea's fragment shader ~4.6 ms in a sea-filled view.
+
+## Power 5 (2026-10-20, branch `power5`): the sea's shadows and glitter
+
+Same page A/B, director's camera, installed Chrome headless, dpr 2:
+
+| change | busy | quiet | typhoon | night | look |
+|---|---|---|---|---|---|
+| shadow catcher folded into the sea shader (`?catcher=1`: the old sheet) | 7.67 -> 7.43 | 7.51 -> 7.28 | 8.71 -> 8.33 | 7.57 -> 7.29 | readback mean 0.0001-0.004 /255; max 4-17 on a pixel-thin line at hulls' waterlines (the sheet was depth-tested at its own height) |
+| glitter only where the reflection is within ~53 deg of the sun | 7.45 -> 7.19 | 7.46 -> 7.24 | | 7.24 -> 7.03 | bit-identical (max 0) |
+
+The catcher was a ShadowMaterial sheet (300 u, 150 x 150 cells, lifted onto the waves with the short ones left out)
+blended over the finished sea. The sea's shader now does the same PCF-soft lookup at the height the sheet lay (a second
+wave sum per vertex with the sheet's cell), over the same square, and composes it as the blend did (one colour at
+alpha 1 - (1 - s)(1 - a)). Normandy keeps the sheet. The lookup itself is still ~0.7-0.8 ms of the sea's shader (the
+RGBA-packed shadow map: PCF soft is many fetches a pixel); the saving is the sheet's own pass.
+Sea shader parts (cut tests, busy / quiet): the chop 0.66 / 0.59 ms, the shadows 0.69 / 0.82, the glitter 0.37 / 0.30
+(before its early-out), caps / streaks / shallows / gusts <= 0.07 each.
