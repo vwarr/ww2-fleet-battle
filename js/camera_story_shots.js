@@ -181,10 +181,13 @@ window.WW = window.WW || {};
     if (diving) { // the dive: above and behind the bomber along its dive line, looking down at the deck (plane and ship in frame)
       _f.set(Math.cos(L.heading) * Math.max(1, L.speed || 10), Math.min(-2, L.vy || 0), Math.sin(L.heading) * Math.max(1, L.speed || 10)).normalize();
       if (!shot.dS) shot.dS = _f.clone(); else shot.dS.lerp(_f, 1 - Math.exp(-rdt * 2)).normalize();
-      const d = shot.dS, back = 16 * FK; _r.set(-d.z, 0, d.x).normalize();
-      gP.set(L.x - d.x * back + _r.x * shot.side * 5 * FK, Math.max(ly - d.y * back + 3 * FK, 6), L.z - d.z * back + _r.z * shot.side * 5 * FK);
-      gL.set(WW.lerp(L.x, T.x, 0.55), 1, WW.lerp(L.z, T.z, 0.55));
-      shot.aim.set(WW.lerp(L.x, T.x, 0.3), ly * 0.7, WW.lerp(L.z, T.z, 0.3));
+      // (camera6: closer, over the shoulder down the dive line: the bomber big in the lower frame, brakes out, the ship ahead
+      // beyond it. The survey's sheets: from 16 u back and composed on a point 30% toward the ship the camera looked straight
+      // down at the deck and the bomber was a speck at the frame's edge or out of it (in frame 42% of a dive's frames))
+      const d = shot.dS, back = 10 * FK; _r.set(-d.z, 0, d.x).normalize();
+      gP.set(L.x - d.x * back + _r.x * shot.side * 4 * FK, Math.max(ly - d.y * back + 2.5 * FK, 6), L.z - d.z * back + _r.z * shot.side * 4 * FK);
+      gL.set(WW.lerp(L.x, T.x, 0.65), WW.lerp(ly, 1, 0.65), WW.lerp(L.z, T.z, 0.65));
+      shot.aim.set(L.x, ly, L.z);
       return;
     }
     const h = smoothH(shot, L.heading, rdt, 1.3);

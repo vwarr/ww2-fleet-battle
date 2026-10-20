@@ -330,7 +330,10 @@ function install(cfg) {
     if (r._lp) { _dv.set(p.x - r._lp.x, p.y - r._lp.y, p.z - r._lp.z); const L = _dv.length(); if (L > 1e-3) { const ang = Math.acos(WW.clamp(_dv.dot(_f) / L, -1, 1)) * 180 / Math.PI; if (ang > 60 && ang < 120) r.side++; } }
     r._lp = { x: p.x, y: p.y, z: p.z };
     if (-_f.y < 0.26) r.flat++;
-    if (T) { const sg = Math.sign((T.x - p.x) * (c.position.z - p.z) - (T.z - p.z) * (c.position.x - p.x)); if (sg && r._sg && sg !== r._sg && sh.__sid === r._sid) r.flips++; if (sg) { r._sg = sg; r._sid = sh.__sid; } }
+    // (a flip only counts when the plane -> target line is long enough to have a side: over the target in the last of a
+    // steep dive the line shrinks to nothing and its side is noise)
+    const hd = T ? Math.hypot(T.x - p.x, T.z - p.z) : 0, cr = T && hd > 25 ? ((T.x - p.x) * (c.position.z - p.z) - (T.z - p.z) * (c.position.x - p.x)) / hd : 0;
+    if (T && Math.abs(cr) > 3) { const sg = Math.sign(cr); if (sg && r._sg && sg !== r._sg && sh.__sid === r._sid) r.flips++; if (sg) { r._sg = sg; r._sid = sh.__sid; } }
   }
   WW.on('weaponDropped', e => { const p = e && e.plane, r = p && dvBy.get(p); if (r && !r.end && e.kind === 'bomb') { r.end = true; r.drop = A.drops.length - 1; } });
   // ---- per second ----
