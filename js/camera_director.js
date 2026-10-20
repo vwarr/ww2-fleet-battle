@@ -449,7 +449,8 @@ window.WW = window.WW || {};
       else if (now - sa.act > 12 || now - sa.t0 > 75) sa.endAt = now;
     }
     const L = shot && WW.camLock && WW.camLock.state(shot);
-    if (sa.endAt && now >= sa.endAt && !(shot && (shot.stage || (L && L.release)))) {
+    // (camera6: nor while a brace still waits for its impact: the arc's end cut to the establishing shot on the hit)
+    if (sa.endAt && now >= sa.endAt && !(shot && (shot.stage || (L && L.release) || (shot.kind === 'brace' && shot.doneAt === undefined)))) {
       const out = s.alive || s.sinking ? 'complete' : 'protagonistDown';
       closeShipArc(out);
       if (shot && !shot.interrupt) shot.dur = Math.min(shot.dur, shot.t + 0.4);   // a wide establishing shot next (pickShot)

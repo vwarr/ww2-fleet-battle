@@ -329,6 +329,7 @@ window.WW = window.WW || {};
       if (!GUARD_K[e.kind] || e.etaReal < GUARD_WIN[0] || e.etaReal > GUARD_WIN[1]) continue;
       if ((guarded.get(s) || -1e9) > now - 3) continue;                       // (no flapping: a guard brace runs to its hits and beat)
       if (shot && shot.kind === 'brace' && shot.subj === s) continue;
+      if (!cv && shot && shot.story && shot.sk === 'fall') continue;            // (the protagonist falling: followed to the water; only a carrier struck breaks it)
       if (inView(s.x + e.ox, 2, s.z + e.oz, 380)) { guardStats().inView++; continue; }   // already in the shot
       const L = shot && WW.camLock && WW.camLock.state(shot);
       if (shot && (shot.stage || (L && L.release))) {                        // the last seconds of an attack
@@ -396,7 +397,7 @@ window.WW = window.WW || {};
       }
     }
     // a planned ship arc is over a beat after its climax (no minutes of orbiting the aftermath)
-    if (busy && mineRunning() && cur.it.kind !== 'strike' && wall() > cur.endAt && shot && !shot.stage && !(L && L.release) && D().endShipArc) { D().endShipArc('complete'); return; }
+    if (busy && mineRunning() && cur.it.kind !== 'strike' && wall() > cur.endAt && shot && !shot.stage && !(L && L.release) && !(shot.kind === 'brace' && shot.doneAt === undefined) && D().endShipArc) { D().endShipArc('complete'); return; }
     if (busy) return;
     if (st && !st.begun) return;                                             // a planned story waiting for the running shot to end
     if (shot && (shot.stage || (L && L.release) || shot.pr >= 99 || shot.finale)) return;

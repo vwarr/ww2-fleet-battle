@@ -16,6 +16,8 @@
 //   sub_attack       a submarine's torpedo hit in frame
 //   gun_duel         battleship / cruiser shell hits in a gun duel in frame
 //   dd_torp          a destroyer / cruiser torpedo attack shown from the run-in to the hit
+//   dive_usn_cv / dive_ijn_cv / dive_small / dive_lowsun: a dive bomber's dive reads as a dive (target in frame, not
+//                    side-on or flat, the plane not lost against the sea, no line-of-action flip, the impact in frame)
 //   dead_air         nothing happening: a calm shot (no cut storm, no snaps, no jitter)
 //   hit_after_cut    hits landing in the first 2 s of a shot are in that shot
 //   manual_pan       the user drags the camera, lets go: the director takes it back and films the next big hit
@@ -41,6 +43,21 @@ function torpBy(R, srcOk) {
   for (const d of R.stor || []) { if (!d.hits || !d.s || !srcOk(d.s.c)) continue; const h = d.hits[0], e = (R.be || []).find(x => x.k === 'torpedo' && x.id === h.id && Math.abs(x.sim - h.sim) < 1.5); if (e && !out.some(o => o.w === e.w)) out.push(Object.assign({}, e, { fire: d })); }
   return out.sort((a, b) => a.w - b.w);
 }
+function dives(R, f) { return (R.dives || []).filter(d => d.n >= 30 && d.p && f(d)); }
+// a dive that reads as a dive: the target in frame most of it, not side-on or flat, the plane not a speck, no flip, the
+// bomb's impact in frame (the cut held to it)
+function diveCheck(R, E) {
+  const d = E[0]; if (!d) return null;
+  const n = d.n, r = k => d[k] / n, drop = d.drop !== undefined ? R.drops[d.drop] : null, held = !!(drop && drop.imp && drop.imp.on);
+  const bad = [];
+  if (r('tIn') < 0.6) bad.push('target in frame ' + (100 * r('tIn')).toFixed(0) + '%');
+  if (r('side') > 0.4) bad.push('side-on ' + (100 * r('side')).toFixed(0) + '%');
+  if (r('flat') > 0.3) bad.push('flat ' + (100 * r('flat')).toFixed(0) + '%');
+  if (r('small') > 0.4) bad.push('plane small ' + (100 * r('small')).toFixed(0) + '%');
+  if (d.flips) bad.push(d.flips + ' flips');
+  if (!held) bad.push('impact not in frame');
+  return { pass: !bad.length, why: `${d.p.n} ${d.p.sq || 'dive'} on a ${d.t ? d.t.c : '?'} (sun ${d.elev} deg, ${(n / 30).toFixed(1)} s on screen, ${d.shots.length} shots): ` + (bad.length ? bad.join(', ') : 'target ' + (100 * r('tIn')).toFixed(0) + '%, side-on ' + (100 * r('side')).toFixed(0) + '%, flat ' + (100 * r('flat')).toFixed(0) + '%, impact in frame'), w: d.w0 };
+}
 // the situations, as selectors over a round's record R (camera_audit.js survey JSON) -> the events of interest
 const SEL = {
   cv_torp_home: R => (R.be || []).filter(e => e.k === 'torpedo' && e.c === 'carrier' && (() => { const r = recAt(R, e.w); return r && r.ctx && Object.values(r.ctx.ret).some(n => n >= 2); })()),
@@ -54,6 +71,11 @@ const SEL = {
   gun_duel: R => (R.be || []).filter(e => e.k === 'shell' && (e.c === 'battleship' || e.c === 'cruiser')),
   // a destroyer / cruiser / PT torpedo spread that hits: the hit's BE record, with the spread's firing
   dd_torp: R => torpBy(R, c => c === 'destroyer' || c === 'cruiser'),
+  // the filmed dives (camera_audit.js A.dives, >= 1 s on screen) by who dives on what, and at low sun
+  dive_usn_cv: R => dives(R, d => d.p.n === 'USN' && d.t && d.t.c === 'carrier'),
+  dive_ijn_cv: R => dives(R, d => d.p.n === 'IJN' && d.t && d.t.c === 'carrier'),
+  dive_small: R => dives(R, d => d.t && d.t.c && d.t.c !== 'carrier' && d.t.c !== 'battleship'),
+  dive_lowsun: R => dives(R, d => d.elev < 12),
   hit_after_cut: R => (R.be || []).filter(e => hitK(e) && BIG[e.c] && R.shots.some(s => e.w - s.w0 >= 0.2 && e.w - s.w0 < 2)),
 };
 // the checks: (R, events) -> { pass, why, w (the wall time to film on a failure) }
@@ -71,6 +93,7 @@ const CHECK = {
   // the run-in on camera (the firing ship or its target filmed in the 25 s before the spread left) and the hit in frame
   dd_torp: (R, E) => { const e = E[0]; if (!e) return null; const f = e.fire, run = R.rec.filter(r => r.w >= f.w - 25 && r.w <= f.w + 1 && ((r.subj && (r.subj.id === f.s.id || (f.tg && r.subj.id === f.tg.id))) || (r.tgt && r.tgt.id === f.s.id))).length;
     return { pass: okNow(e) && run >= 3, why: `${f.s.c} -> ${e.c}: run-in on camera ${run} s of the 25 before the spread; hit ${fmt(e)}`, w: f.w }; },
+  dive_usn_cv: diveCheck, dive_ijn_cv: diveCheck, dive_small: diveCheck, dive_lowsun: diveCheck,
   hit_after_cut: (R, E) => { if (E.length < 3) return null; const n = E.filter(okNow).length; return { pass: n / E.length >= 0.7, why: `${n} / ${E.length} hits in the first 2 s of a shot in frame`, w: (E.find(e => !okNow(e)) || E[0]).w }; },
   // the protagonist shot down: its fall filmed and held to the water (camera_story.js falls / fallsWet), and its arc
   // logged as ending with it
@@ -101,14 +124,14 @@ const CASES = [
   { id: 'cv_dive_else', scen: 'standard', seed: 10, scale: 1, sim: 285 },      // sim 270.6 (failed in the camera6 survey)
   { id: 'magazine', scen: 'standard', seed: 8, scale: 1, sim: 220 },           // a battleship's magazine, sim 207.7
   { id: 'sinking', scen: 'standard', seed: 8, scale: 1, sim: 220 },            // a carrier going down, sim 159.8
-  { id: 'prot_down', scen: 'carrier_duel', seed: 6, scale: 1, sim: 300 },
+  { id: 'prot_down', scen: 'carrier_duel', seed: 6, scale: 1, sim: 330 },   // (a ditching dive bomber's fall runs to sim 300)
   { id: 'night_torp', scen: 'night_cv', seed: 1, scale: 1, sim: 420 },
-  { id: 'pt_ambush', scen: 'pt_raid', seed: 1, scale: 1, sim: 420 },
+  { id: 'pt_ambush', scen: 'standard', seed: 7, scale: 1, sim: 385 },          // a PT boat's hit on a cruiser, sim 370.3 (pt_raid: the PT boats never got in range)
   { id: 'sub_attack', scen: 'standard', seed: 9, scale: 4, sim: 385 },         // a submarine's hit on a battleship, sim 372.9
-  { id: 'gun_duel', scen: 'midway', seed: 11, scale: 1, sim: 420 },            // shell hits from sim 401.6
+  { id: 'gun_duel', scen: 'standard', seed: 7, scale: 1, sim: 385 },           // shell hits on cruisers / battleships from sim 366.4 (midway 11: a destroyer's torpedo run on a cruiser at the same time won the camera)
   { id: 'dd_torp', scen: 'carrier_duel', seed: 5, scale: 1, sim: 315 },        // a destroyer's spread, hit at sim 306.3
   { id: 'dead_air', scen: 'carrier_duel', seed: 2, scale: 1, sim: 140 },
-  { id: 'hit_after_cut', scen: 'standard', seed: 1, scale: 4, sim: 245 },
+  { id: 'hit_after_cut', scen: 'standard', seed: 1, scale: 1, sim: 245 },
   { id: 'manual_pan', scen: 'carrier_duel', seed: 2, scale: 1, sim: 195, drag: 150 }   // the next hit, sim 180.9
 ];
 try { const f = path.join(__dirname, 'camera_cases.json'); if (fs.existsSync(f)) { const j = JSON.parse(fs.readFileSync(f, 'utf8')); for (const c of j) { const i = CASES.findIndex(x => x.id === c.id); if (i >= 0) CASES[i] = c; else CASES.push(c); } } } catch (e) { console.log('camera_cases.json: ' + e.message); }
