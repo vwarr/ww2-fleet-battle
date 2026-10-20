@@ -114,3 +114,16 @@ The next levers (not mine):
   does for planes) is the biggest remaining CPU item (sky.js shadow light: shadowfix).
 - The remaining matrix update (0.34 ms) is planes (~1500 nodes) and ships (~1300): their groups move every frame.
 - Clouds (sky.js, 220 nodes, 187 still) could be frozen the same way.
+
+## Power 3 (2026-10-20, branch `power3`): shadow casters
+
+- **Shadow-caster culling: tried, dropped.** A per-render pass that turned castShadow off for ships whose shadow
+  footprint (a sphere round the ship and its down-sun shadow, margin 12 u) lies outside the view cut the busy view's draw
+  calls 308 -> 176 (19 of 22 ships culled), stills at the noise floor. But the render's JS stayed flat (1.38 vs 1.40 ms),
+  the held render flat (7.06 vs 7.07), energy_probe flat in two interleaved pairs; in a tight alternating loop the cull
+  was 0.11 ms slower (its own work 0.04 ms). The earlier "shadow pass off saves 0.4 ms CPU" was the whole pass (the scene
+  walk for the shadow camera, the frustum tests, the target switch); the draws themselves are cheap.
+- Kept: an empty plane bucket (air_render.js) is hidden, so it is no draw call in either pass (main-pass planeRender calls
+  79 -> 10 in one busy view); the cloud puffs' matrices are made once (sky.js; unmeasured, correct by construction).
+- **The big one, not mine:** the busy held render is 7.1 ms on main after the weatherpick merge, against 3.3 ms on
+  2a911dc (same probe, same scene): the GPU frame cost about doubled (the sea shader / storm work).
