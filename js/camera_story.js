@@ -13,7 +13,7 @@
 window.WW = window.WW || {};
 (function (WW) {
   const MIN_T = 60, MAX_T = 180, GAP0 = [120, 220], GAP = [10, 20];   // story length (real s) and the rest between stories (camera4: arcs are the director's main mode, a short rest; GAP0 without camera_director.js)
-  const CUT = [6, 12], CUTAWAY = 5, CUTAWAY_GAP = 35, FALL = 4.5, FALL_MAX = 14, CAPS = 12;   // FALL_MAX: the protagonist shot down is followed to the water (or the deck, the island) and a beat
+  const CUT = [6, 12], CUTAWAY = 5, CUTAWAY_GAP = 35, FALL = 4.5, FALL_MAX = 14, FALL_CAP = 32, CAPS = 12;   // FALL_MAX: the protagonist shot down is followed to the water (or the deck, the island) and a beat
   const wall = () => performance.now() / 1000;
   const dur = (a, b) => a + (b - a) * Math.random();     // camera: Math.random, never WW.rand (seeded rounds)
   const ok = p => p && !p.removed && p.alive;
@@ -422,6 +422,9 @@ window.WW = window.WW || {};
     if (WW.camDirector && shot && shot.story && shot.sk === 'fall' && shot.wetT === undefined) {
       const L = shot.subj;
       if (!L || L.removed || (L.y || 0) <= 0.8 || (L.state !== 'falling' && !L.deathMode && !L.alive)) { shot.wetT = shot.t; shot.dur = Math.min(shot.dur, shot.t + 2.2); ST.fallsWet = (ST.fallsWet || 0) + 1; }
+      // (camera6: still in the air: held to the water whatever the clock (at the true-speed 1x a fall from a dive's height
+      // outlasts FALL_MAX real s), up to FALL_CAP)
+      else if (shot.t < FALL_CAP && !shot.stage) shot.dur = Math.max(shot.dur, shot.t + 0.5);
     }
     // a new phase (the push-over, the run, bandits, leaving the deck): cut early to a shot that suits it (never out of a locked attack)
     if (shot && shot.story && !shot.stage && !locked && !S.fall && !shot.cutaway && ok(S.lead) && shot.t > 2.5) {
