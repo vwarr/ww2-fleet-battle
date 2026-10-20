@@ -15,7 +15,7 @@ const MODE = pos[0] || 'std', SEED = +(pos[1] || 1), FF = +(pos[2] || 150), K = 
   const b = await chromium.launch(Object.assign(args.includes('--chrome') ? { channel: 'chrome', headless: true } : { executablePath: process.env.CHROMIUM || undefined }, { args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] }));
   const p = await b.newPage({ viewport: { width: +opt('w', 1600), height: +opt('h', 900) }, deviceScaleFactor: +opt('dpr', 2) });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&cam=forecast&fullres&v=' + Date.now(), { timeout: 240000 });
+  await p.goto((process.env.BASE_URL || 'http://localhost:8000/') + 'index.html?auto&cam=forecast&fullres' + (opt('q') ? '&' + opt('q') : '') + '&v=' + Date.now(), { timeout: 240000 });
   await p.waitForTimeout(4000);
   const info = await p.evaluate(([MODE, SEED, FF]) => {
     const G = WW.game;

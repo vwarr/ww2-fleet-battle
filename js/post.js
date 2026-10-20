@@ -8,6 +8,10 @@ window.WW = window.WW || {};
   const GRADE = { exposure: 1.0, shoulder: 0.72, saturation: 0.9 };
   let r, rtScene, rtA, rtB, quad, qScene, qCam, mBright, mBlur, mComp, enabled = true;
 
+  // the scene target's MSAA samples: 2 (power, 2026-10-20). At a Retina ratio of 2 the 4x target's resolve was the
+  // biggest single GPU cost of the frame (render 5.0 -> 3.6 ms at 3200x1800, tests/gpu_probe.js busy) and the same-frame
+  // shots are indistinguishable (mean |diff| 0.14 / 255). ?msaa=N: N samples (4: the old look; 0: none)
+  const MSAA = (m => (m ? +m[1] : 2))(/[?&]msaa=(\d)/.exec(location.search));
   const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
   function mat(frag, uniforms, toneMapped) {
     return new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: frag, depthTest: false, depthWrite: false, toneMapped: !!toneMapped });
@@ -18,7 +22,7 @@ window.WW = window.WW || {};
     // anything layered on the ground (the runways, taxiways and their paint, the crater decals) hatched beyond ~40 u;
     // with the stencil it is DEPTH24_STENCIL8
     const opts = { type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: true };
-    rtScene = new THREE.WebGLRenderTarget(4, 4, Object.assign({ samples: 4 }, opts));
+    rtScene = new THREE.WebGLRenderTarget(4, 4, Object.assign({ samples: MSAA }, opts));
     rtA = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: false });
     rtB = rtA.clone();
     mBright = mat(`uniform sampler2D tex; uniform float threshold, knee, cap; varying vec2 vUv;

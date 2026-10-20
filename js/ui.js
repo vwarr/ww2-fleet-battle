@@ -61,6 +61,10 @@ window.WW = window.WW || {};
     el.newRound = btn(mr, 'New battle', newRound);
     el.fsBtns.push(btn(mr, 'Fullscreen', toggleFullscreen));
     el.close = btn(mr, 'Hide', () => { hudPeek = false; });
+    // Battery saver (main.js WW.view): 30 fps and a lower render scale; remembered
+    const bLabel = () => 'Battery saver: ' + (WW.view && WW.view.battery() ? 'on' : 'off');
+    el.battery = btn(mr, bLabel(), () => { if (WW.view) WW.view.setBattery(!WW.view.battery()); el.battery.textContent = bLabel(); });
+    el.battery.title = 'Draw the battle at 30 fps and about half the pixels: less GPU, less fan';
     const sr = $('div', 'row', el.panel);
     el.soundPanel = btn(sr, 'Sound: off', toggleSound);
     el.vol = $('input', 'vol', sr);
