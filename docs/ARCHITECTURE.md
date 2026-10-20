@@ -275,6 +275,45 @@ Unchanged metrics: behaviour suite 0 FAIL (278 PASS, 55 WARN); `ship_review.js -
 
 Still lopsided: one carrier against two (USN 7 / IJN 35 of 42 gate rounds) against two against one (32 / 11 of 43). The IJN's joint deck-load strikes and the USN's separate task groups (`cvSpread` 150) are doctrine; a paired run of `cvSpread` is the next thing to look at.
 
+### Balance pass 3 (2026-10-20, branch balance19): after the 2026-10-19 batch
+
+On main 4d6bb40 (gunnery, speedcal, weatherpick, camera6 and the rest). Lean, as asked ("get it pretty close and fun to watch"): a 400-round baseline, the air-strength question, a few levers, one 400-round check paired seed by seed against the baseline.
+
+**Baseline** (`sim_behaviour.js --only balance --seeds 400`): USN 211 / IJN 189 (52.8%); by base owner USN base 104-68, IJN base 67-93, none 40-28; rounds ending in the dark USN 62 / IJN 100 (the IJN night doctrine); by carriers 1v1 55%, 1v2 16%, 2v1 81%, 2v2 50% (composition, mirrored both ways); fleets met in 389 / 400; ends kill 48 / retire 305 / time 47; carriers sunk USN 79 / IJN 162 of ~500 each (a side lost all its carriers in 202 rounds). Balance and shape were already inside the targets; the work went into the air-strength question.
+
+**Air strength per side** (`tests/air_strength.js`, new: airborne planes per side every 5 s by source and kind, the landing pattern, CAP; 60 random-mix rounds, the gate's seeds 1-60). The user's "100+ American aircraft in the air and less than 30 Japanese" with "Base: USN (Midway)" has three causes:
+
+1. *A stuck marshal stack (bug, fixed).* A second plane was cleared to approach only once the one ahead was within 40 u of the gate. Since speedcal's real pattern speeds, a plane cleared from an outer oval (up to 11.6 L astern, 160 u off the wake) needs 15-20 s to get there, so a deep stack trapped one plane every 20-40 s and a returning strike circled for minutes (seed 54, 1v1 with a USN base: 65-78 USN planes in the pattern for six minutes, ~101 aloft against 26). Now approaches are sequenced by time to the gate (`air_recovery.js etaGate`, `SEP_S` 4 s apart, up to `APP_N` 4 on the leg; a stack of 6 or more clears any of its first 3 placed planes), and a deep stack's recovery window holds a strike launch up to `LW_DEEP` 90 s (was 35 s, set when a trap took ~4 s). Traps in a deep stack: every 6-10 s, the 1942 rate (30-40 s real a plane / 3.2). Seed 54 peak 101 / 26 -> 89 / 26 (the round now plays differently).
+2. *The base is one carrier air group (by design, kept).* A USN base adds ~9-11 planes aloft on average (F4F CAP, SBDs and B-26s on short cycles, ~190 sorties a round), an IJN base ~3.5 (Zeros and Bettys on long missions, ~150).
+3. *Attrition.* In USN-base rounds the IJN loses 44 planes a round against the USN's 25 (radar CAP plus the base's fighters), which is the "< 30".
+
+The peaks barely move, because a deep stack is fed by the next launch and the other side's losses, not the deck: even setups (1 v 1 carriers, all afloat), peak aloft USN / IJN before -> after: no base 39 / 24 -> 37 / 25, USN base 60 / 34 -> 61 / 32, IJN base 37 / 32 -> 37 / 34. The 100+ cases are 2 carriers against 1, or a side whose carriers are sunk (its planes then have nowhere to land). What changed is how long a returning strike circles late in the round. Per minute, all 60 rounds, minutes 8-12: USN 31 / 26 / 24 / 21 / 24 -> 23 / 21 / 22 / 20 / 16, IJN about the same (20-24). Not done: fuel does not burn in the marshal stack (a plane there holds until it lands); with the 15% reserve that would ditch most of a deep stack, harsher than 1942's 30-60 min of holding fuel.
+
+**Other levers**
+
+| parameter | before | after | why |
+|---|---|---|---|
+| 5-inch reference range (`combat.js REF.small.m`) | 8000 m at 70 u | 6000 m | the destroyer gun duels of 1942 were fought at 3-6 km; at 8 km the 5-inch hit rate had halved after the gunnery merge (42 / 35% -> 23 / 21%) |
+| `VICTORY_TIME` (main.js) | 9 sim s (~29 s real at 1x) | 5.5 (~18 s) | the true-speed clock had stretched the banner |
+| typhoon foundering (`weather.js SWAMP_P`) | 3.5e-5 (0.65 small ships per typhoon round, max 3) | 2e-5 (~0.37 by the same rate) | rare, 0-1 a typhoon round, as asked |
+
+**Results** (before = main 4d6bb40, after = balance19; both 400 rounds, seeds 1-400):
+
+| target | before | after |
+|---|---|---|
+| USN wins | 211 / 400 (52.8%) | 219 / 400 (54.8%); paired +2.0 ± 2.5 points, 100 rounds flipped |
+| by base: USN / IJN / none, USN wins | 104-68 / 67-93 / 40-28 | 116-56 / 63-97 / 40-28 |
+| dark rounds, USN-IJN | 62-100 | 73-94 |
+| fleets met | 389 | 387 |
+| ends kill / retire / time | 48 / 305 / 47 | 40 / 309 / 51 |
+| carriers sunk USN / IJN | 79 / 162 | 86 / 163 |
+| round length p50 | 581 s | 578 s |
+| marshal pattern per side, USN p90 / p99 (air_strength, 60 rounds) | 48 / 86 | 44 / 80 |
+
+`flight_review.js --seeds 6` (24 rounds): landing pattern per recovered sortie p50 53 s / p90 184 s (speedcal: 54 / 168), 907 sorties recovered; pacing by minute climbs as the battle shape asks: launches minutes 0-2, drops minutes 2-4 (7.3 / 6.4 a minute), the gun fight from minute 4-5 (shells 30 a minute, gun damage 185-227) while strikes still drop, sinkings through minutes 5-13. Gates: determinism `--cross 1,2,3 300` PASS, lookahead PASS, behaviour suite 8 seeds 0 FAIL (356 PASS, 62 WARN). `npm run test:camera` (camera7's gate, after the rebase onto it): main 7 / 7 cases and the survey PASS (M3 41%, BB-BE 100% of 9); balance19 6 / 7 (dive_ijn_cv: the situation no longer happens in its candidate rounds) and the 4-round survey FAIL (M3 32%, BB-BE 73% of 11). It is the re-rolled rounds, not the camera: with the 5-inch change reverted the four survey rounds are identical (the recovery change alone re-rolls them), and a 12-round survey (`camera_audit.js --scen standard,carrier_duel,midway --seeds 1,2,3,4 --sim 400 --wx clear`) gives main / balance19 M3 top-1 44 / 43%, CV-BE 93 / 98% (of 30 / 42), BB-BE 97 / 91% (of 37 / 34). The gate's cases and thresholds want re-measuring on the new rounds (`camera_cases.js --table`). The rebase onto camera7 touched no sim file, so the sim gates and the 400-round check above stand.
+
+VQA (render mode, the director camera at 1x, a frame every ~50 s of the whole round: `camera_audit.js --sheet standard:3:20:1700:56,carrier_duel:1:20:1500:50`): standard 3 climbs from the strike transits and Zero escorts through dogfights and a carrier strike under flak to the gun and torpedo fight (a destroyer sunk on camera, North Carolina hit and burning) and late dive and torpedo attacks on the destroyers at dusk; carrier_duel 1 has the dogfights, a carrier burning, Midway raided twice, then a quieter Catalina-rescue stretch before the last dive attack.
+
 ### Air defence (2026-10-09): the CAP meets raids, the stack lands, the ships spread
 
 User feedback: "100+ aircraft flying above a carrier and they let through torpedo and dive attacks", "the enormous circular swarms above a bunch of clumped ships", "there should be consequences for deploying a huge swarm of planes into a CAP patrol". Measured with `tests/air_defense.js` (a read-only recorder, like flight_review's). For every armed carrier or base bomber sortie it records whether a fighter engaged it before its drop, and whether it was shot down armed, jettisoned or dropped, plus its hit; the sorties are bucketed by the enemy fighters within 250 of its target as it comes within 150. It also measures fighters within 120 of a raider near their carrier (engaged, idle, in the marshal stack), the largest cluster of circling planes (single link 50 u, every 1 s), the landing pattern, trap-to-trap gaps and deck modes, and each ship's nearest friendly ship in L. `tests/air_defense_shots.js` takes the render-mode pictures.
@@ -543,6 +582,7 @@ node tests/flight_review.js [--seeds 5] [--only standard,carrier_duel,midway,nig
 node tests/shape_probe.js SCEN SEED [logEvery=30]   # battle shape of one round: postures, the air-war hold, break / pursuit, PT sightings (POS=1: ships, roles, stations)
 node tests/ship_review.js [--seeds 5] [--only standard,carrier_duel,midway,surface,odd,sub_ambush] [--trace SCEN:SEED]   # ship movement (see Ship movement review); CHROMIUM=… node tests/ship_tracks.js tests/shots/ship_trace_SCEN_SEED.json [--zoom USN|IJN] [--win 30]
 node tests/air_defense.js [--seeds 5] [--only standard,carrier_duel,midway]   # air defence: raid fate by CAP size, idle fighters, circling swarms, landing pattern, ship spacing (see Air defence)
+node tests/air_strength.js [--seeds 40] [--base USN|IJN|none] [--rounds] [--curve] [--json F]   # airborne planes per side over time: by source / kind, landing pattern, CAP; >= 3x lopsided samples (see Balance pass 3)
 BASE_URL=… CHROMIUM=… node tests/air_defense_shots.js [seed] [far,vt,marshal,group]   # render-mode pictures of the same
 node tests/dive_film.js [seeds=1,2,3,4] [simSecs=480]   # story camera: share of strike stories with their wave's dive on screen (gate 80%), Strike-away caption lag (CHROMIUM, BASE_URL)
 node tests/camera_audit.js [--scen ...] [--seeds 1..6] [--sim 600] [--tag before|after] [--summarize] [--sheet SCEN:SEED:from:to[:every]]   # director camera audit: M1-M6 (docs/camera_audit.md), raw JSON per round, contact sheets of a replayed window (CHROMIUM, BASE_URL)

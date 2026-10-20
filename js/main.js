@@ -10,7 +10,7 @@ window.WW = window.WW || {};
   // exposes it (camera, audio and the director read it instead of a hard 0.5).
   const BASE_SPEED = (WW.cfg.KN_PER_U || 32 / 5.6) * 0.51444 * (WW.cfg.U_PER_M || 0.104);
   WW.time.base = BASE_SPEED;
-  const VICTORY_TIME = 9;     // sim seconds the banner shows
+  const VICTORY_TIME = 5.5;   // sim seconds the banner shows (~18 s real at 1x on the true-speed clock; balance19: was 9, ~29 s)
   const SUB_STALL = 60;       // see updateGame
   const SUB_CLOSE = 150;      // ... and starts this long after first contact (time to close: a sub makes 3.5 u/s)
   const SUB_SEARCH = 240 + (W - 960) / 8; // a subs-only side that never made contact: the stall ends the round after this long (240 s on the old 960 map, + the crossing of the bigger one at 8 u/s: 420 s)

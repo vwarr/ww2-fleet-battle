@@ -31,7 +31,7 @@ window.WW = window.WW || {};
       LOW = 0.4,                           // cover above this: cloud base too low for a dive-bomb push-over
       NOFLY_BF = 9, NOFLY_D = 7,           // no flight ops at or above this wind force / sea state (daylight.js canFly)
       SWAMP_D = 7.5,                       // foundering only in seas at least this high (typhoon-grade)
-      SWAMP_P = 3.5e-5;                    // per s, a destroyer beam-on to a Douglas 8 sea, undamaged (tuned: ~0-1 per typhoon round)
+      SWAMP_P = 2e-5;                      // per s, a destroyer beam-on to a Douglas 8 sea, undamaged (balance19: 3.5e-5 gave 0.65 small ships per typhoon round, max 3; rare is the ask)
   // WMO: the probable wave height (m) of a fully developed wind sea at Beaufort 0..12, and the Douglas sea-state band
   // edges (m) for Douglas 0..9
   var HS = [0, 0.1, 0.2, 0.6, 1.0, 2.0, 3.0, 4.0, 5.5, 7.0, 9.0, 11.5, 14.0];
